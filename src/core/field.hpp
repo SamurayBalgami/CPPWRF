@@ -133,6 +133,10 @@ template <int R> class BaseFieldT {
         for (int i = 0; i < ni; ++i) h[L_.index(i, j, k)] = real(f(i, j, k));
     copy_to_dev(buf_.get(), h.data(), L_.total * sizeof(real));
   }
+  void download(std::vector<real>& h) const {
+    h.resize(L_.total);
+    copy_to_host(h.data(), buf_.get(), L_.total * sizeof(real));
+  }
 
  private:
   std::string name_;
