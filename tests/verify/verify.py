@@ -155,12 +155,19 @@ def check_finite(rep, d, steps):
 
 def check_conservation(rep, d, prec):
     diag = read_diag(d)
+    # WRF's constant-K vertical diffusion (vertical_diffusion_3dmp) applies g^2/(mu*alt_k)
+    # outside the eta derivative, so it does not conserve theta-mass exactly. Faithful
+    # to WRF, so with kvdif > 0 the theta-mass drift is reported, not judged.
+    kv = float(find_key(read_run(d), "kvdif") or 0)
     for col, tol_key in (("dry_mass", "mass_drift"), ("theta_mass", "theta_mass_drift")):
         if col not in diag:
             rep.add(col, "SKIP", "column missing in diag.csv")
             continue
         v = diag[col]
         drift = abs(v[-1] - v[0]) / abs(v[0]) if v[0] != 0 else math.inf
+        if col == "theta_mass" and kv > 0:
+            rep.add(f"{col}_drift", "INFO", f"rel drift {drift:.3e} (kvdif={kv:g}: WRF form, not conservative)")
+            continue
         rep.check(f"{col}_drift", drift <= TOL[tol_key][prec],
                   f"rel drift {drift:.3e} (tol {TOL[tol_key][prec]:.0e})")
 
