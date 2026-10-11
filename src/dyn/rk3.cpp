@@ -54,7 +54,7 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
     int ns = rk == 1 ? 1 : (rk == 2 ? n_sound_ / 2 : n_sound_);
     large_.prep(s, b);
     large_.tendencies(s, t, b, rk);
-    small_->ss.run_stage(s, t, b, real(dt_rk), real(dts_rk), ns);
+    small_->ss.run_stage(s, t, b, real(dt_rk), real(dts_rk), ns, rk);
   }
 #endif
 }

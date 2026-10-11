@@ -113,9 +113,49 @@ static void test_balance_and_determinism() {
   CHECK(m > 0, "t_tend unexpectedly zero");
 }
 
+// Constant-K diffusion of theta' = A cos(kx x) and A cos(kz z): t_tendf -> -mu K k^2 theta'.
+static void test_diffusion_magnitude() {
+  for (int dir = 0; dir < 2; ++dir) {
+    Setup S(64, 0.0, 0.0, false);
+    double Lx = S.g.nx * S.g.dx, Hz = S.g.ztop;
+    double k = dir == 0 ? 2 * std::numbers::pi / Lx : 2 * std::numbers::pi / Hz;
+    S.cd.theta_pert = [=](double x, double, double z, double) {
+      return dir == 0 ? 0.01 * std::cos(k * x) : 0.01 * std::cos(k * z);
+    };
+    auto eta = std::vector<double>(S.g.nz + 1);
+    for (int kk = 0; kk <= S.g.nz; ++kk) eta[kk] = S.b->znw[kk];
+    cases::initialize(S.cd, *S.snd, eta, S.g, *S.b, *S.s);
+    dyn::LargeStepParams p;
+    (dir == 0 ? p.khdif : p.kvdif) = 100;
+    dyn::LargeStep ls(S.g, p);
+    ls.prep(*S.s, *S.b);
+    ls.tendencies(*S.s, *S.t, *S.b, 1);
+    auto tf = host(S.t->t_tendf), mut = host(S.s->mut), t2 = host(S.s->t_2), ph = host(S.s->ph_2);
+    std::vector<real> phb;
+    S.b->phb.download(phb);
+    const Layout &L = S.t->t_tendf.layout(), &L2 = S.s->mut.layout(), &Lw = S.s->ph_2.layout(),
+                 &Lb = S.b->phb.layout();
+    double num = 0, den = 0;
+    for (int kk = 1; kk < S.g.nz - 1; ++kk)  // interior levels (BCs differ at the ends)
+      for (int i = 0; i < S.g.nx; ++i) {
+        double z = 0.5 * (ph[Lw.index(i, 0, kk)] + ph[Lw.index(i, 0, kk + 1)] + phb[Lb.index(i, 0, kk)] +
+                          phb[Lb.index(i, 0, kk + 1)]) / cst::g;
+        double x = (i + 0.5) * S.g.dx;
+        double thp = 0.01 * std::cos(dir == 0 ? k * x : k * z);
+        double exact = -mut[L2.index(i, 0, 0)] * 100.0 * k * k * thp;
+        num += tf[L.index(i, 0, kk)] * exact;
+        den += exact * exact;
+      }
+    double ratio = num / den;  // least-squares amplitude ratio numerical / exact
+    std::printf("diffusion %s: amplitude ratio numerical/exact = %.4f\n", dir == 0 ? "x" : "z", ratio);
+    CHECK(std::fabs(ratio - 1) < 0.05, "ratio %.4f", ratio);
+  }
+}
+
 int main() {
   test_advection_order();
   test_balance_and_determinism();
+  test_diffusion_magnitude();
   std::printf("test_large_step (%s, %s): %s\n", backend_name(), precision_name, fails ? "FAILED" : "OK");
   return fails ? 1 : 0;
 }

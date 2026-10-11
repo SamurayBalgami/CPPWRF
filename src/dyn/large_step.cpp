@@ -21,14 +21,14 @@ constexpr real H = real(0.5);
 
 CPPWRF_HD inline real sgn1(real a) { return a >= real(0) ? real(1) : real(-1); }  // Fortran sign(1.,a)
 // 5th-order upwind flux (WRF flux5 = flux6 - sign*dissipation), TN 3.3 (eq. 3.31/3.32 family)
-CPPWRF_HD inline real flux5(real qm3, real qm2, real qm1, real q0, real qp1, real qp2, real ua) {
+CPPWRF_HD inline real flux5(real qm3, real qm2, real qm1, real q0, real qp1, real qp2, real ua, real up) {
   return (real(37) * (q0 + qm1) - real(8) * (qp1 + qm2) + (qp2 + qm3)) / real(60) -
-         sgn1(ua) * ((qp2 - qm3) - real(5) * (qp1 - qm2) + real(10) * (q0 - qm1)) / real(60);
+         up * sgn1(ua) * ((qp2 - qm3) - real(5) * (qp1 - qm2) + real(10) * (q0 - qm1)) / real(60);
 }
 // 3rd-order upwind flux (WRF flux3 = flux4 + sign*dissipation)
-CPPWRF_HD inline real flux3(real qm2, real qm1, real q0, real qp1, real ua) {
+CPPWRF_HD inline real flux3(real qm2, real qm1, real q0, real qp1, real ua, real up) {
   return (real(7) * (q0 + qm1) - (qp1 + qm2)) / real(12) +
-         sgn1(ua) * ((qp1 - qm2) - real(3) * (q0 - qm1)) / real(12);
+         up * sgn1(ua) * ((qp1 - qm2) - real(3) * (q0 - qm1)) / real(12);
 }
 
 // ---------------------------------------------------------------- rk_step_prep
@@ -79,20 +79,20 @@ struct KWW {  // calc_ww_cp: mass-coupled eta velocity from the column-integrate
 // U: advect_u (5th horizontal, 3rd vertical) + horizontal_pressure_gradient (+ ru_tendf)
 struct KTendU {
   C3 u, ru, rv, ww, p, ph, alt, al, php, tendf; C2 mu, muu; B3 pb; VCoef c;
-  V3 out; real rdx, rdy; int nz; bool do_y, top_lid, use_tendf;
+  V3 out; real rdx, rdy; int nz; bool do_y, top_lid, use_tendf; real hup, vup;
   CPPWRF_HD real fx(int i, int j, int k) const {
     real vel = H * (ru(i, j, k) + ru(i - 1, j, k));
-    return vel * flux5(u(i - 3, j, k), u(i - 2, j, k), u(i - 1, j, k), u(i, j, k), u(i + 1, j, k), u(i + 2, j, k), vel);
+    return vel * flux5(u(i - 3, j, k), u(i - 2, j, k), u(i - 1, j, k), u(i, j, k), u(i + 1, j, k), u(i + 2, j, k), vel, hup);
   }
   CPPWRF_HD real fy(int i, int j, int k) const {
     real vel = H * (rv(i, j, k) + rv(i - 1, j, k));
-    return vel * flux5(u(i, j - 3, k), u(i, j - 2, k), u(i, j - 1, k), u(i, j, k), u(i, j + 1, k), u(i, j + 2, k), vel);
+    return vel * flux5(u(i, j - 3, k), u(i, j - 2, k), u(i, j - 1, k), u(i, j, k), u(i, j + 1, k), u(i, j + 2, k), vel, hup);
   }
   CPPWRF_HD real fz(int i, int j, int k) const {
     if (k == 0 || k == nz) return 0;
     real vel = H * (ww(i - 1, j, k) + ww(i, j, k));
     if (k == 1 || k == nz - 1) return vel * (c.fnm(k) * u(i, j, k) + c.fnp(k) * u(i, j, k - 1));
-    return vel * flux3(u(i, j, k - 2), u(i, j, k - 1), u(i, j, k), u(i, j, k + 1), -vel);
+    return vel * flux3(u(i, j, k - 2), u(i, j, k - 1), u(i, j, k), u(i, j, k + 1), -vel, vup);
   }
   CPPWRF_HD real pu(int i, int j, int k) const { return p(i - 1, j, k) + p(i, j, k); }
   CPPWRF_HD real dpn(int i, int j, int k) const {  // p' at w level k, u column (x2 averaged)
@@ -120,20 +120,20 @@ struct KTendU {
 // V: advect_v + horizontal_pressure_gradient (y part); 3D runs only
 struct KTendV {
   C3 v, ru, rv, ww, p, ph, alt, al, php, tendf; C2 mu, muv; B3 pb; VCoef c;
-  V3 out; real rdx, rdy; int nz; bool top_lid, use_tendf;
+  V3 out; real rdx, rdy; int nz; bool top_lid, use_tendf; real hup, vup;
   CPPWRF_HD real fx(int i, int j, int k) const {
     real vel = H * (ru(i, j, k) + ru(i, j - 1, k));
-    return vel * flux5(v(i - 3, j, k), v(i - 2, j, k), v(i - 1, j, k), v(i, j, k), v(i + 1, j, k), v(i + 2, j, k), vel);
+    return vel * flux5(v(i - 3, j, k), v(i - 2, j, k), v(i - 1, j, k), v(i, j, k), v(i + 1, j, k), v(i + 2, j, k), vel, hup);
   }
   CPPWRF_HD real fy(int i, int j, int k) const {
     real vel = H * (rv(i, j, k) + rv(i, j - 1, k));
-    return vel * flux5(v(i, j - 3, k), v(i, j - 2, k), v(i, j - 1, k), v(i, j, k), v(i, j + 1, k), v(i, j + 2, k), vel);
+    return vel * flux5(v(i, j - 3, k), v(i, j - 2, k), v(i, j - 1, k), v(i, j, k), v(i, j + 1, k), v(i, j + 2, k), vel, hup);
   }
   CPPWRF_HD real fz(int i, int j, int k) const {
     if (k == 0 || k == nz) return 0;
     real vel = H * (ww(i, j - 1, k) + ww(i, j, k));
     if (k == 1 || k == nz - 1) return vel * (c.fnm(k) * v(i, j, k) + c.fnp(k) * v(i, j, k - 1));
-    return vel * flux3(v(i, j, k - 2), v(i, j, k - 1), v(i, j, k), v(i, j, k + 1), -vel);
+    return vel * flux3(v(i, j, k - 2), v(i, j, k - 1), v(i, j, k), v(i, j, k + 1), -vel, vup);
   }
   CPPWRF_HD real pv(int i, int j, int k) const { return p(i, j - 1, k) + p(i, j, k); }
   CPPWRF_HD real dpn(int i, int j, int k) const {
@@ -159,7 +159,7 @@ struct KTendV {
 // W (levels 1..nz): advect_w + pg_buoy_w (+ rw_tendf)
 struct KTendW {
   C3 w, ru, rv, ww, p, tendf; C2 mu; VCoef c;
-  V3 out; real rdx, rdy; int nz; bool do_y, use_tendf;
+  V3 out; real rdx, rdy; int nz; bool do_y, use_tendf; real hup, vup;
   CPPWRF_HD real rux(int i, int j, int k) const {  // ru interpolated to w level k
     if (k < nz) return c.fnm(k) * ru(i, j, k) + c.fnp(k) * ru(i, j, k - 1);
     return (real(2) - c.fnm(nz - 1)) * ru(i, j, nz - 1) - c.fnp(nz - 1) * ru(i, j, nz - 2);
@@ -170,16 +170,16 @@ struct KTendW {
   }
   CPPWRF_HD real fx(int i, int j, int k) const {
     real vel = rux(i, j, k);
-    return vel * flux5(w(i - 3, j, k), w(i - 2, j, k), w(i - 1, j, k), w(i, j, k), w(i + 1, j, k), w(i + 2, j, k), vel);
+    return vel * flux5(w(i - 3, j, k), w(i - 2, j, k), w(i - 1, j, k), w(i, j, k), w(i + 1, j, k), w(i + 2, j, k), vel, hup);
   }
   CPPWRF_HD real fy(int i, int j, int k) const {
     real vel = rvy(i, j, k);
-    return vel * flux5(w(i, j - 3, k), w(i, j - 2, k), w(i, j - 1, k), w(i, j, k), w(i, j + 1, k), w(i, j + 2, k), vel);
+    return vel * flux5(w(i, j - 3, k), w(i, j - 2, k), w(i, j - 1, k), w(i, j, k), w(i, j + 1, k), w(i, j + 2, k), vel, hup);
   }
   CPPWRF_HD real fz(int i, int j, int m) const {  // vertical flux at mass level m
     if (m == 0 || m == nz - 1) return real(0.25) * (ww(i, j, m + 1) + ww(i, j, m)) * (w(i, j, m + 1) + w(i, j, m));
     real vel = H * (ww(i, j, m + 1) + ww(i, j, m));
-    return vel * flux3(w(i, j, m - 1), w(i, j, m), w(i, j, m + 1), w(i, j, m + 2), -vel);
+    return vel * flux3(w(i, j, m - 1), w(i, j, m), w(i, j, m + 1), w(i, j, m + 2), -vel, vup);
   }
   CPPWRF_HD void operator()(int i, int j, int k) const {
     real t = -rdx * (fx(i + 1, j, k) - fx(i, j, k));
@@ -199,20 +199,20 @@ struct KTendW {
 // Theta: advect_scalar (+ t_tendf)
 struct KTendT {
   C3 t, ru, rv, ww, tendf; VCoef c;
-  V3 out; real rdx, rdy; int nz; bool do_y, use_tendf;
+  V3 out; real rdx, rdy; int nz; bool do_y, use_tendf; real hup, vup;
   CPPWRF_HD real fx(int i, int j, int k) const {
     real vel = ru(i, j, k);
-    return vel * flux5(t(i - 3, j, k), t(i - 2, j, k), t(i - 1, j, k), t(i, j, k), t(i + 1, j, k), t(i + 2, j, k), vel);
+    return vel * flux5(t(i - 3, j, k), t(i - 2, j, k), t(i - 1, j, k), t(i, j, k), t(i + 1, j, k), t(i + 2, j, k), vel, hup);
   }
   CPPWRF_HD real fy(int i, int j, int k) const {
     real vel = rv(i, j, k);
-    return vel * flux5(t(i, j - 3, k), t(i, j - 2, k), t(i, j - 1, k), t(i, j, k), t(i, j + 1, k), t(i, j + 2, k), vel);
+    return vel * flux5(t(i, j - 3, k), t(i, j - 2, k), t(i, j - 1, k), t(i, j, k), t(i, j + 1, k), t(i, j + 2, k), vel, hup);
   }
   CPPWRF_HD real fz(int i, int j, int k) const {
     if (k == 0 || k == nz) return 0;
     real vel = ww(i, j, k);
     if (k == 1 || k == nz - 1) return vel * (c.fnm(k) * t(i, j, k) + c.fnp(k) * t(i, j, k - 1));
-    return vel * flux3(t(i, j, k - 2), t(i, j, k - 1), t(i, j, k), t(i, j, k + 1), -vel);
+    return vel * flux3(t(i, j, k - 2), t(i, j, k - 1), t(i, j, k), t(i, j, k + 1), -vel, vup);
   }
   CPPWRF_HD void operator()(int i, int j, int k) const {
     real r = -rdx * (fx(i + 1, j, k) - fx(i, j, k));
@@ -383,6 +383,8 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
   const Range3D wri{0, g.nx, 0, g.ny, 1, nz};
   const Range3D mr = g.mass_cells();
   const real kh = p_.khdif, kv = p_.kvdif;
+  // even orders (6 / 4) = the same fluxes without the upwind dissipation term (WRF flux6/flux4)
+  const real hup = p_.h_adv_order == 5 ? real(1) : real(0), vup = p_.v_adv_order == 3 ? real(1) : real(0);
 
   if (diff && rk_step == 1) {  // WRF: diffusion only in the first RK stage, held in *_tendf
     parallel_for(ur, KDiffU{s.u_2.cview(), s.alt.cview(), s.mut.cview(), s.muu.cview(), c, t.ru_tendf.view(), kh, kv,
@@ -397,15 +399,15 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
   }
   parallel_for(ur, KTendU{s.u_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), s.ph_2.cview(),
                           s.alt.cview(), s.al.cview(), s.php.cview(), t.ru_tendf.cview(), s.mu_2.cview(),
-                          s.muu.cview(), b.pb.view(), c, t.ru_tend.view(), rdx, rdy, nz, do_y, p_.top_lid, diff});
+                          s.muu.cview(), b.pb.view(), c, t.ru_tend.view(), rdx, rdy, nz, do_y, p_.top_lid, diff, hup, vup});
   if (do_y)
     parallel_for(vr, KTendV{s.v_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), s.ph_2.cview(),
                             s.alt.cview(), s.al.cview(), s.php.cview(), t.rv_tendf.cview(), s.mu_2.cview(),
-                            s.muv.cview(), b.pb.view(), c, t.rv_tend.view(), rdx, rdy, nz, p_.top_lid, diff});
+                            s.muv.cview(), b.pb.view(), c, t.rv_tend.view(), rdx, rdy, nz, p_.top_lid, diff, hup, vup});
   parallel_for(wr, KTendW{s.w_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), t.rw_tendf.cview(),
-                          s.mu_2.cview(), c, t.rw_tend.view(), rdx, rdy, nz, do_y, diff});
+                          s.mu_2.cview(), c, t.rw_tend.view(), rdx, rdy, nz, do_y, diff, hup, vup});
   parallel_for(mr, KTendT{s.t_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), t.t_tendf.cview(), c,
-                          t.t_tend.view(), rdx, rdy, nz, do_y, diff});
+                          t.t_tend.view(), rdx, rdy, nz, do_y, diff, hup, vup});
   parallel_for(wr, KTendPh{s.u_2.cview(), s.v_2.cview(), s.w_2.cview(), s.ww.cview(), s.ph_2.cview(), s.mut.cview(),
                            s.muu.cview(), s.muv.cview(), b.phb.view(), c, t.ph_tend.view(), rdx, rdy, nz, do_y});
   // mu_tend stays 0 (dry, no physics); allocated zero.

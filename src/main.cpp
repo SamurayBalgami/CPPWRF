@@ -70,6 +70,10 @@ static int run(int argc, char** argv) {
   lp.khdif = real(cfg.get_double("dyn.khdif", 0.0));
   lp.kvdif = real(cfg.get_double("dyn.kvdif", 0.0));
   lp.top_lid = cfg.get_bool("dyn.top_lid", true);
+  lp.h_adv_order = int(cfg.get_int("dyn.h_adv_order", 5));
+  lp.v_adv_order = int(cfg.get_int("dyn.v_adv_order", 3));
+  if ((lp.h_adv_order != 5 && lp.h_adv_order != 6) || (lp.v_adv_order != 3 && lp.v_adv_order != 4))
+    throw std::runtime_error("dyn.h_adv_order must be 5 or 6, dyn.v_adv_order 3 or 4");
   dyn::AcousticParams ap;
   ap.epssm = real(cfg.get_double("dyn.epssm", 0.1));
   ap.smdiv = real(cfg.get_double("dyn.smdiv", 0.1));
@@ -103,7 +107,7 @@ static int run(int argc, char** argv) {
     j.key_value("khdif", double(lp.khdif)); j.key_value("kvdif", double(lp.kvdif));
     j.key_value("top_lid", lp.top_lid); j.key_value("time_step_sound", (long long)n_sound);
     j.key_value("run_time", run_time); j.key_value("nsteps", (long long)nsteps);
-    j.key_value("h_adv_order", 5LL); j.key_value("v_adv_order", 3LL); j.key_value("hybrid_opt", 0LL);
+    j.key_value("h_adv_order", (long long)lp.h_adv_order); j.key_value("v_adv_order", (long long)lp.v_adv_order); j.key_value("hybrid_opt", 0LL);
     j.end_object();
     j.key_value("precision", std::string_view(precision_name));
     j.key_value("backend", std::string_view(backend_name()));
