@@ -8,7 +8,8 @@
   acoustic small step. New WRF options: `dyn.h_adv_order` 5|6, `dyn.v_adv_order` 3|4.
 - Run everything: `tools/run_m1.sh`. Tests: `ctest` 5/5 in build-cpu and build-cpu-dp
   (test_large_step adds diffusion-magnitude check: x 0.9992, z 0.9653 = 2nd-order FD factor).
-- Determinism: two FP32 igw runs -> `cmp` of snap_000500.bin identical, diag.csv identical.
+- Determinism: two FP32 igw runs -> `cmp` of snap_000500.bin identical; diag.csv identical in columns 1-10
+  (column 11, wall_s, is wall-clock time and differs by design).
 
 ## Results (tools/run_m1.sh, CPU = 12 threads, all verifier checks PASS)
 | case | prec | backend | key metrics | stepping wall | ns/cell/step |

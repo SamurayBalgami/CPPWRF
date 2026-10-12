@@ -7,3 +7,6 @@ __pycache__/
 /*.o
 /build-reg-*.log
 /test_out/
+/tests/io_netcdf/test_out/
+/tests/phys/**/*.bin
+/tests/phys/**/*.nc

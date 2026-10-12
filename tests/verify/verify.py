@@ -5,7 +5,7 @@ Black box: reads only the files the model writes:
 run.json, diag.csv, snap_<step>.bin/.json. Deliberately does not import scripts/ or any CPPWRF code, so a bug in those cannot hide a bug in the model.
 
 Usage:
-  verify.py check <case> <out_dir>          # case: rest_state | straka | warm_bubble | igw
+  verify.py check <case> <out_dir>          # case: rest_state | straka | warm_bubble | igw | squall2d
   verify.py compare <out_dir_a> <out_dir_b> [--rtol X]
   verify.py convergence <dir_coarse> <dir_mid> <dir_fine>   # Straka at dx, dx/2, dx/4
 Exit code 0 = all PASS (SKIP allowed), 1 = any FAIL, 2 = usage/input error.
@@ -38,6 +38,11 @@ TOL = {
     # At dx = 100 m published models fall in about -9.6..-9.9 K and 15.3..15.6 km.
     "straka_ref_min_thp": -9.77, "straka_tol_min_thp": 0.5,     # K
     "straka_ref_front": 15540.0, "straka_tol_front": 400.0,     # m
+    # Moist cases. Water: transport alone is conservative to roundoff; WRF's Kessler is not
+    # exactly (its rain sedimentation uses the mass-level spacing), measured 2.7e-4 of the total
+    # water after 1 h of deep convection (0.75% of the rain), so allow 1e-3.
+    "water_budget_mp0": {"float64": 1e-12, "float32": 1e-5},
+    "water_budget_mp": 1e-3,
 }
 
 
@@ -165,6 +170,10 @@ def check_conservation(rep, d, prec):
             continue
         v = diag[col]
         drift = abs(v[-1] - v[0]) / abs(v[0]) if v[0] != 0 else math.inf
+        mp = int(find_key(read_run(d), "mp_physics") or 0)
+        if col == "theta_mass" and mp > 0:
+            rep.add(f"{col}_drift", "INFO", f"rel drift {drift:.3e} (mp_physics={mp}: latent heating changes theta-mass)")
+            continue
         if col == "theta_mass" and kv > 0:
             rep.add(f"{col}_drift", "INFO", f"rel drift {drift:.3e} (kvdif={kv:g}: WRF form, not conservative)")
             continue
@@ -296,6 +305,32 @@ def run_check(case, d):
             rep.check("igw_translation", abs(err) <= 2 * dx,
                       f"centroid {x1 / 1000:.2f} km, expected {expect % Lx / 1000:.2f} km (err {err:.0f} m)")
         rep.add("igw_amplitude", "INFO", f"th' range [{th.min():.5f}, {th.max():.5f}] K at t={last['_time']:g}s")
+    elif case == "squall2d":
+        # Deep convection amplifies roundoff (chaos): mirror symmetry is a hard check in FP64
+        # only; in FP32 it is reported.
+        if prec == "float64":
+            check_symmetry(rep, d, steps, prec)
+        else:
+            last = read_snap(d, steps[-1])
+            rep.add("symmetry", "INFO", f"FP32 th' asym {mirror_error(last['th_pert']):.2e} (chaotic growth)")
+        mp = int(find_key(run, "mp_physics") or 0)
+        eta = np.array(find_key(run, "eta_levels"), dtype=float)
+        dnw = -np.diff(eta)
+        first, last = read_snap(d, steps[0]), read_snap(d, steps[-1])
+        species = [k for k in ("qv", "qc", "qr", "qi", "qs", "qg") if k in last]
+        neg = min(float(last[k].min()) for k in species)
+        rep.check("moist_nonnegative", neg >= 0.0, f"min over {species}: {neg:.3e}")
+        def water(s):  # kg per m^2 of domain, summed over columns (dry-air mass weighting)
+            mu = s["mu"][0]
+            return sum((mu[None, :, :] * dnw[:, None, None] * s[k]).sum() for k in species) / 9.81
+        W0, W1 = water(first), water(last)
+        rain = float(last["rainnc"].sum()) if "rainnc" in last else 0.0
+        err = (W1 + rain - W0) / W0
+        tol = TOL["water_budget_mp"] if mp > 0 else TOL["water_budget_mp0"][prec]
+        rep.check("water_budget", abs(err) <= tol,
+                  f"(water + rain - W0)/W0 = {err:+.2e} (tol {tol:.0e}, mp_physics={mp}, rain {rain:.3e} kg/m2 summed)")
+        diag = read_diag(d)
+        rep.add("squall_max_w", "INFO", f"{np.max(diag['max_abs_w']):.2f} m/s")
     else:
         rep.add("case", "FAIL", f"unknown case {case}")
     rep.print()

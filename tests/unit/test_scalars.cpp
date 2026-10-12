@@ -69,7 +69,7 @@ int main() {
   for (C c : {C{"straka", kStraka, 100}, C{"warm_bubble", kBubble, 200}, C{"igw", kIgw, 50}}) {
     for (int pd = 0; pd <= 1; ++pd) {
       const bool igw = std::string(c.name) == "igw";
-      std::string ini = std::string(c.ini) + "scalar_adv_opt = " + std::to_string(pd) +
+      std::string ini = std::string(c.ini) + "[dyn]\nscalar_adv_opt = " + std::to_string(pd) +
                         "\n[tracers]\nnames = one, blob\nblob_init = blob\n" +
                         (igw ? "blob_xc = 150000\nblob_radius = 20000\nblob_zc = 5000\n"
                              : "blob_zc = 3000\nblob_radius = 1500\n");
@@ -82,6 +82,8 @@ int main() {
                   one.dev1, blob.qmin, blob.qmax, dm_one, dm_blob);
       CHECK(one.dev1 < tol_one, "%s: constant tracer deviates by %.3e", c.name, one.dev1);
       if (pd == 1) CHECK(blob.qmin >= -(fp64 ? 1e-12 : 1e-6) * blob0.qmax, "%s: PD blob min %.3e", c.name, blob.qmin);
+      // the switch must matter: without PD the 5th/3rd-order fluxes undershoot near the blob edge
+      if (pd == 0) CHECK(blob.qmin < -1e-4 * blob0.qmax, "%s: pd=0 gave no undershoot (option not applied?) min %.3e", c.name, blob.qmin);
       const bool diff_v = std::string(c.name) == "straka";  // vertical diffusion: WRF form, not conservative
       if (!diff_v) CHECK(std::fabs(dm_blob) < tol_mass, "%s: tracer mass drift %.3e", c.name, dm_blob);
       if (pd == 0 && std::string(c.name) == "straka")
