@@ -18,10 +18,12 @@ CPPWRF_HD inline double absnan(double v) {  // NaN/Inf -> +inf so that max() exp
   return (v != v || v - v != 0.0) ? kInf : (v < 0 ? -v : v);
 }
 struct FMaxAbs { C3 f; CPPWRF_HD double operator()(int i, int j, int k) const { return absnan(double(f(i, j, k))); } };
-struct FThp {
-  C3 t; B3 ti; double sign;
+struct FThp {  // dry theta' = theta - t_init, theta = theta_m / (1 + rvovrd qv) when moist
+  C3 t; B3 ti; double sign; C3 qv; bool moist;
   CPPWRF_HD double operator()(int i, int j, int k) const {
-    double v = double(t(i, j, k)) - double(ti(i, j, k));
+    double th = double(t(i, j, k));
+    if (moist) th = (th + cst::t0) / (1.0 + cst::rvovrd * double(qv(i, j, k))) - cst::t0;
+    double v = th - double(ti(i, j, k));
     return v != v ? kInf : sign * v;
   }
 };
@@ -60,8 +62,10 @@ DiagRow Diagnostics::compute(const State& s, const BaseState& b) {
   r.max_abs_u = red_.max(g.cells(Stagger::U), FMaxAbs{s.u_2.cview()});
   r.max_abs_v = red_.max(g.cells(Stagger::V), FMaxAbs{s.v_2.cview()});
   r.max_abs_w = red_.max(g.cells(Stagger::W), FMaxAbs{s.w_2.cview()});
-  r.max_th_pert = red_.max(g.mass_cells(), FThp{s.t_2.cview(), b.t_init.view(), 1.0});
-  r.min_th_pert = -red_.max(g.mass_cells(), FThp{s.t_2.cview(), b.t_init.view(), -1.0});
+  const bool moist = s.P_QV >= 0;
+  const C3 qv = moist ? s.q_2[s.P_QV].cview() : C3{};
+  r.max_th_pert = red_.max(g.mass_cells(), FThp{s.t_2.cview(), b.t_init.view(), 1.0, qv, moist});
+  r.min_th_pert = -red_.max(g.mass_cells(), FThp{s.t_2.cview(), b.t_init.view(), -1.0, qv, moist});
   const double area = g.dx * (g.two_d() ? 1.0 : g.dy) / cst::g;  // 2D: per metre in y
   r.dry_mass = area * red_.sum(Range3D{0, g.nx, 0, g.ny, 0, 1}, FMass{s.mu_2.cview(), b.mub.view()});
   r.theta_mass = area * red_.sum(g.mass_cells(), FThetaMass{s.t_2.cview(), s.mu_2.cview(), b.mub.view(), c});
@@ -72,7 +76,8 @@ DiagRow Diagnostics::compute(const State& s, const BaseState& b) {
 }
 
 std::vector<io::VarView> snapshot_vars(const State& s, const BaseState& b, const Grid& g,
-                                       std::vector<std::vector<real>>& store) {
+                                       std::vector<std::vector<real>>& store,
+                                       const std::vector<const Field2*>& extra_2d) {
   std::vector<real> hu, hv, hw, ht, hp, hph, hmu, bpb, bphb, bti, bmub;
   s.u_2.download(hu); s.v_2.download(hv); s.w_2.download(hw); s.t_2.download(ht);
   s.p.download(hp); s.ph_2.download(hph); s.mu_2.download(hmu);
@@ -97,8 +102,15 @@ std::vector<io::VarView> snapshot_vars(const State& s, const BaseState& b, const
   add("u", 'U', g.nxs(Stagger::U), ny, nz, [&](int i, int j, int k) { return at(hu, Lu, i, j, k); });
   add("v", 'V', nx, g.nys(Stagger::V), nz, [&](int i, int j, int k) { return at(hv, Lv, i, j, k); });
   add("w", 'W', nx, ny, nz + 1, [&](int i, int j, int k) { return at(hw, Lw, i, j, k); });
-  add("th_pert", 'M', nx, ny, nz, [&](int i, int j, int k) { return at(ht, Lm, i, j, k) - at(bti, Lti, i, j, k); });
-  add("theta", 'M', nx, ny, nz, [&](int i, int j, int k) { return at(ht, Lm, i, j, k) + cst::t0; });
+  std::vector<real> hqv;
+  if (s.P_QV >= 0) s.q_2[s.P_QV].download(hqv);
+  auto theta = [&](int i, int j, int k) {  // dry theta (t_2 holds theta_m - t0 when moist)
+    const double tm = at(ht, Lm, i, j, k) + cst::t0;
+    return hqv.empty() ? tm : tm / (1.0 + cst::rvovrd * at(hqv, Lm, i, j, k));
+  };
+  add("th_pert", 'M', nx, ny, nz, [&](int i, int j, int k) { return theta(i, j, k) - cst::t0 - at(bti, Lti, i, j, k); });
+  add("theta", 'M', nx, ny, nz, theta);
+  if (!hqv.empty()) add("theta_m", 'M', nx, ny, nz, [&](int i, int j, int k) { return at(ht, Lm, i, j, k) + cst::t0; });
   add("p", 'M', nx, ny, nz, [&](int i, int j, int k) { return at(hp, Lm, i, j, k) + at(bpb, Lpb, i, j, k); });
   add("p_pert", 'M', nx, ny, nz, [&](int i, int j, int k) { return at(hp, Lm, i, j, k); });
   add("ph", 'W', nx, ny, nz + 1, [&](int i, int j, int k) { return at(hph, Lph, i, j, k) + at(bphb, Lphb, i, j, k); });
@@ -107,6 +119,15 @@ std::vector<io::VarView> snapshot_vars(const State& s, const BaseState& b, const
   add("z_m", 'M', nx, ny, nz, [&](int i, int j, int k) {
     return 0.5 * (at(hph, Lph, i, j, k) + at(hph, Lph, i, j, k + 1) + at(bphb, Lphb, i, j, k) + at(bphb, Lphb, i, j, k + 1)) / cst::g;
   });
+  std::vector<real> hq;
+  for (int n = 0; n < s.n_scalars(); ++n) {  // moist species and tracers, under their names
+    s.q_2[n].download(hq);
+    add(s.q_names[n].c_str(), 'M', nx, ny, nz, [&](int i, int j, int k) { return at(hq, Lm, i, j, k); });
+  }
+  for (const Field2* f : extra_2d) {
+    f->download(hq);
+    add(f->name().c_str(), 'M', nx, ny, 1, [&](int i, int j, int) { return at(hq, f->layout(), i, j, 0); });
+  }
   return vars;
 }
 

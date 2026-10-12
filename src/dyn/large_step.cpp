@@ -2,6 +2,7 @@
 
 #include "core/constants.hpp"
 #include "core/halo.hpp"
+#include "dyn/kernels_common.hpp"
 
 // Formulas follow TN ch. 3 (flux-form, perturbation equations 3.3-3.8 evaluated at t*) in
 // the discrete form of WRF dyn_em (module_big_step_utilities_em.F, module_advect_em.F).
@@ -19,17 +20,8 @@ using B2 = BView2<const real>;
 constexpr real Gr = real(cst::g);
 constexpr real H = real(0.5);
 
-CPPWRF_HD inline real sgn1(real a) { return a >= real(0) ? real(1) : real(-1); }  // Fortran sign(1.,a)
-// 5th-order upwind flux (WRF flux5 = flux6 - sign*dissipation), TN 3.3 (eq. 3.31/3.32 family)
-CPPWRF_HD inline real flux5(real qm3, real qm2, real qm1, real q0, real qp1, real qp2, real ua, real up) {
-  return (real(37) * (q0 + qm1) - real(8) * (qp1 + qm2) + (qp2 + qm3)) / real(60) -
-         up * sgn1(ua) * ((qp2 - qm3) - real(5) * (qp1 - qm2) + real(10) * (q0 - qm1)) / real(60);
-}
-// 3rd-order upwind flux (WRF flux3 = flux4 + sign*dissipation)
-CPPWRF_HD inline real flux3(real qm2, real qm1, real q0, real qp1, real ua, real up) {
-  return (real(7) * (q0 + qm1) - (qp1 + qm2)) / real(12) +
-         up * sgn1(ua) * ((qp1 - qm2) - real(3) * (q0 - qm1)) / real(12);
-}
+using kern::flux3;
+using kern::flux5;
 
 // ---------------------------------------------------------------- rk_step_prep
 struct KMu {  // calc_mu_uv: full column masses at stage
@@ -78,7 +70,7 @@ struct KWW {  // calc_ww_cp: mass-coupled eta velocity from the column-integrate
 // ---------------------------------------------------------------- rk_tendency
 // U: advect_u (5th horizontal, 3rd vertical) + horizontal_pressure_gradient (+ ru_tendf)
 struct KTendU {
-  C3 u, ru, rv, ww, p, ph, alt, al, php, tendf; C2 mu, muu; B3 pb; VCoef c;
+  C3 u, ru, rv, ww, p, ph, alt, al, php, tendf; C2 mu, muu; B3 pb; VCoef c; kern::MoistCoef mc;
   V3 out; real rdx, rdy; int nz; bool do_y, top_lid, use_tendf; real hup, vup;
   CPPWRF_HD real fx(int i, int j, int k) const {
     real vel = H * (ru(i, j, k) + ru(i - 1, j, k));
@@ -111,7 +103,7 @@ struct KTendU {
                 (al(i, j, k) + al(i - 1, j, k)) * (pb(i, j, k) - pb(i - 1, j, k)));
     dpx += rdx * (php(i, j, k) - php(i - 1, j, k)) *
            (c.rdnw(k) * (dpn(i, j, k + 1) - dpn(i, j, k)) - H * (c.c1h(k) * mu(i - 1, j) + c.c1h(k) * mu(i, j)));
-    t -= dpx;
+    t -= mc.cqu(i, j, k) * dpx;
     if (use_tendf) t += tendf(i, j, k);
     out(i, j, k) = t;
   }
@@ -119,7 +111,7 @@ struct KTendU {
 
 // V: advect_v + horizontal_pressure_gradient (y part); 3D runs only
 struct KTendV {
-  C3 v, ru, rv, ww, p, ph, alt, al, php, tendf; C2 mu, muv; B3 pb; VCoef c;
+  C3 v, ru, rv, ww, p, ph, alt, al, php, tendf; C2 mu, muv; B3 pb; VCoef c; kern::MoistCoef mc;
   V3 out; real rdx, rdy; int nz; bool top_lid, use_tendf; real hup, vup;
   CPPWRF_HD real fx(int i, int j, int k) const {
     real vel = H * (ru(i, j, k) + ru(i, j - 1, k));
@@ -150,7 +142,7 @@ struct KTendV {
                 (al(i, j, k) + al(i, j - 1, k)) * (pb(i, j, k) - pb(i, j - 1, k)));
     dpy += rdy * (php(i, j, k) - php(i, j - 1, k)) *
            (c.rdnw(k) * (dpn(i, j, k + 1) - dpn(i, j, k)) - H * (c.c1h(k) * mu(i, j - 1) + c.c1h(k) * mu(i, j)));
-    t -= dpy;
+    t -= mc.cqv(i, j, k) * dpy;
     if (use_tendf) t += tendf(i, j, k);
     out(i, j, k) = t;
   }
@@ -158,7 +150,7 @@ struct KTendV {
 
 // W (levels 1..nz): advect_w + pg_buoy_w (+ rw_tendf)
 struct KTendW {
-  C3 w, ru, rv, ww, p, tendf; C2 mu; VCoef c;
+  C3 w, ru, rv, ww, p, tendf; C2 mu; B2 mub; VCoef c; kern::MoistCoef mc;
   V3 out; real rdx, rdy; int nz; bool do_y, use_tendf; real hup, vup;
   CPPWRF_HD real rux(int i, int j, int k) const {  // ru interpolated to w level k
     if (k < nz) return c.fnm(k) * ru(i, j, k) + c.fnp(k) * ru(i, j, k - 1);
@@ -186,10 +178,15 @@ struct KTendW {
     if (do_y) t -= rdy * (fy(i, j + 1, k) - fy(i, j, k));
     if (k < nz) {
       t -= c.rdn(k) * (fz(i, j, k) - fz(i, j, k - 1));
-      t += Gr * (c.rdn(k) * (p(i, j, k) - p(i, j, k - 1)) - c.c1f(k) * mu(i, j));
+      // pg_buoy_w: cq1 = 1/(1+cqw), cq2 = cqw cq1 (moisture loading of the base state)
+      const real cqw = mc.cqw(i, j, k), cq1 = real(1) / (real(1) + cqw), cq2 = cqw * cq1;
+      t += Gr * (cq1 * c.rdn(k) * (p(i, j, k) - p(i, j, k - 1)) - c.c1f(k) * mu(i, j) -
+                 cq2 * (c.c1f(k) * mub(i, j) + c.c2f(k)));
     } else {
       t += real(2) * c.rdn(nz - 1) * fz(i, j, nz - 1);
-      t += Gr * (real(2) * c.rdnw(nz - 1) * (-p(i, j, nz - 1)) - c.c1f(nz) * mu(i, j));
+      const real cqw = mc.cqw(i, j, nz - 1), cq1 = real(1) / (real(1) + cqw), cq2 = cqw * cq1;
+      t += Gr * (cq1 * real(2) * c.rdnw(nz - 1) * (-p(i, j, nz - 1)) - c.c1f(nz) * mu(i, j) -
+                 cq2 * (c.c1f(nz) * mub(i, j) + c.c2f(nz)));
     }
     if (use_tendf) t += tendf(i, j, k);
     out(i, j, k) = t;
@@ -200,6 +197,7 @@ struct KTendW {
 struct KTendT {
   C3 t, ru, rv, ww, tendf; VCoef c;
   V3 out; real rdx, rdy; int nz; bool do_y, use_tendf; real hup, vup;
+  C3 hd; C2 mut; bool use_hd;  // rk_addtend_dry: + (c1h*mut + c2h) * h_diabatic
   CPPWRF_HD real fx(int i, int j, int k) const {
     real vel = ru(i, j, k);
     return vel * flux5(t(i - 3, j, k), t(i - 2, j, k), t(i - 1, j, k), t(i, j, k), t(i + 1, j, k), t(i + 2, j, k), vel, hup);
@@ -219,6 +217,7 @@ struct KTendT {
     if (do_y) r -= rdy * (fy(i, j + 1, k) - fy(i, j, k));
     r -= c.rdnw(k) * (fz(i, j, k + 1) - fz(i, j, k));
     if (use_tendf) r += tendf(i, j, k);
+    if (use_hd) r += (c.c1h(k) * mut(i, j) + c.c2h(k)) * hd(i, j, k);
     out(i, j, k) = r;
   }
 };
@@ -323,26 +322,6 @@ struct KDiffW {  // levels 1..nz-1 (w = 0 at the rigid bottom and lid)
   }
 };
 
-struct KDiffT {  // diffuses theta - t_init (WRF *_3dmp)
-  C3 t, alt; B3 tinit; C2 mut; VCoef c; V3 out; real kh, kv, rdx, rdy; int nz; bool do_y;
-  CPPWRF_HD real d(int i, int j, int k) const { return t(i, j, k) - tinit(i, j, k); }
-  CPPWRF_HD real m(int i, int j, int k) const { return c.c1h(k) * mut(i, j) + c.c2h(k); }
-  CPPWRF_HD real vf(int i, int j, int k) const {
-    if (k == 0 || k == nz) return 0;
-    return kv * c.rdn(k) / (H * (alt(i, j, k) + alt(i, j, k - 1))) * (d(i, j, k) - d(i, j, k - 1));
-  }
-  CPPWRF_HD void operator()(int i, int j, int k) const {
-    real r = rdx * rdx * kh *
-             (H * (m(i + 1, j, k) + m(i, j, k)) * (d(i + 1, j, k) - d(i, j, k)) -
-              H * (m(i, j, k) + m(i - 1, j, k)) * (d(i, j, k) - d(i - 1, j, k)));
-    if (do_y)
-      r += rdy * rdy * kh *
-           (H * (m(i, j + 1, k) + m(i, j, k)) * (d(i, j + 1, k) - d(i, j, k)) -
-            H * (m(i, j, k) + m(i, j - 1, k)) * (d(i, j, k) - d(i, j - 1, k)));
-    r += Gr * Gr / (m(i, j, k) * alt(i, j, k)) * c.rdnw(k) * (vf(i, j, k + 1) - vf(i, j, k));
-    out(i, j, k) = r;
-  }
-};
 
 }  // namespace
 
@@ -368,6 +347,19 @@ void LargeStep::prep(State& s, const BaseState& b) const {
   for (Field3* f : {&s.ru, &s.rv, &s.rw, &s.alt, &s.php}) fill_halo(*f, g);
   column_for(g.columns(), KWW{s.ru.cview(), s.rv.cview(), s.ww.view(), c, real(b.rdx), real(b.rdy), g.nz});
   fill_halo(s.ww, g);
+  if (s.n_moist > 0) {  // calc_cq input: qtot = sum of moist species (stage state)
+    V3 qt = s.qtot.view();
+    parallel_for(g.mass_cells(), [=] CPPWRF_HD(int i, int j, int k) { qt(i, j, k) = 0; });
+    for (int n = 0; n < s.n_moist; ++n) {
+      C3 q = s.q_2[n].cview();
+      parallel_for(g.mass_cells(), [=] CPPWRF_HD(int i, int j, int k) { qt(i, j, k) += q(i, j, k); });
+    }
+    fill_halo(s.qtot, g);
+  }
+}
+
+kern::MoistCoef moist_coef(const State& s) {
+  return s.n_moist > 0 ? kern::MoistCoef{s.qtot.cview(), true} : kern::MoistCoef{};
 }
 
 void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, int rk_step) const {
@@ -394,20 +386,22 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
                               kv, rdx, rdy, nz});
     parallel_for(wri, KDiffW{s.w_2.cview(), s.alt.cview(), s.mut.cview(), c, t.rw_tendf.view(), kh, kv, rdx, rdy, nz,
                              do_y});
-    parallel_for(mr, KDiffT{s.t_2.cview(), s.alt.cview(), b.t_init.view(), s.mut.cview(), c, t.t_tendf.view(), kh, kv,
-                            rdx, rdy, nz, do_y});
+    // theta: horizontal/vertical_diffusion_3dmp on theta - t_init with khdq = kvdq = K / prandtl
+    parallel_for(mr, kern::KDiffM{s.t_2.cview(), s.alt.cview(), b.t_init.view(), s.mut.cview(), c, t.t_tendf.view(),
+                                  kh * p_.pr_inv, kv * p_.pr_inv, rdx, rdy, nz, do_y, true, true});
   }
   parallel_for(ur, KTendU{s.u_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), s.ph_2.cview(),
                           s.alt.cview(), s.al.cview(), s.php.cview(), t.ru_tendf.cview(), s.mu_2.cview(),
-                          s.muu.cview(), b.pb.view(), c, t.ru_tend.view(), rdx, rdy, nz, do_y, p_.top_lid, diff, hup, vup});
+                          s.muu.cview(), b.pb.view(), c, moist_coef(s), t.ru_tend.view(), rdx, rdy, nz, do_y, p_.top_lid, diff, hup, vup});
   if (do_y)
     parallel_for(vr, KTendV{s.v_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), s.ph_2.cview(),
                             s.alt.cview(), s.al.cview(), s.php.cview(), t.rv_tendf.cview(), s.mu_2.cview(),
-                            s.muv.cview(), b.pb.view(), c, t.rv_tend.view(), rdx, rdy, nz, p_.top_lid, diff, hup, vup});
+                            s.muv.cview(), b.pb.view(), c, moist_coef(s), t.rv_tend.view(), rdx, rdy, nz, p_.top_lid, diff, hup, vup});
   parallel_for(wr, KTendW{s.w_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), t.rw_tendf.cview(),
-                          s.mu_2.cview(), c, t.rw_tend.view(), rdx, rdy, nz, do_y, diff, hup, vup});
+                          s.mu_2.cview(), b.mub.view(), c, moist_coef(s), t.rw_tend.view(), rdx, rdy, nz, do_y, diff, hup, vup});
   parallel_for(mr, KTendT{s.t_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), t.t_tendf.cview(), c,
-                          t.t_tend.view(), rdx, rdy, nz, do_y, diff, hup, vup});
+                          t.t_tend.view(), rdx, rdy, nz, do_y, diff, hup, vup, s.h_diabatic.cview(), s.mut.cview(),
+                          s.n_moist > 0});
   parallel_for(wr, KTendPh{s.u_2.cview(), s.v_2.cview(), s.w_2.cview(), s.ww.cview(), s.ph_2.cview(), s.mut.cview(),
                            s.muu.cview(), s.muv.cview(), b.phb.view(), c, t.ph_tend.view(), rdx, rdy, nz, do_y});
   // mu_tend stays 0 (dry, no physics); allocated zero.

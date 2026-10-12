@@ -12,14 +12,17 @@
 
 namespace cppwrf {
 
+// View strides are 32-bit: index arithmetic stays in 32 bits and is sign-extended once (all
+// fields are < 2^31 elements). 64-bit strides triggered a ptxas (CUDA 12.4, sm_75) miscompile
+// of negative 64-bit offsets ([R.64+UR] addressing) in KTendPh: see docs/STATUS.md.
 template <class T> struct View3 {
   T* p = nullptr;
-  std::ptrdiff_t sj = 0, sk = 0;
+  int sj = 0, sk = 0;
   CPPWRF_HD T& operator()(int i, int j, int k) const { return p[i + j * sj + k * sk]; }
 };
 template <class T> struct View2 {
   T* p = nullptr;
-  std::ptrdiff_t sj = 0;
+  int sj = 0;
   CPPWRF_HD T& operator()(int i, int j) const { return p[i + j * sj]; }
 };
 template <class T> struct View1 {
@@ -30,12 +33,12 @@ template <class T> struct View1 {
 // terrain), so 1D storage is read through 3D indexing and terrain needs no kernel rewrite.
 template <class T> struct BView3 {
   T* p = nullptr;
-  std::ptrdiff_t si = 0, sj = 0, sk = 0;
+  int si = 0, sj = 0, sk = 0;
   CPPWRF_HD T& operator()(int i, int j, int k) const { return p[i * si + j * sj + k * sk]; }
 };
 template <class T> struct BView2 {
   T* p = nullptr;
-  std::ptrdiff_t si = 0, sj = 0;
+  int si = 0, sj = 0;
   CPPWRF_HD T& operator()(int i, int j) const { return p[i * si + j * sj]; }
 };
 
@@ -78,12 +81,12 @@ template <int R> class FieldT {
   real* data() const { return buf_.get() + L_.offset; }  // element (0,0,0)
   std::size_t bytes() const { return L_.total * sizeof(real); }
   auto view() const {
-    if constexpr (R == 3) return View3<real>{data(), L_.sj, L_.sk};
-    else return View2<real>{data(), L_.sj};
+    if constexpr (R == 3) return View3<real>{data(), int(L_.sj), int(L_.sk)};
+    else return View2<real>{data(), int(L_.sj)};
   }
   auto cview() const {
-    if constexpr (R == 3) return View3<const real>{data(), L_.sj, L_.sk};
-    else return View2<const real>{data(), L_.sj};
+    if constexpr (R == 3) return View3<const real>{data(), int(L_.sj), int(L_.sk)};
+    else return View2<const real>{data(), int(L_.sj)};
   }
   // Host-side initialisation (setup only): f(i,j,k) for logical points; halos zero.
   template <class F> void fill_host(F f) {
@@ -121,8 +124,8 @@ template <int R> class BaseFieldT {
   const Layout& layout() const { return L_; }
   real* data() const { return buf_.get() + L_.offset; }
   auto view() const {
-    if constexpr (R == 3) return BView3<const real>{data(), L_.si, L_.sj, L_.sk};
-    else return BView2<const real>{data(), L_.si, L_.sj};
+    if constexpr (R == 3) return BView3<const real>{data(), int(L_.si), int(L_.sj), int(L_.sk)};
+    else return BView2<const real>{data(), int(L_.si), int(L_.sj)};
   }
   // f(i,j,k); for uniform fields only i=j=0 is evaluated.
   template <class F> void fill_host(F f) {

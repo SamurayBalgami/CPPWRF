@@ -5,13 +5,15 @@
 #include "core/backend.hpp"
 #include "core/constants.hpp"
 #include "core/halo.hpp"
+#include "dyn/kernels_common.hpp"
 #include "dyn/large_step.hpp"
 
 // Discrete forms follow WRF dyn_em/module_small_step_em.F (small_step_prep, calc_p_rho,
 // calc_coef_w, advance_uv, advance_mu_t, advance_w, sumflux, small_step_finish) and
 // calc_p_rho_phi (module_big_step_utilities_em.F, hypsometric_opt = 1, which matches the
 // linear hydrostatic integration used by the base state and the case initialisation).
-// C++ k = Fortran k - 1. Map factors = 1, dry (cqu = cqv = cqw = 1), flat terrain (ht = 0).
+// C++ k = Fortran k - 1. Map factors = 1, flat terrain (ht = 0). Moisture enters through
+// theta_m (t_2) and the calc_cq coefficients cqu, cqv and cqw (= cq1 after pg_buoy_w).
 // Variables named *pp below are the acoustic perturbations (WRF keeps them in *_2, p, al).
 
 namespace cppwrf::dyn {
@@ -100,7 +102,7 @@ struct KPRho {
 
 // ------------------------------------------------------------------ calc_coef_w
 struct KCoefW {
-  V3 a, alpha, gamma; C3 c2a; C2 mut; VCoef c; real cof; real lid; int nz;
+  V3 a, alpha, gamma; C3 c2a; C2 mut; VCoef c; kern::MoistCoef mc; real cof; real lid; int nz;
   CPPWRF_HD real mh(int k, real m) const { return c.c1h(k) * m + c.c2h(k); }
   CPPWRF_HD real mf(int k, real m) const { return c.c1f(k) * m + c.c2f(k); }
   CPPWRF_HD void operator()(int i, int j) const {
@@ -110,12 +112,13 @@ struct KCoefW {
     a(i, j, nz) = real(-2) * cof * c.rdnw(nz - 1) * c.rdnw(nz - 1) * c2a(i, j, nz - 1) * lid /
                   (mh(nz - 1, m) * mf(nz - 1, m));
     for (int k = 2; k < nz; ++k)  // WRF quirk kept: c1f at the level below
-      a(i, j, k) = -cof * c.rdn(k) * c.rdnw(k - 1) * c2a(i, j, k - 1) / (mh(k - 1, m) * mf(k - 1, m));
+      a(i, j, k) = -mc.cq1(i, j, k) * cof * c.rdn(k) * c.rdnw(k - 1) * c2a(i, j, k - 1) / (mh(k - 1, m) * mf(k - 1, m));
     for (int k = 1; k < nz; ++k) {
-      const real b = real(1) + cof * c.rdn(k) *
+      const real cq1 = mc.cq1(i, j, k);
+      const real b = real(1) + cq1 * cof * c.rdn(k) *
                                    (c.rdnw(k) * c2a(i, j, k) / (mh(k, m) * mf(k, m)) +
                                     c.rdnw(k - 1) * c2a(i, j, k - 1) / (mh(k - 1, m) * mf(k, m)));
-      const real cc = -cof * c.rdn(k) * c.rdnw(k) * c2a(i, j, k) / (mh(k, m) * mf(k + 1, m));
+      const real cc = -cq1 * cof * c.rdn(k) * c.rdnw(k) * c2a(i, j, k) / (mh(k, m) * mf(k + 1, m));
       alpha(i, j, k) = real(1) / (b - a(i, j, k) * gamma(i, j, k - 1));
       gamma(i, j, k) = cc * alpha(i, j, k);
     }
@@ -128,7 +131,7 @@ struct KCoefW {
 
 // ------------------------------------------------------------------ advance_uv
 struct KUV {
-  V3 u, v; C3 ru_tend, rv_tend, p, al, alt, ph, php; C2 mu, muu, muv, mudf; B3 pb; VCoef c;
+  V3 u, v; C3 ru_tend, rv_tend, p, al, alt, ph, php; C2 mu, muu, muv, mudf; B3 pb; VCoef c; kern::MoistCoef mc;
   real dts, rdx, rdy, emdx, emdy; int nz, ui0, ui1, vj0, vj1; bool do_y, top_lid;
   template <int DI, int DJ> CPPWRF_HD real ps(int i, int j, int k) const { return p(i, j, k) + p(i - DI, j - DJ, k); }
   template <int DI, int DJ> CPPWRF_HD real dpn(int i, int j, int k) const {
@@ -152,11 +155,11 @@ struct KUV {
   CPPWRF_HD void operator()(int i, int j, int k) const {
     if (i >= ui0 && i < ui1) {
       const real mudf_x = -emdx * (mudf(i, j) - mudf(i - 1, j));
-      u(i, j, k) = u(i, j, k) + dts * ru_tend(i, j, k) - dts * dp<1, 0>(i, j, k, muu(i, j), rdx) + c.c1h(k) * mudf_x;
+      u(i, j, k) = u(i, j, k) + dts * ru_tend(i, j, k) - dts * mc.cqu(i, j, k) * dp<1, 0>(i, j, k, muu(i, j), rdx) + c.c1h(k) * mudf_x;
     }
     if (do_y && j >= vj0 && j < vj1) {
       const real mudf_y = -emdy * (mudf(i, j) - mudf(i, j - 1));
-      v(i, j, k) = v(i, j, k) + dts * rv_tend(i, j, k) - dts * dp<0, 1>(i, j, k, muv(i, j), rdy) + c.c1h(k) * mudf_y;
+      v(i, j, k) = v(i, j, k) + dts * rv_tend(i, j, k) - dts * mc.cqv(i, j, k) * dp<0, 1>(i, j, k, muv(i, j), rdy) + c.c1h(k) * mudf_y;
     }
   }
 };
@@ -198,7 +201,7 @@ struct KMuT {
       }
     }
     // omega'' and theta'' marching upward; ww_full is the running integral (full flux)
-    real ww_full = 0, wpp_lo = 0;  // ww'' at the bottom is 0
+    real ww_full = 0;  // ww'' at the bottom is 0
     real wdtn_lo = 0;
     auto acc_ww = [&](int k, real wpp) {
       const real sw = (first ? real(0) : ww_m(i, j, k)) + wpp;
@@ -226,9 +229,7 @@ struct KMuT {
                  (v(i, j + 1, k) * (ts(i, j + 1, k) + ts(i, j, k)) - v(i, j, k) * (ts(i, j, k) + ts(i, j - 1, k)));
       t(i, j, k) = tk + dts * t_tend(i, j, k) - dts * (hflux + c.rdnw(k) * (wdtn_hi - wdtn_lo));
       wdtn_lo = wdtn_hi;
-      wpp_lo = wpp_hi;
     }
-    (void)wpp_lo;
   }
 };
 
@@ -236,7 +237,7 @@ struct KMuT {
 struct KW {
   V3 w, ph, al, p, pm1;
   C3 rw_tend, ph_tend, ww, phs, t, t_ave, ts, c2a, alt, a, alpha, gamma;
-  C2 mu, mut, muts, muave; B3 phb; VCoef c;
+  C2 mu, mut, muts, muave; B3 phb; VCoef c; kern::MoistCoef mc;
   real dts, epssm, smdiv; int nz; bool top_lid;
   CPPWRF_HD real mh(int k, real m) const { return c.c1h(k) * m + c.c2h(k); }
   CPPWRF_HD real mf(int k, real m) const { return c.c1f(k) * m + c.c2f(k); }
@@ -270,7 +271,7 @@ struct KW {
         const real ph_kp1 = ph(i, j, k + 1);
         const real r_kp1 = rhs(i, j, k + 1, w(i, j, k + 1), ph_kp1);
         real wn = w(i, j, k) + dts * rw_tend(i, j, k) +
-                  H * dts * Gr * c.rdn(k) *
+                  mc.cq1(i, j, k) * H * dts * Gr * c.rdn(k) *
                       (c2a(i, j, k) * c.rdnw(k) / mh(k, m) * (ope * (r_kp1 - r_k) + ome * (ph_kp1 - ph_k)) -
                        c2a(i, j, k - 1) * c.rdnw(k - 1) / mh(k - 1, m) * (ope * (r_k - r_km1) + ome * (ph_k - ph_km1))) +
                   dts * Gr *
@@ -306,6 +307,7 @@ struct KW {
 struct KFinish {
   V3 u, v, w, t, ph, ww; C3 us, vs, ws, ts, phs, ww1; C2 muu, muv, mut, muts; VCoef c;
   int nx, ny, nyv, nz; bool do_y;
+  C3 hd; real hd_dt;  // rk_step == 3: dts*number_of_small_timesteps (0 otherwise or when dry)
   CPPWRF_HD void operator()(int i, int j, int k) const {
     if (j < ny && k < nz) {
       const real mus_u = H * (muts(i, j) + muts(i - 1, j));
@@ -321,7 +323,9 @@ struct KFinish {
       ph(i, j, k) = ph(i, j, k) + phs(i, j, k);
       ww(i, j, k) = ww(i, j, k) + ww1(i, j, k);
       if (k < nz)
-        t(i, j, k) = (t(i, j, k) + ts(i, j, k) * (c.c1h(k) * m + c.c2h(k))) / (c.c1h(k) * mts + c.c2h(k));
+        t(i, j, k) = (t(i, j, k) - (hd_dt != real(0) ? hd_dt * (c.c1h(k) * m + c.c2h(k)) * hd(i, j, k) : real(0)) +
+                      ts(i, j, k) * (c.c1h(k) * m + c.c2h(k))) /
+                     (c.c1h(k) * mts + c.c2h(k));
     }
   }
 };
@@ -365,6 +369,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
   const int nx = g.nx, ny = g.ny, nz = g.nz, nyv = g.nys(Stagger::V);
   const bool do_y = !g.two_d();
   const VCoef c = VCoef::from(b);
+  const kern::MoistCoef mc = moist_coef(s);  // calc_cq from the stage state (rk_step_prep)
   stage_ = rk_step > 0 ? rk_step : stage_ % 3 + 1;
 
   if (stage_ == 1) {  // WRF small_step_prep (rk_step == 1): reset the external-mode filter
@@ -390,14 +395,14 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
   fill_halo(s.al, g);
 
   const real cof = real(std::pow(0.5 * double(dts) * cst::g * (1.0 + double(p_.epssm)), 2));
-  column_for(g.columns(), KCoefW{a.view(), alpha.view(), gamma.view(), c2a.cview(), s.mut.cview(), c, cof,
+  column_for(g.columns(), KCoefW{a.view(), alpha.view(), gamma.view(), c2a.cview(), s.mut.cview(), c, mc, cof,
                                  p_.top_lid ? real(0) : real(1), nz});
 
   const Range3D uv_range{0, nx, 0, ny, 0, nz};
   for (int it = 1; it <= n_small; ++it) {
     parallel_for(uv_range, KUV{s.u_2.view(), s.v_2.view(), tend.ru_tend.cview(), tend.rv_tend.cview(), s.p.cview(),
                                s.al.cview(), s.alt.cview(), s.ph_2.cview(), s.php.cview(), s.mu_2.cview(),
-                               s.muu.cview(), s.muv.cview(), mudf.cview(), b.pb.view(), c, dts, real(b.rdx),
+                               s.muu.cview(), s.muv.cview(), mudf.cview(), b.pb.view(), c, mc, dts, real(b.rdx),
                                real(b.rdy), p_.emdiv * real(g.dx), do_y ? p_.emdiv * real(g.dy) : real(0), nz,
                                g.u_i0(), g.u_i1(), g.v_j0(), g.v_j1(), do_y, p_.top_lid});
     fill_halo(s.u_2, g);
@@ -416,7 +421,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                KW{s.w_2.view(), s.ph_2.view(), s.al.view(), s.p.view(), pm1.view(), tend.rw_tend.cview(),
                   tend.ph_tend.cview(), s.ww.cview(), ph_save.cview(), s.t_2.cview(), t_2save.cview(), t_save.cview(),
                   c2a.cview(), s.alt.cview(), a.cview(), alpha.cview(), gamma.cview(), s.mu_2.cview(), s.mut.cview(),
-                  s.muts.cview(), muave.cview(), b.phb.view(), c, dts, p_.epssm, p_.smdiv, nz, p_.top_lid});
+                  s.muts.cview(), muave.cview(), b.phb.view(), c, mc, dts, p_.epssm, p_.smdiv, nz, p_.top_lid});
     for (Field3* f : {&s.ph_2, &s.p, &s.al}) fill_halo(*f, g);
   }
 
@@ -425,11 +430,17 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
   parallel_for(Range3D{0, nx + 1, 0, nyv, 0, nz + 1},
                KFinish{s.u_2.view(), s.v_2.view(), s.w_2.view(), s.t_2.view(), s.ph_2.view(), s.ww.view(),
                        u_save.cview(), v_save.cview(), w_save.cview(), t_save.cview(), ph_save.cview(), ww1.cview(),
-                       s.muu.cview(), s.muv.cview(), s.mut.cview(), s.muts.cview(), c, nx, ny, nyv, nz, do_y});
+                       s.muu.cview(), s.muv.cview(), s.mut.cview(), s.muts.cview(), c, nx, ny, nyv, nz, do_y,
+                       s.h_diabatic.cview(), (stage_ == 3 && s.n_moist > 0) ? dts * real(n_small) : real(0)});
   parallel_for(Range3D{0, nx + 1, 0, nyv, 0, 1}, KFinishMu{s.mu_2.view(), s.muus.view(), s.muvs.view(),
                                                             mu_save.cview(), s.muts.cview(), nx, ny, nyv});
   for (Field3* f : {&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2, &s.ww}) fill_halo(*f, g);
   fill_halo(s.mu_2, g);
+}
+
+void SmallStep::calc_p_rho_phi(State& s, const BaseState& b) {
+  const Grid& g = g_;
+  const VCoef c = VCoef::from(b);
   parallel_for(g.mass_cells(), KPRhoPhi{s.al.view(), s.p.view(), s.ph_2.cview(), s.t_2.cview(), s.mu_2.cview(),
                                         s.muts.cview(), b.alb.view(), b.pb.view(), c});
   fill_halo(s.p, g);

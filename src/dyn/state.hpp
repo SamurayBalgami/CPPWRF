@@ -56,6 +56,8 @@ struct State {
   std::vector<Field3> q_1, q_2;
   int n_moist = 0;
   int P_QV = -1, P_QC = -1, P_QR = -1;  // indices into q_* (-1: absent)
+  Field3 qtot;  // M, sum of the moist species of the stage state (calc_cq input); allocated if n_moist > 0
+  Field3 h_diabatic;  // M, microphysics heating of the last step [theta_m K/s] (WRF h_diabatic); with qtot
   // Adds a scalar (moist species before passive tracers). Returns its index.
   int add_scalar(const Grid& g, const std::string& name, bool moist);
   int n_scalars() const { return int(q_2.size()); }

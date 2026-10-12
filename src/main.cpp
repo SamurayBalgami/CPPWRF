@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "cases/cases.hpp"
+#include "cases/model.hpp"
 #include "core/backend.hpp"
 #include "core/precision.hpp"
 #include "dyn/diagnostics.hpp"
@@ -16,11 +16,6 @@
 
 using namespace cppwrf;
 
-static BC parse_bc(const std::string& s) {
-  if (s == "periodic") return BC::Periodic;
-  if (s == "symmetric") return BC::Symmetric;
-  throw std::runtime_error("unknown boundary condition '" + s + "' (periodic|symmetric)");
-}
 static const char* bc_name(BC b) { return b == BC::Periodic ? "periodic" : "symmetric"; }
 
 static int run(int argc, char** argv) {
@@ -38,53 +33,22 @@ static int run(int argc, char** argv) {
   io::Config cfg = io::Config::load(argv[1], ov);
   const std::string cname = cfg.get_string("run.case");
 
-  Grid g;
-  g.nx = int(cfg.get_int("domain.nx"));
-  g.ny = int(cfg.get_int("domain.ny", 1));
-  g.nz = int(cfg.get_int("domain.nz"));
-  g.dx = cfg.get_double("domain.dx");
-  g.dy = cfg.get_double("domain.dy", g.dx);
-  g.ztop = cfg.get_double("domain.ztop");
-  g.bc_x = parse_bc(cfg.get_string("domain.bc_x", "periodic"));
-  g.bc_y = parse_bc(cfg.get_string("domain.bc_y", "periodic"));
-  g.dt = cfg.get_double("time.dt");
-  const double run_time = cfg.get_double("run.run_time", 0.0);
-  const long nsteps = std::lround(run_time / g.dt);
-  if (std::fabs(nsteps * g.dt - run_time) > 1e-9 * std::max(1.0, run_time))
-    throw std::runtime_error("run.run_time must be a multiple of time.dt");
+  cases::Model M = cases::Model::build(cfg);
+  const Grid& g = M.g;
+  dyn::BaseState& base = *M.base;
+  dyn::State& st = *M.st;
+  dyn::Tendencies& tend = *M.tend;
+  const dyn::LargeStepParams& lp = M.lp;
+  const dyn::AcousticParams& ap = M.ap;
+  const double run_time = M.run_time;
+  const long nsteps = M.nsteps;
+  const int n_sound = M.n_sound;
+  const std::vector<double>& eta = M.eta;
+  const cases::CaseDef& cd = M.cd;
+  dyn::RK3* rk = M.rk.get();
   const long diag_iv = cfg.get_int("output.diag_interval", 10);
   const long out_iv = cfg.get_int("output.out_interval", std::max(1L, nsteps));
   const std::string out_dir = cfg.get_string("output.dir", "out/" + cname);
-
-  // case, sounding, vertical levels, base state, initial state
-  cases::CaseDef cd = cases::make_case(cname, cfg, g);
-  cases::Sounding snd(cd.theta_env, cd.p_surf, g.ztop * 1.2 + 1000.0);
-  g.p_top = snd.p(g.ztop);
-  std::vector<double> eta = cases::make_eta_levels(cfg, g, snd);
-  dyn::BaseState base(g, true);
-  dyn::State st(g);
-  dyn::Tendencies tend(g);
-  cases::initialize(cd, snd, eta, g, base, st);
-
-  dyn::LargeStepParams lp;
-  lp.khdif = real(cfg.get_double("dyn.khdif", 0.0));
-  lp.kvdif = real(cfg.get_double("dyn.kvdif", 0.0));
-  lp.top_lid = cfg.get_bool("dyn.top_lid", true);
-  lp.h_adv_order = int(cfg.get_int("dyn.h_adv_order", 5));
-  lp.v_adv_order = int(cfg.get_int("dyn.v_adv_order", 3));
-  if ((lp.h_adv_order != 5 && lp.h_adv_order != 6) || (lp.v_adv_order != 3 && lp.v_adv_order != 4))
-    throw std::runtime_error("dyn.h_adv_order must be 5 or 6, dyn.v_adv_order 3 or 4");
-  dyn::AcousticParams ap;
-  ap.epssm = real(cfg.get_double("dyn.epssm", 0.1));
-  ap.smdiv = real(cfg.get_double("dyn.smdiv", 0.1));
-  ap.emdiv = real(cfg.get_double("dyn.emdiv", 0.01));
-  const int tss = int(cfg.get_int("time.time_step_sound", 0));
-  std::unique_ptr<dyn::RK3> rk;
-  int n_sound = tss > 0 ? tss : dyn::RK3::auto_sound_steps(g.dt, g.dx, g.dy, g.two_d());
-  if (nsteps > 0) {
-    rk = std::make_unique<dyn::RK3>(g, lp, ap, tss);
-    n_sound = rk->n_sound();
-  }
 
   // run.json
   std::filesystem::create_directories(out_dir);
@@ -108,6 +72,11 @@ static int run(int argc, char** argv) {
     j.key_value("top_lid", lp.top_lid); j.key_value("time_step_sound", (long long)n_sound);
     j.key_value("run_time", run_time); j.key_value("nsteps", (long long)nsteps);
     j.key_value("h_adv_order", (long long)lp.h_adv_order); j.key_value("v_adv_order", (long long)lp.v_adv_order); j.key_value("hybrid_opt", 0LL);
+    j.key_value("pr_inv", double(lp.pr_inv));
+    j.key_value("moist_adv_opt", (long long)M.sp.moist_adv_opt); j.key_value("scalar_adv_opt", (long long)M.sp.scalar_adv_opt);
+    j.key("scalars"); j.start_array(); for (auto& n : st.q_names) j.write_string(n); j.end_array();
+    j.key_value("n_moist", (long long)st.n_moist);
+    j.key_value("mp_physics", (long long)(M.rk && M.rk->physics() ? M.rk->physics()->params().mp_physics : 0));
     j.end_object();
     j.key_value("precision", std::string_view(precision_name));
     j.key_value("backend", std::string_view(backend_name()));
@@ -142,7 +111,9 @@ static int run(int argc, char** argv) {
               r.theta_mass, r.total_energy, wall});
     return true;
   };
-  auto do_snap = [&](long n) { snap.write(n, n * g.dt, dyn::snapshot_vars(st, base, g, store)); };
+  std::vector<const Field2*> extra_2d;
+  if (rk && rk->physics()) extra_2d = {&rk->physics()->rainnc, &rk->physics()->rainncv};
+  auto do_snap = [&](long n) { snap.write(n, n * g.dt, dyn::snapshot_vars(st, base, g, store, extra_2d)); };
 
   std::printf("cppwrf: case=%s grid=%dx%dx%d dx=%g dt=%g n_sound=%d steps=%ld backend=%s precision=%s\n",
               cname.c_str(), g.nx, g.ny, g.nz, g.dx, g.dt, n_sound, nsteps, backend_name(), precision_name);

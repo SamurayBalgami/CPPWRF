@@ -28,7 +28,9 @@ class Diagnostics {
 
 // Snapshot variables (u, v, w, th_pert, theta, p, p_pert, ph, mu, mu_pert, z_m) computed on the
 // host from downloaded fields; `store` keeps the buffers alive for the writer.
+// Extra 2D fields (e.g. rainnc from the physics) are appended under their field names.
 std::vector<io::VarView> snapshot_vars(const State& s, const BaseState& b, const Grid& g,
-                                       std::vector<std::vector<real>>& store);
+                                       std::vector<std::vector<real>>& store,
+                                       const std::vector<const Field2*>& extra_2d = {});
 
 }  // namespace cppwrf::dyn

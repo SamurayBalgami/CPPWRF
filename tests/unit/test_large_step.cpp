@@ -127,6 +127,7 @@ static void test_diffusion_magnitude() {
     cases::initialize(S.cd, *S.snd, eta, S.g, *S.b, *S.s);
     dyn::LargeStepParams p;
     (dir == 0 ? p.khdif : p.kvdif) = 100;
+    p.pr_inv = 1;  // test the operator with K itself
     dyn::LargeStep ls(S.g, p);
     ls.prep(*S.s, *S.b);
     ls.tendencies(*S.s, *S.t, *S.b, 1);

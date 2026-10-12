@@ -22,6 +22,7 @@ Layout Layout::make(const Grid& g, Stagger s, int rank, bool uniform) {
   L.sk = rank == 3 ? plane : 0;
   L.offset = lpad + L.hy * pitch;
   L.total = std::size_t(plane) * (rank == 3 ? L.nz : 1);
+  if (L.total >= (std::size_t(1) << 31)) throw std::runtime_error("field too large for 32-bit view indexing");
   return L;
 }
 

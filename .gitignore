@@ -3,3 +3,7 @@ out/
 __pycache__/
 *.pyc
 *.vtk
+/*.mod
+/*.o
+/build-reg-*.log
+/test_out/

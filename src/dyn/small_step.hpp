@@ -7,7 +7,8 @@
 //   K_uv  : advance_uv     horizontal momentum (forward), external-mode filter
 //   K_mut : advance_mu_t   column mass, omega, theta (forward-backward) + sumflux
 //   K_w   : advance_w      vertically implicit w-phi, then calc_p_rho (+ smdiv) per column
-// After the loop, small_step_finish re-couples, and calc_p_rho_phi re-diagnoses p and al.
+// After the loop, small_step_finish re-couples. calc_p_rho_phi (p, al from the new state) is a
+// separate call because WRF runs it after the scalar update (solve_em), with the new moisture.
 #include "core/field.hpp"
 #include "core/grid.hpp"
 #include "dyn/state.hpp"
@@ -27,6 +28,8 @@ class SmallStep {
   // filter at the start of each step, as WRF does.
   void run_stage(State& s, const Tendencies& tend, const BaseState& base, real dt_stage, real dts, int n_small,
                  int rk_step = 0);
+  // calc_p_rho_phi (non-hydrostatic, hypsometric_opt = 1): al, p from mu_2, ph_2, t_2 (+ moisture).
+  void calc_p_rho_phi(State& s, const BaseState& base);
 
  private:
   Grid g_;

@@ -9,6 +9,7 @@ namespace cppwrf::dyn {
 
 struct LargeStepParams {
   real khdif = 0, kvdif = 0;  // constant eddy viscosity (m2/s), diff_opt=1-like, km_opt=1
+  real pr_inv = 3;            // theta/scalar K = K / prandtl; WRF rk_tendency: khdq = 3*khdif
   bool top_lid = true;        // rigid lid (WRF top_lid): p' extrapolated to the top w level
   int h_adv_order = 5;        // 5 (default) or 6 (centred); WRF h_mom/h_sca_adv_order
   int v_adv_order = 3;        // 3 (default) or 4 (centred); WRF v_mom/v_sca_adv_order
@@ -20,6 +21,10 @@ struct VCoef {
   real cf1, cf2, cf3, cfn, cfn1;
   static VCoef from(const BaseState& b);
 };
+
+namespace kern { struct MoistCoef; }
+// calc_cq coefficients for the stage state (needs LargeStep::prep to have filled s.qtot)
+kern::MoistCoef moist_coef(const State& s);
 
 class LargeStep {
  public:
