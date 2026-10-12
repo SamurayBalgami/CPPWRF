@@ -10,3 +10,15 @@ __pycache__/
 /tests/io_netcdf/test_out/
 /tests/phys/**/*.bin
 /tests/phys/**/*.nc
+/tests/**/*.mod
+/tests/**/*.o
+/tests/**/build/
+/tests/phys/lsm_noah/driver_noah_*
+/tests/phys/lsm_noah/fortran/driver_noah
+/tests/phys/cu_kf/driver_kf_*
+/tests/phys/cu_kf/fortran_driver_kf
+/tests/phys/cu_kf/fortran/fortran_driver_kf
+/tests/phys/lsm_noah/test_tables
+/tests/phys/lsm_noah/fortran/test_read_tables
+/tools/regression/runs/
+/tools/regression/logs/

@@ -4,17 +4,30 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK_DIR="${1:-${SCRIPT_DIR}}"
 WORK_DIR="$(cd "${WORK_DIR}" && pwd)"
-cd "${WORK_DIR}"
 
-FORT_BIN="${WORK_DIR}/driver_kessler_fortran"
-CPP_BIN="${WORK_DIR}/driver_kessler_cpu"
-INPUT_BIN="${WORK_DIR}/kessler_input.bin"
-FORT_OUT="${WORK_DIR}/kessler_output_fortran.bin"
-CPP_OUT="${WORK_DIR}/kessler_output_cpp.bin"
+if [[ -f "${WORK_DIR}/driver_kessler_fortran" ]]; then
+  FORT_BIN="${WORK_DIR}/driver_kessler_fortran"
+  CPP_BIN="${WORK_DIR}/driver_kessler_cpu"
+  RUN_DIR="${WORK_DIR}"
+else
+  FORT_BIN="${WORK_DIR}/build/driver_kessler_fortran"
+  CPP_BIN="${WORK_DIR}/build/driver_kessler_cpu"
+  RUN_DIR="${WORK_DIR}/build"
+  mkdir -p "${RUN_DIR}"
+fi
+
+cd "${RUN_DIR}"
+
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+HEAVY="${REPO_ROOT}/tools/heavy.sh"
+
+INPUT_BIN="${RUN_DIR}/kessler_input.bin"
+FORT_OUT="${RUN_DIR}/kessler_output_fortran.bin"
+CPP_OUT="${RUN_DIR}/kessler_output_cpp.bin"
 
 echo "=== Running Kessler Microphysics Differential Test ==="
 python3 "${SCRIPT_DIR}/generate_inputs.py" --ncols 2500 --nz 50 --dt 12.0 -o "${INPUT_BIN}"
-"${FORT_BIN}" "${INPUT_BIN}" "${FORT_OUT}"
-"${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
+"${HEAVY}" "${FORT_BIN}" "${INPUT_BIN}" "${FORT_OUT}"
+"${HEAVY}" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
 python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 1e-12
 echo "=== Kessler Differential Test PASSED ==="
