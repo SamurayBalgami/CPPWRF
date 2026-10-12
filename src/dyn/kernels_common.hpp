@@ -50,7 +50,10 @@ struct KDiffM {
   CPPWRF_HD real dv(int i, int j, int k) const { return vbase ? f(i, j, k) - base(i, j, k) : f(i, j, k); }
   CPPWRF_HD real m(int i, int j, int k) const { return c.c1h(k) * mut(i, j) + c.c2h(k); }
   CPPWRF_HD real vf(int i, int j, int k) const {
-    if (k == 0 || k == nz) return 0;
+    // WRF vertical_diffusion(_3dmp): vflux(0) = vflux(1) (no vertical diffusion tendency in the
+    // lowest level), vflux(top) = 0
+    if (k == nz) return 0;
+    if (k == 0) k = 1;
     return kv * c.rdn(k) / (real(0.5) * (alt(i, j, k) + alt(i, j, k - 1))) * (dv(i, j, k) - dv(i, j, k - 1));
   }
   CPPWRF_HD void operator()(int i, int j, int k) const {

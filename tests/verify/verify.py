@@ -8,6 +8,7 @@ Usage:
   verify.py check <case> <out_dir>          # case: rest_state | straka | warm_bubble | igw | squall2d
   verify.py compare <out_dir_a> <out_dir_b> [--rtol X]
   verify.py convergence <dir_coarse> <dir_mid> <dir_fine>   # Straka at dx, dx/2, dx/4
+  verify.py wrf <wrfout> <out_dir> [--rms-tol K]   # theta' vs a real WRF run on the same grid
 Exit code 0 = all PASS (SKIP allowed), 1 = any FAIL, 2 = usage/input error.
 """
 import csv
@@ -36,13 +37,20 @@ TOL = {
     "symmetry": {"float64": 1e-6, "float32": 1e-2},
     # Straka et al. (1993), converged reference: min theta' = -9.77 K, front 15.54 km.
     # At dx = 100 m published models fall in about -9.6..-9.9 K and 15.3..15.6 km.
-    "straka_ref_min_thp": -9.77, "straka_tol_min_thp": 0.5,     # K
+    # min theta' is INFO only: WRF's diff_opt=1 applies no vertical diffusion to the lowest level
+    # (vflux(0) = vflux(1)), unlike Straka's spec, which warms the cold pool to about -8.6 K.
+    # Fidelity to WRF is checked field by field with `verify.py wrf` instead.
+    "straka_ref_min_thp": -9.77,     # K
     "straka_ref_front": 15540.0, "straka_tol_front": 400.0,     # m
     # Moist cases. Water: transport alone is conservative to roundoff; WRF's Kessler is not
     # exactly (its rain sedimentation uses the mass-level spacing), measured 2.7e-4 of the total
     # water after 1 h of deep convection (0.75% of the rain), so allow 1e-3.
     "water_budget_mp0": {"float64": 1e-12, "float32": 1e-5},
     "water_budget_mp": 1e-3,
+    # Straka vs WRF v4.6.1 (FP32, diff_opt=1, same eta levels, p_top, bubble; configs/straka_wrf.ini):
+    # measured RMS theta' difference 0.011-0.023 K over 900 s (field RMS ~1 K).
+    "wrf_rms_thp": 0.05,     # K
+    "wrf_grid_z": 1e-2,      # m, mass-level heights must match (WRF writes FP32: ~2e-3 m at 6 km)
 }
 
 
@@ -274,8 +282,8 @@ def run_check(case, d):
         if abs(m["time"] - 900.0) > 1.0:
             rep.add("straka_time", "FAIL", f"last snapshot at t={m['time']:g}s, need 900s")
         dmin = m["min_thp"] - TOL["straka_ref_min_thp"]
-        rep.check("straka_min_thp", abs(dmin) <= TOL["straka_tol_min_thp"],
-                  f"{m['min_thp']:.3f} K (ref -9.77, diff {dmin:+.3f})")
+        rep.add("straka_min_thp", "INFO",
+                f"{m['min_thp']:.3f} K (Straka ref -9.77, diff {dmin:+.3f}; WRF lowest-level BC, see TOL)")
         dfr = m["front"] - TOL["straka_ref_front"]
         rep.check("straka_front", abs(dfr) <= TOL["straka_tol_front"],
                   f"{m['front'] / 1000:.3f} km (ref 15.54, diff {dfr / 1000:+.3f}); sides "
@@ -380,6 +388,41 @@ def run_convergence(dirs):
     return rep
 
 
+def run_wrf(wrfout, d, rms_tol):
+    """theta' of a CPPWRF x-z run against a WRF wrfout file at every common output time."""
+    import netCDF4
+    rep = Report(f"wrf {os.path.basename(wrfout)} vs {d}")
+    ds = netCDF4.Dataset(wrfout)
+    t_wrf = np.array(ds.variables["T"][:], dtype=np.float64)[:, :, 0, :]   # (time, z, x), j = 0
+    xt = np.array(ds.variables["XTIME"][:], dtype=np.float64) * 60.0       # minutes -> s
+    gz = np.array(ds.variables["PH"][0] + ds.variables["PHB"][0], dtype=np.float64)[:, 0, :] / 9.81
+    z_wrf = 0.5 * (gz[:-1] + gz[1:])
+    steps = list_steps(d)
+    snaps = {read_snap(d, s)["_time"]: s for s in steps}
+    first = read_snap(d, steps[0])
+    zc = first["z_m"][:, 0, :]
+    if zc.shape != z_wrf.shape:
+        rep.add("grid", "FAIL", f"shape {zc.shape} vs WRF {z_wrf.shape}")
+        rep.print()
+        return rep
+    dz = float(np.abs(zc - z_wrf).max())
+    rep.check("grid_z", dz <= TOL["wrf_grid_z"], f"max |z_cpp - z_wrf| {dz:.2e} m")
+    n = 0
+    for it, tw in enumerate(xt):
+        if tw not in snaps:
+            continue
+        thc = read_snap(d, snaps[tw])["th_pert"][:, 0, :]
+        e = thc - t_wrf[it]
+        rms, ref = float(np.sqrt(np.mean(e * e))), float(np.sqrt(np.mean(t_wrf[it] ** 2)))
+        rep.check(f"thp_t{tw:g}s", rms <= rms_tol,
+                  f"RMS diff {rms:.4f} K, max {np.abs(e).max():.3f} K (field RMS {ref:.3f} K, tol {rms_tol})")
+        n += 1
+    if n == 0:
+        rep.add("times", "FAIL", "no common output times")
+    rep.print()
+    return rep
+
+
 def main(argv):
     if len(argv) >= 3 and argv[0] == "check":
         return 1 if run_check(argv[1], argv[2]).failed else 0
@@ -388,6 +431,9 @@ def main(argv):
         return 1 if run_compare(argv[1], argv[2], rtol).failed else 0
     if len(argv) == 4 and argv[0] == "convergence":
         return 1 if run_convergence(argv[1:]).failed else 0
+    if len(argv) >= 3 and argv[0] == "wrf":
+        tol = float(argv[argv.index("--rms-tol") + 1]) if "--rms-tol" in argv else TOL["wrf_rms_thp"]
+        return 1 if run_wrf(argv[1], argv[2], tol).failed else 0
     print(__doc__)
     return 2
 

@@ -81,7 +81,9 @@ Model Model::build(const io::Config& cfg) {
 
   m.cd = make_case(cname, cfg, g);
   Sounding snd(m.cd.theta_env, m.cd.p_surf, g.ztop * 1.2 + 1000.0);
-  g.p_top = snd.p(g.ztop);
+  // domain.p_top overrides the exact sounding pressure at ztop (to match a WRF run, whose ideal.exe
+  // interpolates p_top linearly between input-sounding levels)
+  g.p_top = cfg.get_double("domain.p_top", snd.p(g.ztop));
   m.eta = make_eta_levels(cfg, g, snd);
   m.base = std::make_unique<dyn::BaseState>(g, true);
   m.st = std::make_unique<dyn::State>(g);

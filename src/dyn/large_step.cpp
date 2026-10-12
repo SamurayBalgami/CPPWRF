@@ -267,7 +267,8 @@ struct KDiffU {
   C3 u, alt; C2 mut, muu; VCoef c; V3 out; real kh, kv, rdx, rdy; int nz; bool do_y;
   CPPWRF_HD real m(int i, int j, int k) const { return c.c1h(k) * mut(i, j) + c.c2h(k); }
   CPPWRF_HD real vf(int i, int j, int k) const {  // vertical flux at w level k
-    if (k == 0 || k == nz) return 0;
+    if (k == nz) return 0;
+    if (k == 0) k = 1;  // WRF vertical_diffusion_u/v: vflux(0) = vflux(1)
     real a = real(0.25) * (alt(i, j, k) + alt(i - 1, j, k) + alt(i, j, k - 1) + alt(i - 1, j, k - 1));
     return kv * c.rdn(k) / a * (u(i, j, k) - u(i, j, k - 1));
   }
@@ -279,7 +280,8 @@ struct KDiffU {
       t += rdy * rdy * kh * (mp * (u(i, j + 1, k) - u(i, j, k)) - mm * (u(i, j, k) - u(i, j - 1, k)));
     }
     real mu_u = c.c1h(k) * muu(i, j) + c.c2h(k);
-    t += Gr * Gr * c.rdnw(k) / (mu_u * H * (alt(i - 1, j, k) + alt(i, j, k))) * (vf(i, j, k + 1) - vf(i, j, k));
+    if (k < nz - 1)  // WRF: the top level gets no vertical diffusion (tendency loop to ktf-1)
+      t += Gr * Gr * c.rdnw(k) / (mu_u * H * (alt(i - 1, j, k) + alt(i, j, k))) * (vf(i, j, k + 1) - vf(i, j, k));
     out(i, j, k) = t;
   }
 };
@@ -288,7 +290,8 @@ struct KDiffV {
   C3 v, alt; C2 mut, muv; VCoef c; V3 out; real kh, kv, rdx, rdy; int nz;
   CPPWRF_HD real m(int i, int j, int k) const { return c.c1h(k) * mut(i, j) + c.c2h(k); }
   CPPWRF_HD real vf(int i, int j, int k) const {
-    if (k == 0 || k == nz) return 0;
+    if (k == nz) return 0;
+    if (k == 0) k = 1;  // WRF vertical_diffusion_u/v: vflux(0) = vflux(1)
     real a = real(0.25) * (alt(i, j, k) + alt(i, j - 1, k) + alt(i, j, k - 1) + alt(i, j - 1, k - 1));
     return kv * c.rdn(k) / a * (v(i, j, k) - v(i, j, k - 1));
   }
@@ -298,7 +301,8 @@ struct KDiffV {
     real mm = real(0.25) * (m(i, j, k) + m(i - 1, j, k) + m(i - 1, j - 1, k) + m(i, j - 1, k));
     t += rdx * rdx * kh * (mp * (v(i + 1, j, k) - v(i, j, k)) - mm * (v(i, j, k) - v(i - 1, j, k)));
     real mu_v = c.c1h(k) * muv(i, j) + c.c2h(k);
-    t += Gr * Gr * c.rdnw(k) / (mu_v * H * (alt(i, j - 1, k) + alt(i, j, k))) * (vf(i, j, k + 1) - vf(i, j, k));
+    if (k < nz - 1)  // WRF: the top level gets no vertical diffusion (tendency loop to ktf-1)
+      t += Gr * Gr * c.rdnw(k) / (mu_v * H * (alt(i, j - 1, k) + alt(i, j, k))) * (vf(i, j, k + 1) - vf(i, j, k));
     out(i, j, k) = t;
   }
 };
@@ -307,6 +311,7 @@ struct KDiffW {  // levels 1..nz-1 (w = 0 at the rigid bottom and lid)
   C3 w, alt; C2 mut; VCoef c; V3 out; real kh, kv, rdx, rdy; int nz; bool do_y;
   CPPWRF_HD real m(int i, int j, int k) const { return c.c1f(k) * mut(i, j) + c.c2f(k); }
   CPPWRF_HD real vf(int i, int j, int mm) const {  // flux at mass level mm
+    if (mm == nz - 1) return 0;  // WRF vertical_diffusion('w'): vflux(ktf) = 0
     return kv / alt(i, j, mm) * c.rdnw(mm) * (w(i, j, mm + 1) - w(i, j, mm));
   }
   CPPWRF_HD void operator()(int i, int j, int k) const {
