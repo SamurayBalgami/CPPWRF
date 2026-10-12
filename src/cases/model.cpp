@@ -140,6 +140,7 @@ Model Model::build(const io::Config& cfg) {
     dyn::PhysicsParams pp;
     pp.mp_physics = int(cfg.get_int("phys.mp_physics", 0));
     pp.mp_tend_lim = real(cfg.get_double("phys.mp_tend_lim", 10.0));
+    pp.hail_opt = int(cfg.get_int("phys.hail_opt", 0));
     if (pp.mp_physics != 0) m.rk->enable_physics(pp);
   }
   return m;

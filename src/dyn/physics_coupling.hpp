@@ -11,7 +11,8 @@
 namespace cppwrf::dyn {
 
 struct PhysicsParams {
-  int mp_physics = 0;        // 0 = none, 1 = Kessler (src/phys/mp_kessler)
+  int mp_physics = 0;        // 0 = none, 1 = Kessler (src/phys/mp_kessler), 6 = WSM6 (src/phys/mp_wsm6)
+  int hail_opt = 0;          // WSM6 graupel (0) or hail (1) parameters, WRF namelist hail_opt
   real mp_tend_lim = 10;     // K/s, WRF namelist mp_tend_lim (limit on the mp heating rate)
 };
 
@@ -22,12 +23,13 @@ class PhysicsCoupling {
   void step(State& s, const BaseState& b, real dt);
   const PhysicsParams& params() const { return p_; }
   Field2 rainnc, rainncv;  // accumulated / last-step grid-scale precipitation [mm]
+  Field2 snownc, snowncv, graupelnc, graupelncv, sr;  // WSM6: snow, graupel [mm]; sr = frozen fraction
 
  private:
   Grid g_;
   PhysicsParams p_;
   // moist_physics_prep_em outputs (WRF names)
-  Field3 th_phy, rho, pii, z, dz8w, qv_diabatic;
+  Field3 th_phy, rho, pii, z, dz8w, qv_diabatic, p_phy;
 };
 
 }  // namespace cppwrf::dyn

@@ -36,6 +36,9 @@ int State::add_scalar(const Grid& g, const std::string& name, bool moist) {
     if (name == "qv") P_QV = idx;
     if (name == "qc") P_QC = idx;
     if (name == "qr") P_QR = idx;
+    if (name == "qi") P_QI = idx;
+    if (name == "qs") P_QS = idx;
+    if (name == "qg") P_QG = idx;
   }
   return idx;
 }
