@@ -1,4 +1,4 @@
-# CPPWRF status — M1 (CPU), awaiting review
+# CPPWRF status: M2 done
 
 ## Built
 - M0: CMake/Ninja (CPU OpenMP + CUDA backends, FP32/FP64), single-source kernels, SoA fields,
@@ -23,6 +23,33 @@
 | igw | FP64 | cpu | th' [-0.00146, 0.00277] K, centroid err 1212 m | 2.0 s | 1312 |
 (*) igw has 3000 cells: timing is overhead-dominated and noisy. No perf work done yet.
 CUDA: builds with nvcc 12.4, not runnable (driver not loaded) -> no GPU numbers, no CPU-vs-GPU diff.
+
+## M2 done (2026-10-13)
+Items 1-2 were verified and committed (0897729) and
+wrote items 3-4. Commands below were run with OMP_NUM_THREADS=4 (the machine is shared).
+- **1. Scalar transport** (scalars.*: advect_scalar / advect_scalar_pd with ru_m, rv_m, ww_m,
+  rk_update_scalar): tests in test_scalars (constant tracer stays 1, PD positivity, mass).
+- **2. Moist dynamics** (theta_m in t_2, calc_cq cqu/cqv/cqw in the PGF/advance_uv/advance_w/
+  calc_coef_w, moist calc_p_rho_phi, moist ideal init): test_moist.
+- **3. Physics coupling** (physics_coupling.*, docs/PHYSICS_INTERFACE.md): WRF
+  moist_physics_prep_em -> microphysics -> moist_physics_finish_em -> calc_p_rho_phi after the
+  RK loop; h_diabatic in rk_addtend_dry and removed in the last small_step_finish.
+  Config: `phys.mp_physics` (0, 1 = Kessler), `phys.mp_tend_lim`. rainnc/rainncv in snapshots.
+- **4. Moist case** `squall2d` (Weisman-Klemp 1982 sounding, 2 K bubble, Kessler):
+  configs/squall2d.ini (120x40, dx 1 km, 1 h, no wind -> must stay symmetric).
+- ctest 7/7 in CPU FP32, CPU FP64, CUDA FP32, CUDA FP64 (build-a0-*).
+
+| squall2d check | result |
+|---|---|
+| deep convection | max w 31 m/s at 24 min, cold pool -10 K, upper warm anomaly +15 K |
+| symmetry, FP64 CPU | 7e-13 (10 min) -> 1.5e-10 (1 h) |
+| symmetry, FP32 CPU | 3e-4 (10 min) -> 0.08-0.15 (1 h): roundoff amplified by convection (FP64 shows the code is symmetric) |
+| GPU vs CPU, FP64 | rel L2 <= 1.6e-11 at 1 h (w, th', qr, rainnc) |
+| GPU vs CPU, FP32 | 1e-4 (10 min) -> 5e-2 (1 h): same chaotic growth |
+| positivity | qc, qr >= 0 everywhere, every snapshot (PD advection) |
+| water budget, no microphysics | total water constant to 1e-16 (transport is conservative) |
+| water budget, Kessler | (water + rainnc) - W0 = -2.7e-4 W0 at 1 h, 0.75% of the rain. WRF Kessler's sedimentation uses the mass-level spacing (rdzk), not the layer thickness, so it is not exactly conservative; our Kessler is bit-exact with WRF's |
+| timing (shared, loaded machine) | CUDA FP32 590 ns/cell/step vs CPU-4 FP32 ~9000: not a benchmark |
 
 ## REVIEW item 1: Straka front ~2% short (investigation, FP64 CPU, front / min th')
 | variant | front km | min th' K |
@@ -50,6 +77,10 @@ the published model spread; no change made.
 - hypsometric_opt = 1 in base state/init/calc_p_rho_phi (WRF v4 default 2); keep until terrain.
 
 ## Open issues
+- Root of the repo collects Fortran/test junk from the physics agents (*.mod, *.o, input_kf.bin,
+  output_*.bin, test_kind*): they must build in their own directories.
+- Machine oversubscription: every OpenMP process uses 12 threads by default. Set
+  OMP_NUM_THREADS (2-4) and OMP_WAIT_POLICY=passive for every agent's runs.
 - GPU untested (driver). CPU perf not optimised (M2, after GPU is measurable).
 - Run script lives in tools/run_m1.sh (scripts/ is 's).
 
