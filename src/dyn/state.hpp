@@ -18,6 +18,9 @@
 // Tendencies are mass-coupled, as in WRF.
 // Map factors: idealized cases use m = 1 everywhere. When map factors are added, they go
 // into BaseState (msfux, msfuy, msfvx, msfvy, msftx, msfty) -- nowhere else.
+#include <string>
+#include <vector>
+
 #include "core/field.hpp"
 #include "core/grid.hpp"
 
@@ -45,6 +48,17 @@ struct State {
   Field3 ru, rv, rw;  // U, V, W
   // time-averaged mass fluxes from the acoustic steps (for scalar advection)
   Field3 ru_m, rv_m, ww_m;  // U, V, W
+
+  // Mass-point scalars, uncoupled like the WRF moist/scalar arrays: entries 0..n_moist-1
+  // are moist species [kg/kg] (WRF moist: qv, qc, qr, ...), the rest passive tracers (WRF
+  // tracer). q_1 = time t (WRF moist_old), q_2 = stage value (WRF moist).
+  std::vector<std::string> q_names;
+  std::vector<Field3> q_1, q_2;
+  int n_moist = 0;
+  int P_QV = -1, P_QC = -1, P_QR = -1;  // indices into q_* (-1: absent)
+  // Adds a scalar (moist species before passive tracers). Returns its index.
+  int add_scalar(const Grid& g, const std::string& name, bool moist);
+  int n_scalars() const { return int(q_2.size()); }
 };
 
 struct Tendencies {
@@ -54,6 +68,9 @@ struct Tendencies {
   Field2 mu_tend;                                     // M
   // tendencies computed in RK stage 1 only and held fixed (diffusion/physics, WRF *_tendf)
   Field3 ru_tendf, rv_tendf, rw_tendf, t_tendf, ph_tendf;
+  // scalar tendencies computed in stage 1 (diffusion, physics), mass-coupled (WRF moist_tend)
+  std::vector<Field3> q_tendf;
+  void add_scalar(const Grid& g, const std::string& name);
 };
 
 struct BaseState {
@@ -61,6 +78,7 @@ struct BaseState {
   bool flat = true;  // horizontally uniform base state -> 1D storage
   BaseField2 mub;                // M, base dry column mass (p_surf_base - p_top)
   BaseField3 pb, alb, t_init;    // M: base pressure, base inverse density, initial theta - t0
+  BaseField3 qv_base;            // M: base-state vapour profile (WRF qv_base; 0 if dry)
   BaseField3 phb;                // W: base geopotential (incl. terrain)
   double t0 = 300.0;
   double p_top = 0.0;

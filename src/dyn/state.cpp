@@ -22,9 +22,28 @@ Tendencies::Tendencies(const Grid& g)
       ru_tendf(g, S::U, "ru_tendf"), rv_tendf(g, S::V, "rv_tendf"), rw_tendf(g, S::W, "rw_tendf"),
       t_tendf(g, S::M, "t_tendf"), ph_tendf(g, S::W, "ph_tendf") {}
 
+int State::add_scalar(const Grid& g, const std::string& name, bool moist) {
+  for (auto& n : q_names)
+    if (n == name) throw std::runtime_error("duplicate scalar '" + name + "'");
+  if (moist && n_moist != n_scalars()) throw std::runtime_error("moist species must precede passive tracers");
+  q_names.push_back(name);
+  q_1.emplace_back(g, S::M, name + "_1");
+  q_2.emplace_back(g, S::M, name);
+  const int idx = n_scalars() - 1;
+  if (moist) {
+    ++n_moist;
+    if (name == "qv") P_QV = idx;
+    if (name == "qc") P_QC = idx;
+    if (name == "qr") P_QR = idx;
+  }
+  return idx;
+}
+
+void Tendencies::add_scalar(const Grid& g, const std::string& name) { q_tendf.emplace_back(g, S::M, name + "_tendf"); }
+
 BaseState::BaseState(const Grid& g, bool flat_)
     : flat(flat_), mub(g, S::M, "mub", flat_), pb(g, S::M, "pb", flat_), alb(g, S::M, "alb", flat_),
-      t_init(g, S::M, "t_init", flat_), phb(g, S::W, "phb", flat_), p_top(g.p_top),
+      t_init(g, S::M, "t_init", flat_), qv_base(g, S::M, "qv_base", flat_), phb(g, S::W, "phb", flat_), p_top(g.p_top),
       znu(g.nz), znw(g.nz + 1), dnw(g.nz), dn(g.nz + 1), rdnw(g.nz), rdn(g.nz + 1), fnm(g.nz + 1),
       fnp(g.nz + 1), c1h(g.nz), c2h(g.nz), c3h(g.nz), c4h(g.nz), c1f(g.nz + 1), c2f(g.nz + 1),
       c3f(g.nz + 1), c4f(g.nz + 1), rdx(1.0 / g.dx), rdy(g.two_d() ? 0.0 : 1.0 / g.dy) {}
