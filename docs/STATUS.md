@@ -1,4 +1,4 @@
-# CPPWRF status: M2 done
+# CPPWRF status: M3 real-data dycore done (2026-10-13)
 
 ## Built
 - M0: CMake/Ninja (CPU OpenMP + CUDA backends, FP32/FP64), single-source kernels, SoA fields,
@@ -24,6 +24,23 @@
 | igw | FP64 | cpu | th' [-0.00146, 0.00277] K, centroid err 1212 m | 2.0 s | 1312 |
 (*) igw has 3000 cells: timing is overhead-dominated and noisy. No perf work done yet.
 CUDA: builds with nvcc 12.4, not runnable (driver not loaded) -> no GPU numbers, no CPU-vs-GPU diff.
+
+## M3: real-data dynamics identical to WRF (2026-10-13)
+Same wrfinput/wrfbdy as WRF v4.6.1 (119x89x44, 15 km Lambert over Turkey, GFS
+2026-10-12 00Z, dt 60 s, physics/diffusion/damping off, hybrid_opt 0, hypsometric_opt 2,
+specified boundaries, qv advected with PD). tests/verify/compare_real.py, relative L2:
+
+| run | precision | after | U | W | PH | THM | P |
+|---|---|---|---|---|---|---|---|
+| vs WRF real*8 (R1_r8) | CPU FP64 | 5 steps | 2.6e-14 | 5.8e-12 | 5.4e-16 | 3.7e-16 | 7.2e-15 |
+| vs WRF real*8 (R0_r8) | CUDA FP64 | 1 h | 5.2e-14 | 8.1e-12 | 8.1e-16 | 1.1e-15 | 8.2e-15 |
+| vs WRF FP32 (R0) | CUDA FP32 | 1 h | 2.8e-5 | 4.4e-3 | 4.5e-7 | 6.1e-7 | 4.5e-6 |
+
+Ideal cases vs WRF: Straka (diff_opt=1) theta' RMS 7.4e-6 K at 900 s; em_hill2d_x w RMS
+8e-5 m/s at 1 h. Wall time of the 1 h real run (WRF timed exclusive):
+CPPWRF RTX 2060 FP32 1.26 s vs WRF FP32 4 OpenMP threads 13.2 s (~10x); FP64 4.3 s vs
+WRF real*8 serial 37.9 s (~9x, consumer GPU at 1/32 FP64 rate). GPU dycore 3D FP32:
+24.3 ns/cell/step (200x200x50).
 
 ## M2 done (2026-10-13)
 Items 1-2 were verified and committed (4f58fcc) and

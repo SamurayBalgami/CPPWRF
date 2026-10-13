@@ -33,7 +33,7 @@ struct SlabSet {
 // Boundary ring (loop structure): sides in the order south, north, west, east;
 // south/north rows cover b..ibe-b, west/east columns b+1..jbe-b-1 (no overlap).
 // Side index 0..3 here = S, N, W, E; slabs are stored xs, xe, ys, ye.
-constexpr int kSlabOfSide[4] = {2, 3, 0, 1};
+CPPWRF_HD inline int slab_of_side(int side) { return side < 2 ? side + 2 : side - 2; }  // S,N,W,E -> ys,ye,xs,xe
 struct Ring {
   int ibe, jbe;  // inclusive last index in x / y for this staggering
   int b0;        // first b of this launch
@@ -60,7 +60,7 @@ struct KSpecTend {  // spec_bdytend: tend = boundary tendency in the spec zone
     const int side = sb % 4, b = r.b0 + sb / 4;
     int i, j;
     if (!r.map(pos, side, b, i, j)) return;
-    const real v = s.t[kSlabOfSide[side]](pos, k, b);
+    const real v = s.t[slab_of_side(side)](pos, k, b);
     if (two) t2(i, j) = v; else t3(i, j, k) = v;
   }
 };
@@ -79,7 +79,7 @@ struct KRelax {
     const int side = sb % 4, b = r.b0 + sb / 4;
     int i, j;
     if (!r.map(pos, side, b, i, j)) return;
-    const int sl = kSlabOfSide[side];
+    const int sl = slab_of_side(side);
     auto B = [&](int p, int bb) { return s.val(sl, p, k, bb, dtbc); };
     real fls0, fls1, fls2, fls3, fls4;
     fls0 = B(pos, b) - F(i, j, k);
@@ -150,7 +150,7 @@ struct KFinal {  // spec_bdy_final: exact boundary values at the end of the step
     const int side = sb % 4, b = r.b0 + sb / 4;
     int i, j;
     if (!r.map(pos, side, b, i, j)) return;
-    const real bval = s.val(kSlabOfSide[side], pos, k, b, dtbc);
+    const real bval = s.val(slab_of_side(side), pos, k, b, dtbc);
     const real xmsf = msfcouple ? msf(i, j) : real(1);
     const real xmu = mucouple ? (c1(k) * mu(i, j) + c2(k)) : real(1);
     const real v = xmsf * bval / xmu;
