@@ -454,14 +454,12 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                      s.p.cview(), s.alt.cview(), s.mu_2.view(), mu_save.view(), s.muts.view(), s.muus.view(),
                      s.muvs.view(), s.mu_1.cview(), s.mut.cview(), s.muu.cview(), s.muv.cview(), b.mub.view(),
                      b.pb.view(), c, nx, ny, nyv, nz, b.msfuy.view(), b.msfvx_inv.view(), b.msfty.view()});
-  for (Field3* f : {&s.u_2, &s.v_2, &s.ph_2, &t_save, &u_save, &v_save}) fill_halo(*f, g);
-  fill_halo(s.mu_2, g);
-  fill_halo(s.muts, g);
+  fill_halos({&s.u_2, &s.v_2, &s.ph_2, &t_save, &u_save, &v_save}, g);
+  fill_halos({&s.mu_2, &s.muts}, g);
 
   parallel_for(g.mass_cells(), KPRho{s.al.view(), s.p.view(), pm1.view(), s.ph_2.cview(), s.alt.cview(),
                                      s.t_2.cview(), t_save.cview(), c2a.cview(), s.mu_2.cview(), s.muts.cview(), c});
-  fill_halo(s.p, g);
-  fill_halo(s.al, g);
+  fill_halos({&s.p, &s.al}, g);
 
   const real cof = real(std::pow(0.5 * double(dts) * cst::g * (1.0 + double(p_.epssm)), 2));
   column_for(g.columns(), KCoefW{a.view(), alpha.view(), gamma.view(), c2a.cview(), s.mut.cview(), c, mc, cof,
@@ -475,8 +473,8 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                real(b.rdy), p_.emdiv * real(g.dx), do_y ? p_.emdiv * real(g.dy) : real(0), nz,
                                g.u_i0(), g.u_i1(), g.v_j0(), g.v_j1(), do_y, p_.top_lid, b.msfux.view(),
                                b.msfuy.view(), b.msfvx.view(), b.msfvy.view(), b.msfvx_inv.view()});
-    fill_halo(s.u_2, g);
-    if (do_y) fill_halo(s.v_2, g);
+    if (do_y) fill_halos({&s.u_2, &s.v_2}, g);
+    else fill_halo(s.u_2, g);
 
     parallel_for(g.mass_cells(), KMuTDiv{s.u_2.cview(), s.v_2.cview(), u_save.cview(), v_save.cview(), s.muu.cview(),
                                          s.muv.cview(), c, real(b.rdx), real(b.rdy), do_y, b.msftx.view(),
@@ -489,8 +487,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                            t_2save.view(), s.ru_m.view(), s.rv_m.view(), s.muu.cview(), s.muv.cview(),
                                            c, dts, real(b.rdx), real(b.rdy), nz, it, n_small, do_y, b.msftx.view(),
                                            b.msfty.view(), b.msfuy.view(), b.msfvx_inv.view()});
-    fill_halo(s.mu_2, g);
-    fill_halo(mudf, g);
+    fill_halos({&s.mu_2, &mudf}, g);
 
     {
       const KWCommon q{s.w_2.cview(), s.ph_2.cview(), tend.rw_tend.cview(), tend.ph_tend.cview(), s.ww.cview(),
@@ -509,11 +506,11 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                           s.t_2.cview(), t_save.cview(), c2a.cview(), s.mu_2.cview(), s.muts.cview(),
                                           c, p_.smdiv});
     }
-    for (Field3* f : {&s.ph_2, &s.p, &s.al}) fill_halo(*f, g);
+    fill_halos({&s.ph_2, &s.p, &s.al}, g);
   }
 
   fill_halo(s.muts, g);
-  for (Field3* f : {&s.ru_m, &s.rv_m, &s.ww_m}) fill_halo(*f, g);
+  fill_halos({&s.ru_m, &s.rv_m, &s.ww_m}, g);
   parallel_for(Range3D{0, nx + 1, 0, nyv, 0, nz + 1},
                KFinish{s.u_2.view(), s.v_2.view(), s.w_2.view(), s.t_2.view(), s.ph_2.view(), s.ww.view(),
                        u_save.cview(), v_save.cview(), w_save.cview(), t_save.cview(), ph_save.cview(), ww1.cview(),
@@ -522,7 +519,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                        b.msfuy.view(), b.msfvx.view(), b.msfty.view()});
   parallel_for(Range3D{0, nx + 1, 0, nyv, 0, 1}, KFinishMu{s.mu_2.view(), s.muus.view(), s.muvs.view(),
                                                             mu_save.cview(), s.muts.cview(), nx, ny, nyv});
-  for (Field3* f : {&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2, &s.ww}) fill_halo(*f, g);
+  fill_halos({&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2, &s.ww}, g);
   fill_halo(s.mu_2, g);
 }
 

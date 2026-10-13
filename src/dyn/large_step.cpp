@@ -416,18 +416,18 @@ VCoef VCoef::from(const BaseState& b) {
 void LargeStep::prep(State& s, const BaseState& b) const {
   const Grid& g = g_;
   const int nyv = g.nys(Stagger::V);
-  for (Field3* f : {&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2, &s.p, &s.al}) fill_halo(*f, g);
+  fill_halos({&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2, &s.p, &s.al}, g);
   fill_halo(s.mu_2, g);
   VCoef c = VCoef::from(b);
   parallel_for(Range3D{0, g.nx + 1, 0, nyv, 0, 1},
                KMu{s.mu_2.cview(), b.mub.view(), s.mut.view(), s.muu.view(), s.muv.view(), g.nx, g.ny, nyv});
-  for (Field2* f : {&s.mut, &s.muu, &s.muv}) fill_halo(*f, g);
+  fill_halos({&s.mut, &s.muu, &s.muv}, g);
   parallel_for(Range3D{0, g.nx + 1, 0, nyv, 0, g.nz + 1},
                KPrep3{s.u_2.cview(), s.v_2.cview(), s.w_2.cview(), s.al.cview(), s.ph_2.cview(), s.muu.cview(),
                       s.muv.cview(), s.mut.cview(), b.alb.view(), b.phb.view(), b.msfuy.view(), b.msfvx_inv.view(),
                       b.msfty.view(), c, s.ru.view(), s.rv.view(),
                       s.rw.view(), s.alt.view(), s.php.view(), g.nx, g.ny, nyv, g.nz});
-  for (Field3* f : {&s.ru, &s.rv, &s.rw, &s.alt, &s.php}) fill_halo(*f, g);
+  fill_halos({&s.ru, &s.rv, &s.rw, &s.alt, &s.php}, g);
   column_for(g.columns(), KWW{s.ru.cview(), s.rv.cview(), s.ww.view(), b.msftx.view(), c, real(b.rdx), real(b.rdy), g.nz});
   fill_halo(s.ww, g);
   if (s.n_moist > 0) {  // calc_cq input: qtot = sum of moist species (stage state)

@@ -1,6 +1,10 @@
 #include "core/halo.hpp"
 
+#include <algorithm>
+#include <initializer_list>
+#include <type_traits>
 #include <stdexcept>
+#include <vector>
 
 namespace cppwrf {
 
@@ -53,6 +57,30 @@ struct HaloLine {
   }
 };
 
+// Several fields in one launch per direction; field f and level k are folded into the third
+// index (kk = f * nkmax + k). In the y pass the x index is the fastest thread index (coalesced).
+constexpr int kMaxFields = 8;
+struct HaloMulti {
+  int nf, nkmax;
+  real* p[kMaxFields];
+  std::ptrdiff_t st[kMaxFields], sk[kMaxFields];
+  int nk[kMaxFields], nt[kMaxFields];
+  bool face[kMaxFields], odd[kMaxFields];
+  std::ptrdiff_t sn;  // stride along the filled direction (1 for x, pitch for y): per field below
+  std::ptrdiff_t snf[kMaxFields];
+  int n; bool periodic, ydir;
+  CPPWRF_HD void operator()(int x, int y, int kk) const {
+    const int f = kk / nkmax, k = kk - f * nkmax;
+    if (f >= nf || k >= nk[f]) return;
+    const int a = ydir ? y : x, b = ydir ? x : y;  // a = halo slot, b = tangential index
+    const int na = face[f] ? 8 : 6;
+    if (a >= na) return;
+    if (ydir ? (b < -3 || b >= nt[f] + 3) : (b >= nt[f])) return;
+    HaloLine h{p[f], snf[f], st[f], sk[f], n, face[f], periodic, odd[f]};
+    h(a, b, k);
+  }
+};
+
 void fill_impl(real* p, const Layout& L, const Grid& g, bool ux, bool vy, Parity px, Parity py) {
   const int nk = L.nz;
   {  // x direction over interior rows
@@ -67,6 +95,41 @@ void fill_impl(real* p, const Layout& L, const Grid& g, bool ux, bool vy, Parity
   }
 }
 }  // namespace
+
+template <class F> static void fill_many(std::initializer_list<F*> fs, const Grid& g) {
+  std::vector<F*> v(fs);
+  for (std::size_t s0 = 0; s0 < v.size(); s0 += kMaxFields) {
+    const int nf = int(std::min<std::size_t>(kMaxFields, v.size() - s0));
+    HaloMulti hx{}, hy{};
+    int nkmax = 1, ntx = 1, nty = 1;
+    for (int f = 0; f < nf; ++f) {
+      F& fld = *v[s0 + f];
+      const Layout& L = fld.layout();
+      const bool ux = fld.stagger() == Stagger::U, vy = fld.stagger() == Stagger::V;
+      nkmax = std::max(nkmax, L.nz);
+      hx.p[f] = hy.p[f] = fld.data();
+      hx.sk[f] = hy.sk[f] = L.sk;
+      hx.nk[f] = hy.nk[f] = L.nz;
+      // x pass: along i (stride 1), tangential j over interior rows
+      // default parity as fill_halo(f, g): Field3 U odd in x, V odd in y; Field2 always even
+      constexpr bool is3 = std::is_same_v<F, Field3>;
+      hx.snf[f] = 1; hx.st[f] = L.sj; hx.nt[f] = L.ny; hx.face[f] = ux; hx.odd[f] = is3 && ux;
+      // y pass: along j (stride sj), tangential i over the full x extent incl. halos
+      hy.snf[f] = L.sj; hy.st[f] = 1; hy.nt[f] = L.nx; hy.face[f] = vy; hy.odd[f] = is3 && vy;
+      ntx = std::max(ntx, L.ny);
+      nty = std::max(nty, L.nx);
+    }
+    hx.nf = hy.nf = nf;
+    hx.nkmax = hy.nkmax = nkmax;
+    hx.n = g.nx; hx.periodic = g.bc_x == BC::Periodic; hx.ydir = false;
+    hy.n = g.ny; hy.periodic = g.bc_y == BC::Periodic; hy.ydir = true;
+    parallel_for(Range3D{0, 8, 0, ntx, 0, nf * nkmax}, hx);
+    if (!g.two_d()) parallel_for(Range3D{-Grid::halo, nty + Grid::halo, 0, 8, 0, nf * nkmax}, hy);
+  }
+}
+
+void fill_halos(std::initializer_list<Field3*> fs, const Grid& g) { fill_many(fs, g); }
+void fill_halos(std::initializer_list<Field2*> fs, const Grid& g) { fill_many(fs, g); }
 
 void fill_halo(Field3& f, const Grid& g, Parity px, Parity py) {
   fill_impl(f.data(), f.layout(), g, f.stagger() == Stagger::U, f.stagger() == Stagger::V, px, py);
