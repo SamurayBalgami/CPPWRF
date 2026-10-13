@@ -179,6 +179,13 @@ void init_real_case(const io::Config& cfg, Model& m) {
   dyn::set_w_surface(s.w_2, s.u_2, s.v_2, b, g, true);
   m.ap.hypsometric_opt = hypso;
 
+  // ---- nested domain (WRF config_flags%nested): no wrfbdy; the boundary slabs are written by the
+  // nest forcing from the parent each parent step (src/cases/nest*), dtbc reset there.
+  if (cfg.get_bool("real.nested", false)) {
+    m.bc = std::make_unique<dyn::LateralBC>(g, g.dt, cfg.get_int("real.spec_bdy_width", 5), 1, 4, true);
+    return;
+  }
+
   // ---- lateral boundaries: wrfbdy record r covers [t_r, t_r + interval); the record needed for
   // a step is loaded before it, and dtbc is the time since the start of that interval.
   auto bd = std::make_shared<io_netcdf::WrfBdyData>(
