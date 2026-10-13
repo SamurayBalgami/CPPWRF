@@ -75,9 +75,18 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
     graupelnc = Field2(g, Stagger::M, "graupelnc");
     graupelncv = Field2(g, Stagger::M, "graupelncv");
     sr = Field2(g, Stagger::M, "sr");
+    namespace pc = phys::cst;
+    wp_.g = real(cst::g); wp_.cpd = real(pc::cp); wp_.cpv = real(4.0 * pc::r_v); wp_.rd = real(pc::r_d);
+    wp_.rv = real(pc::r_v); wp_.t0c = real(pc::svpt0); wp_.ep1 = real(pc::ep_1); wp_.ep2 = real(pc::ep_2);
+    wp_.qmin = real(1e-15); wp_.xls = real(pc::xls); wp_.xlv0 = real(pc::xlv); wp_.xlf0 = real(pc::xlf);
+    wp_.cliq = real(pc::cliq); wp_.cice = real(pc::cice); wp_.psat = real(610.78);
+    // wsm6init (WRF microphysics_driver arguments); once, not every step (review P1)
+    wp_.init(real(pc::rhoair0), real(pc::rhowater), real(pc::rhosnow), real(pc::cliq), real(4.0 * pc::r_v),
+             p_.hail_opt);
 #if defined(CPPWRF_USE_CUDA)
     // the WSM6 column kernel keeps ~11 columns of kMaxLevels in per-thread local memory
-    cudaDeviceSetLimit(cudaLimitStackSize, 64 * 1024);
+    if (cudaDeviceSetLimit(cudaLimitStackSize, 64 * 1024) != cudaSuccess)
+      throw std::runtime_error("WSM6: cudaDeviceSetLimit(cudaLimitStackSize, 64 KB) failed");
 #endif
   }
 }
@@ -97,15 +106,8 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
   const int sx = g.bc_x == BC::Specified ? 1 : 0, sy = g.bc_y == BC::Specified ? 1 : 0;
   const Range2D mp_cols{sx, g.nx - sx, sy, g.ny - sy};
   if (p_.mp_physics == 6) {
-    phys::wsm6::Wsm6Params<real> wp;  // WRF microphysics_driver / wsm6init arguments
-    wp.g = real(cst::g); wp.cpd = real(pc::cp); wp.cpv = real(4.0 * pc::r_v); wp.rd = real(pc::r_d);
-    wp.rv = real(pc::r_v); wp.t0c = real(pc::svpt0); wp.ep1 = real(pc::ep_1); wp.ep2 = real(pc::ep_2);
-    wp.qmin = real(1e-15); wp.xls = real(pc::xls); wp.xlv0 = real(pc::xlv); wp.xlf0 = real(pc::xlf);
-    wp.cliq = real(pc::cliq); wp.cice = real(pc::cice); wp.psat = real(610.78);
-    wp.init(real(pc::rhoair0), real(pc::rhowater), real(pc::rhosnow), real(pc::cliq), real(4.0 * pc::r_v),
-            p_.hail_opt);
     column_for(mp_cols,
-               phys::wsm6::Wsm6Kernel<real>{wp, dt, g.nz, th_phy.view(), qv.view(), s.q_2[s.P_QC].view(),
+               phys::wsm6::Wsm6Kernel<real>{wp_, dt, g.nz, th_phy.view(), qv.view(), s.q_2[s.P_QC].view(),
                                             s.q_2[s.P_QR].view(), s.q_2[s.P_QI].view(), s.q_2[s.P_QS].view(),
                                             s.q_2[s.P_QG].view(), rho.cview(), pii.cview(), p_phy.cview(),
                                             dz8w.cview(), rainnc.view(), rainncv.view(), snownc.view(),
