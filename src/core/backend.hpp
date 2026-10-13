@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 // Minimal single-source execution backend (CPU/OpenMP or CUDA).
 //   parallel_for(Range3D, k)  : k(i,j,k) for every cell, cells independent.
 //   column_for(Range2D, k)    : k(i,j) once per column (vertical sweeps in registers).
@@ -16,6 +17,23 @@
 #define CPPWRF_HD
 #define CPPWRF_DEV
 #endif
+
+// pow in the working precision on host and device (powf for float, as Fortran REAL ** REAL);
+// unqualified pow(float, float) would resolve to the double C function on the host.
+CPPWRF_HD inline float rpow(float a, float b) {
+#if defined(__CUDA_ARCH__)
+  return powf(a, b);
+#else
+  return std::pow(a, b);
+#endif
+}
+CPPWRF_HD inline double rpow(double a, double b) {
+#if defined(__CUDA_ARCH__)
+  return ::pow(a, b);
+#else
+  return std::pow(a, b);
+#endif
+}
 
 namespace cppwrf {
 

@@ -30,7 +30,8 @@ else()
 endif()
 
 # Strict IEEE: no fast-math anywhere (determinism and honest stability tests).
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native")
+# -ffp-contract=off: no FMA contraction on the CPU, as WRF builds on x86-64 (bitwise-checkable refactors)
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -ffp-contract=off")
 set(CMAKE_CUDA_FLAGS_RELEASE "-O3")
 
 enable_testing()

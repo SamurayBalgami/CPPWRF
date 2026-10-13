@@ -39,7 +39,7 @@ struct KPrep {
     qvd(i, j, k) = q;
     rho(i, j, k) = real(1) / (al(i, j, k) + alb(i, j, k));
     p_phy(i, j, k) = p(i, j, k) + pb(i, j, k);
-    pii(i, j, k) = real(pow(double(p(i, j, k) + pb(i, j, k)) / cst::p1000mb, cst::rcp));
+    pii(i, j, k) = rpow((p(i, j, k) + pb(i, j, k)) / real(cst::p1000mb), real(cst::rcp));  // WRF REAL
   }
 };
 

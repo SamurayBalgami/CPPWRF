@@ -40,6 +40,8 @@ class SmallStep {
   // stage-start state (WRF *_save), ww1, c2a, pm1, t_2save, and the w-solver coefficients
   Field3 u_save, v_save, w_save, t_save, ph_save, ww1, c2a, pm1, t_2save, a, alpha, gamma;
   Field2 mu_save, mudf, muave;
+  Field3 w_rhs, t2a;  // advance_w phases: explicit phi'' (rhs) and t_2ave
+  Field3 dvdxi;       // advance_mu_t phase: mass divergence
 };
 
 }  // namespace cppwrf::dyn
