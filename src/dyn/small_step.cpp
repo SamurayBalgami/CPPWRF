@@ -10,8 +10,8 @@
 
 // Discrete forms follow WRF dyn_em/module_small_step_em.F (small_step_prep, calc_p_rho,
 // calc_coef_w, advance_uv, advance_mu_t, advance_w, sumflux, small_step_finish) and
-// calc_p_rho_phi (module_big_step_utilities_em.F, hypsometric_opt = 1, which matches the
-// linear hydrostatic integration used by the base state and the case initialisation).
+// calc_p_rho_phi (module_big_step_utilities_em.F, hypsometric_opt = 1 as ideal.exe writes it,
+// or 2 for real-data input).
 // C++ k = Fortran k - 1. Map factors = 1, flat terrain (ht = 0). Moisture enters through
 // theta_m (t_2) and the calc_cq coefficients cqu, cqv and cqw (= cq1 after pg_buoy_w).
 // Variables named *pp below are the acoustic perturbations (WRF keeps them in *_2, p, al).
@@ -410,9 +410,18 @@ struct KFinishMu {
 // calc_p_rho_phi, non-hydrostatic, dry, hypsometric_opt = 1
 struct KPRhoPhi {
   V3 al, p; C3 ph, t; C2 mu, muts; B3 alb, pb; VCoef c;
+  int hypso; B3 phb; View1<const real> c3h, c4h, c3f, c4f; real ptop;
   CPPWRF_HD void operator()(int i, int j, int k) const {
-    const real a = -(alb(i, j, k) * (c.c1h(k) * mu(i, j)) + c.rdnw(k) * (ph(i, j, k + 1) - ph(i, j, k))) /
-                   (c.c1h(k) * muts(i, j) + c.c2h(k));
+    real a;
+    if (hypso == 2) {  // log-linear in pressure
+      const real m = muts(i, j);
+      const real pfu = c3f(k + 1) * m + c4f(k + 1) + ptop, pfd = c3f(k) * m + c4f(k) + ptop;
+      const real phm = c3h(k) * m + c4h(k) + ptop;
+      a = (ph(i, j, k + 1) - ph(i, j, k) + phb(i, j, k + 1) - phb(i, j, k)) / phm / rlog(pfd / pfu) - alb(i, j, k);
+    } else {
+      a = real(-1) / (c.c1h(k) * muts(i, j) + c.c2h(k)) *
+          (alb(i, j, k) * (c.c1h(k) * mu(i, j)) + c.rdnw(k) * (ph(i, j, k + 1) - ph(i, j, k)));
+    }
     al(i, j, k) = a;
     // in the working precision, as WRF (REAL): FP64 pow on consumer GPUs runs at 1/32 rate
     const real base = real(cst::r_d) * (T0 + t(i, j, k)) / (real(cst::p1000mb) * (a + alb(i, j, k)));
@@ -527,7 +536,9 @@ void SmallStep::calc_p_rho_phi(State& s, const BaseState& b) {
   const Grid& g = g_;
   const VCoef c = VCoef::from(b);
   parallel_for(g.mass_cells(), KPRhoPhi{s.al.view(), s.p.view(), s.ph_2.cview(), s.t_2.cview(), s.mu_2.cview(),
-                                        s.muts.cview(), b.alb.view(), b.pb.view(), c});
+                                        s.muts.cview(), b.alb.view(), b.pb.view(), c, p_.hypsometric_opt,
+                                        b.phb.view(), b.c3h.view(), b.c4h.view(), b.c3f.view(), b.c4f.view(),
+                                        real(b.p_top)});
   fill_halo(s.p, g);
   fill_halo(s.al, g);
 }

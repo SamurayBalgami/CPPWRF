@@ -24,7 +24,9 @@
 
 using namespace cppwrf;
 
-static const char* bc_name(BC b) { return b == BC::Periodic ? "periodic" : "symmetric"; }
+static const char* bc_name(BC b) {
+  return b == BC::Periodic ? "periodic" : (b == BC::Symmetric ? "symmetric" : "specified");
+}
 
 #ifdef CPPWRF_HAVE_NETCDF
 static void save_restart(const std::string& path, long step, double time_sec,
@@ -76,6 +78,13 @@ static void save_restart(const std::string& path, long step, double time_sec,
   if (rk && rk->physics()) {
     add_field2("rainnc", rk->physics()->rainnc);
     add_field2("rainncv", rk->physics()->rainncv);
+    if (rk->physics()->params().mp_physics == 6) {
+      add_field2("snownc", rk->physics()->snownc);
+      add_field2("snowncv", rk->physics()->snowncv);
+      add_field2("graupelnc", rk->physics()->graupelnc);
+      add_field2("graupelncv", rk->physics()->graupelncv);
+      add_field2("sr", rk->physics()->sr);
+    }
   }
 
   io_netcdf::write_restart(path, meta, vars);
@@ -130,6 +139,13 @@ static void load_restart(const std::string& path, const Grid& g, dyn::State& st,
   if (rk && rk->physics()) {
     reg_field2("rainnc", rk->physics()->rainnc);
     reg_field2("rainncv", rk->physics()->rainncv);
+    if (rk->physics()->params().mp_physics == 6) {
+      reg_field2("snownc", rk->physics()->snownc);
+      reg_field2("snowncv", rk->physics()->snowncv);
+      reg_field2("graupelnc", rk->physics()->graupelnc);
+      reg_field2("graupelncv", rk->physics()->graupelncv);
+      reg_field2("sr", rk->physics()->sr);
+    }
   }
 
   io_netcdf::read_restart(path, meta, vars);
@@ -301,7 +317,16 @@ static int run(int argc, char** argv) {
     return true;
   };
   std::vector<const Field2*> extra_2d;
-  if (rk && rk->physics()) extra_2d = {&rk->physics()->rainnc, &rk->physics()->rainncv};
+  if (rk && rk->physics()) {
+    extra_2d = {&rk->physics()->rainnc, &rk->physics()->rainncv};
+    if (rk->physics()->params().mp_physics == 6) {
+      extra_2d.push_back(&rk->physics()->snownc);
+      extra_2d.push_back(&rk->physics()->snowncv);
+      extra_2d.push_back(&rk->physics()->graupelnc);
+      extra_2d.push_back(&rk->physics()->graupelncv);
+      extra_2d.push_back(&rk->physics()->sr);
+    }
+  }
 
 #ifdef CPPWRF_HAVE_NETCDF
   std::unique_ptr<io_netcdf::WrfoutWriter> wrfout;

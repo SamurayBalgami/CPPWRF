@@ -27,6 +27,20 @@ CPPWRF_HD inline float rpow(float a, float b) {
   return std::pow(a, b);
 #endif
 }
+CPPWRF_HD inline float rlog(float a) {
+#if defined(__CUDA_ARCH__)
+  return logf(a);
+#else
+  return std::log(a);
+#endif
+}
+CPPWRF_HD inline double rlog(double a) {
+#if defined(__CUDA_ARCH__)
+  return ::log(a);
+#else
+  return std::log(a);
+#endif
+}
 CPPWRF_HD inline double rpow(double a, double b) {
 #if defined(__CUDA_ARCH__)
   return ::pow(a, b);

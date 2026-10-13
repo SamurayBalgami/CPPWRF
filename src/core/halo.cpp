@@ -39,11 +39,15 @@ struct HaloLine {
   bool face;    // field staggered on faces in this direction
   bool periodic;
   bool odd;
+  bool flat = false;  // specified: copy the outermost row outward (WRF set_physical_bc*)
   CPPWRF_HD void operator()(int a, int b, int k) const {
     const int nl = face ? 4 : 3;
     int i = a < nl ? (face ? -a : -1 - a) : n + (a - nl);
     int src;
-    if (periodic) {
+    if (flat) {
+      const int last = face ? n : n - 1;
+      src = i < 0 ? 0 : (i > last ? last : i);
+    } else if (periodic) {
       src = i < 0 ? i + n : (i >= n ? i - n : i);
     } else if (face) {
       src = i <= 0 ? -i : 2 * n - i;
@@ -52,7 +56,7 @@ struct HaloLine {
     }
     real* base = p + b * st + k * sk;
     real v = base[src * sn];
-    if (!periodic && odd) v = (src == i) ? real(0) : -v;
+    if (!periodic && !flat && odd) v = (src == i) ? real(0) : -v;
     base[i * sn] = v;
   }
 };
@@ -68,7 +72,7 @@ struct HaloMulti {
   bool face[kMaxFields], odd[kMaxFields];
   std::ptrdiff_t sn;  // stride along the filled direction (1 for x, pitch for y): per field below
   std::ptrdiff_t snf[kMaxFields];
-  int n; bool periodic, ydir;
+  int n; bool periodic, ydir, flat;
   CPPWRF_HD void operator()(int x, int y, int kk) const {
     const int f = kk / nkmax, k = kk - f * nkmax;
     if (f >= nf || k >= nk[f]) return;
@@ -76,7 +80,7 @@ struct HaloMulti {
     const int na = face[f] ? 8 : 6;
     if (a >= na) return;
     if (ydir ? (b < -3 || b >= nt[f] + 3) : (b >= nt[f])) return;
-    HaloLine h{p[f], snf[f], st[f], sk[f], n, face[f], periodic, odd[f]};
+    HaloLine h{p[f], snf[f], st[f], sk[f], n, face[f], periodic, odd[f], flat};
     h(a, b, k);
   }
 };
@@ -84,12 +88,12 @@ struct HaloMulti {
 void fill_impl(real* p, const Layout& L, const Grid& g, bool ux, bool vy, Parity px, Parity py) {
   const int nk = L.nz;
   {  // x direction over interior rows
-    HaloLine h{p, 1, L.sj, L.sk, g.nx, ux, g.bc_x == BC::Periodic, px == Parity::Odd};
+    HaloLine h{p, 1, L.sj, L.sk, g.nx, ux, g.bc_x == BC::Periodic, px == Parity::Odd, g.bc_x == BC::Specified};
     int na = ux ? 8 : 6;
     parallel_for(Range3D{0, na, 0, L.ny, 0, nk}, h);
   }
   if (!g.two_d()) {  // y direction over full x extent incl. halos -> corners
-    HaloLine h{p, L.sj, 1, L.sk, g.ny, vy, g.bc_y == BC::Periodic, py == Parity::Odd};
+    HaloLine h{p, L.sj, 1, L.sk, g.ny, vy, g.bc_y == BC::Periodic, py == Parity::Odd, g.bc_y == BC::Specified};
     int na = vy ? 8 : 6;
     parallel_for(Range3D{0, na, -Grid::halo, L.nx + Grid::halo, 0, nk}, h);
   }
@@ -121,8 +125,8 @@ template <class F> static void fill_many(std::initializer_list<F*> fs, const Gri
     }
     hx.nf = hy.nf = nf;
     hx.nkmax = hy.nkmax = nkmax;
-    hx.n = g.nx; hx.periodic = g.bc_x == BC::Periodic; hx.ydir = false;
-    hy.n = g.ny; hy.periodic = g.bc_y == BC::Periodic; hy.ydir = true;
+    hx.n = g.nx; hx.periodic = g.bc_x == BC::Periodic; hx.ydir = false; hx.flat = g.bc_x == BC::Specified;
+    hy.n = g.ny; hy.periodic = g.bc_y == BC::Periodic; hy.ydir = true; hy.flat = g.bc_y == BC::Specified;
     parallel_for(Range3D{0, 8, 0, ntx, 0, nf * nkmax}, hx);
     if (!g.two_d()) parallel_for(Range3D{-Grid::halo, nty + Grid::halo, 0, 8, 0, nf * nkmax}, hy);
   }

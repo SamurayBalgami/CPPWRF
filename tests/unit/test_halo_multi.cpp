@@ -28,12 +28,23 @@ static void run(int nx, int ny, int nz, BC bx, BC by) {
   for (auto [x, y] : p3) bad += host(*x) != host(*y);
   bad += host(e1) != host(e2);
   bad += host(f1) != host(f2);
+  if (bx == BC::Specified) {  // flat copy outward (WRF set_physical_bc for specified)
+    std::vector<real> hm = host(a1), hu = host(b1);
+    const Layout &Lm = a1.layout(), &Lu = b1.layout();
+    for (int k = 0; k < nz; ++k)
+      for (int i = 1; i <= 3; ++i) {
+        bad += hm[Lm.index(-i, 0, k)] != hm[Lm.index(0, 0, k)];
+        bad += hm[Lm.index(nx - 1 + i, 0, k)] != hm[Lm.index(nx - 1, 0, k)];
+        bad += hu[Lu.index(-i, 0, k)] != hu[Lu.index(0, 0, k)];
+        bad += hu[Lu.index(nx + i, 0, k)] != hu[Lu.index(nx, 0, k)];
+      }
+  }
   if (bad) { std::printf("FAIL fill_halos nx=%d ny=%d bx=%d by=%d: %d fields differ\n", nx, ny, int(bx), int(by), bad); ++fails; }
 }
 
 int main() {
-  for (BC bx : {BC::Periodic, BC::Symmetric})
-    for (BC by : {BC::Periodic, BC::Symmetric}) {
+  for (BC bx : {BC::Periodic, BC::Symmetric, BC::Specified})
+    for (BC by : {BC::Periodic, BC::Symmetric, BC::Specified}) {
       run(13, 1, 5, bx, by);
       run(13, 9, 5, bx, by);
       run(40, 33, 7, bx, by);

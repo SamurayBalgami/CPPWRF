@@ -11,7 +11,9 @@
 namespace cppwrf {
 
 enum class Stagger : char { M = 'M', U = 'U', V = 'V', W = 'W' };
-enum class BC { Periodic, Symmetric };
+// Specified: real-data lateral boundaries (WRF specified = .true.); halos are filled by copying
+// the outermost row outward (set_physical_bc*), boundary rows are set by src/bdy.
+enum class BC { Periodic, Symmetric, Specified };
 
 struct Grid {
   int nx = 1, ny = 1, nz = 1;  // number of mass points
@@ -32,9 +34,10 @@ struct Grid {
   Range2D columns() const { return {0, nx, 0, ny}; }
   // Range of U (V) points updated by the dynamics: boundary faces stay 0 for rigid walls,
   // and u(nx) is a halo copy of u(0) for periodic.
-  int u_i0() const { return bc_x == BC::Symmetric ? 1 : 0; }
+  int u_i0() const { return bc_x != BC::Periodic ? 1 : 0; }
   int u_i1() const { return nx; }
-  int v_j0() const { return (bc_y == BC::Symmetric && !two_d()) ? 1 : 0; }
+  int v_j0() const { return (bc_y != BC::Periodic && !two_d()) ? 1 : 0; }
+  bool specified() const { return bc_x == BC::Specified || bc_y == BC::Specified; }
   int v_j1() const { return ny; }
 };
 

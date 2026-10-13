@@ -14,7 +14,9 @@ namespace cppwrf::dyn {
 class SmallStepHolder {
  public:
   SmallStepHolder(const Grid& g, const AcousticParams& a)
-      : ss(g, SmallStepParams{a.epssm, a.smdiv, a.emdiv, a.top_lid, a.damp_opt, a.zdamp, a.dampcoef}) {}
+      : ss(g, SmallStepParams{.epssm = a.epssm, .smdiv = a.smdiv, .emdiv = a.emdiv, .top_lid = a.top_lid,
+                              .damp_opt = a.damp_opt, .hypsometric_opt = a.hypsometric_opt, .zdamp = a.zdamp,
+                              .dampcoef = a.dampcoef}) {}
   SmallStep ss;
 };
 bool RK3::small_step_available() { return true; }

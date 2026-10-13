@@ -1,5 +1,6 @@
 #include "cases/model.hpp"
 #include "cases/hill2d.hpp"
+#include "cases/quarter_ss.hpp"
 
 #include <cmath>
 #include <numbers>
@@ -13,7 +14,8 @@ namespace cppwrf::cases {
 static BC parse_bc(const std::string& s) {
   if (s == "periodic") return BC::Periodic;
   if (s == "symmetric") return BC::Symmetric;
-  throw std::runtime_error("unknown boundary condition '" + s + "' (periodic|symmetric)");
+  if (s == "specified") return BC::Specified;
+  throw std::runtime_error("unknown boundary condition '" + s + "' (periodic|symmetric|specified)");
 }
 
 std::vector<std::string> split_list(const std::string& s) {
@@ -130,6 +132,8 @@ Model Model::build(const io::Config& cfg) {
   gp.dy /= mapf;
   if (cname == "hill2d") {
     init_hill2d(cfg, m.eta, gp, *m.base, *m.st);
+  } else if (cname == "quarter_ss") {
+    init_quarter_ss(cfg, m.eta, gp, *m.base, *m.st);
   } else {
     initialize(m.cd, snd, m.eta, gp, *m.base, *m.st, moist.get());
   }
@@ -156,6 +160,9 @@ Model Model::build(const io::Config& cfg) {
   m.ap.smdiv = real(cfg.get_double("dyn.smdiv", 0.1));
   m.ap.emdiv = real(cfg.get_double("dyn.emdiv", 0.01));
   m.ap.top_lid = lp.top_lid;
+  // WRF takes hypsometric_opt from the input file: ideal.exe writes 1, real.exe 2 (namelist default)
+  m.ap.hypsometric_opt = int(cfg.get_int("dyn.hypsometric_opt", 1));
+  if (m.ap.hypsometric_opt != 1 && m.ap.hypsometric_opt != 2) throw std::runtime_error("dyn.hypsometric_opt: 1 or 2");
   m.ap.damp_opt = int(cfg.get_int("dyn.damp_opt", 0));
   if (m.ap.damp_opt != 0 && m.ap.damp_opt != 3) throw std::runtime_error("dyn.damp_opt must be 0 or 3");
   m.ap.zdamp = real(cfg.get_double("dyn.zdamp", 5000.0));

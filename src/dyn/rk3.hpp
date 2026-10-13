@@ -18,6 +18,7 @@ struct AcousticParams {
   real epssm = 0.1, smdiv = 0.1, emdiv = 0.01;
   bool top_lid = false;                 // WRF top_lid (default .false.: constant-pressure top, w free)
   int damp_opt = 0;                     // 3: implicit Rayleigh damping of w in the top layer (WRF)
+  int hypsometric_opt = 1;              // calc_p_rho_phi: 1 linear (ideal input), 2 log-linear (real input)
   real zdamp = 5000, dampcoef = 0.2;    // depth of the damping layer (m), coefficient (1/s)
 };
 
