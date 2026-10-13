@@ -208,8 +208,6 @@ Model Model::build(const io::Config& cfg) {
   dc.diff_6th_opt = int(cfg.get_int("dyn.diff_6th_opt", 0));
   dc.diff_6th_factor = real(cfg.get_double("dyn.diff_6th_factor", 0.12));
   dc.pbl = cfg.get_int("phys.bl_pbl_physics", 0) != 0;
-  // diff_opt 1 leaves the vertical mixing to the PBL scheme: refuse until the physics suite is wired
-  if (dc.pbl) throw std::runtime_error("phys.bl_pbl_physics: PBL schemes are not wired into the model yet");
   const bool legacy = cfg.get_bool("dyn.legacy_diffusion", false);
   if (legacy && (dc.km_opt != 1 || dc.diff_6th_opt != 0)) throw std::runtime_error("dyn.legacy_diffusion: km_opt 1 only");
   sp.khdif = lp.khdif; sp.kvdif = lp.kvdif; sp.pr_inv = lp.pr_inv;
@@ -224,6 +222,10 @@ Model Model::build(const io::Config& cfg) {
     pp.mp_tend_lim = real(cfg.get_double("phys.mp_tend_lim", 10.0));
     pp.hail_opt = int(cfg.get_int("phys.hail_opt", 0));
     if (pp.mp_physics != 0) m.rk->enable_physics(pp);
+    if (wants_column_physics(cfg)) {
+      if (cname != "real") throw std::runtime_error("phys.sf_*/bl_pbl_physics: real-data runs only");
+      init_real_physics(cfg, m);
+    }
     if (m.bc) m.rk->set_lateral_bc(m.bc.get());
     if (!legacy && dc.on()) {
       m.diff = std::make_unique<dyn::DiffusionDriver>(g, dc);

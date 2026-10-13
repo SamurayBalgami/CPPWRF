@@ -11,6 +11,7 @@
 #include "dyn/diffusion_driver.hpp"
 #include "dyn/rk3.hpp"
 #include "io/config.hpp"
+#include "phys/driver/suite.hpp"
 
 namespace cppwrf::cases {
 
@@ -39,7 +40,8 @@ struct Model {
   std::string start_date;
   std::unique_ptr<dyn::RK3> rk;  // null when nsteps == 0
   std::unique_ptr<dyn::LateralBC> bc;  // real data: specified lateral boundaries
-  std::unique_ptr<dyn::DiffusionDriver> diff;  // WRF diff_opt 1 / sixth-order diffusion (null: off)
+  std::unique_ptr<dyn::DiffusionDriver> diff;
+  std::unique_ptr<phys::driver::PhysicsSuite> suite;  // column physics (sfclay/LSM/PBL), null: off  // WRF diff_opt 1 / sixth-order diffusion (null: off)
   // Called before step n (1-based) of the time loop: boundary interval switching (real data).
   std::function<void(long)> before_step;
   static Model build(const io::Config& cfg);
@@ -47,6 +49,11 @@ struct Model {
 
 // case = real: grid, base and initial state, boundaries from wrfinput/wrfbdy (src/cases/real_case.cpp)
 void init_real_case(const io::Config& cfg, Model& m);
+// Column physics (real data, P1 suite): true if any of phys.sf_sfclay_physics,
+// sf_surface_physics, bl_pbl_physics is set; init_real_physics builds the suite, fills the
+// initial surface state as WRF start_domain/phy_init and attaches it to m.rk (real_physics.cpp).
+bool wants_column_physics(const io::Config& cfg);
+void init_real_physics(const io::Config& cfg, Model& m);
 
 // Comma-separated list (whitespace trimmed, empty entries dropped).
 std::vector<std::string> split_list(const std::string& s);

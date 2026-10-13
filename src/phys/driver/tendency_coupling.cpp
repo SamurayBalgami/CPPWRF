@@ -108,9 +108,9 @@ void update_phy_ten(dyn::Tendencies& t, PhysicsTendencies& pt, const dyn::State&
   }
 }
 
-void conv_t_tendf_to_moist(dyn::Tendencies& t, const dyn::State& s, const Grid& g) {
+void conv_t_tendf_to_moist(dyn::Tendencies& t, const Field3& t_1, const dyn::State& s, const Grid& g) {
   parallel_for(g.mass_cells(),
-               KConvTMoist{t.t_tendf.view(), s.t_1.cview(), s.q_1[s.P_QV].cview(), t.q_tendf[s.P_QV].cview()});
+               KConvTMoist{t.t_tendf.view(), t_1.cview(), s.q_1[s.P_QV].cview(), t.q_tendf[s.P_QV].cview()});
 }
 
 void phy_prep_part2(PhysicsTendencies& pt, const dyn::State& s, const dyn::BaseState& b, const Grid& g,

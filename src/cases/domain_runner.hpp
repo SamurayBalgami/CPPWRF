@@ -76,6 +76,7 @@ class DomainRunner {
   std::unique_ptr<dyn::Diagnostics> dg_;
   std::vector<std::vector<real>> store_;
   std::vector<const Field2*> extra_2d_;
+  std::vector<const Field3*> extra_3d_;
 
 #ifdef CPPWRF_HAVE_NETCDF
   std::unique_ptr<io_netcdf::WrfoutWriter> wrfout_;

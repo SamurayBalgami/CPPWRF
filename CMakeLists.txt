@@ -51,6 +51,7 @@ list(APPEND CPPWRF_SOURCES
   ${CMAKE_SOURCE_DIR}/src/phys/driver/suite.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/driver/phy_prep.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/driver/tendency_coupling.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/driver/landuse_tables.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/sf_sfclayrev/sfclayrev.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/bl_ysu/ysu.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/lsm_noah/noah.cpp

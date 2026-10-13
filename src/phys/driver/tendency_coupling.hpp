@@ -29,7 +29,9 @@ void calculate_phy_tend(PhysicsTendencies& pt, const dyn::State& s, const dyn::B
                         const CouplingFlags& f);
 void update_phy_ten(dyn::Tendencies& t, PhysicsTendencies& pt, const dyn::State& s, const Grid& g,
                     const CouplingFlags& f);
-void conv_t_tendf_to_moist(dyn::Tendencies& t, const dyn::State& s, const Grid& g);
+// t_1 = WRF grid%t_1 at first_rk_step_part2: small_step_prep refreshes it only after part2, so in
+// step n it holds theta_m at the start of step n-1 (the initial state in step 1).
+void conv_t_tendf_to_moist(dyn::Tendencies& t, const Field3& t_1, const dyn::State& s, const Grid& g);
 void phy_prep_part2(PhysicsTendencies& pt, const dyn::State& s, const dyn::BaseState& b, const Grid& g,
                     const CouplingFlags& f);
 

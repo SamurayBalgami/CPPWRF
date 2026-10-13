@@ -166,3 +166,32 @@ WRF_DIR=/path/to/wrfref/WRF tests/phys/suite/run_test.sh [--markdown]
 Pass criterion: every element bit-identical or `|c - f| <= 1e-12 max(|c|,|f|)`.
 Result (CPU FP64, 3 calls, P1_n = after part1, P2_n = after part2, OUTn = after phy_prep_part2):
 94/94 fields bit-identical (`compare.py` prints the per-field table).
+
+## 5. Model wiring and real-data acceptance
+
+`phys.sf_sfclay_physics / sf_surface_physics / bl_pbl_physics` in the config (real data only)
+make `Model::build` call `init_real_physics` (src/cases/real_physics.cpp): the suite is created,
+its initial surface state filled as WRF start_domain does for a non-restart run (the wrfinput
+fields; phy_init: UST = 1e-4, IVGTYP = nint(LU_INDEX), DX2D = dx, landuse_init from LANDUSE.TBL
+for the season of JULDAY; bl_init/LSMINIT: SH2O with FRH2O for frozen layers, CANWAT = 0;
+CTOPO = CTOPO2 = 1), and attached to the RK3 integrator (`set_column_physics`). The surface
+fields and R*BLTEN, EXCH_H, TSLB, SMOIS, SH2O are written to the native snapshots.
+
+**Correction found by the real-data run:** `conv_t_tendf_to_moist` gets `grid%t_1`, which
+small_step_prep refreshes only after first_rk_step_part2: in step n it is theta_m at the start of
+step n-1 (the initial state in step 1). The suite keeps that lagged copy (`wrf_t1_lag`); with the
+dycore's current t_1 step 2 already differed by 1e-9 (U) from WRF. The differential test passes
+WRF's t_1 itself and sets `wrf_t1_lag = false`.
+
+Acceptance against WRF v4.6.1 real*8, run P1_r8 (`configs/real_p1_r8.ini`, tests/verify/wrf_suite.py):
+
+| run | U | W | THM | QV | surface (HFX, UST, PBLH, TSK, T2, TSLB, R*BLTEN, EXCH_H) |
+|---|---|---|---|---|---|
+| CPU FP64, 3 steps (history every step) | 2.2e-14 | 4.6e-12 | 1.8e-16 | 1.0e-15 | <= 8e-12 (max rel) |
+| CUDA FP64, 1 h | 6.0e-10 | 1.8e-08 | 1.2e-10 | 3.1e-09 | TSK 6e-5 max rel at 1 h |
+| CUDA FP32 vs WRF FP32 (P1), 1 h | 1.9e-04 | 3.9e-03 | 7.5e-07 | 4.9e-05 | |
+
+(relative L2 over the domain unless noted.) Over an hour the land surface amplifies roundoff:
+CPPWRF CPU FP64 vs CUDA FP64 differ by the same amount as either does from WRF (TSK 7.5e-5,
+TSLB 1e-4 max rel at 1 h, from 5e-13 at 10 min), so this is the sensitivity of the problem,
+not a port difference.

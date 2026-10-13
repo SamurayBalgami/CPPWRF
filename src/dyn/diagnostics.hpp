@@ -32,6 +32,7 @@ class Diagnostics {
 // Extra 2D fields (e.g. rainnc from the physics) are appended under their field names.
 std::vector<io::VarView> snapshot_vars(const State& s, const BaseState& b, const Grid& g,
                                        std::vector<std::vector<real>>& store,
-                                       const std::vector<const Field2*>& extra_2d = {});
+                                       const std::vector<const Field2*>& extra_2d = {},
+                                       const std::vector<const Field3*>& extra_3d = {});
 
 }  // namespace cppwrf::dyn

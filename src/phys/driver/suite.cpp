@@ -560,7 +560,7 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       psim(g, Stagger::M, "psim"), psih(g, Stagger::M, "psih"), gz1oz0(g, Stagger::M, "gz1oz0"),
       chklowq(g, Stagger::M, "chklowq"), qgh(g, Stagger::M, "qgh"), chs(g, Stagger::M, "chs"),
       chs2(g, Stagger::M, "chs2"), cqs2(g, Stagger::M, "cqs2"), cpm(g, Stagger::M, "cpm"),
-      u_phytmp(g, Stagger::M, "u_phytmp"), v_phytmp(g, Stagger::M, "v_phytmp"), g_(g), gs_(g), o_(o) {
+      u_phytmp(g, Stagger::M, "u_phytmp"), v_phytmp(g, Stagger::M, "v_phytmp"), t1_lag_(g, Stagger::M, "t1_lag"), g_(g), gs_(g), o_(o) {
   if (o.sf_sfclay_physics != 1 || o.sf_surface_physics != 2 || o.bl_pbl_physics != 1)
     throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1, sf_surface_physics=2, bl_pbl_physics=1");
   if (o.fractional_seaice != 0) throw std::runtime_error("PhysicsSuite: fractional_seaice=1 is not ported");
@@ -609,7 +609,16 @@ void PhysicsSuite::part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
   const CouplingFlags f{false, true};
   calculate_phy_tend(pt, s, b, g_, f);
   update_phy_ten(t, pt, s, g_, f);
-  if (o_.use_theta_m == 1) conv_t_tendf_to_moist(t, s, g_);
+  if (o_.use_theta_m == 1) {
+    if (!wrf_t1_lag) {
+      conv_t_tendf_to_moist(t, s.t_1, s, g_);
+    } else {  // grid%t_1 lags one step behind the dycore's t_1 here (see conv_t_tendf_to_moist)
+      if (!t1_lag_set_) t1_lag_.copy_from(s.t_1);
+      conv_t_tendf_to_moist(t, t1_lag_, s, g_);
+      t1_lag_.copy_from(s.t_1);
+      t1_lag_set_ = true;
+    }
+  }
 }
 
 void PhysicsSuite::after_rk(const dyn::State& s, const dyn::BaseState& b) {

@@ -327,6 +327,17 @@ bool DomainRunner::start() {
       extra_2d_.push_back(&m_.rk->physics()->sr);
     }
   }
+  if (m_.suite) {  // column physics surface fields (WRF names in lower case)
+    const phys::driver::PhysicsSuite& su = *m_.suite;
+    for (const Field2* f : {&su.hfx, &su.qfx, &su.lh, &su.ust, &su.znt, &su.pblh, &su.tsk, &su.grdflx, &su.qsfc,
+                            &su.flhc, &su.flqc, &su.t2, &su.th2, &su.q2, &su.u10, &su.v10, &su.psfc, &su.albedo,
+                            &su.albbck, &su.emiss, &su.canwat, &su.snow, &su.snowh, &su.snowc, &su.noahres,
+                            &su.acgrdflx, &su.achfx, &su.aclhf, &su.sfcevp, &su.potevp, &su.mol, &su.rmol, &su.br,
+                            &su.wspd, &su.fm, &su.fh, &su.zol, &su.regime, &su.sfcexc, &su.lai, &su.xland})
+      extra_2d_.push_back(f);
+    extra_3d_ = {&su.tslb, &su.smois, &su.sh2o, &su.pt.rublten, &su.pt.rvblten, &su.pt.rthblten, &su.pt.rqvblten,
+                 &su.exch_h};
+  }
 
 #ifdef CPPWRF_HAVE_NETCDF
   if (write_wrfout_) {
@@ -413,7 +424,7 @@ void DomainRunner::do_snap(long n) {
   dyn::BaseState& base = *m_.base;
 
   if (write_native_) {
-    auto vars = dyn::snapshot_vars(st, base, g, store_, extra_2d_);
+    auto vars = dyn::snapshot_vars(st, base, g, store_, extra_2d_, extra_3d_);
     snap_->write(n, n * g.dt, vars);
   }
 

@@ -147,6 +147,7 @@ int main(int argc, char** argv) {
   o.table_dir = tables;
   o.num_soil_layers = nsoil;
   PhysicsSuite su(g, o);
+  su.wrf_t1_lag = false;  // T_1 below is WRF's grid%t_1 itself
   for (int k = 0; k < nsoil; ++k) su.dzs[k] = rec("IN1:DZS").a[k];
 
   // ---- initial surface state: WRF after start_domain ----

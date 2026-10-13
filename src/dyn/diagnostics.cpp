@@ -81,7 +81,8 @@ DiagRow Diagnostics::compute(const State& s, const BaseState& b) {
 
 std::vector<io::VarView> snapshot_vars(const State& s, const BaseState& b, const Grid& g,
                                        std::vector<std::vector<real>>& store,
-                                       const std::vector<const Field2*>& extra_2d) {
+                                       const std::vector<const Field2*>& extra_2d,
+                                       const std::vector<const Field3*>& extra_3d) {
   std::vector<real> hu, hv, hw, ht, hp, hph, hmu, bpb, bphb, bti, bmub;
   s.u_2.download(hu); s.v_2.download(hv); s.w_2.download(hw); s.t_2.download(ht);
   s.p.download(hp); s.ph_2.download(hph); s.mu_2.download(hmu);
@@ -89,7 +90,7 @@ std::vector<io::VarView> snapshot_vars(const State& s, const BaseState& b, const
   const io::DType dt = sizeof(real) == 8 ? io::DType::F64 : io::DType::F32;
   std::vector<io::VarView> vars;
   store.clear();
-  store.reserve(16);
+  store.reserve(64);
   auto add = [&](const char* name, char st, int nx, int ny, int nz, auto f) {
     store.emplace_back(size_t(nx) * ny * nz);
     auto& a = store.back();
@@ -131,6 +132,10 @@ std::vector<io::VarView> snapshot_vars(const State& s, const BaseState& b, const
   for (const Field2* f : extra_2d) {
     f->download(hq);
     add(f->name().c_str(), 'M', nx, ny, 1, [&](int i, int j, int) { return at(hq, f->layout(), i, j, 0); });
+  }
+  for (const Field3* f : extra_3d) {  // mass-point fields with their own level count (e.g. soil)
+    f->download(hq);
+    add(f->name().c_str(), 'M', nx, ny, f->layout().nz, [&](int i, int j, int k) { return at(hq, f->layout(), i, j, k); });
   }
   return vars;
 }

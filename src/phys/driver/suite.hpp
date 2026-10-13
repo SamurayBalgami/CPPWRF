@@ -89,6 +89,10 @@ class PhysicsSuite : public dyn::ColumnPhysics {
 
   long itimestep = 0;  // WRF grid%itimestep (incremented in part1, as solve_em does per step)
   int stepbl = 1;      // WRF grid%stepbl (set_physics_rconfigs: nint(bldt*60/dt), >= 1)
+  // true (model): keep WRF's grid%t_1 for conv_t_tendf_to_moist, i.e. theta_m at the start of the
+  // previous step (the dycore's s.t_1 is the current step start); false: s.t_1 already holds it
+  // (the differential test passes WRF's t_1).
+  bool wrf_t1_lag = true;
 
   // ---- persistent 2D surface state (WRF grid% names) ----
   Field2 tsk, xland, xice, lakemask, water_depth, mavail, tmn, vegfra, shdmin, shdmax, snoalb, albbck, albedo,
@@ -107,6 +111,8 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   // ---- locals of solve_em / surface_driver (scratch) ----
   Field2 psim, psih, gz1oz0, chklowq, qgh, chs, chs2, cqs2, cpm;
   Field3 u_phytmp, v_phytmp;
+  Field3 t1_lag_;  // WRF grid%t_1 as seen by first_rk_step_part2 (wrf_t1_lag)
+  bool t1_lag_set_ = false;
 
   const SuiteOptions& options() const { return o_; }
 
