@@ -3,7 +3,7 @@
 #   tools/heavy.sh <command...>              run a heavy job (build, long run, WRF, tests) in one
 #                                            of 3 slots; waits while all slots are busy
 #   tools/heavy.sh --exclusive <command...>  take ALL slots (benchmarks, timings, GPU profiling);
-#                                            new heavy jobs wait until it finishes
+#                                            new heavy jobs wait for it (at most 10 min of waiting)
 # Defaults OMP_NUM_THREADS=4 and OMP_WAIT_POLICY=passive unless already set.
 # Wrap builds, model runs and test suites with this.
 set -uo pipefail
@@ -32,8 +32,14 @@ if [ "$1" = "--exclusive" ]; then
   exit $?
 fi
 
+# A waiting --exclusive job holds back new jobs for at most 10 minutes; after that free slots
+# are used again (otherwise one long job in a single slot stalls the whole machine).
+exclusive_blocks() {
+  local f="$LOCKDIR/exclusive_waiting"
+  [ -e "$f" ] && [ $(( $(date +%s) - $(stat -c %Y "$f" 2>/dev/null || echo 0) )) -lt 600 ]
+}
 while true; do
-  if [ ! -e "$LOCKDIR/exclusive_waiting" ]; then
+  if ! exclusive_blocks; then
     for i in $(seq 0 $((NSLOTS - 1))); do
       exec 9>"$LOCKDIR/slot$i"
       if flock -n 9; then
