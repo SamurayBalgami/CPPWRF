@@ -495,40 +495,41 @@ struct YSUKernel {
           stable = (brup > brcr);
         }
       }
+    }
 
-      // Enhance PBL by theta-li (WRF lines 732-753)
-      if (ysu_topdown_pblmix) {
-        int kpblold = kpbl;
-        bool definebrup = false;
-        for (int k = kpblold; k < nz - 1; ++k) {
-          real spdk2 = max(ux(i, j, k) * ux(i, j, k) + vx(i, j, k) * vx(i, j, k), real(1.0));
-          real bruptmp = (thlix[k] - thermalli) * (g * za[k] / thlix[0]) / spdk2;
-          stable = (bruptmp >= brcr);
-          if (definebrup) {
-            kpbl = k;
-            brup = bruptmp;
-            definebrup = false;
-          }
-          if (!stable) {
-            brdn = bruptmp;
-            definebrup = true;
-            pblflg = true;
-          }
+    // Enhance PBL by theta-li (WRF lines 732-753): for every column, also those with
+    // pblflg = .false. (it can switch pblflg on), starting from the first-guess kpbl
+    if (ysu_topdown_pblmix) {
+      int kpblold = kpbl;
+      bool definebrup = false;
+      for (int k = kpblold; k < nz - 1; ++k) {
+        real spdk2 = max(ux(i, j, k) * ux(i, j, k) + vx(i, j, k) * vx(i, j, k), real(1.0));
+        real bruptmp = (thlix[k] - thermalli) * (g * za[k] / thlix[0]) / spdk2;
+        stable = (bruptmp >= brcr);
+        if (definebrup) {
+          kpbl = k;
+          brup = bruptmp;
+          definebrup = false;
+        }
+        if (!stable) {
+          brdn = bruptmp;
+          definebrup = true;
+          pblflg = true;
         }
       }
+    }
 
-      if (pblflg) {
-        if (brdn >= brcr) {
-          brint = real(0.0);
-        } else if (brup <= brcr) {
-          brint = real(1.0);
-        } else {
-          brint = (brcr - brdn) / (brup - brdn);
-        }
-        hpbl(i, j) = za[kpbl - 1] + brint * (za[kpbl] - za[kpbl - 1]);
-        if (hpbl(i, j) < zq[1]) kpbl = 0;
-        if (kpbl <= 0) pblflg = false;
+    if (pblflg) {
+      if (brdn >= brcr) {
+        brint = real(0.0);
+      } else if (brup <= brcr) {
+        brint = real(1.0);
+      } else {
+        brint = (brcr - brdn) / (brup - brdn);
       }
+      hpbl(i, j) = za[kpbl - 1] + brint * (za[kpbl] - za[kpbl - 1]);
+      if (hpbl(i, j) < zq[1]) kpbl = 0;
+      if (kpbl <= 0) pblflg = false;
     }
 
     // Stable boundary layer (WRF lines 772-826)
@@ -695,7 +696,7 @@ struct YSUKernel {
           prfac = conpr;
           prfac2 = real(15.9) * (wstar3 + wstar3_2) / ust3 / (real(1.0) + real(4.0) * karman * (wstar3 + wstar3_2) / ust3);
           real term = max(zq[k + 1] - sfcfrac * hpbl(i, j), real(0.0));
-          prnumfac = real(-3.0) * term * term / (hpbl(i, j) * hpbl(i, j));
+          prnumfac = -(real(3.0) * (term * term) / (hpbl(i, j) * hpbl(i, j)));  // -3.*x**2./hpbl**2.
         } else {
           prfac = real(0.0);
           prfac2 = real(0.0);
@@ -824,11 +825,13 @@ struct YSUKernel {
 
     tridin_ysu(al, ad, cu, r1, au, f1, nz);
 
+    // bl_ysu.F90 (NEED_B4B_DURING_CCPP_TESTING == 1): ttend = (f1-thx+300)*rdt*pi2d is a
+    // temperature tendency; the module_bl_ysu.F wrapper divides it by pi3d again for RTHBLTEN.
     for (int k = nz - 1; k >= 0; --k) {
-      real ttend = (f1[k] - thx[k] + real(300.0)) * rdt;
-      ttnp(i, j, k) = ttend;
+      real ttend = (f1[k] - thx[k] + real(300.0)) * rdt * pi2d(i, j, k);
+      ttnp(i, j, k) = ttend / pi2d(i, j, k);
       if (have_surface_diag) {
-        dtsfc(i, j) = dtsfc(i, j) + ttend * cont * del[k];
+        dtsfc(i, j) = dtsfc(i, j) + ttend * cont * del[k] / pi2d(i, j, k);
       }
     }
 
@@ -977,8 +980,8 @@ struct YSUKernel {
       ad[0] = real(1.0) + fric;
     }
 
-    f1[0] = ux(i, j, 0) + uoxl * ust(i, j) * ust(i, j) * rhox * g / del[0] * dt2 / wspd1 * (wspd_ratio * wspd_ratio);
-    f2[0] = vx(i, j, 0) + voxl * ust(i, j) * ust(i, j) * rhox * g / del[0] * dt2 / wspd1 * (wspd_ratio * wspd_ratio);
+    f1[0] = ux(i, j, 0) + uoxl * (ust(i, j) * ust(i, j)) * rhox * g / del[0] * dt2 / wspd1 * (wspd_ratio * wspd_ratio);
+    f2[0] = vx(i, j, 0) + voxl * (ust(i, j) * ust(i, j)) * rhox * g / del[0] * dt2 / wspd1 * (wspd_ratio * wspd_ratio);
 
     for (int k = 0; k < nz - 1; ++k) {
       real dtodsd = dt2 / del[k];

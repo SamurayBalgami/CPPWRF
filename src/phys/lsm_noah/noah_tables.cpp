@@ -188,6 +188,11 @@ bool read_vegparm(const std::string& path, const std::string& dataset, NoahTable
       if (std::getline(f, line)) tables.bare = std::stoi(trim(line));
     } else if (key == "NATURAL") {
       if (std::getline(f, line)) tables.natural = std::stoi(trim(line));
+    } else if (key.rfind("LCZ_", 0) == 0) {
+      int n = std::stoi(key.substr(4));
+      if (std::getline(f, line) && n >= 1 && n <= 11) tables.lcz[n - 1] = std::stoi(trim(line));
+      if (n == 11) break;
+    } else if (key.rfind("Vegetation Parameters", 0) == 0) {
       break;
     }
   }
