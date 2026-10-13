@@ -61,6 +61,11 @@ struct HaloLine {
   }
 };
 
+struct HaloLineT {  // HaloLine with (tangential, slot) thread order
+  HaloLine h;
+  CPPWRF_HD void operator()(int b, int a, int k) const { h(a, b, k); }
+};
+
 // Several fields in one launch per direction; field f and level k are folded into the third
 // index (kk = f * nkmax + k). In the y pass the x index is the fastest thread index (coalesced).
 constexpr int kMaxFields = 8;
@@ -73,10 +78,12 @@ struct HaloMulti {
   std::ptrdiff_t sn;  // stride along the filled direction (1 for x, pitch for y): per field below
   std::ptrdiff_t snf[kMaxFields];
   int n; bool periodic, ydir, flat;
+  // Both passes are launched with the tangential index as the fastest thread index and the
+  // halo slot (8) as the second one: all lanes of a warp busy (the slot range is only 8 wide).
   CPPWRF_HD void operator()(int x, int y, int kk) const {
     const int f = kk / nkmax, k = kk - f * nkmax;
     if (f >= nf || k >= nk[f]) return;
-    const int a = ydir ? y : x, b = ydir ? x : y;  // a = halo slot, b = tangential index
+    const int a = y, b = x;  // a = halo slot, b = tangential index
     const int na = face[f] ? 8 : 6;
     if (a >= na) return;
     if (ydir ? (b < -3 || b >= nt[f] + 3) : (b >= nt[f])) return;
@@ -90,7 +97,7 @@ void fill_impl(real* p, const Layout& L, const Grid& g, bool ux, bool vy, Parity
   {  // x direction over interior rows
     HaloLine h{p, 1, L.sj, L.sk, g.nx, ux, g.bc_x == BC::Periodic, px == Parity::Odd, g.bc_x == BC::Specified};
     int na = ux ? 8 : 6;
-    parallel_for(Range3D{0, na, 0, L.ny, 0, nk}, h);
+    parallel_for(Range3D{0, L.ny, 0, na, 0, nk}, HaloLineT{h});  // rows as the fastest thread index
   }
   if (!g.two_d()) {  // y direction over full x extent incl. halos -> corners
     HaloLine h{p, L.sj, 1, L.sk, g.ny, vy, g.bc_y == BC::Periodic, py == Parity::Odd, g.bc_y == BC::Specified};
@@ -126,7 +133,7 @@ template <class F> static void fill_many(const std::vector<F*>& v, const Grid& g
     hx.nkmax = hy.nkmax = nkmax;
     hx.n = g.nx; hx.periodic = g.bc_x == BC::Periodic; hx.ydir = false; hx.flat = g.bc_x == BC::Specified;
     hy.n = g.ny; hy.periodic = g.bc_y == BC::Periodic; hy.ydir = true; hy.flat = g.bc_y == BC::Specified;
-    parallel_for(Range3D{0, 8, 0, ntx, 0, nf * nkmax}, hx);
+    parallel_for(Range3D{0, ntx, 0, 8, 0, nf * nkmax}, hx);
     if (!g.two_d()) parallel_for(Range3D{-Grid::halo, nty + Grid::halo, 0, 8, 0, nf * nkmax}, hy);
   }
 }
