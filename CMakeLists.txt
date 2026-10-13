@@ -46,6 +46,15 @@ file(GLOB CPPWRF_SOURCES CONFIGURE_DEPENDS
   ${CMAKE_SOURCE_DIR}/src/core/*.cpp
   ${CMAKE_SOURCE_DIR}/src/dyn/*.cpp
   ${CMAKE_SOURCE_DIR}/src/cases/*.cpp)
+# Column physics used by the dycore (P1 suite: sfclayrev + Noah + YSU and its driver glue)
+list(APPEND CPPWRF_SOURCES
+  ${CMAKE_SOURCE_DIR}/src/phys/driver/suite.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/driver/phy_prep.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/driver/tendency_coupling.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/sf_sfclayrev/sfclayrev.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/bl_ysu/ysu.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/lsm_noah/noah.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/lsm_noah/noah_tables.cpp)
 
 add_library(cppwrf_core STATIC ${CPPWRF_SOURCES})
 target_include_directories(cppwrf_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
@@ -115,7 +124,7 @@ option(CPPWRF_DIFF_TESTS "Register the WRF-Fortran differential tests with ctest
 if(CPPWRF_DIFF_TESTS)
   find_package(OpenMP REQUIRED COMPONENTS CXX)  # the CPU reference drivers (also in CUDA builds)
   add_subdirectory(tests/phys)
-  foreach(t bdy dyn/diffusion phys/driver)
+  foreach(t bdy dyn/diffusion phys/suite)  # phys/suite needs WRF_DIR (tests/phys/suite/build_wrf_r8.sh)
     string(REPLACE "/" "_" tname "diff_${t}")
     add_test(NAME ${tname} COMMAND bash ${CMAKE_SOURCE_DIR}/tests/${t}/run_test.sh WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     set_tests_properties(${tname} PROPERTIES LABELS diff)

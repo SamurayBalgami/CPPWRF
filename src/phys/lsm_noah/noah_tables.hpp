@@ -64,6 +64,7 @@ struct NoahTables {
   real albedomaxtbl[kMaxVegCats] = {0};
   real ztopvtbl[kMaxVegCats] = {0};
   real zbotvtbl[kMaxVegCats] = {0};
+  int lcz[11] = {0};  // LCZ_1..LCZ_11 urban categories (after NATURAL)
 };
 
 bool read_noah_tables(const std::string& table_dir,

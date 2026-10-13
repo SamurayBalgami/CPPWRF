@@ -97,6 +97,15 @@ struct NoahKernel {
   int isurban;
   NoahTables tables;
 
+  // WRF namelist rdlai2d / usemonalb (SFLX/REDPRM: table LAI and background albedo when false).
+  // The standalone SFLX test runs with both true.
+  bool rdlai2d = true;
+  bool usemonalb = true;
+  // Called from the Noah driver (lsm): the driver selects the points (active != 0: land, not
+  // ice) and SFLX has no water test of its own; ALB is INOUT (written to alb_out).
+  View2<const int> active;
+  View2<real> alb_out;
+
   // Helper static functions mirroring module_sf_noahlsm.F
   CPPWRF_HD static void csnow(real& sncond, real dsnow) {
     constexpr real unit = real(0.11631);
@@ -1019,7 +1028,8 @@ struct NoahKernel {
       } else {
         esd -= esnow2;
         real seh = rch * (t1 - th2);
-        real t14 = t1 * t1 * t1 * t1;
+        real t14 = t1 * t1;  // T14 = T1*T1; T14 = T14*T14
+        t14 = t14 * t14;
         flx3 = fdown - flx1 - flx2 - emissi * sigma * t14 - ssoil - seh - etanrg;
         if (flx3 <= real(0.0)) flx3 = real(0.0);
         ex = flx3 * real(0.001) / lsubf;
@@ -1061,8 +1071,10 @@ struct NoahKernel {
     int styp = soiltyp(i, j);
     int slop = slopetyp(i, j);
 
-    // Skip water points (in USGS category 16 is water; in STATSGO soil 14 is water)
-    if (vtyp == 16 || styp == 14) {
+    if (active.p) {
+      if (active(i, j) == 0) return;
+    } else if (vtyp == 16 || styp == 14) {
+      // standalone test: skip water points (USGS category 16, STATSGO soil 14)
       return;
     }
 
@@ -1151,9 +1163,6 @@ struct NoahKernel {
     real cur_shdmax = shdmax(i, j);
     real cur_shdmin = shdmin(i, j);
 
-    bool rdlai2d = true;
-    bool usemonalb = true;
-
     if (cur_shdfac >= cur_shdmax) {
       cur_embrd = emissmax;
       if (!rdlai2d) cur_xlai = laimax;
@@ -1183,6 +1192,7 @@ struct NoahKernel {
     embrd(i, j) = cur_embrd;
     xlai(i, j) = cur_xlai;
     z0brd(i, j) = cur_z0brd;
+    if (alb_out.p) alb_out(i, j) = cur_alb;
 
     // Precipitation checks and snowpack update
     bool snowng = false;
