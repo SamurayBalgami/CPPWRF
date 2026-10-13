@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #ifdef CPPWRF_HAVE_SMALL_STEP
+#include "core/halo.hpp"
 #include "dyn/small_step.hpp"
 #endif
 
@@ -13,7 +14,7 @@ namespace cppwrf::dyn {
 class SmallStepHolder {
  public:
   SmallStepHolder(const Grid& g, const AcousticParams& a)
-      : ss(g, SmallStepParams{a.epssm, a.smdiv, a.emdiv, true, a.damp_opt, a.zdamp, a.dampcoef}) {}
+      : ss(g, SmallStepParams{a.epssm, a.smdiv, a.emdiv, a.top_lid, a.damp_opt, a.zdamp, a.dampcoef}) {}
   SmallStep ss;
 };
 bool RK3::small_step_available() { return true; }
@@ -63,7 +64,38 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
     phys_->step(s, b, real(dt));
     small_->ss.calc_p_rho_phi(s, b);
   }
+  // solve_em: "reset surface w for consistency" (kinematic condition from the new u, v)
+  if (!b.ht.uniform()) set_w_surface(s.w_2, s.u_2, s.v_2, b, g_, false);
 #endif
+}
+
+namespace {
+struct KSetWSurface {  // WRF module_bc_em set_w_surface
+  View3<real> w; View3<const real> u, v; BView2<const real> ht, msftx, msfty; View1<const real> znw;
+  real cf1, cf2, cf3, rdx, rdy; int nz; bool fill;
+  CPPWRF_HD void operator()(int i, int j) const {
+    const real ws =
+        msfty(i, j) * real(0.5) * rdy *
+            ((ht(i, j + 1) - ht(i, j)) * (cf1 * v(i, j + 1, 0) + cf2 * v(i, j + 1, 1) + cf3 * v(i, j + 1, 2)) +
+             (ht(i, j) - ht(i, j - 1)) * (cf1 * v(i, j, 0) + cf2 * v(i, j, 1) + cf3 * v(i, j, 2))) +
+        msftx(i, j) * real(0.5) * rdx *
+            ((ht(i + 1, j) - ht(i, j)) * (cf1 * u(i + 1, j, 0) + cf2 * u(i + 1, j, 1) + cf3 * u(i + 1, j, 2)) +
+             (ht(i, j) - ht(i - 1, j)) * (cf1 * u(i, j, 0) + cf2 * u(i, j, 1) + cf3 * u(i, j, 2)));
+    w(i, j, 0) = ws;
+    if (fill)
+      for (int k = 1; k <= nz; ++k) w(i, j, k) = ws * znw(k) * znw(k);
+  }
+};
+}  // namespace
+
+// Periodic lateral boundaries only (the halo supplies i-1, i+1); specified boundaries clamp
+// the stencil at the domain edge in WRF (TODO with the lateral boundary integration).
+void set_w_surface(Field3& w, Field3& u, Field3& v, const BaseState& b, const Grid& g, bool fill) {
+  fill_halos({&u, &v}, g);
+  column_for(g.columns(), KSetWSurface{w.view(), u.cview(), v.cview(), b.ht.view(), b.msftx.view(), b.msfty.view(),
+                                       b.znw.view(), real(b.cf1), real(b.cf2), real(b.cf3), real(b.rdx),
+                                       real(b.rdy), g.nz, fill});
+  fill_halo(w, g);
 }
 
 }  // namespace cppwrf::dyn

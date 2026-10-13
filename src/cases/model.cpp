@@ -1,4 +1,5 @@
 #include "cases/model.hpp"
+#include "cases/hill2d.hpp"
 
 #include <cmath>
 #include <numbers>
@@ -92,7 +93,8 @@ Model Model::build(const io::Config& cfg) {
   // interpolates p_top linearly between input-sounding levels)
   g.p_top = cfg.get_double("domain.p_top", snd.p(g.ztop));
   m.eta = make_eta_levels(cfg, g, snd);
-  m.base = std::make_unique<dyn::BaseState>(g, true);
+  const bool flat = (cname != "hill2d");
+  m.base = std::make_unique<dyn::BaseState>(g, flat);
   if (mapf != 1.0) {
     for (BaseField2* f : {&m.base->msftx, &m.base->msfty, &m.base->msfux, &m.base->msfuy, &m.base->msfvx,
                           &m.base->msfvy})
@@ -126,7 +128,15 @@ Model Model::build(const io::Config& cfg) {
   gp = g;  // now with p_top
   gp.dx /= mapf;
   gp.dy /= mapf;
-  initialize(m.cd, snd, m.eta, gp, *m.base, *m.st, moist.get());
+  if (cname == "hill2d") {
+    init_hill2d(cfg, m.eta, gp, *m.base, *m.st);
+  } else {
+    initialize(m.cd, snd, m.eta, gp, *m.base, *m.st, moist.get());
+  }
+  if (!m.base->ht.uniform()) {  // start_em: kinematic surface w, filled up with znw^2 (no input w)
+    dyn::set_w_surface(m.st->w_1, m.st->u_1, m.st->v_1, *m.base, g, true);
+    dyn::set_w_surface(m.st->w_2, m.st->u_2, m.st->v_2, *m.base, g, true);
+  }
   for (const std::string& n : tracers) {
     int idx = 0;
     while (m.st->q_names[idx] != n) ++idx;
@@ -137,7 +147,7 @@ Model Model::build(const io::Config& cfg) {
   lp.khdif = real(cfg.get_double("dyn.khdif", 0.0));
   lp.kvdif = real(cfg.get_double("dyn.kvdif", 0.0));
   lp.pr_inv = real(cfg.get_double("dyn.pr_inv", 3.0));
-  lp.top_lid = cfg.get_bool("dyn.top_lid", true);
+  lp.top_lid = cfg.get_bool("dyn.top_lid", false);  // WRF default
   lp.h_adv_order = int(cfg.get_int("dyn.h_adv_order", 5));
   lp.v_adv_order = int(cfg.get_int("dyn.v_adv_order", 3));
   if ((lp.h_adv_order != 5 && lp.h_adv_order != 6) || (lp.v_adv_order != 3 && lp.v_adv_order != 4))
@@ -145,6 +155,7 @@ Model Model::build(const io::Config& cfg) {
   m.ap.epssm = real(cfg.get_double("dyn.epssm", 0.1));
   m.ap.smdiv = real(cfg.get_double("dyn.smdiv", 0.1));
   m.ap.emdiv = real(cfg.get_double("dyn.emdiv", 0.01));
+  m.ap.top_lid = lp.top_lid;
   m.ap.damp_opt = int(cfg.get_int("dyn.damp_opt", 0));
   if (m.ap.damp_opt != 0 && m.ap.damp_opt != 3) throw std::runtime_error("dyn.damp_opt must be 0 or 3");
   m.ap.zdamp = real(cfg.get_double("dyn.zdamp", 5000.0));

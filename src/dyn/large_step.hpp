@@ -10,7 +10,7 @@ namespace cppwrf::dyn {
 struct LargeStepParams {
   real khdif = 0, kvdif = 0;  // constant eddy viscosity (m2/s), diff_opt=1-like, km_opt=1
   real pr_inv = 3;            // theta/scalar K = K / prandtl; WRF rk_tendency: khdq = 3*khdif
-  bool top_lid = true;        // rigid lid (WRF top_lid): p' extrapolated to the top w level
+  bool top_lid = false;       // WRF top_lid (default .false.); true: rigid lid, p' extrapolated to the top
   int h_adv_order = 5;        // 5 (default) or 6 (centred); WRF h_mom/h_sca_adv_order
   int v_adv_order = 3;        // 3 (default) or 4 (centred); WRF v_mom/v_sca_adv_order
 };

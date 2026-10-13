@@ -48,9 +48,10 @@ TOL = {
     "water_budget_mp0": {"float64": 1e-12, "float32": 1e-5},
     "water_budget_mp": 1e-3,
     "wsm6_sym_time": 600.0,  # s, WSM6 squall2d: last snapshot checked for FP64 mirror symmetry
-    # Straka vs WRF v4.6.1 (FP32, diff_opt=1, same eta levels, p_top, bubble; configs/straka_wrf.ini):
-    # measured RMS theta' difference 0.011-0.023 K over 900 s (field RMS ~1 K).
-    "wrf_rms_thp": 0.05,     # K
+    # Straka vs WRF v4.6.1 (FP32 output, diff_opt=1, top_lid=.false., same eta levels, p_top,
+    # bubble; configs/straka_wrf.ini): measured theta' RMS difference 5.6e-6..7.4e-6 K over 900 s
+    # (field RMS ~1 K), i.e. FP32 roundoff of WRF. Tolerance 1e-4 K (14x margin).
+    "wrf_rms_thp": 1e-4,     # K
     "wrf_grid_z": 1e-2,      # m, mass-level heights must match (WRF writes FP32: ~2e-3 m at 6 km)
 }
 
@@ -426,7 +427,7 @@ def run_wrf(wrfout, d, rms_tol):
         e = thc - t_wrf[it]
         rms, ref = float(np.sqrt(np.mean(e * e))), float(np.sqrt(np.mean(t_wrf[it] ** 2)))
         rep.check(f"thp_t{tw:g}s", rms <= rms_tol,
-                  f"RMS diff {rms:.4f} K, max {np.abs(e).max():.3f} K (field RMS {ref:.3f} K, tol {rms_tol})")
+                  f"RMS diff {rms:.2e} K, max {np.abs(e).max():.2e} K (field RMS {ref:.3f} K, tol {rms_tol})")
         n += 1
     if n == 0:
         rep.add("times", "FAIL", "no common output times")

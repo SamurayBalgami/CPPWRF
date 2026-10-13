@@ -110,7 +110,7 @@ struct KCoefW {
     const real m = mut(i, j);
     a(i, j, 0) = 0; alpha(i, j, 0) = 0; gamma(i, j, 0) = 0;
     a(i, j, 1) = 0;
-    a(i, j, nz) = real(-2) * cof * c.rdnw(nz - 1) * c.rdnw(nz - 1) * c2a(i, j, nz - 1) * lid /
+    a(i, j, nz) = real(-2) * cof * (c.rdnw(nz - 1) * c.rdnw(nz - 1)) * c2a(i, j, nz - 1) * lid /
                   (mh(nz - 1, m) * mf(nz - 1, m));
     for (int k = 2; k < nz; ++k)  // WRF quirk kept: c1f at the level below
       a(i, j, k) = -mc.cq1(i, j, k) * cof * c.rdn(k) * c.rdnw(k - 1) * c2a(i, j, k - 1) / (mh(k - 1, m) * mf(k - 1, m));
@@ -123,7 +123,7 @@ struct KCoefW {
       alpha(i, j, k) = real(1) / (b - a(i, j, k) * gamma(i, j, k - 1));
       gamma(i, j, k) = cc * alpha(i, j, k);
     }
-    const real b = real(1) + real(2) * cof * c.rdnw(nz - 1) * c.rdnw(nz - 1) * c2a(i, j, nz - 1) /
+    const real b = real(1) + real(2) * cof * (c.rdnw(nz - 1) * c.rdnw(nz - 1)) * c2a(i, j, nz - 1) /
                                  (mh(nz - 1, m) * mf(nz, m));
     alpha(i, j, nz) = real(1) / (b - a(i, j, nz) * gamma(i, j, nz - 1));
     gamma(i, j, nz) = 0;

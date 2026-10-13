@@ -176,6 +176,11 @@ CaseDef make_case(const std::string& name, const io::Config& cfg, const Grid& G)
     c.params = {{"theta0", th0}, {"theta_tr", thtr}, {"z_tr", ztr}, {"t_tr", ttr}, {"qv_max", qvmax},
                 {"u_shear", us}, {"u_shift", ushift}, {"xc", xc}, {"zc", zc}, {"xr", xr}, {"zr", zr},
                 {"dtheta", dth}};
+  } else if (name == "hill2d") {
+    double th0 = 288.0, N = 0.01;
+    c.theta_env = [=](double z) { return th0 * std::exp(N * N * z / g); };
+    c.u_env = [=](double) { return 10.0; };
+    c.params = {{"hm", cfg.get_double("case.hm", 100.0)}, {"xa", cfg.get_double("case.xa", 5.0)}};
   } else {
     throw std::runtime_error("unknown case: " + name);
   }

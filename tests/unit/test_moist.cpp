@@ -59,7 +59,10 @@ static bool same(const Field2& a, const Field2& b) {
 
 static const char* kRest =
     "[run]\ncase = rest_state\nrun_time = 1200\n[domain]\nnx = 24\nnz = 40\ndx = 2000\nztop = 20000\n"
-    "bc_x = periodic\neta = uniform_z\n[time]\ndt = 10\n[dyn]\nkhdif = 0\nkvdif = 0\n";
+    "bc_x = periodic\neta = uniform_z\n[time]\ndt = 10\n[dyn]\nkhdif = 0\nkvdif = 0\ntop_lid = true\n";
+// top_lid = true: with WRF's free top the moist rest state is not balanced to roundoff in WRF
+// either (ideal init loads the top level with qv(top), pg_buoy_w with the average cqw(kde-1));
+// measured max|w| 1e-11 m/s after 1200 s. The rigid lid isolates the interior balance.
 static const char* kBubble =
     "[run]\ncase = warm_bubble\nrun_time = 200\n[domain]\nnx = 40\nnz = 40\ndx = 250\nztop = 10000\n"
     "bc_x = symmetric\n[time]\ndt = 2\n[dyn]\nkhdif = 10\nkvdif = 10\n";

@@ -16,9 +16,14 @@ namespace cppwrf::dyn {
 
 struct AcousticParams {
   real epssm = 0.1, smdiv = 0.1, emdiv = 0.01;
+  bool top_lid = false;                 // WRF top_lid (default .false.: constant-pressure top, w free)
   int damp_opt = 0;                     // 3: implicit Rayleigh damping of w in the top layer (WRF)
   real zdamp = 5000, dampcoef = 0.2;    // depth of the damping layer (m), coefficient (1/s)
 };
+
+// WRF set_w_surface: w(surface) = u . grad(ht) from u, v (fill: also w(k) = w(surface) znw(k)^2,
+// as start_em does for an initial state without w).
+void set_w_surface(Field3& w, Field3& u, Field3& v, const BaseState& b, const Grid& g, bool fill);
 
 class SmallStepHolder;  // wraps SmallStep (src/dyn/small_step.hpp) when present
 
