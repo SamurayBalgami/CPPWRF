@@ -46,6 +46,8 @@ class RK3 {
   void set_lateral_bc(LateralBC* bc);
   // Column physics of first_rk_step_part1/2 (radiation, surface, PBL, cumulus); not owned.
   void set_column_physics(ColumnPhysics* cp) { cp_ = cp; large_.set_column_physics(cp); }
+  // WRF diffusion (diff_opt 1, km_opt 1/4, sixth order) in RK stage 1; not owned.
+  void set_diffusion(DiffusionDriver* d) { dd_ = d; large_.set_diffusion(d); scalars_.set_diffusion(d); }
   LateralBC* lateral_bc() const { return bc_; }
 
  private:
@@ -57,6 +59,7 @@ class RK3 {
   std::unique_ptr<SmallStepHolder> small_;
   LateralBC* bc_ = nullptr;
   ColumnPhysics* cp_ = nullptr;
+  DiffusionDriver* dd_ = nullptr;
 };
 
 }  // namespace cppwrf::dyn

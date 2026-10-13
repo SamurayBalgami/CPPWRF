@@ -162,7 +162,9 @@ struct KHorizDiffM1 {
 };
 
 struct KHorizDiff3DMP {
-  View3<const real> field, base_3d, xkmhd;
+  View3<const real> field;
+  BView3<const real> base_3d;  // base states may be horizontally uniform (BaseField3)
+  View3<const real> xkmhd;
   View2<const real> mut;
   BView2<const real> msftx, msfty, msfux, msfuy, msfvy, msfvx_inv;
   View1<const real> c1, c2;
@@ -246,7 +248,8 @@ struct KVertDiffM1 {
 };
 
 struct KVertDiffMP1 {
-  View3<const real> field, alt, base;
+  View3<const real> field, alt;
+  BView3<const real> base;
   View2<const real> mut;
   View1<const real> c1h, c2h, rdn, rdnw;
   View3<real> tendency;
@@ -392,7 +395,7 @@ inline void horizontal_diffusion(char name,
 
 inline void horizontal_diffusion_3dmp(const DiffusionParams& p,
                                       View3<const real> field,
-                                      View3<const real> base_3d,
+                                      BView3<const real> base_3d,
                                       View3<real> tendency,
                                       View2<const real> mut,
                                       BView2<const real> msftx,
@@ -438,7 +441,7 @@ inline void vertical_diffusion(char name,
 
 inline void vertical_diffusion_mp(View3<const real> field,
                                   View3<real> tendency,
-                                  View3<const real> base,
+                                  BView3<const real> base,
                                   View2<const real> mut,
                                   View1<const real> c1,
                                   View1<const real> c2,

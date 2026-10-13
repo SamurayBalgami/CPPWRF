@@ -4,6 +4,7 @@
 
 #include "core/backend.hpp"
 #include "core/halo.hpp"
+#include "dyn/diffusion_driver.hpp"
 #include "dyn/kernels_common.hpp"
 #include "dyn/lateral_bc.hpp"
 
@@ -172,7 +173,7 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
   const Range3D mr = g.mass_cells();
   const bool do_y = !g.two_d();
   const real hup = p_.h_adv_order == 5 ? real(1) : real(0), vup = p_.v_adv_order == 3 ? real(1) : real(0);
-  const bool diff = p_.khdif > 0 || p_.kvdif > 0;
+  const bool diff = !dd_ && (p_.khdif > 0 || p_.kvdif > 0);  // legacy constant-K kernels
   if (b.mapped && diff) throw std::runtime_error("scalar diffusion with map factors is not implemented yet");
   for (int n = 0; n < ns; ++n) {
     Field3 &q1 = s.q_1[n], &q2 = s.q_2[n], &tf = t.q_tendf[n];
@@ -186,6 +187,7 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
                                       p_.khdif * p_.pr_inv, p_.kvdif * p_.pr_inv, real(b.rdx), real(b.rdy), g.nz,
                                       do_y, false, is_qv});
       }
+      if (dd_) dd_->scalar(s, b, n, tf, dt_rk);  // diff_opt 1 / sixth order (rk_scalar_tend, rk_step 1)
       if (bc_ && n == s.P_QV) bc_->relax_scalar(tf, q2, s, b);  // relax_bdy_scalar (rk 1)
     }
     if (bc_ && n == s.P_QV) bc_->spec_scalar(tf);  // spec_bdy_scalar (every stage)

@@ -130,8 +130,10 @@ static void init_ideal(const io::Config& cfg, Model& m, const std::string& cname
   gp.dy /= mapf;
   if (cname == "hill2d") {
     init_hill2d(cfg, m.eta, gp, *m.base, *m.st);
+    gp.p_top = g.p_top = m.base->p_top;
   } else if (cname == "quarter_ss") {
     init_quarter_ss(cfg, m.eta, gp, *m.base, *m.st);
+    gp.p_top = g.p_top = m.base->p_top;
   } else {
     initialize(m.cd, snd, m.eta, gp, *m.base, *m.st, moist.get());
   }
@@ -182,6 +184,19 @@ Model Model::build(const io::Config& cfg) {
     throw std::runtime_error("dyn.moist_adv_opt and dyn.scalar_adv_opt must be 0 or 1");
   if (m.st->n_scalars() > 0 && (sp.moist_adv_opt == 1 || sp.scalar_adv_opt == 1) && lp.h_adv_order != 5)
     throw std::runtime_error("positive-definite advection is implemented for h_adv_order = 5 only");
+  // Diffusion: WRF diff_opt / km_opt / diff_6th_opt. diff_opt defaults to 1 when khdif or kvdif
+  // is set (older configs). dyn.legacy_diffusion = true keeps the old constant-K kernels (flat,
+  // m = 1 only) for A/B checks.
+  dyn::DiffusionConfig dc;
+  dc.diff_opt = int(cfg.get_int("dyn.diff_opt", (lp.khdif > 0 || lp.kvdif > 0) ? 1 : 0));
+  dc.km_opt = int(cfg.get_int("dyn.km_opt", 1));
+  dc.khdif = lp.khdif; dc.kvdif = lp.kvdif;
+  dc.c_s = real(cfg.get_double("dyn.c_s", 0.25));
+  dc.diff_6th_opt = int(cfg.get_int("dyn.diff_6th_opt", 0));
+  dc.diff_6th_factor = real(cfg.get_double("dyn.diff_6th_factor", 0.12));
+  dc.pbl = cfg.get_int("phys.bl_pbl_physics", 0) != 0;
+  const bool legacy = cfg.get_bool("dyn.legacy_diffusion", false);
+  if (legacy && (dc.km_opt != 1 || dc.diff_6th_opt != 0)) throw std::runtime_error("dyn.legacy_diffusion: km_opt 1 only");
   sp.khdif = lp.khdif; sp.kvdif = lp.kvdif; sp.pr_inv = lp.pr_inv;
   sp.h_adv_order = lp.h_adv_order; sp.v_adv_order = lp.v_adv_order;
   const int tss = int(cfg.get_int("time.time_step_sound", 0));
@@ -195,6 +210,10 @@ Model Model::build(const io::Config& cfg) {
     pp.hail_opt = int(cfg.get_int("phys.hail_opt", 0));
     if (pp.mp_physics != 0) m.rk->enable_physics(pp);
     if (m.bc) m.rk->set_lateral_bc(m.bc.get());
+    if (!legacy && dc.on()) {
+      m.diff = std::make_unique<dyn::DiffusionDriver>(g, dc);
+      m.rk->set_diffusion(m.diff.get());
+    }
   }
   return m;
 }

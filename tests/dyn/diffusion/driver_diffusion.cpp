@@ -570,7 +570,7 @@ int main(int argc, char* argv[]) {
 
     horizontal_diffusion_3dmp(p,
                               make_const_view3(moist.data(), nx, nz),
-                              make_const_view3(dummy3d.data(), nx, nz),
+                              make_bview3(dummy3d.data(), nx, nz),
                               make_view3(moist_tend.data(), nx, nz),
                               make_view2(mut.data(), nx),
                               make_bview2(msftx.data(), nx),
@@ -641,7 +641,7 @@ int main(int argc, char* argv[]) {
 
     vertical_diffusion_mp(make_const_view3(moist.data(), nx, nz),
                           make_view3(moist_tend.data(), nx, nz),
-                          make_const_view3(dummy3d.data(), nx, nz),
+                          make_bview3(dummy3d.data(), nx, nz),
                           make_view2(mut.data(), nx),
                           make_view1(c1.data()), make_view1(c2.data()),
                           make_const_view3(alt.data(), nx, nz),

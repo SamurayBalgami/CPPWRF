@@ -96,6 +96,7 @@ struct BaseState {
   double p_top = 0.0;
   Array1 znu, znw, dnw, dn, rdnw, rdn, fnm, fnp;
   Array1 c1h, c2h, c3h, c4h, c1f, c2f, c3f, c4f;
+  Array1 u_base, v_base;  // WRF u_base/v_base (ideal sounding wind; 0 for real data): diffusion
   double cf1 = 0, cf2 = 0, cf3 = 0;  // surface extrapolation from the lowest 3 mass levels
   double cfn = 0, cfn1 = 0;          // top extrapolation from the highest 2 mass levels
   double rdx = 0, rdy = 0;

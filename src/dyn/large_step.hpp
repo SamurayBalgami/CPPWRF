@@ -28,6 +28,7 @@ struct VCoef {
 namespace kern { struct MoistCoef; }
 class LateralBC;
 class ColumnPhysics;
+class DiffusionDriver;
 // calc_cq coefficients for the stage state (needs LargeStep::prep to have filled s.qtot)
 kern::MoistCoef moist_coef(const State& s);
 
@@ -45,12 +46,14 @@ class LargeStep {
   // unless column physics is attached (then the RK driver calls it before ColumnPhysics::part1).
   void zero_tendf(Tendencies& t) const;
   void set_column_physics(ColumnPhysics* cp) { cp_ = cp; }
+  void set_diffusion(const DiffusionDriver* d) { dd_ = d; }
 
  private:
   Grid g_;
   LargeStepParams p_;
   const LateralBC* bc_ = nullptr;
   ColumnPhysics* cp_ = nullptr;
+  const DiffusionDriver* dd_ = nullptr;
 };
 
 }  // namespace cppwrf::dyn

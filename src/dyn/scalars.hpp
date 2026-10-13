@@ -18,6 +18,8 @@ struct ScalarParams {
 
 class LateralBC;
 
+class DiffusionDriver;
+
 class ScalarTransport {
  public:
   ScalarTransport(const Grid& g, const ScalarParams& p);
@@ -26,11 +28,13 @@ class ScalarTransport {
   void run_stage(State& s, Tendencies& t, const BaseState& b, int rk, real dt_rk);
   const ScalarParams& params() const { return p_; }
   void set_lateral_bc(const LateralBC* bc) { bc_ = bc; }
+  void set_diffusion(const DiffusionDriver* d) { dd_ = d; }
 
  private:
   Grid g_;
   ScalarParams p_;
   const LateralBC* bc_ = nullptr;
+  const DiffusionDriver* dd_ = nullptr;
   Field3 q_new_, scale_;
 };
 

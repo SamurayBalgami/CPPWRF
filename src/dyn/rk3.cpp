@@ -5,6 +5,7 @@
 
 #ifdef CPPWRF_HAVE_SMALL_STEP
 #include "core/halo.hpp"
+#include "dyn/diffusion_driver.hpp"
 #include "dyn/lateral_bc.hpp"
 #include "dyn/small_step.hpp"
 #endif
@@ -72,6 +73,7 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
       large_.zero_tendf(t);
       cp_->part1(s, b, t);
     }
+    if (rk == 1 && dd_) dd_->prepare(s, b);  // first_rk_step_part2: metrics, deformation, K
     large_.tendencies(s, t, b, rk);  // part2 (diffusion, update_phy_ten) + rk_tendency
     small_->ss.run_stage(s, t, b, real(dt_rk), real(dts_rk), ns, rk);
     scalars_.run_stage(s, t, b, rk, real(dt_rk));

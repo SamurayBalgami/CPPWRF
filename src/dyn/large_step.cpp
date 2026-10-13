@@ -4,6 +4,7 @@
 
 #include "core/constants.hpp"
 #include "core/halo.hpp"
+#include "dyn/diffusion_driver.hpp"
 #include "dyn/kernels_common.hpp"
 #include "dyn/lateral_bc.hpp"
 
@@ -551,7 +552,7 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
   const VCoef c = VCoef::from(b);
   const real rdx = real(b.rdx), rdy = real(b.rdy);
   const bool do_y = !g.two_d();
-  const bool diff = p_.khdif > 0 || p_.kvdif > 0;
+  const bool diff = !dd_ && (p_.khdif > 0 || p_.kvdif > 0);  // legacy constant-K kernels
   const int nz = g.nz;
   const Range3D ur{g.u_i0(), g.u_i1(), 0, g.ny, 0, nz};
   const Range3D vr{0, g.nx, g.v_j0(), g.v_j1(), 0, nz};
@@ -574,6 +575,7 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
   // first_rk_step_part2: calculate_phy_tend + update_phy_ten; WRF adds the diffusion after it
   // (diff_opt = 1 in rk_tendency, diff_opt = 2 later in part2)
   if (cp_ && rk_step == 1) cp_->part2(s, b, t);
+  if (dd_ && rk_step == 1) dd_->dynamics(s, b, t);  // diff_opt 1 / sixth order (rk_tendency, rk_step 1)
   if (diff && rk_step == 1) {  // WRF: diffusion only in the first RK stage, held in *_tendf
     parallel_for(ur, KDiffU{s.u_2.cview(), s.alt.cview(), s.mut.cview(), s.muu.cview(), c, t.ru_tendf.view(), kh, kv,
                             rdx, rdy, nz, do_y});
@@ -587,7 +589,7 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
                                   kh * p_.pr_inv, kv * p_.pr_inv, rdx, rdy, nz, do_y, true, true});
   }
   if (bc_ && rk_step == 1) bc_->relax_dry(s, t, b);  // relax_bdy_dry -> *_save -> *_tendf (rk_addtend_dry)
-  const bool tendf = diff || bc_ != nullptr || cp_ != nullptr;
+  const bool tendf = diff || bc_ != nullptr || cp_ != nullptr || dd_ != nullptr;
   parallel_for(ur, KTendU{s.u_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), s.ph_2.cview(),
                           s.alt.cview(), s.al.cview(), s.php.cview(), t.ru_tendf.cview(), s.mu_2.cview(),
                           s.muu.cview(), b.pb.view(), c, moist_coef(s), t.ru_tend.view(), rdx, rdy, nz, do_y, p_.top_lid, tendf, hup, vup,
