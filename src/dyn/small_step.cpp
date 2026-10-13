@@ -29,6 +29,15 @@ constexpr real Gr = real(cst::g);
 constexpr real H = real(0.5);
 constexpr real T0 = real(cst::t0);
 
+// Specified lateral boundaries: WRF advance_uv / advance_mu_t / advance_w leave the outermost
+// row (spec zone) to spec_bdyupdate*, zero_grad_bdy. True for mass point (i,j) in that row.
+struct Edge {
+  bool x = false, y = false; int nx = 0, ny = 0;
+  CPPWRF_HD bool mass(int i, int j) const { return (x && (i == 0 || i == nx - 1)) || (y && (j == 0 || j == ny - 1)); }
+  CPPWRF_HD bool uface(int i, int j) const { return (x && (i <= 0 || i >= nx)) || (y && (j == 0 || j == ny - 1)); }
+  CPPWRF_HD bool vface(int i, int j) const { return (x && (i == 0 || i == nx - 1)) || (y && (j <= 0 || j >= ny)); }
+};
+
 // ------------------------------------------------------------------ small_step_prep
 // Saves the stage state and forms the coupled perturbations from it. Full masses:
 // mut/muu/muv = stage (from rk_step_prep), muts = mub + mu_1 (time t).
@@ -134,7 +143,7 @@ struct KCoefW {
 struct KUV {
   V3 u, v; C3 ru_tend, rv_tend, p, al, alt, ph, php; C2 mu, muu, muv, mudf; B3 pb; VCoef c; kern::MoistCoef mc;
   real dts, rdx, rdy, emdx, emdy; int nz, ui0, ui1, vj0, vj1; bool do_y, top_lid;
-  B2 msfux, msfuy, msfvx, msfvy, msfvx_inv;
+  B2 msfux, msfuy, msfvx, msfvy, msfvx_inv; Edge ed;
   template <int DI, int DJ> CPPWRF_HD real ps(int i, int j, int k) const { return p(i, j, k) + p(i - DI, j - DJ, k); }
   template <int DI, int DJ> CPPWRF_HD real dpn(int i, int j, int k) const {
     if (k == 0) return H * (c.cf1 * ps<DI, DJ>(i, j, 0) + c.cf2 * ps<DI, DJ>(i, j, 1) + c.cf3 * ps<DI, DJ>(i, j, 2));
@@ -155,12 +164,12 @@ struct KUV {
     return d;
   }
   CPPWRF_HD void operator()(int i, int j, int k) const {
-    if (i >= ui0 && i < ui1) {
+    if (i >= ui0 && i < ui1 && !ed.uface(i, j)) {
       const real mudf_x = -emdx * (mudf(i, j) - mudf(i - 1, j)) / msfuy(i, j);
       u(i, j, k) = u(i, j, k) + dts * ru_tend(i, j, k) -
                    dts * mc.cqu(i, j, k) * dp<1, 0>(i, j, k, muu(i, j), rdx, msfux(i, j) / msfuy(i, j)) + c.c1h(k) * mudf_x;
     }
-    if (do_y && j >= vj0 && j < vj1) {
+    if (do_y && j >= vj0 && j < vj1 && !ed.vface(i, j)) {
       const real mudf_y = -emdy * (mudf(i, j) - mudf(i, j - 1)) * msfvx_inv(i, j);
       v(i, j, k) = v(i, j, k) + dts * rv_tend(i, j, k) -
                    dts * mc.cqv(i, j, k) * dp<0, 1>(i, j, k, muv(i, j), rdy, msfvy(i, j) / msfvx(i, j)) + c.c1h(k) * mudf_y;
@@ -186,8 +195,17 @@ struct KMuTDiv {  // dvdxi at every mass point
 
 struct KMuTCol {  // column: mu, mudf, muts, muave; omega'' (ww) and its time sum ww_m
   C3 dv, ww1; V3 ww, ww_m; V2 mu, mudf, muts, muave; C2 mut, mu_tend; B2 msfty; VCoef c;
-  real dts, epssm; int nz, iter, nsteps;
+  real dts, epssm; int nz, iter, nsteps; Edge ed;
   CPPWRF_HD void operator()(int i, int j) const {
+    const bool first = iter == 1, last = iter == nsteps;
+    const real rn = real(nsteps);  // WRF sumflux divides by number_of_small_timesteps
+    if (ed.mass(i, j)) {  // spec zone: no advance_mu_t; sumflux still accumulates ww
+      for (int k = 0; k <= nz; ++k) {
+        const real sw = (first ? real(0) : ww_m(i, j, k)) + ww(i, j, k);
+        ww_m(i, j, k) = last ? sw / rn + ww1(i, j, k) : sw;
+      }
+      return;
+    }
     real dmdt = 0;
     for (int k = 0; k < nz; ++k) dmdt += c.dnw(k) * dv(i, j, k);
     const real mtend = mu_tend(i, j);
@@ -197,8 +215,6 @@ struct KMuTCol {  // column: mu, mudf, muts, muave; omega'' (ww) and its time su
     mudf(i, j) = dmdt + mtend;
     muts(i, j) = mut(i, j) + mu_new;
     muave(i, j) = H * ((real(1) + epssm) * mu_new + (real(1) - epssm) * mu_old);
-    const bool first = iter == 1, last = iter == nsteps;
-    const real rn = real(nsteps);  // WRF sumflux divides by number_of_small_timesteps
     auto acc_ww = [&](int k, real wpp) {
       const real sw = (first ? real(0) : ww_m(i, j, k)) + wpp;
       ww_m(i, j, k) = last ? sw / rn + ww1(i, j, k) : sw;
@@ -223,7 +239,7 @@ struct KMuTCol {  // column: mu, mudf, muts, muave; omega'' (ww) and its time su
 struct KMuTPoint {  // sumflux of ru_m, rv_m and the theta'' update, at every mass point
   C3 u, v, us, vs, ts, t_tend, ww; V3 t, t_ave, ru_m, rv_m;
   C2 muu, muv; VCoef c; real dts, rdx, rdy; int nz, iter, nsteps; bool do_y;
-  B2 msftx, msfty, msfuy, msfvx_inv;
+  B2 msftx, msfty, msfuy, msfvx_inv; Edge ed;
   CPPWRF_HD real wdtn(int i, int j, int k) const {  // ww'' (ts at w level), 0 at the bottom and top
     if (k == 0 || k == nz) return 0;
     return ww(i, j, k) * (c.fnm(k) * ts(i, j, k) + c.fnp(k) * ts(i, j, k - 1));
@@ -239,6 +255,7 @@ struct KMuTPoint {  // sumflux of ru_m, rv_m and the theta'' update, at every ma
     }
     const real tk = t(i, j, k);
     t_ave(i, j, k) = tk;
+    if (ed.mass(i, j)) return;  // spec zone: theta'' by spec_bdyupdate
     real hflux = H * rdx * (u(i + 1, j, k) * (ts(i + 1, j, k) + ts(i, j, k)) - u(i, j, k) * (ts(i, j, k) + ts(i - 1, j, k)));
     if (do_y)
       hflux += H * rdy * (v(i, j + 1, k) * (ts(i, j + 1, k) + ts(i, j, k)) - v(i, j, k) * (ts(i, j, k) + ts(i, j - 1, k)));
@@ -279,8 +296,9 @@ struct KWCommon {
 
 // phase 1a (w levels 0..nz): rhs -> R, t_2ave -> T2
 struct KWRhs {
-  KWCommon q; V3 R, T2;
+  KWCommon q; V3 R, T2; Edge ed;
   CPPWRF_HD void operator()(int i, int j, int k) const {
+    if (ed.mass(i, j)) return;
     R(i, j, k) = q.rhs(i, j, k);
     if (k < q.nz) T2(i, j, k) = q.t2ave(i, j, k);
   }
@@ -290,8 +308,9 @@ struct KWRhs {
 struct KWExpl {
   KWCommon q; C3 R, T2;
   C3 us2, vs2; B2 ht, msftx; real rdx, rdy; bool terrain, do_y;  // lower boundary w = u.grad(ht)
-  V3 wout;
+  V3 wout; Edge ed;
   CPPWRF_HD void operator()(int i, int j, int k) const {
+    if (ed.mass(i, j)) return;  // spec zone: zero_grad_bdy
     const VCoef& c = q.c;
     if (k == 0) {
       if (terrain) {  // WRF advance_w: w''(surface) from the small-step u'', v'' and the terrain slope
@@ -339,9 +358,10 @@ struct KWExpl {
 // phase 2 (columns): tridiagonal solve (calc_coef_w coefficients), damp_opt = 3, phi'' = R + implicit w part
 struct KWSolve {
   V3 w, ph; C3 R, a, alpha, gamma, phs, ws; C2 mut, muts; B3 phb; B2 msfty; VCoef c;
-  real dts, epssm, dampmag, hdepth; int nz;
+  real dts, epssm, dampmag, hdepth; int nz; Edge ed;
   CPPWRF_HD real mf(int k, real m) const { return c.c1f(k) * m + c.c2f(k); }
   CPPWRF_HD void operator()(int i, int j) const {
+    if (ed.mass(i, j)) return;  // spec zone: spec_bdyupdate_ph
     const real m = mut(i, j), mts = muts(i, j), ope = real(1) + epssm;
     for (int k = 1; k <= nz; ++k) w(i, j, k) = (w(i, j, k) - a(i, j, k) * w(i, j, k - 1)) * alpha(i, j, k);
     for (int k = nz - 1; k >= 1; --k) w(i, j, k) = w(i, j, k) - gamma(i, j, k) * w(i, j, k + 1);
@@ -448,6 +468,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
   const bool do_y = !g.two_d();
   const VCoef c = VCoef::from(b);
   const kern::MoistCoef mc = moist_coef(s);  // calc_cq from the stage state (rk_step_prep)
+  const Edge ed{g.bc_x == BC::Specified, g.bc_y == BC::Specified && do_y, nx, ny};
   stage_ = rk_step > 0 ? rk_step : stage_ % 3 + 1;
 
   if (stage_ == 1) {  // WRF small_step_prep (rk_step == 1): reset the external-mode filter
@@ -481,7 +502,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                s.muu.cview(), s.muv.cview(), mudf.cview(), b.pb.view(), c, mc, dts, real(b.rdx),
                                real(b.rdy), p_.emdiv * real(g.dx), do_y ? p_.emdiv * real(g.dy) : real(0), nz,
                                g.u_i0(), g.u_i1(), g.v_j0(), g.v_j1(), do_y, p_.top_lid, b.msfux.view(),
-                               b.msfuy.view(), b.msfvx.view(), b.msfvy.view(), b.msfvx_inv.view()});
+                               b.msfuy.view(), b.msfvx.view(), b.msfvy.view(), b.msfvx_inv.view(), ed});
     if (do_y) fill_halos({&s.u_2, &s.v_2}, g);
     else fill_halo(s.u_2, g);
 
@@ -490,12 +511,12 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                          b.msfty.view(), b.msfuy.view(), b.msfvx_inv.view(), dvdxi.view()});
     column_for(g.columns(), KMuTCol{dvdxi.cview(), ww1.cview(), s.ww.view(), s.ww_m.view(), s.mu_2.view(), mudf.view(),
                                     s.muts.view(), muave.view(), s.mut.cview(), tend.mu_tend.cview(), b.msfty.view(), c,
-                                    dts, p_.epssm, nz, it, n_small});
+                                    dts, p_.epssm, nz, it, n_small, ed});
     parallel_for(g.mass_cells(), KMuTPoint{s.u_2.cview(), s.v_2.cview(), u_save.cview(), v_save.cview(),
                                            t_save.cview(), tend.t_tend.cview(), s.ww.cview(), s.t_2.view(),
                                            t_2save.view(), s.ru_m.view(), s.rv_m.view(), s.muu.cview(), s.muv.cview(),
                                            c, dts, real(b.rdx), real(b.rdy), nz, it, n_small, do_y, b.msftx.view(),
-                                           b.msfty.view(), b.msfuy.view(), b.msfvx_inv.view()});
+                                           b.msfty.view(), b.msfuy.view(), b.msfvx_inv.view(), ed});
     fill_halos({&s.mu_2, &mudf}, g);
 
     {
@@ -504,13 +525,13 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                        s.mut.cview(), s.muts.cview(), muave.cview(), b.phb.view(), c, mc, dts, p_.epssm, nz,
                        p_.top_lid, b.msfty.view()};
       const Range3D wr{0, nx, 0, ny, 0, nz + 1};
-      parallel_for(wr, KWRhs{q, w_rhs.view(), t2a.view()});
+      parallel_for(wr, KWRhs{q, w_rhs.view(), t2a.view(), ed});
       parallel_for(wr, KWExpl{q, w_rhs.cview(), t2a.cview(), s.u_2.cview(), s.v_2.cview(), b.ht.view(),
-                              b.msftx.view(), real(b.rdx), real(b.rdy), !b.ht.uniform(), do_y, s.w_2.view()});
+                              b.msftx.view(), real(b.rdx), real(b.rdy), !b.ht.uniform(), do_y, s.w_2.view(), ed});
       column_for(g.columns(), KWSolve{s.w_2.view(), s.ph_2.view(), w_rhs.cview(), a.cview(), alpha.cview(),
                                       gamma.cview(), ph_save.cview(), w_save.cview(), s.mut.cview(), s.muts.cview(),
                                       b.phb.view(), b.msfty.view(), c, dts, p_.epssm,
-                                      p_.damp_opt == 3 ? dts * p_.dampcoef : real(0), p_.zdamp, nz});
+                                      p_.damp_opt == 3 ? dts * p_.dampcoef : real(0), p_.zdamp, nz, ed});
       parallel_for(g.mass_cells(), KWPRho{s.al.view(), s.p.view(), pm1.view(), s.ph_2.cview(), s.alt.cview(),
                                           s.t_2.cview(), t_save.cview(), c2a.cview(), s.mu_2.cview(), s.muts.cview(),
                                           c, p_.smdiv});

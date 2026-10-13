@@ -24,13 +24,19 @@ constexpr real H = real(0.5);
 struct Fluxes {
   C3 q, qo, ru, rv, ww; C2 mut; VCoef c;
   real rdx, rdy, dt, hup, vup; int nz; bool do_y;
-  B2 msftx, msfty;
+  B2 msftx, msfty; kern::Spec sp;
   CPPWRF_HD real fx(int i, int j, int k) const {  // west face of cell i
     const real vel = ru(i, j, k);
+    const int o = kern::ord_face(i, sp.nx, sp.x);
+    if (o == 2) return H * vel * (q(i, j, k) + q(i - 1, j, k));
+    if (o == 3) return vel * kern::flux3(q(i - 2, j, k), q(i - 1, j, k), q(i, j, k), q(i + 1, j, k), vel, hup);
     return vel * kern::flux5(q(i - 3, j, k), q(i - 2, j, k), q(i - 1, j, k), q(i, j, k), q(i + 1, j, k), q(i + 2, j, k), vel, hup);
   }
   CPPWRF_HD real fy(int i, int j, int k) const {
     const real vel = rv(i, j, k);
+    const int o = kern::ord_face(j, sp.ny, sp.y);
+    if (o == 2) return H * vel * (q(i, j, k) + q(i, j - 1, k));
+    if (o == 3) return vel * kern::flux3(q(i, j - 2, k), q(i, j - 1, k), q(i, j, k), q(i, j + 1, k), vel, hup);
     return vel * kern::flux5(q(i, j - 3, k), q(i, j - 2, k), q(i, j - 1, k), q(i, j, k), q(i, j + 1, k), q(i, j + 2, k), vel, hup);
   }
   CPPWRF_HD real fz(int i, int j, int k) const {  // w level k
@@ -177,7 +183,8 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
       }
     }
     Fluxes fl{q2.cview(), q1.cview(), s.ru_m.cview(), s.rv_m.cview(), s.ww_m.cview(), s.muts.cview(), c,
-              real(b.rdx), real(b.rdy), dt_rk, hup, vup, g.nz, do_y, b.msftx.view(), b.msfty.view()};
+              real(b.rdx), real(b.rdy), dt_rk, hup, vup, g.nz, do_y, b.msftx.view(), b.msfty.view(),
+              kern::Spec{g.bc_x == BC::Specified, g.bc_y == BC::Specified, g.nx, g.ny}};
     if (!pd) {
       parallel_for(mr, KUpdate{fl, q1.cview(), tf.cview(), s.mu_1.cview(), s.mu_2.cview(), b.mub.view(),
                                q_new_.view(), dt_rk, true});

@@ -18,6 +18,27 @@ CPPWRF_HD inline real flux3(real qm2, real qm1, real q0, real qp1, real ua, real
   return (real(7) * (q0 + qm1) - (qp1 + qm2)) / real(12) +
          up * sgn1(ua) * ((qp1 - qm2) - real(3) * (q0 - qm1)) / real(12);
 }
+// Specified (real-data) lateral boundaries: WRF degrades the horizontal advection near the edges
+// (module_advect_em.F, degrade_xs/xe/ys/ye): 2nd order next to the boundary, 3rd one further in.
+struct Spec {
+  bool x = false, y = false;  // specified in x / y
+  int nx = 0, ny = 0;         // mass points
+};
+// Order of a flux between mass points f-1 and f (field not staggered in this direction).
+CPPWRF_HD inline int ord_face(int f, int n, bool on) {
+  if (!on) return 5;
+  if (f <= 1 || f >= n - 1) return 2;
+  if (f == 2 || f == n - 2) return 3;
+  return 5;
+}
+// Order of a flux at mass point f-1, between faces f-1 and f (field staggered in this direction).
+CPPWRF_HD inline int ord_mass(int f, int n, bool on) {
+  if (!on) return 5;
+  if (f <= 1 || f >= n) return 2;
+  if (f == 2 || f == n - 1) return 3;
+  return 5;
+}
+
 // first-order upwind flux with Courant number cr (advect_scalar_pd flux_upwind)
 CPPWRF_HD inline real flux_upwind(real qm1, real q0, real cr) {
   const real a = cr < real(0) ? -cr : cr;
