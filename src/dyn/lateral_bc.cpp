@@ -143,6 +143,23 @@ struct KZeroGrad {  // zero_grad_bdy on w: copy from the first interior row / co
   }
 };
 
+struct KFlowDep {  // flow_dep_bdy
+  V3 f; C3 u, v; Ring r;
+  CPPWRF_HD void operator()(int pos, int k, int sb) const {
+    const int side = sb % 4, b = r.b0 + sb / 4;
+    int i, j;
+    if (!r.map(pos, side, b, i, j)) return;
+    const int ic = i < 1 ? 1 : (i > r.ibe - 1 ? r.ibe - 1 : i);
+    const int jc = j < 1 ? 1 : (j > r.jbe - 1 ? r.jbe - 1 : j);
+    switch (side) {
+      case 0: f(i, j, k) = v(i, j, k) < real(0) ? f(ic, 1, k) : real(0); break;
+      case 1: f(i, j, k) = v(i, j + 1, k) > real(0) ? f(ic, r.jbe - 1, k) : real(0); break;
+      case 2: f(i, j, k) = u(i, j, k) < real(0) ? f(1, jc, k) : real(0); break;
+      default: f(i, j, k) = u(i + 1, j, k) > real(0) ? f(r.ibe - 1, jc, k) : real(0); break;
+    }
+  }
+};
+
 struct KFinal {  // spec_bdy_final: exact boundary values at the end of the step
   V3 f3; V2 f2; bool two; C2 mu; A1 c1, c2; bool mucouple; B2 msf; bool msfcouple;
   SlabSet s; Ring r; real dtbc;
@@ -298,6 +315,11 @@ void LateralBC::spec_scalar(Field3& q_tend) const {
   parallel_for(ring_range(r, g_.nz, spec_zone_),
                KSpecTend{q_tend.view(), {}, false,
                          slabs(data_[QV], off_[QV], nk_[QV], npos(QV, XS), npos(QV, YS)), r});
+}
+
+void LateralBC::flow_dep(Field3& q, const State& s) const {
+  const Ring r = ring_for(g_, 'q', 0);
+  parallel_for(ring_range(r, g_.nz, spec_zone_), KFlowDep{q.view(), s.ru_m.cview(), s.rv_m.cview(), r});
 }
 
 void LateralBC::final(State& s, const BaseState& b) const {

@@ -92,6 +92,9 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
                                      b.phb.view(), b.alb.view(), b.pb.view(), th_phy.view(), s.h_diabatic.view(),
                                      qv_diabatic.view(), rho.view(), pii.view(), z.view(), dz8w.view(), p_phy.view()});
   namespace pc = phys::cst;
+  // microphysics_driver: with specified boundaries the spec zone is skipped (sz = spec_zone)
+  const int sx = g.bc_x == BC::Specified ? 1 : 0, sy = g.bc_y == BC::Specified ? 1 : 0;
+  const Range2D mp_cols{sx, g.nx - sx, sy, g.ny - sy};
   if (p_.mp_physics == 6) {
     phys::wsm6::Wsm6Params<real> wp;  // WRF microphysics_driver / wsm6init arguments
     wp.g = real(cst::g); wp.cpd = real(pc::cp); wp.cpv = real(4.0 * pc::r_v); wp.rd = real(pc::r_d);
@@ -100,14 +103,14 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
     wp.cliq = real(pc::cliq); wp.cice = real(pc::cice); wp.psat = real(610.78);
     wp.init(real(pc::rhoair0), real(pc::rhowater), real(pc::rhosnow), real(pc::cliq), real(4.0 * pc::r_v),
             p_.hail_opt);
-    column_for(g.columns(),
+    column_for(mp_cols,
                phys::wsm6::Wsm6Kernel<real>{wp, dt, g.nz, th_phy.view(), qv.view(), s.q_2[s.P_QC].view(),
                                             s.q_2[s.P_QR].view(), s.q_2[s.P_QI].view(), s.q_2[s.P_QS].view(),
                                             s.q_2[s.P_QG].view(), rho.cview(), pii.cview(), p_phy.cview(),
                                             dz8w.cview(), rainnc.view(), rainncv.view(), snownc.view(),
                                             snowncv.view(), graupelnc.view(), graupelncv.view(), sr.view()});
   } else
-  column_for(g.columns(),
+  column_for(mp_cols,
              phys::kessler::KesslerKernel{th_phy.view(), qv.view(), s.q_2[s.P_QC].view(), s.q_2[s.P_QR].view(),
                                           rho.cview(), pii.cview(), dz8w.cview(), z.cview(), rainnc.view(),
                                           rainncv.view(), dt, real(pc::xlv), real(pc::cp), real(pc::ep_2),

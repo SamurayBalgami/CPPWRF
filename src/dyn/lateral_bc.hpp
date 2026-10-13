@@ -46,6 +46,9 @@ class LateralBC {
   void update_ph_w(State& s, const Field3& ph_save, const Tendencies& t, const BaseState& b, real dts) const;
   void relax_scalar(Field3& q_tend, const Field3& q, const State& s, const BaseState& b) const;
   void spec_scalar(Field3& q_tend) const;
+  // flow_dep_bdy for a moist species without boundary data (have_bcs_moist = .false.): spec zone
+  // = inner neighbour at outflow, 0 at inflow, by the sign of the averaged fluxes ru_m, rv_m.
+  void flow_dep(Field3& q, const State& s) const;
   void final(State& s, const BaseState& b) const;
 
  private:

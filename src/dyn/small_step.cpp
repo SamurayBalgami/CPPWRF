@@ -265,6 +265,19 @@ struct KMuTPoint {  // sumflux of ru_m, rv_m and the theta'' update, at every ma
   }
 };
 
+// sumflux on the east (u face nx) / north (v face ny) domain faces: with specified boundaries
+// they are real faces (not halo copies of face 0), so they are accumulated explicitly.
+struct KSumEdge {
+  V3 m; C3 vel, sv; C2 mu; VCoef c; B2 msf; bool is_u; int nx, ny, iter, nsteps;
+  CPPWRF_HD void operator()(int a, int k, int) const {
+    const int i = is_u ? nx : a, j = is_u ? a : ny;
+    const bool first = iter == 1, last = iter == nsteps;
+    const real su = (first ? real(0) : m(i, j, k)) + vel(i, j, k);
+    const real cpl = (c.c1h(k) * mu(i, j) + c.c2h(k)) * sv(i, j, k);
+    m(i, j, k) = last ? su / real(nsteps) + (is_u ? cpl / msf(i, j) : cpl * msf(i, j)) : su;
+  }
+};
+
 // ------------------------------------------------------------------ advance_w + calc_p_rho
 // Split into point-parallel phases (GPU: nz times more threads than one thread per column);
 // every expression is the one of the original single column loop, so results are identical.
@@ -519,6 +532,12 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                            t_2save.view(), s.ru_m.view(), s.rv_m.view(), s.muu.cview(), s.muv.cview(),
                                            c, dts, real(b.rdx), real(b.rdy), nz, it, n_small, do_y, b.msftx.view(),
                                            b.msfty.view(), b.msfuy.view(), b.msfvx_inv.view(), ed});
+    if (ed.x)
+      parallel_for(Range3D{0, ny, 0, nz, 0, 1}, KSumEdge{s.ru_m.view(), s.u_2.cview(), u_save.cview(), s.muu.cview(), c,
+                                                       b.msfuy.view(), true, nx, ny, it, n_small});
+    if (ed.y)
+      parallel_for(Range3D{0, nx, 0, nz, 0, 1}, KSumEdge{s.rv_m.view(), s.v_2.cview(), v_save.cview(), s.muv.cview(), c,
+                                                       b.msfvx_inv.view(), false, nx, ny, it, n_small});
     if (bc_) bc_->update_mu_t(s, tend, dts);  // spec_bdyupdate t, mu, muts
     fill_halos({&s.mu_2, &mudf, &s.muts}, g);
 

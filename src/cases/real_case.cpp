@@ -135,6 +135,16 @@ void init_real_case(const io::Config& cfg, Model& m) {
   s.ph_2.fill_host([&](int i, int j, int k) { return d.ph[idx3(i, j, k, nx, ny)]; });
   s.mu_2.fill_host([&](int i, int j, int) { return d.mu[std::size_t(j) * nx + i]; });
   s.q_2[s.P_QV].fill_host([&](int i, int j, int k) { return qv[idx3(i, j, k, nx, ny)]; });
+  for (int q = 0; q < s.n_moist; ++q) {  // other moist species from wrfinput if present, else 0
+    if (q == s.P_QV) continue;
+    const std::string& nm = s.q_names[q];
+    const std::vector<double>* src = nm == "qc" ? &d.qcloud : nm == "qr" ? &d.qrain : nm == "qi" ? &d.qice
+                                     : nm == "qs" ? &d.qsnow : nm == "qg" ? &d.qgraup : nullptr;
+    const bool have = src && src->size() == qv.size();
+    s.q_2[q].fill_host([&](int i, int j, int k) { return have ? (*src)[idx3(i, j, k, nx, ny)] : 0.0; });
+    fill_halo(s.q_2[q], g);
+    s.q_1[q].copy_from(s.q_2[q]);
+  }
   // al (hypsometric_opt) and p from start_em, theta_m with qvf = 1
   const int hypso = int(cfg.get_int("dyn.hypsometric_opt", d.attrs_int.count("HYPSOMETRIC_OPT")
                                                                 ? d.attrs_int.at("HYPSOMETRIC_OPT") : 2));

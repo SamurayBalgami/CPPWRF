@@ -33,6 +33,11 @@ def main(wrfout, d, inner):
             "PH": (g("PH") + g("PHB"), sn["ph"]), "MU": (g("MU") + g("MUB"), sn["mu"][0]),
             "P": (g("P") + g("PB"), sn["p"]), "QV": (g("QVAPOR"), sn["qv"]),
         }
+        for wn, cn in (("QCLOUD", "qc"), ("QRAIN", "qr"), ("QICE", "qi"), ("QSNOW", "qs"), ("QGRAUP", "qg")):
+            if wn in ds.variables and cn in sn:
+                pairs[wn] = (g(wn), sn[cn])
+        if "RAINNC" in ds.variables and "rainnc" in sn:
+            pairs["RAINNC"] = (g("RAINNC"), sn["rainnc"][0])
         if "THM" in ds.variables and "theta_m" in sn:
             pairs["THM"] = (g("THM") + 300.0, sn["theta_m"])
         for k, (a, b) in pairs.items():

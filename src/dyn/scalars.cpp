@@ -210,6 +210,7 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
                                  q_new_.view(), dt_rk});
     }
     swap(q2, q_new_);
+    if (bc_ && moist && n != s.P_QV) bc_->flow_dep(q2, s);  // have_bcs_moist = .false.
     fill_halo(q2, g);
   }
 }
