@@ -79,13 +79,32 @@ Model Model::build(const io::Config& cfg) {
   if (std::fabs(m.nsteps * g.dt - m.run_time) > 1e-9 * std::max(1.0, m.run_time))
     throw std::runtime_error("run.run_time must be a multiple of time.dt");
 
-  m.cd = make_case(cname, cfg, g);
+  // Test options: a constant map factor (physical spacing dx / m; the case is laid out in physical
+  // distance) and an f-plane (domain.f0, domain.e0 in 1/s).
+  const double mapf = cfg.get_double("domain.map_factor", 1.0);
+  if (!(mapf > 0)) throw std::runtime_error("domain.map_factor must be > 0");
+  Grid gp = g;
+  gp.dx /= mapf;
+  gp.dy /= mapf;
+  m.cd = make_case(cname, cfg, gp);
   Sounding snd(m.cd.theta_env, m.cd.p_surf, g.ztop * 1.2 + 1000.0);
   // domain.p_top overrides the exact sounding pressure at ztop (to match a WRF run, whose ideal.exe
   // interpolates p_top linearly between input-sounding levels)
   g.p_top = cfg.get_double("domain.p_top", snd.p(g.ztop));
   m.eta = make_eta_levels(cfg, g, snd);
   m.base = std::make_unique<dyn::BaseState>(g, true);
+  if (mapf != 1.0) {
+    for (BaseField2* f : {&m.base->msftx, &m.base->msfty, &m.base->msfux, &m.base->msfuy, &m.base->msfvx,
+                          &m.base->msfvy})
+      f->fill_host_halo([=](int, int, int) { return mapf; });
+    m.base->msfvx_inv.fill_host_halo([=](int, int, int) { return 1.0 / mapf; });
+  }
+  const double f0 = cfg.get_double("domain.f0", 0.0), e0 = cfg.get_double("domain.e0", 0.0);
+  if (f0 != 0.0 || e0 != 0.0) {
+    m.base->f.fill_host_halo([=](int, int, int) { return f0; });
+    m.base->e.fill_host_halo([=](int, int, int) { return e0; });
+    m.base->coriolis = true;
+  }
   m.st = std::make_unique<dyn::State>(g);
   m.tend = std::make_unique<dyn::Tendencies>(g);
   // scalars: moist species (moist.species), then passive tracers (tracers.names)
@@ -104,7 +123,10 @@ Model Model::build(const io::Config& cfg) {
     auto qv = m.cd.qv_env ? m.cd.qv_env : std::function<double(double)>([](double) { return 0.0; });
     moist = std::make_unique<Sounding>(m.cd.theta_env, m.cd.p_surf, g.ztop * 1.2 + 1000.0, 0.5, qv);
   }
-  initialize(m.cd, snd, m.eta, g, *m.base, *m.st, moist.get());
+  gp = g;  // now with p_top
+  gp.dx /= mapf;
+  gp.dy /= mapf;
+  initialize(m.cd, snd, m.eta, gp, *m.base, *m.st, moist.get());
   for (const std::string& n : tracers) {
     int idx = 0;
     while (m.st->q_names[idx] != n) ++idx;
@@ -123,6 +145,10 @@ Model Model::build(const io::Config& cfg) {
   m.ap.epssm = real(cfg.get_double("dyn.epssm", 0.1));
   m.ap.smdiv = real(cfg.get_double("dyn.smdiv", 0.1));
   m.ap.emdiv = real(cfg.get_double("dyn.emdiv", 0.01));
+  m.ap.damp_opt = int(cfg.get_int("dyn.damp_opt", 0));
+  if (m.ap.damp_opt != 0 && m.ap.damp_opt != 3) throw std::runtime_error("dyn.damp_opt must be 0 or 3");
+  m.ap.zdamp = real(cfg.get_double("dyn.zdamp", 5000.0));
+  m.ap.dampcoef = real(cfg.get_double("dyn.dampcoef", 0.2));
   dyn::ScalarParams& sp = m.sp;
   sp.moist_adv_opt = int(cfg.get_int("dyn.moist_adv_opt", 1));
   sp.scalar_adv_opt = int(cfg.get_int("dyn.scalar_adv_opt", 1));

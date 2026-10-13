@@ -13,7 +13,7 @@ namespace cppwrf::dyn {
 class SmallStepHolder {
  public:
   SmallStepHolder(const Grid& g, const AcousticParams& a)
-      : ss(g, SmallStepParams{a.epssm, a.smdiv, a.emdiv}) {}
+      : ss(g, SmallStepParams{a.epssm, a.smdiv, a.emdiv, true, a.damp_opt, a.zdamp, a.dampcoef}) {}
   SmallStep ss;
 };
 bool RK3::small_step_available() { return true; }

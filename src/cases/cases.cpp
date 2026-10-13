@@ -96,7 +96,9 @@ CaseDef make_case(const std::string& name, const io::Config& cfg, const Grid& G)
     // Stably stratified atmosphere at rest: constant N.
     double th0 = cfg.get_double("case.theta0", 300.0), N = cfg.get_double("case.n_bv", 0.01);
     c.theta_env = [=](double z) { return th0 * std::exp(N * N * z / g); };
-    c.params = {{"theta0", th0}, {"n_bv", N}};
+    const double u0 = cfg.get_double("case.u0", 0.0);  // uniform wind (inertial-oscillation test)
+    c.u_env = [=](double) { return u0; };
+    c.params = {{"theta0", th0}, {"n_bv", N}, {"u0", u0}};
   } else if (name == "straka") {
     // Straka et al. (1993): neutral 300 K, cold bubble dT = -15 K (temperature perturbation).
     double xc = cfg.get_double("case.xc", xcenter(G)), zc = cfg.get_double("case.zc", 3000.0);

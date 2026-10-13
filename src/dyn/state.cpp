@@ -45,12 +45,22 @@ int State::add_scalar(const Grid& g, const std::string& name, bool moist) {
 
 void Tendencies::add_scalar(const Grid& g, const std::string& name) { q_tendf.emplace_back(g, S::M, name + "_tendf"); }
 
-BaseState::BaseState(const Grid& g, bool flat_)
-    : flat(flat_), mub(g, S::M, "mub", flat_), pb(g, S::M, "pb", flat_), alb(g, S::M, "alb", flat_),
-      t_init(g, S::M, "t_init", flat_), qv_base(g, S::M, "qv_base", flat_), phb(g, S::W, "phb", flat_), p_top(g.p_top),
+BaseState::BaseState(const Grid& g, bool flat_, bool mapped_)
+    : flat(flat_), mapped(mapped_), mub(g, S::M, "mub", flat_), pb(g, S::M, "pb", flat_), alb(g, S::M, "alb", flat_),
+      t_init(g, S::M, "t_init", flat_), qv_base(g, S::M, "qv_base", flat_), phb(g, S::W, "phb", flat_),
+      ht(g, S::M, "ht", flat_), msftx(g, S::M, "msftx", !mapped_), msfty(g, S::M, "msfty", !mapped_),
+      msfux(g, S::U, "msfux", !mapped_), msfuy(g, S::U, "msfuy", !mapped_), msfvx(g, S::V, "msfvx", !mapped_),
+      msfvy(g, S::V, "msfvy", !mapped_), msfvx_inv(g, S::V, "msfvx_inv", !mapped_), f(g, S::M, "f", !mapped_),
+      e(g, S::M, "e", !mapped_), sina(g, S::M, "sina", !mapped_), cosa(g, S::M, "cosa", !mapped_), p_top(g.p_top),
       znu(g.nz), znw(g.nz + 1), dnw(g.nz), dn(g.nz + 1), rdnw(g.nz), rdn(g.nz + 1), fnm(g.nz + 1),
       fnp(g.nz + 1), c1h(g.nz), c2h(g.nz), c3h(g.nz), c4h(g.nz), c1f(g.nz + 1), c2f(g.nz + 1),
-      c3f(g.nz + 1), c4f(g.nz + 1), rdx(1.0 / g.dx), rdy(g.two_d() ? 0.0 : 1.0 / g.dy) {}
+      c3f(g.nz + 1), c4f(g.nz + 1), rdx(1.0 / g.dx), rdy(g.two_d() ? 0.0 : 1.0 / g.dy) {
+  // defaults: no projection, no rotation, no Coriolis, flat (cases / real init overwrite them)
+  auto one = [](int, int, int) { return 1.0; };
+  auto zero = [](int, int, int) { return 0.0; };
+  for (BaseField2* m : {&msftx, &msfty, &msfux, &msfuy, &msfvx, &msfvy, &msfvx_inv, &cosa}) m->fill_host_halo(one);
+  for (BaseField2* z : {&f, &e, &sina, &ht}) z->fill_host_halo(zero);
+}
 
 // WRF module_initialize_ideal.F (level setup), hybrid_opt = 0. Fortran k -> C++ k-1.
 void BaseState::set_levels(const std::vector<double>& e) {

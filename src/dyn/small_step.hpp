@@ -18,6 +18,8 @@ namespace cppwrf::dyn {
 struct SmallStepParams {
   real epssm = 0.1, smdiv = 0.1, emdiv = 0.01;
   bool top_lid = true;  // rigid lid (WRF top_lid): w = 0 and phi'' fixed at the model top
+  int damp_opt = 0;     // 3: w Rayleigh damping (advance_w), zdamp m deep, dampcoef 1/s
+  real zdamp = 5000, dampcoef = 0.2;
 };
 
 class SmallStep {

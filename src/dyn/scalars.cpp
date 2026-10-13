@@ -24,6 +24,7 @@ constexpr real H = real(0.5);
 struct Fluxes {
   C3 q, qo, ru, rv, ww; C2 mut; VCoef c;
   real rdx, rdy, dt, hup, vup; int nz; bool do_y;
+  B2 msftx, msfty;
   CPPWRF_HD real fx(int i, int j, int k) const {  // west face of cell i
     const real vel = ru(i, j, k);
     return vel * kern::flux5(q(i - 3, j, k), q(i - 2, j, k), q(i - 1, j, k), q(i, j, k), q(i + 1, j, k), q(i + 2, j, k), vel, hup);
@@ -40,12 +41,14 @@ struct Fluxes {
   }
   CPPWRF_HD real mh(int i, int j, int k) const { return c.c1h(k) * mut(i, j) + c.c2h(k); }
   CPPWRF_HD real fxl(int i, int j, int k) const {
-    const real dx = real(1) / rdx, mu = H * (mh(i, j, k) + mh(i - 1, j, k)), vel = ru(i, j, k);
+    const real dx = real(2) / (msfty(i, j) + msfty(i - 1, j)) / rdx, mu = H * (mh(i, j, k) + mh(i - 1, j, k)),
+               vel = ru(i, j, k);
     const real cr = vel * dt / dx / mu;
     return mu * (dx / dt) * kern::flux_upwind(qo(i - 1, j, k), qo(i, j, k), cr);
   }
   CPPWRF_HD real fyl(int i, int j, int k) const {
-    const real dy = real(1) / rdy, mu = H * (mh(i, j, k) + mh(i, j - 1, k)), vel = rv(i, j, k);
+    const real dy = real(2) / (msftx(i, j) + msftx(i, j - 1)) / rdy, mu = H * (mh(i, j, k) + mh(i, j - 1, k)),
+               vel = rv(i, j, k);
     const real cr = vel * dt / dy / mu;
     return mu * (dy / dt) * kern::flux_upwind(qo(i, j - 1, k), qo(i, j, k), cr);
   }
@@ -55,9 +58,9 @@ struct Fluxes {
     const real cr = vel * dt / dz / mu;
     return mu * (dz / dt) * kern::flux_upwind(qo(i, j, k - 1), qo(i, j, k), cr);
   }
-  CPPWRF_HD real adv(int i, int j, int k) const {
-    real r = -rdx * (fx(i + 1, j, k) - fx(i, j, k));
-    if (do_y) r -= rdy * (fy(i, j + 1, k) - fy(i, j, k));
+  CPPWRF_HD real adv(int i, int j, int k) const {  // advect_scalar: horizontal terms times msftx
+    real r = -(msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
+    if (do_y) r -= (msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
     return r - c.rdnw(k) * (fz(i, j, k + 1) - fz(i, j, k));
   }
 };
@@ -68,7 +71,7 @@ CPPWRF_HD inline real m_full(const VCoef& c, int k, real mub, real mu) { return 
 struct KUpdate {
   Fluxes f; C3 q1, tendf; C2 mu1, mu2; B2 mub; V3 qn; real dt_rk; bool add_tendf;
   CPPWRF_HD void operator()(int i, int j, int k) const {
-    real tend = f.adv(i, j, k);
+    real tend = f.adv(i, j, k) * f.msfty(i, j);  // rk_update_scalar: advect_tend * msfty + sc_tend
     if (add_tendf) tend += tendf(i, j, k);
     qn(i, j, k) = (m_full(f.c, k, mub(i, j), mu1(i, j)) * q1(i, j, k) + dt_rk * tend) /
                   m_full(f.c, k, mub(i, j), mu2(i, j));
@@ -89,18 +92,19 @@ struct KScalePD {
   Fluxes f; C2 mu_old; B2 mub; V3 scale;
   CPPWRF_HD void operator()(int i, int j, int k) const {
     const VCoef& c = f.c;
-    real lowdiv = f.rdx * (f.fxl(i + 1, j, k) - f.fxl(i, j, k));
-    if (f.do_y) lowdiv += f.rdy * (f.fyl(i, j + 1, k) - f.fyl(i, j, k));
-    lowdiv += c.rdnw(k) * (f.fzl(i, j, k + 1) - f.fzl(i, j, k));
-    const real ph_low = ((c.c1h(k) * mub(i, j) + c.c2h(k)) + c.c1h(k) * mu_old(i, j)) * f.qo(i, j, k) - f.dt * lowdiv;
+    const real mxy = f.msftx(i, j) * f.msfty(i, j);
+    real hlow = f.rdx * (f.fxl(i + 1, j, k) - f.fxl(i, j, k));
+    if (f.do_y) hlow += f.rdy * (f.fyl(i, j + 1, k) - f.fyl(i, j, k));
+    const real ph_low = ((c.c1h(k) * mub(i, j) + c.c2h(k)) + c.c1h(k) * mu_old(i, j)) * f.qo(i, j, k) -
+                        f.dt * (mxy * hlow + f.msfty(i, j) * c.rdnw(k) * (f.fzl(i, j, k + 1) - f.fzl(i, j, k)));
     const real fxp = f.fx(i + 1, j, k) - f.fxl(i + 1, j, k), fxm = f.fx(i, j, k) - f.fxl(i, j, k);
-    real out = f.rdx * ((fxp > 0 ? fxp : real(0)) - (fxm < 0 ? fxm : real(0)));
+    real hout = f.rdx * ((fxp > 0 ? fxp : real(0)) - (fxm < 0 ? fxm : real(0)));
     if (f.do_y) {
       const real fyp = f.fy(i, j + 1, k) - f.fyl(i, j + 1, k), fym = f.fy(i, j, k) - f.fyl(i, j, k);
-      out += f.rdy * ((fyp > 0 ? fyp : real(0)) - (fym < 0 ? fym : real(0)));
+      hout += f.rdy * ((fyp > 0 ? fyp : real(0)) - (fym < 0 ? fym : real(0)));
     }
     const real fzp = f.fz(i, j, k + 1) - f.fzl(i, j, k + 1), fzm = f.fz(i, j, k) - f.fzl(i, j, k);
-    out += c.rdnw(k) * ((fzp < 0 ? fzp : real(0)) - (fzm > 0 ? fzm : real(0)));
+    const real out = mxy * hout + f.msfty(i, j) * c.rdnw(k) * ((fzp < 0 ? fzp : real(0)) - (fzm > 0 ? fzm : real(0)));
     const real flux_out = f.dt * out;
     real s = 1;
     if (flux_out > ph_low) {
@@ -115,24 +119,24 @@ struct KScalePD {
 struct KUpdatePD {
   Fluxes f; C3 scale, q1; C2 mu1, mu2; B2 mub; V3 qn; real dt_rk;
   // limited high-minus-low flux on the west face of (i,j,k): scaled by the upwind (outflow) cell
-  CPPWRF_HD real gx(int i, int j, int k) const {
+  CPPWRF_HD real dx(int i, int j, int k) const {
     const real d = f.fx(i, j, k) - f.fxl(i, j, k);
-    return d * (d > 0 ? scale(i - 1, j, k) : (d < 0 ? scale(i, j, k) : real(1))) + f.fxl(i, j, k);
+    return d * (d > 0 ? scale(i - 1, j, k) : (d < 0 ? scale(i, j, k) : real(1)));
   }
-  CPPWRF_HD real gy(int i, int j, int k) const {
+  CPPWRF_HD real dy(int i, int j, int k) const {
     const real d = f.fy(i, j, k) - f.fyl(i, j, k);
-    return d * (d > 0 ? scale(i, j - 1, k) : (d < 0 ? scale(i, j, k) : real(1))) + f.fyl(i, j, k);
+    return d * (d > 0 ? scale(i, j - 1, k) : (d < 0 ? scale(i, j, k) : real(1)));
   }
-  CPPWRF_HD real gz(int i, int j, int k) const {  // eta decreases upward: fz > 0 leaves cell k
+  CPPWRF_HD real dz(int i, int j, int k) const {  // eta decreases upward: fz > 0 leaves cell k
     if (k == 0 || k == f.nz) return 0;
     const real d = f.fz(i, j, k) - f.fzl(i, j, k);
-    return d * (d > 0 ? scale(i, j, k) : (d < 0 ? scale(i, j, k - 1) : real(1))) + f.fzl(i, j, k);
+    return d * (d > 0 ? scale(i, j, k) : (d < 0 ? scale(i, j, k - 1) : real(1)));
   }
-  CPPWRF_HD void operator()(int i, int j, int k) const {
-    real tend = -f.c.rdnw(k) * (gz(i, j, k + 1) - gz(i, j, k));
-    tend -= f.rdx * (gx(i + 1, j, k) - gx(i, j, k));
-    if (f.do_y) tend -= f.rdy * (gy(i, j + 1, k) - gy(i, j, k));
-    qn(i, j, k) = (m_full(f.c, k, mub(i, j), mu1(i, j)) * q1(i, j, k) + dt_rk * tend) /
+  CPPWRF_HD void operator()(int i, int j, int k) const {  // WRF advect_scalar_pd final tendency
+    real tend = -f.c.rdnw(k) * (dz(i, j, k + 1) - dz(i, j, k) + f.fzl(i, j, k + 1) - f.fzl(i, j, k));
+    tend -= f.msftx(i, j) * (f.rdx * (dx(i + 1, j, k) - dx(i, j, k) + f.fxl(i + 1, j, k) - f.fxl(i, j, k)));
+    if (f.do_y) tend -= f.msftx(i, j) * (f.rdy * (dy(i, j + 1, k) - dy(i, j, k) + f.fyl(i, j + 1, k) - f.fyl(i, j, k)));
+    qn(i, j, k) = (m_full(f.c, k, mub(i, j), mu1(i, j)) * q1(i, j, k) + dt_rk * (tend * f.msfty(i, j))) /
                   m_full(f.c, k, mub(i, j), mu2(i, j));
   }
 };
@@ -157,6 +161,7 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
   const bool do_y = !g.two_d();
   const real hup = p_.h_adv_order == 5 ? real(1) : real(0), vup = p_.v_adv_order == 3 ? real(1) : real(0);
   const bool diff = p_.khdif > 0 || p_.kvdif > 0;
+  if (b.mapped && diff) throw std::runtime_error("scalar diffusion with map factors is not implemented yet");
   for (int n = 0; n < ns; ++n) {
     Field3 &q1 = s.q_1[n], &q2 = s.q_2[n], &tf = t.q_tendf[n];
     const bool moist = n < s.n_moist;
@@ -172,7 +177,7 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
       }
     }
     Fluxes fl{q2.cview(), q1.cview(), s.ru_m.cview(), s.rv_m.cview(), s.ww_m.cview(), s.muts.cview(), c,
-              real(b.rdx), real(b.rdy), dt_rk, hup, vup, g.nz, do_y};
+              real(b.rdx), real(b.rdy), dt_rk, hup, vup, g.nz, do_y, b.msftx.view(), b.msfty.view()};
     if (!pd) {
       parallel_for(mr, KUpdate{fl, q1.cview(), tf.cview(), s.mu_1.cview(), s.mu_2.cview(), b.mub.view(),
                                q_new_.view(), dt_rk, true});

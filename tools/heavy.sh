@@ -12,6 +12,13 @@ NSLOTS=3
 mkdir -p "$LOCKDIR"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}" OMP_WAIT_POLICY="${OMP_WAIT_POLICY:-passive}"
 [ $# -ge 1 ] || { echo "usage: tools/heavy.sh [--exclusive] <command...>" >&2; exit 2; }
+# Nested call (a script run under heavy.sh that calls heavy.sh again): the outer call already
+# holds a slot, so run directly. Waiting here would deadlock against a queued --exclusive job.
+if [ -n "${CPPWRF_IN_SLOT:-}" ]; then
+  [ "$1" = "--exclusive" ] && shift
+  exec "$@"
+fi
+export CPPWRF_IN_SLOT=1
 
 if [ "$1" = "--exclusive" ]; then
   shift

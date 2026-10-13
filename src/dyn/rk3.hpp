@@ -14,7 +14,11 @@
 
 namespace cppwrf::dyn {
 
-struct AcousticParams { real epssm = 0.1, smdiv = 0.1, emdiv = 0.01; };
+struct AcousticParams {
+  real epssm = 0.1, smdiv = 0.1, emdiv = 0.01;
+  int damp_opt = 0;                     // 3: implicit Rayleigh damping of w in the top layer (WRF)
+  real zdamp = 5000, dampcoef = 0.2;    // depth of the damping layer (m), coefficient (1/s)
+};
 
 class SmallStepHolder;  // wraps SmallStep (src/dyn/small_step.hpp) when present
 

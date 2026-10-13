@@ -136,6 +136,17 @@ template <int R> class BaseFieldT {
         for (int i = 0; i < ni; ++i) h[L_.index(i, j, k)] = real(f(i, j, k));
     copy_to_dev(buf_.get(), h.data(), L_.total * sizeof(real));
   }
+  // As fill_host, but a non-uniform field is also filled in its lateral halo:
+  // i = -halo..nx+halo-1 (and j likewise when ny > 1); f must accept those indices.
+  template <class F> void fill_host_halo(F f) {
+    if (uniform_) { fill_host(f); return; }
+    std::vector<real> h(L_.total, real(0));
+    const int hx = Grid::halo, hy = L_.hy;
+    for (int k = 0; k < L_.nz; ++k)
+      for (int j = -hy; j < L_.ny + hy; ++j)
+        for (int i = -hx; i < L_.nx + hx; ++i) h[L_.index(i, j, k)] = real(f(i, j, k));
+    copy_to_dev(buf_.get(), h.data(), L_.total * sizeof(real));
+  }
   void download(std::vector<real>& h) const {
     h.resize(L_.total);
     copy_to_host(h.data(), buf_.get(), L_.total * sizeof(real));

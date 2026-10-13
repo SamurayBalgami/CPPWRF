@@ -16,8 +16,8 @@
 // (u, v, w [m/s], t = theta - t0 [K], ph = phi' [m2/s2], mu = mu_d' [Pa]);
 // *_1 hold the time-t values (the RK3 driver copies *_2 -> *_1 at the start of each step).
 // Tendencies are mass-coupled, as in WRF.
-// Map factors: idealized cases use m = 1 everywhere. When map factors are added, they go
-// into BaseState (msfux, msfuy, msfvx, msfvy, msftx, msfty) -- nowhere else.
+// Map factors (WRF msftx, msfty, msfux, msfuy, msfvx, msfvy, msfvx_inv) and Coriolis f, e,
+// sina, cosa live in BaseState; idealized cases store them as uniform (m = 1, f = e = 0).
 #include <string>
 #include <vector>
 
@@ -76,12 +76,21 @@ struct Tendencies {
 };
 
 struct BaseState {
-  BaseState(const Grid& g, bool flat);
+  // flat: horizontally uniform base state (1D storage). mapped: map factors / Coriolis vary in
+  // the horizontal (real-data projection); otherwise m = 1, f = e = 0, sina = 0, cosa = 1.
+  BaseState(const Grid& g, bool flat, bool mapped = false);
   bool flat = true;  // horizontally uniform base state -> 1D storage
+  bool mapped = false;
   BaseField2 mub;                // M, base dry column mass (p_surf_base - p_top)
   BaseField3 pb, alb, t_init;    // M: base pressure, base inverse density, initial theta - t0
   BaseField3 qv_base;            // M: base-state vapour profile (WRF qv_base; 0 if dry)
   BaseField3 phb;                // W: base geopotential (incl. terrain)
+  BaseField2 ht;                 // M: terrain height (m); lower boundary w = u . grad(ht)
+  // WRF map factors (x/y components) at mass (t), U and V points, and msfvx_inv = 1/msfvx
+  BaseField2 msftx, msfty, msfux, msfuy, msfvx, msfvy, msfvx_inv;
+  // Coriolis: f = 2 Omega sin(lat), e = 2 Omega cos(lat); grid rotation sina, cosa (M points)
+  BaseField2 f, e, sina, cosa;
+  bool coriolis = false;  // f or e nonzero somewhere (set by whoever fills f, e)
   double t0 = 300.0;
   double p_top = 0.0;
   Array1 znu, znw, dnw, dn, rdnw, rdn, fnm, fnp;

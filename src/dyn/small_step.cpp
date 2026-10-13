@@ -39,6 +39,7 @@ struct KPrep {
   C2 mu1, mut, muu, muv;
   B2 mub; B3 pb; VCoef c;
   int nx, ny, nyv, nz;
+  B2 msfuy, msfvx_inv, msfty;
   CPPWRF_HD void operator()(int i, int j, int k) const {
     const real mts = mub(i, j) + mu1(i, j);
     const real mus_u = H * (mts + mub(i - 1, j) + mu1(i - 1, j));
@@ -51,12 +52,12 @@ struct KPrep {
     if (j < ny && k < nz) {
       const real ui = u(i, j, k);
       us(i, j, k) = ui;
-      u(i, j, k) = (c.c1h(k) * mus_u + c.c2h(k)) * u1(i, j, k) - (c.c1h(k) * muu(i, j) + c.c2h(k)) * ui;
+      u(i, j, k) = ((c.c1h(k) * mus_u + c.c2h(k)) * u1(i, j, k) - (c.c1h(k) * muu(i, j) + c.c2h(k)) * ui) / msfuy(i, j);
     }
     if (i < nx && j < nyv && k < nz) {
       const real vi = v(i, j, k);
       vs(i, j, k) = vi;
-      v(i, j, k) = (c.c1h(k) * mus_v + c.c2h(k)) * v1(i, j, k) - (c.c1h(k) * muv(i, j) + c.c2h(k)) * vi;
+      v(i, j, k) = ((c.c1h(k) * mus_v + c.c2h(k)) * v1(i, j, k) - (c.c1h(k) * muv(i, j) + c.c2h(k)) * vi) * msfvx_inv(i, j);
     }
     if (i < nx && j < ny) {
       if (k < nz) {
@@ -67,7 +68,7 @@ struct KPrep {
       }
       const real wi = w(i, j, k), phi = ph(i, j, k);
       ws(i, j, k) = wi;
-      w(i, j, k) = (c.c1f(k) * mts + c.c2f(k)) * w1(i, j, k) - (c.c1f(k) * mut(i, j) + c.c2f(k)) * wi;
+      w(i, j, k) = ((c.c1f(k) * mts + c.c2f(k)) * w1(i, j, k) - (c.c1f(k) * mut(i, j) + c.c2f(k)) * wi) / msfty(i, j);
       phs(i, j, k) = phi;
       ph(i, j, k) = ph1(i, j, k) - phi;
       ww1(i, j, k) = (k == 0 || k == nz) ? real(0) : ww(i, j, k);
@@ -133,6 +134,7 @@ struct KCoefW {
 struct KUV {
   V3 u, v; C3 ru_tend, rv_tend, p, al, alt, ph, php; C2 mu, muu, muv, mudf; B3 pb; VCoef c; kern::MoistCoef mc;
   real dts, rdx, rdy, emdx, emdy; int nz, ui0, ui1, vj0, vj1; bool do_y, top_lid;
+  B2 msfux, msfuy, msfvx, msfvy, msfvx_inv;
   template <int DI, int DJ> CPPWRF_HD real ps(int i, int j, int k) const { return p(i, j, k) + p(i - DI, j - DJ, k); }
   template <int DI, int DJ> CPPWRF_HD real dpn(int i, int j, int k) const {
     if (k == 0) return H * (c.cf1 * ps<DI, DJ>(i, j, 0) + c.cf2 * ps<DI, DJ>(i, j, 1) + c.cf3 * ps<DI, DJ>(i, j, 2));
@@ -142,24 +144,26 @@ struct KUV {
                      : real(0);
     return H * (c.fnm(k) * ps<DI, DJ>(i, j, k) + c.fnp(k) * ps<DI, DJ>(i, j, k - 1));
   }
-  template <int DI, int DJ> CPPWRF_HD real dp(int i, int j, int k, real mface, real rd) const {
-    real d = H * rd * (c.c1h(k) * mface + c.c2h(k)) *
+  template <int DI, int DJ> CPPWRF_HD real dp(int i, int j, int k, real mface, real rd, real rm) const {
+    real d = rm * H * rd * (c.c1h(k) * mface + c.c2h(k)) *
              ((ph(i, j, k + 1) - ph(i - DI, j - DJ, k + 1) + ph(i, j, k) - ph(i - DI, j - DJ, k)) +
               (alt(i, j, k) + alt(i - DI, j - DJ, k)) * (p(i, j, k) - p(i - DI, j - DJ, k)) +
               (al(i, j, k) + al(i - DI, j - DJ, k)) * (pb(i, j, k) - pb(i - DI, j - DJ, k)));
-    d += rd * (php(i, j, k) - php(i - DI, j - DJ, k)) *
+    d += rm * rd * (php(i, j, k) - php(i - DI, j - DJ, k)) *
          (c.rdnw(k) * (dpn<DI, DJ>(i, j, k + 1) - dpn<DI, DJ>(i, j, k)) -
           H * (c.c1h(k) * mu(i - DI, j - DJ) + c.c1h(k) * mu(i, j)));
     return d;
   }
   CPPWRF_HD void operator()(int i, int j, int k) const {
     if (i >= ui0 && i < ui1) {
-      const real mudf_x = -emdx * (mudf(i, j) - mudf(i - 1, j));
-      u(i, j, k) = u(i, j, k) + dts * ru_tend(i, j, k) - dts * mc.cqu(i, j, k) * dp<1, 0>(i, j, k, muu(i, j), rdx) + c.c1h(k) * mudf_x;
+      const real mudf_x = -emdx * (mudf(i, j) - mudf(i - 1, j)) / msfuy(i, j);
+      u(i, j, k) = u(i, j, k) + dts * ru_tend(i, j, k) -
+                   dts * mc.cqu(i, j, k) * dp<1, 0>(i, j, k, muu(i, j), rdx, msfux(i, j) / msfuy(i, j)) + c.c1h(k) * mudf_x;
     }
     if (do_y && j >= vj0 && j < vj1) {
-      const real mudf_y = -emdy * (mudf(i, j) - mudf(i, j - 1));
-      v(i, j, k) = v(i, j, k) + dts * rv_tend(i, j, k) - dts * mc.cqv(i, j, k) * dp<0, 1>(i, j, k, muv(i, j), rdy) + c.c1h(k) * mudf_y;
+      const real mudf_y = -emdy * (mudf(i, j) - mudf(i, j - 1)) * msfvx_inv(i, j);
+      v(i, j, k) = v(i, j, k) + dts * rv_tend(i, j, k) -
+                   dts * mc.cqv(i, j, k) * dp<0, 1>(i, j, k, muv(i, j), rdy, msfvy(i, j) / msfvx(i, j)) + c.c1h(k) * mudf_y;
     }
   }
 };
@@ -169,14 +173,15 @@ struct KMuT {
   C3 u, v, us, vs, ts, t_tend, ww1; V3 t, t_ave, ww, ru_m, rv_m, ww_m;
   V2 mu, mudf, muts, muave; C2 mut, muu, muv, mu_tend; VCoef c;
   real dts, rdx, rdy, epssm; int nz, iter, nsteps; bool do_y;
+  B2 msftx, msfty, msfuy, msfvx_inv;
   CPPWRF_HD real dvdxi(int i, int j, int k) const {
-    const real fx = (u(i + 1, j, k) + (c.c1h(k) * muu(i + 1, j) + c.c2h(k)) * us(i + 1, j, k)) -
-                    (u(i, j, k) + (c.c1h(k) * muu(i, j) + c.c2h(k)) * us(i, j, k));
+    const real fx = (u(i + 1, j, k) + (c.c1h(k) * muu(i + 1, j) + c.c2h(k)) * us(i + 1, j, k) / msfuy(i + 1, j)) -
+                    (u(i, j, k) + (c.c1h(k) * muu(i, j) + c.c2h(k)) * us(i, j, k) / msfuy(i, j));
     real d = rdx * fx;
     if (do_y)
-      d += rdy * ((v(i, j + 1, k) + (c.c1h(k) * muv(i, j + 1) + c.c2h(k)) * vs(i, j + 1, k)) -
-                  (v(i, j, k) + (c.c1h(k) * muv(i, j) + c.c2h(k)) * vs(i, j, k)));
-    return d;
+      d += rdy * ((v(i, j + 1, k) + (c.c1h(k) * muv(i, j + 1) + c.c2h(k)) * vs(i, j + 1, k) * msfvx_inv(i, j + 1)) -
+                  (v(i, j, k) + (c.c1h(k) * muv(i, j) + c.c2h(k)) * vs(i, j, k) * msfvx_inv(i, j)));
+    return msftx(i, j) * msfty(i, j) * d;
   }
   CPPWRF_HD void operator()(int i, int j) const {
     real dmdt = 0;
@@ -190,14 +195,14 @@ struct KMuT {
     muave(i, j) = H * ((real(1) + epssm) * mu_new + (real(1) - epssm) * mu_old);
 
     const bool first = iter == 1, last = iter == nsteps;
-    const real rn = real(1) / real(nsteps);
+    const real rn = real(nsteps);  // WRF sumflux divides by number_of_small_timesteps
     // sumflux for the west/south faces of this column (face nx / ny comes from the halo fill)
     for (int k = 0; k < nz; ++k) {
       const real su = (first ? real(0) : ru_m(i, j, k)) + u(i, j, k);
-      ru_m(i, j, k) = last ? su * rn + (c.c1h(k) * muu(i, j) + c.c2h(k)) * us(i, j, k) : su;
+      ru_m(i, j, k) = last ? su / rn + (c.c1h(k) * muu(i, j) + c.c2h(k)) * us(i, j, k) / msfuy(i, j) : su;
       if (do_y) {
         const real sv = (first ? real(0) : rv_m(i, j, k)) + v(i, j, k);
-        rv_m(i, j, k) = last ? sv * rn + (c.c1h(k) * muv(i, j) + c.c2h(k)) * vs(i, j, k) : sv;
+        rv_m(i, j, k) = last ? sv / rn + (c.c1h(k) * muv(i, j) + c.c2h(k)) * vs(i, j, k) * msfvx_inv(i, j) : sv;
       }
     }
     // omega'' and theta'' marching upward; ww_full is the running integral (full flux)
@@ -205,14 +210,14 @@ struct KMuT {
     real wdtn_lo = 0;
     auto acc_ww = [&](int k, real wpp) {
       const real sw = (first ? real(0) : ww_m(i, j, k)) + wpp;
-      ww_m(i, j, k) = last ? sw * rn + ww1(i, j, k) : sw;
+      ww_m(i, j, k) = last ? sw / rn + ww1(i, j, k) : sw;
     };
     ww(i, j, 0) = 0;
     acc_ww(0, real(0));
     for (int k = 0; k < nz; ++k) {
       real wpp_hi = 0, wdtn_hi = 0;
       if (k + 1 < nz) {
-        ww_full = ww_full - c.dnw(k) * (c.c1h(k) * dmdt + dvdxi(i, j, k) + c.c1h(k) * mtend);
+        ww_full = ww_full - c.dnw(k) * (c.c1h(k) * dmdt + dvdxi(i, j, k) + c.c1h(k) * mtend) / msfty(i, j);
         wpp_hi = ww_full - ww1(i, j, k + 1);
         ww(i, j, k + 1) = wpp_hi;
         wdtn_hi = wpp_hi * (c.fnm(k + 1) * ts(i, j, k + 1) + c.fnp(k + 1) * ts(i, j, k));
@@ -227,7 +232,8 @@ struct KMuT {
       if (do_y)
         hflux += H * rdy *
                  (v(i, j + 1, k) * (ts(i, j + 1, k) + ts(i, j, k)) - v(i, j, k) * (ts(i, j, k) + ts(i, j - 1, k)));
-      t(i, j, k) = tk + dts * t_tend(i, j, k) - dts * (hflux + c.rdnw(k) * (wdtn_hi - wdtn_lo));
+      const real tn = tk + msfty(i, j) * dts * t_tend(i, j, k);
+      t(i, j, k) = tn - dts * msfty(i, j) * (msftx(i, j) * hflux + c.rdnw(k) * (wdtn_hi - wdtn_lo));
       wdtn_lo = wdtn_hi;
     }
   }
@@ -239,6 +245,8 @@ struct KW {
   C3 rw_tend, ph_tend, ww, phs, t, t_ave, ts, c2a, alt, a, alpha, gamma;
   C2 mu, mut, muts, muave; B3 phb; VCoef c; kern::MoistCoef mc;
   real dts, epssm, smdiv; int nz; bool top_lid;
+  C3 us2, vs2; B2 ht, msftx, msfty; real rdx, rdy; bool terrain, do_y;  // lower boundary w = u.grad(ht)
+  C3 ws; real dampmag, hdepth;  // damp_opt = 3 (dampmag = dts*dampcoef; 0 = off)
   CPPWRF_HD real mh(int k, real m) const { return c.c1h(k) * m + c.c2h(k); }
   CPPWRF_HD real mf(int k, real m) const { return c.c1f(k) * m + c.c2f(k); }
   // t_2ave of WRF advance_w (time-averaged, normalised theta'')
@@ -257,7 +265,7 @@ struct KW {
     if (top_lid && k == nz) return 0;
     real r = dts * (ph_tend(i, j, k) + H * Gr * (real(1) - epssm) * w_old);
     if (k < nz) r -= dts * (c.fnm(k) * wdwn(i, j, k + 1) + c.fnp(k) * wdwn(i, j, k));
-    return ph_old + r / mf(k, mut(i, j));
+    return ph_old + msfty(i, j) * r / mf(k, mut(i, j));
   }
   CPPWRF_HD void operator()(int i, int j) const {
     const real m = mut(i, j), mts = muts(i, j), mav = muave(i, j);
@@ -265,16 +273,30 @@ struct KW {
     // phase 1: explicit w'' (stored in w) and rhs (stored in ph); rolling old values
     real ph_km1 = ph(i, j, 0), ph_k = ph(i, j, 1);
     real r_km1 = 0, r_k = rhs(i, j, 1, w(i, j, 1), ph_k);
-    w(i, j, 0) = 0;  // flat terrain
+    if (terrain) {  // WRF advance_w: w''(surface) from the small-step u'', v'' and the terrain slope
+      real ws = msftx(i, j) * H * rdx *
+                ((ht(i + 1, j) - ht(i, j)) * (c.cf1 * us2(i + 1, j, 0) + c.cf2 * us2(i + 1, j, 1) + c.cf3 * us2(i + 1, j, 2)) +
+                 (ht(i, j) - ht(i - 1, j)) * (c.cf1 * us2(i, j, 0) + c.cf2 * us2(i, j, 1) + c.cf3 * us2(i, j, 2)));
+      if (do_y)
+        ws = msfty(i, j) * H * rdy *
+                 ((ht(i, j + 1) - ht(i, j)) * (c.cf1 * vs2(i, j + 1, 0) + c.cf2 * vs2(i, j + 1, 1) + c.cf3 * vs2(i, j + 1, 2)) +
+                  (ht(i, j) - ht(i, j - 1)) * (c.cf1 * vs2(i, j, 0) + c.cf2 * vs2(i, j, 1) + c.cf3 * vs2(i, j, 2))) +
+             ws;
+      w(i, j, 0) = ws;
+    } else {
+      w(i, j, 0) = 0;
+    }
+    const real msft_inv = real(1) / msfty(i, j);
     for (int k = 1; k <= nz; ++k) {
       if (k < nz) {
         const real ph_kp1 = ph(i, j, k + 1);
         const real r_kp1 = rhs(i, j, k + 1, w(i, j, k + 1), ph_kp1);
         real wn = w(i, j, k) + dts * rw_tend(i, j, k) +
-                  mc.cq1(i, j, k) * H * dts * Gr * c.rdn(k) *
-                      (c2a(i, j, k) * c.rdnw(k) / mh(k, m) * (ope * (r_kp1 - r_k) + ome * (ph_kp1 - ph_k)) -
-                       c2a(i, j, k - 1) * c.rdnw(k - 1) / mh(k - 1, m) * (ope * (r_k - r_km1) + ome * (ph_k - ph_km1))) +
-                  dts * Gr *
+                  msft_inv * mc.cq1(i, j, k) *
+                      (H * dts * Gr * c.rdn(k) *
+                       (c2a(i, j, k) * c.rdnw(k) / mh(k, m) * (ope * (r_kp1 - r_k) + ome * (ph_kp1 - ph_k)) -
+                        c2a(i, j, k - 1) * c.rdnw(k - 1) / mh(k - 1, m) * (ope * (r_k - r_km1) + ome * (ph_k - ph_km1)))) +
+                  dts * Gr * msft_inv *
                       (c.rdn(k) * (c2a(i, j, k) * alt(i, j, k) * t2ave(i, j, k) -
                                    c2a(i, j, k - 1) * alt(i, j, k - 1) * t2ave(i, j, k - 1)) -
                        c.c1f(k) * mav);
@@ -284,10 +306,10 @@ struct KW {
         r_km1 = r_k; r_k = r_kp1;
       } else {
         const int km = nz - 1;
-        real wn = w(i, j, nz) + dts * rw_tend(i, j, nz) -
-                  H * dts * Gr / mh(km, m) * c.rdnw(km) * c.rdnw(km) * real(2) * c2a(i, j, km) *
-                      (ope * (r_k - r_km1) + ome * (ph_k - ph_km1)) -
-                  dts * Gr * (real(2) * c.rdnw(km) * c2a(i, j, km) * alt(i, j, km) * t2ave(i, j, km) + c.c1f(nz) * mav);
+        real wn = w(i, j, nz) + dts * rw_tend(i, j, nz) +
+                  msft_inv * (-H * dts * Gr / mh(km, m) * (c.rdnw(km) * c.rdnw(km)) * real(2) * c2a(i, j, km) *
+                                  (ope * (r_k - r_km1) + ome * (ph_k - ph_km1)) -
+                              dts * Gr * (real(2) * c.rdnw(km) * c2a(i, j, km) * alt(i, j, km) * t2ave(i, j, km) + c.c1f(nz) * mav));
         if (top_lid) wn = 0;
         w(i, j, nz) = wn;
         ph(i, j, nz) = r_k;
@@ -296,7 +318,20 @@ struct KW {
     // phase 2: tridiagonal solve (calc_coef_w coefficients), then phi'' = rhs + implicit w part
     for (int k = 1; k <= nz; ++k) w(i, j, k) = (w(i, j, k) - a(i, j, k) * w(i, j, k - 1)) * alpha(i, j, k);
     for (int k = nz - 1; k >= 1; --k) w(i, j, k) = w(i, j, k) - gamma(i, j, k) * w(i, j, k + 1);
-    for (int k = nz; k >= 1; --k) ph(i, j, k) = ph(i, j, k) + H * dts * Gr * ope * w(i, j, k) / mf(k, mts);
+    if (dampmag != real(0)) {  // damp_opt = 3: implicit Rayleigh damping toward w = 0 near the top
+      const real pi = real(4) * atan(real(1));
+      const real htop = (phs(i, j, nz) + phb(i, j, nz)) / Gr, hbot = htop - hdepth;
+      for (int k = nz; k >= 1; --k) {
+        const real hk = (phs(i, j, k) + phb(i, j, k)) / Gr;
+        real dampwt = 0;
+        if (hk >= hbot) {
+          const real sn = sin(H * pi * (hk - hbot) / hdepth);
+          dampwt = dampmag * sn * sn;
+        }
+        w(i, j, k) = (w(i, j, k) - dampwt * mf(k, m) * ws(i, j, k)) / (real(1) + dampwt);
+      }
+    }
+    for (int k = nz; k >= 1; --k) ph(i, j, k) = ph(i, j, k) + msfty(i, j) * H * dts * Gr * ope * w(i, j, k) / mf(k, mts);
     // calc_p_rho with divergence damping, this column
     for (int k = 0; k < nz; ++k)
       p_rho_point(i, j, k, al, p, pm1, C3{ph.p, ph.sj, ph.sk}, alt, t, ts, c2a, mu, muts, c, smdiv, true);
@@ -308,18 +343,19 @@ struct KFinish {
   V3 u, v, w, t, ph, ww; C3 us, vs, ws, ts, phs, ww1; C2 muu, muv, mut, muts; VCoef c;
   int nx, ny, nyv, nz; bool do_y;
   C3 hd; real hd_dt;  // rk_step == 3: dts*number_of_small_timesteps (0 otherwise or when dry)
+  B2 msfuy, msfvx, msfty;
   CPPWRF_HD void operator()(int i, int j, int k) const {
     if (j < ny && k < nz) {
       const real mus_u = H * (muts(i, j) + muts(i - 1, j));
-      u(i, j, k) = (u(i, j, k) + us(i, j, k) * (c.c1h(k) * muu(i, j) + c.c2h(k))) / (c.c1h(k) * mus_u + c.c2h(k));
+      u(i, j, k) = (msfuy(i, j) * u(i, j, k) + us(i, j, k) * (c.c1h(k) * muu(i, j) + c.c2h(k))) / (c.c1h(k) * mus_u + c.c2h(k));
     }
     if (i < nx && j < nyv && k < nz) {  // also in 2D, as WRF (v'' is then constant)
       const real mus_v = H * (muts(i, j) + muts(i, j - 1));
-      v(i, j, k) = (v(i, j, k) + vs(i, j, k) * (c.c1h(k) * muv(i, j) + c.c2h(k))) / (c.c1h(k) * mus_v + c.c2h(k));
+      v(i, j, k) = (msfvx(i, j) * v(i, j, k) + vs(i, j, k) * (c.c1h(k) * muv(i, j) + c.c2h(k))) / (c.c1h(k) * mus_v + c.c2h(k));
     }
     if (i < nx && j < ny) {
       const real m = mut(i, j), mts = muts(i, j);
-      w(i, j, k) = (w(i, j, k) + ws(i, j, k) * (c.c1f(k) * m + c.c2f(k))) / (c.c1f(k) * mts + c.c2f(k));
+      w(i, j, k) = (msfty(i, j) * w(i, j, k) + ws(i, j, k) * (c.c1f(k) * m + c.c2f(k))) / (c.c1f(k) * mts + c.c2f(k));
       ph(i, j, k) = ph(i, j, k) + phs(i, j, k);
       ww(i, j, k) = ww(i, j, k) + ww1(i, j, k);
       if (k < nz)
@@ -384,7 +420,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                      s.u_1.cview(), s.v_1.cview(), s.w_1.cview(), s.t_1.cview(), s.ph_1.cview(), s.ww.cview(),
                      s.p.cview(), s.alt.cview(), s.mu_2.view(), mu_save.view(), s.muts.view(), s.muus.view(),
                      s.muvs.view(), s.mu_1.cview(), s.mut.cview(), s.muu.cview(), s.muv.cview(), b.mub.view(),
-                     b.pb.view(), c, nx, ny, nyv, nz});
+                     b.pb.view(), c, nx, ny, nyv, nz, b.msfuy.view(), b.msfvx_inv.view(), b.msfty.view()});
   for (Field3* f : {&s.u_2, &s.v_2, &s.ph_2, &t_save, &u_save, &v_save}) fill_halo(*f, g);
   fill_halo(s.mu_2, g);
   fill_halo(s.muts, g);
@@ -404,7 +440,8 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                s.al.cview(), s.alt.cview(), s.ph_2.cview(), s.php.cview(), s.mu_2.cview(),
                                s.muu.cview(), s.muv.cview(), mudf.cview(), b.pb.view(), c, mc, dts, real(b.rdx),
                                real(b.rdy), p_.emdiv * real(g.dx), do_y ? p_.emdiv * real(g.dy) : real(0), nz,
-                               g.u_i0(), g.u_i1(), g.v_j0(), g.v_j1(), do_y, p_.top_lid});
+                               g.u_i0(), g.u_i1(), g.v_j0(), g.v_j1(), do_y, p_.top_lid, b.msfux.view(),
+                               b.msfuy.view(), b.msfvx.view(), b.msfvy.view(), b.msfvx_inv.view()});
     fill_halo(s.u_2, g);
     if (do_y) fill_halo(s.v_2, g);
 
@@ -413,7 +450,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                     ww1.cview(), s.t_2.view(), t_2save.view(), s.ww.view(), s.ru_m.view(), s.rv_m.view(),
                     s.ww_m.view(), s.mu_2.view(), mudf.view(), s.muts.view(), muave.view(), s.mut.cview(),
                     s.muu.cview(), s.muv.cview(), tend.mu_tend.cview(), c, dts, real(b.rdx), real(b.rdy), p_.epssm,
-                    nz, it, n_small, do_y});
+                    nz, it, n_small, do_y, b.msftx.view(), b.msfty.view(), b.msfuy.view(), b.msfvx_inv.view()});
     fill_halo(s.mu_2, g);
     fill_halo(mudf, g);
 
@@ -421,7 +458,10 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                KW{s.w_2.view(), s.ph_2.view(), s.al.view(), s.p.view(), pm1.view(), tend.rw_tend.cview(),
                   tend.ph_tend.cview(), s.ww.cview(), ph_save.cview(), s.t_2.cview(), t_2save.cview(), t_save.cview(),
                   c2a.cview(), s.alt.cview(), a.cview(), alpha.cview(), gamma.cview(), s.mu_2.cview(), s.mut.cview(),
-                  s.muts.cview(), muave.cview(), b.phb.view(), c, mc, dts, p_.epssm, p_.smdiv, nz, p_.top_lid});
+                  s.muts.cview(), muave.cview(), b.phb.view(), c, mc, dts, p_.epssm, p_.smdiv, nz, p_.top_lid,
+                  s.u_2.cview(), s.v_2.cview(), b.ht.view(), b.msftx.view(), b.msfty.view(), real(b.rdx),
+                  real(b.rdy), !b.ht.uniform(), do_y, w_save.cview(),
+                  p_.damp_opt == 3 ? dts * p_.dampcoef : real(0), p_.zdamp});
     for (Field3* f : {&s.ph_2, &s.p, &s.al}) fill_halo(*f, g);
   }
 
@@ -431,7 +471,8 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                KFinish{s.u_2.view(), s.v_2.view(), s.w_2.view(), s.t_2.view(), s.ph_2.view(), s.ww.view(),
                        u_save.cview(), v_save.cview(), w_save.cview(), t_save.cview(), ph_save.cview(), ww1.cview(),
                        s.muu.cview(), s.muv.cview(), s.mut.cview(), s.muts.cview(), c, nx, ny, nyv, nz, do_y,
-                       s.h_diabatic.cview(), (stage_ == 3 && s.n_moist > 0) ? dts * real(n_small) : real(0)});
+                       s.h_diabatic.cview(), (stage_ == 3 && s.n_moist > 0) ? dts * real(n_small) : real(0),
+                       b.msfuy.view(), b.msfvx.view(), b.msfty.view()});
   parallel_for(Range3D{0, nx + 1, 0, nyv, 0, 1}, KFinishMu{s.mu_2.view(), s.muus.view(), s.muvs.view(),
                                                             mu_save.cview(), s.muts.cview(), nx, ny, nyv});
   for (Field3* f : {&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2, &s.ww}) fill_halo(*f, g);
