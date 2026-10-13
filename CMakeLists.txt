@@ -19,7 +19,7 @@ option(CPPWRF_ENABLE_CUDA "Build the CUDA backend" ${_cuda_default})
 
 if(CPPWRF_ENABLE_CUDA)
   if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES 75)
+    set(CMAKE_CUDA_ARCHITECTURES native)  # the GPU of the build machine; pass e.g. 80;90 for servers
   endif()
   enable_language(CUDA)
   set(CMAKE_CUDA_STANDARD 20)
@@ -31,7 +31,12 @@ endif()
 
 # Strict IEEE: no fast-math anywhere (determinism and honest stability tests).
 # -ffp-contract=off: no FMA contraction on the CPU, as WRF builds on x86-64 (bitwise-checkable refactors)
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -ffp-contract=off")
+option(CPPWRF_NATIVE "Tune for the build machine's CPU (-march=native); OFF for portable binaries" ON)
+if(CPPWRF_NATIVE)
+  set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -ffp-contract=off")
+else()
+  set(CMAKE_CXX_FLAGS_RELEASE "-O3 -ffp-contract=off")
+endif()
 set(CMAKE_CUDA_FLAGS_RELEASE "-O3")
 
 enable_testing()
@@ -103,3 +108,16 @@ foreach(src ${CPPWRF_UNIT_TESTS})
   target_link_libraries(${name} PRIVATE cppwrf_core)
   add_test(NAME ${name} COMMAND ${name} WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endforeach()
+
+# Differential tests against the original WRF Fortran (gfortran; slow): physics schemes, the
+# physics driver glue, diffusion kernels, lateral boundaries. ctest -L diff runs them.
+option(CPPWRF_DIFF_TESTS "Register the WRF-Fortran differential tests with ctest" OFF)
+if(CPPWRF_DIFF_TESTS)
+  find_package(OpenMP REQUIRED COMPONENTS CXX)  # the CPU reference drivers (also in CUDA builds)
+  add_subdirectory(tests/phys)
+  foreach(t bdy dyn/diffusion phys/driver)
+    string(REPLACE "/" "_" tname "diff_${t}")
+    add_test(NAME ${tname} COMMAND bash ${CMAKE_SOURCE_DIR}/tests/${t}/run_test.sh WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    set_tests_properties(${tname} PROPERTIES LABELS diff)
+  endforeach()
+endif()
