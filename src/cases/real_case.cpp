@@ -6,6 +6,7 @@
 //   - prognostic theta: THM = (T + t0)(1 + Rv/Rd qv) - t0 (Registry dataname "thm" for t).
 //   - al from ph (hypsometric_opt from the input, 2 for real.exe), p from al and theta_m.
 //   - w = 0 in the input -> set_w_surface with the znw^2 fill (start_em w_needs_to_be_set).
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -17,12 +18,46 @@
 #include "dyn/lateral_bc.hpp"
 #ifdef CPPWRF_HAVE_NETCDF
 #include "io_netcdf/wrf_readers.hpp"
+
+#include <netcdf.h>
 #endif
 
 namespace cppwrf::cases {
 
 #ifdef CPPWRF_HAVE_NETCDF
 namespace {
+// Base-state parameters (scalar variables T00, P00, TLP, TISO, TLP_STRAT, P_STRAT of wrfinput)
+struct BaseParams { double t00, p00, a, tiso, a_strat, p_strat; };
+BaseParams read_base_params(const std::string& path) {
+  int nc = 0;
+  if (nc_open(path.c_str(), NC_NOWRITE, &nc) != NC_NOERR) throw std::runtime_error("real: cannot open " + path);
+  auto get = [&](const char* name) {
+    int v = 0;
+    double x = 0;
+    if (nc_inq_varid(nc, name, &v) != NC_NOERR || nc_get_var_double(nc, v, &x) != NC_NOERR) {
+      nc_close(nc);
+      throw std::runtime_error(std::string("real: wrfinput lacks base-state parameter ") + name);
+    }
+    return x;
+  };
+  BaseParams b{get("T00"), get("P00"), get("TLP"), get("TISO"), get("TLP_STRAT"), get("P_STRAT")};
+  nc_close(nc);
+  return b;
+}
+
+// A whole (Time = 1) variable of wrfinput as doubles; empty if absent.
+std::vector<double> read_var_if_present(const std::string& path, const char* name, std::size_t n) {
+  int nc = 0, v = 0;
+  std::vector<double> out;
+  if (nc_open(path.c_str(), NC_NOWRITE, &nc) != NC_NOERR) throw std::runtime_error("real: cannot open " + path);
+  if (nc_inq_varid(nc, name, &v) == NC_NOERR) {
+    out.resize(n);
+    if (nc_get_var_double(nc, v, out.data()) != NC_NOERR) out.clear();
+  }
+  nc_close(nc);
+  return out;
+}
+
 // "YYYY-MM-DD_HH:MM:SS" -> seconds between two times (proleptic Gregorian, UTC)
 double seconds_between(const std::string& a, const std::string& b) {
   auto secs = [](const std::string& s) {
@@ -56,6 +91,15 @@ void init_real_case(const io::Config& cfg, Model& m) {
   m.nsteps = std::lround(m.run_time / g.dt);
   m.xlat = d.xlat;
   m.xlong = d.xlong;
+  m.hybrid_opt = d.hybrid_opt;
+  m.map_proj = d.map_proj;
+  m.cen_lat = d.cen_lat;
+  m.cen_lon = d.cen_lon;
+  m.truelat1 = d.truelat1;
+  m.truelat2 = d.truelat2;
+  m.moad_cen_lat = d.moad_cen_lat;
+  m.stand_lon = d.stand_lon;
+  if (!d.start_date.empty()) m.start_date = d.start_date;
   const int nx = g.nx, ny = g.ny, nz = g.nz;
 
   // ---- base state and coefficients
@@ -72,12 +116,17 @@ void init_real_case(const io::Config& cfg, Model& m) {
   b.cf1 = d.cf1; b.cf2 = d.cf2; b.cf3 = d.cf3; b.cfn = d.cfn; b.cfn1 = d.cfn1;
   b.upload_levels();
   b.p_top = d.p_top;
+  {  // WRF uses RDX, RDY of the input (registry 'i'), e.g. float 1/dx from a single-precision real.exe
+    const std::string wi = dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01");
+    const std::vector<double> rdx = read_var_if_present(wi, "RDX", 1), rdy = read_var_if_present(wi, "RDY", 1);
+    if (!rdx.empty()) b.rdx = rdx[0];
+    if (!rdy.empty()) b.rdy = rdy[0];
+  }
 
   auto cl = [](int a, int lo, int hi) { return a < lo ? lo : (a > hi ? hi : a); };
   auto m2 = [&](const std::vector<double>& v) {  // mass-point 2D, flat halo
     return [&v, nx, ny, cl](int i, int j, int) { return v[std::size_t(cl(j, 0, ny - 1)) * nx + cl(i, 0, nx - 1)]; };
   };
-  b.mub.fill_host_halo(m2(d.mub));
   b.ht.fill_host_halo(m2(d.hgt));
   b.msftx.fill_host_halo(m2(d.mapfac_mx));
   b.msfty.fill_host_halo(m2(d.mapfac_my));
@@ -97,26 +146,68 @@ void init_real_case(const io::Config& cfg, Model& m) {
   b.msfuy.fill_host_halo(u2(d.mapfac_uy));
   b.msfvx.fill_host_halo(v2(d.mapfac_vx));
   b.msfvy.fill_host_halo(v2(d.mapfac_vy));
-  b.msfvx_inv.fill_host_halo([&](int i, int j, int) { return 1.0 / d.mapfac_vx[std::size_t(cl(j, 0, nys - 1)) * nx + cl(i, 0, nx - 1)]; });
+  {  // WRF reads MF_VX_INV from the input (registry 'i'); 1/MAPFAC_VX only if absent
+    const std::vector<double> inv = read_var_if_present(dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01"),
+                                                        "MF_VX_INV", std::size_t(nx) * nys);
+    if (!inv.empty())
+      b.msfvx_inv.fill_host_halo(v2(inv));
+    else
+      b.msfvx_inv.fill_host_halo([&](int i, int j, int) { return 1.0 / d.mapfac_vx[std::size_t(cl(j, 0, nys - 1)) * nx + cl(i, 0, nx - 1)]; });
+  }
 
   auto m3 = [&](const std::vector<double>& v, int nk) {
     return [&v, nx, ny, nk, cl](int i, int j, int k) {
       return v[(std::size_t(cl(k, 0, nk - 1)) * ny + cl(j, 0, ny - 1)) * nx + cl(i, 0, nx - 1)];
     };
   };
-  // start_em (max_dom = 1): pb from mub, alb from t_init
-  std::vector<double> pb(std::size_t(nx) * ny * nz), alb(pb.size());
-  for (int k = 0; k < nz; ++k)
+  // start_em (input_from_file, not restart): the base state is recomputed from the terrain and
+  // the base-state parameters (start_em.F 590-620), not taken from wrfinput: p_surf, pb, t_init,
+  // alb, mub, phb (hypsometric_opt of the input). Then (max_dom = 1) pb, alb again from mub.
+  const int hypso = int(cfg.get_int("dyn.hypsometric_opt", d.attrs_int.count("HYPSOMETRIC_OPT")
+                                                                ? d.attrs_int.at("HYPSOMETRIC_OPT") : 2));
+  const BaseParams bp = read_base_params(dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01"));
+  std::vector<double> pb(std::size_t(nx) * ny * nz), alb(pb.size()), t_init(pb.size());
+  std::vector<double> mub(std::size_t(nx) * ny), phb(std::size_t(nx) * ny * (nz + 1));
+  {
+    const double t00 = bp.t00, p00 = bp.p00, a = bp.a, tiso = bp.tiso, a_strat = bp.a_strat, p_strat = bp.p_strat;
     for (int j = 0; j < ny; ++j)
       for (int i = 0; i < nx; ++i) {
-        const std::size_t n = (std::size_t(k) * ny + j) * nx + i;
-        pb[n] = d.c3h[k] * d.mub[std::size_t(j) * nx + i] + d.c4h[k] + d.p_top;
-        alb[n] = (cst::r_d / cst::p1000mb) * (d.t_init[n] + cst::t0) * std::pow(pb[n] / cst::p1000mb, cst::cvpm);
+        const std::size_t ij = std::size_t(j) * nx + i;
+        const double ht = d.hgt[ij];
+        const double p_surf = p00 * std::exp(-t00 / a + std::sqrt((t00 / a) * (t00 / a) - 2. * cst::g * ht / a / cst::r_d));
+        for (int k = 0; k < nz; ++k) {
+          const std::size_t n = (std::size_t(k) * ny + j) * nx + i;
+          pb[n] = d.c3h[k] * (p_surf - d.p_top) + d.c4h[k] + d.p_top;
+          double temp = std::max(tiso, t00 + a * std::log(pb[n] / p00));
+          if (pb[n] < p_strat) temp = tiso + a_strat * std::log(pb[n] / p_strat);
+          t_init[n] = temp * std::pow(p00 / pb[n], cst::r_d / cst::cp) - cst::t0;
+          alb[n] = (cst::r_d / cst::p1000mb) * (t_init[n] + cst::t0) * std::pow(pb[n] / cst::p1000mb, cst::cvpm);
+        }
+        mub[ij] = p_surf - d.p_top;
+        phb[ij] = ht * cst::g;
+        for (int k = 1; k <= nz; ++k) {
+          const std::size_t n = (std::size_t(k) * ny + j) * nx + i, nm = (std::size_t(k - 1) * ny + j) * nx + i;
+          if (hypso == 1) {
+            phb[n] = phb[nm] - d.dnw[k - 1] * (d.c1h[k - 1] * mub[ij] + d.c2h[k - 1]) * alb[nm];
+          } else {
+            const double pfu = d.c3f[k] * mub[ij] + d.c4f[k] + d.p_top;
+            const double pfd = d.c3f[k - 1] * mub[ij] + d.c4f[k - 1] + d.p_top;
+            const double phm = d.c3h[k - 1] * mub[ij] + d.c4h[k - 1] + d.p_top;
+            phb[n] = phb[nm] + alb[nm] * phm * std::log(pfd / pfu);
+          }
+        }
+        for (int k = 0; k < nz; ++k) {  // max_dom = 1: pb, alb from mub and t_init
+          const std::size_t n = (std::size_t(k) * ny + j) * nx + i;
+          pb[n] = d.c3h[k] * mub[ij] + d.c4h[k] + d.p_top;
+          alb[n] = (cst::r_d / cst::p1000mb) * (t_init[n] + cst::t0) * std::pow(pb[n] / cst::p1000mb, cst::cvpm);
+        }
       }
+  }
+  b.mub.fill_host_halo(m2(mub));
   b.pb.fill_host_halo(m3(pb, nz));
   b.alb.fill_host_halo(m3(alb, nz));
-  b.t_init.fill_host_halo(m3(d.t_init, nz));
-  b.phb.fill_host_halo(m3(d.phb, nz + 1));
+  b.t_init.fill_host_halo(m3(t_init, nz));
+  b.phb.fill_host_halo(m3(phb, nz + 1));
   b.qv_base.fill_host_halo([](int, int, int) { return 0.0; });
 
   // ---- state
@@ -129,8 +220,13 @@ void init_real_case(const io::Config& cfg, Model& m) {
   }
   if (s.P_QV < 0) throw std::runtime_error("case = real needs qv in moist.species");
   const std::vector<double>& qv = d.qvapor;
-  std::vector<double> thm(qv.size());
-  for (std::size_t n = 0; n < thm.size(); ++n) thm[n] = (d.t[n] + cst::t0) * (1.0 + cst::rvovrd * qv[n]) - cst::t0;
+  // t_2 = theta_m - t0: WRF reads it from wrfinput (Registry dataname THM); older inputs: from T, qv
+  std::vector<double> thm = read_var_if_present(dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01"), "THM",
+                                                qv.size());
+  if (thm.empty()) {
+    thm.resize(qv.size());
+    for (std::size_t n = 0; n < thm.size(); ++n) thm[n] = (d.t[n] + cst::t0) * (1.0 + cst::rvovrd * qv[n]) - cst::t0;
+  }
   auto idx3 = [&](int i, int j, int k, int ni, int nj) { return (std::size_t(k) * nj + j) * ni + i; };
   s.u_2.fill_host([&](int i, int j, int k) { return d.u[idx3(i, j, k, nxs, ny)]; });
   s.v_2.fill_host([&](int i, int j, int k) { return d.v[idx3(i, j, k, nx, nys)]; });
@@ -150,19 +246,17 @@ void init_real_case(const io::Config& cfg, Model& m) {
     s.q_1[q].copy_from(s.q_2[q]);
   }
   // al (hypsometric_opt) and p from start_em, theta_m with qvf = 1
-  const int hypso = int(cfg.get_int("dyn.hypsometric_opt", d.attrs_int.count("HYPSOMETRIC_OPT")
-                                                                ? d.attrs_int.at("HYPSOMETRIC_OPT") : 2));
   std::vector<double> al(pb.size()), p(pb.size());
   for (int k = 0; k < nz; ++k)
     for (int j = 0; j < ny; ++j)
       for (int i = 0; i < nx; ++i) {
         const std::size_t n = idx3(i, j, k, nx, ny), n1 = idx3(i, j, k + 1, nx, ny);
-        const double mu = d.mu[std::size_t(j) * nx + i], mt = d.mub[std::size_t(j) * nx + i] + mu;
+        const double mu = d.mu[std::size_t(j) * nx + i], mt = mub[std::size_t(j) * nx + i] + mu;
         double a;
         if (hypso == 2) {
           const double pfu = d.c3f[k + 1] * mt + d.c4f[k + 1] + d.p_top, pfd = d.c3f[k] * mt + d.c4f[k] + d.p_top;
           const double phm = d.c3h[k] * mt + d.c4h[k] + d.p_top;
-          a = (d.ph[n1] - d.ph[n] + d.phb[n1] - d.phb[n]) / phm / std::log(pfd / pfu) - alb[n];
+          a = (d.ph[n1] - d.ph[n] + phb[n1] - phb[n]) / phm / std::log(pfd / pfu) - alb[n];
         } else {
           a = -1.0 / (d.c1h[k] * mt + d.c2h[k]) * (alb[n] * (d.c1h[k] * mu) + d.rdnw[k] * (d.ph[n1] - d.ph[n]));
         }

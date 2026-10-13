@@ -29,6 +29,14 @@ struct Model {
   double run_time = 0;
   long nsteps = 0;
   int n_sound = 0;
+  int diff_opt = 0;
+  int km_opt = 1;
+  int hybrid_opt = 0;
+  int map_proj = 0;
+  double cen_lat = 0.0, cen_lon = 0.0;
+  double truelat1 = 0.0, truelat2 = 0.0;
+  double moad_cen_lat = 0.0, stand_lon = 0.0;
+  std::string start_date;
   std::unique_ptr<dyn::RK3> rk;  // null when nsteps == 0
   std::unique_ptr<dyn::LateralBC> bc;  // real data: specified lateral boundaries
   std::unique_ptr<dyn::DiffusionDriver> diff;  // WRF diff_opt 1 / sixth-order diffusion (null: off)
