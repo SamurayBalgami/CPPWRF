@@ -7,7 +7,7 @@
 #   tools/heavy.sh --exclusive <command...>  take ALL slots (benchmarks, timings, GPU profiling).
 #                                            Waits until every slot is free at the same moment and
 #                                            never holds some slots while waiting; for its first
-#                                            10 minutes of waiting new heavy jobs hold back.
+#                                            2 minutes of waiting new heavy jobs hold back.
 # Defaults OMP_NUM_THREADS=3 (light: 2) and OMP_WAIT_POLICY=passive unless already set.
 # Wrap builds, model runs and test suites with this.
 set -uo pipefail
@@ -51,14 +51,14 @@ if [ "$1" = "--exclusive" ]; then
   exit $?
 fi
 
-# A waiting --exclusive job holds back new jobs for at most 10 minutes (from its request).
+# A waiting --exclusive job holds back new jobs for at most 2 minutes (from its request).
 exclusive_blocks() {
   local now f
   now=$(date +%s)
   for f in "$LOCKDIR"/exclusive_waiting.*; do
     [ -e "$f" ] || continue
     if ! kill -0 "${f##*.}" 2>/dev/null; then rm -f "$f"; continue; fi  # stale flag
-    [ $((now - $(stat -c %Y "$f" 2>/dev/null || echo 0))) -lt 600 ] && return 0
+    [ $((now - $(stat -c %Y "$f" 2>/dev/null || echo 0))) -lt 120 ] && return 0
   done
   return 1
 }
