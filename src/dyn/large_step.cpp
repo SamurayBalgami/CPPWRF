@@ -571,6 +571,9 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
     parallel_for(Range3D{0, g.nx, 0, g.ny, 0, 1}, [=] CPPWRF_HD(int i, int j, int) { mt(i, j) = 0; });
   }
 
+  // first_rk_step_part2: calculate_phy_tend + update_phy_ten; WRF adds the diffusion after it
+  // (diff_opt = 1 in rk_tendency, diff_opt = 2 later in part2)
+  if (cp_ && rk_step == 1) cp_->part2(s, b, t);
   if (diff && rk_step == 1) {  // WRF: diffusion only in the first RK stage, held in *_tendf
     parallel_for(ur, KDiffU{s.u_2.cview(), s.alt.cview(), s.mut.cview(), s.muu.cview(), c, t.ru_tendf.view(), kh, kv,
                             rdx, rdy, nz, do_y});
@@ -583,8 +586,6 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
     parallel_for(mr, kern::KDiffM{s.t_2.cview(), s.alt.cview(), b.t_init.view(), s.mut.cview(), c, t.t_tendf.view(),
                                   kh * p_.pr_inv, kv * p_.pr_inv, rdx, rdy, nz, do_y, true, true});
   }
-  // first_rk_step_part2: calculate_phy_tend + update_phy_ten after the diffusion
-  if (cp_ && rk_step == 1) cp_->part2(s, b, t);
   if (bc_ && rk_step == 1) bc_->relax_dry(s, t, b);  // relax_bdy_dry -> *_save -> *_tendf (rk_addtend_dry)
   const bool tendf = diff || bc_ != nullptr || cp_ != nullptr;
   parallel_for(ur, KTendU{s.u_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), s.ph_2.cview(),

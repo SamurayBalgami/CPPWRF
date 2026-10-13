@@ -5,9 +5,9 @@
 //   RK stage 1, after rk_step_prep and init_zero_tendency (LargeStep::zero_tendf):
 //     part1  = first_rk_step_part1: phy_prep, radiation_driver, surface_driver, pbl_driver,
 //              cumulus_driver (updates the surface state, fills the uncoupled R*TEN fields)
-//   RK stage 1, after the stage-1 diffusion into *_tendf, before rk_tendency:
+//   RK stage 1, before the stage-1 diffusion and the rest of rk_tendency:
 //     part2  = first_rk_step_part2: calculate_phy_tend, update_phy_ten (adds into t.ru_tendf,
-//              t.rv_tendf, t.t_tendf, t.q_tendf; the scalar diffusion is added after it)
+//              t.rv_tendf, t.t_tendf, t.q_tendf; the diffusion is added after it, as in WRF)
 //   after the RK loop, before microphysics:
 //     after_rk = phy_prep_part2 (decouples the persistent R*TEN fields with the new mut)
 #include "dyn/state.hpp"
