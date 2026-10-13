@@ -4,6 +4,7 @@
 //   normal velocity (U in x, V in y): odd, face value = 0;  everything else: even.
 // Fill order x then y, so corners are consistent.
 #include <initializer_list>
+#include <vector>
 
 #include "core/field.hpp"
 
@@ -20,5 +21,6 @@ void fill_halo(Field2& f, const Grid& g);
 // Default-parity fill of several fields with one launch per direction (same result as one by one).
 void fill_halos(std::initializer_list<Field3*> fs, const Grid& g);
 void fill_halos(std::initializer_list<Field2*> fs, const Grid& g);
+void fill_halos(const std::vector<Field3*>& fs, const Grid& g);
 
 }  // namespace cppwrf

@@ -100,8 +100,7 @@ void fill_impl(real* p, const Layout& L, const Grid& g, bool ux, bool vy, Parity
 }
 }  // namespace
 
-template <class F> static void fill_many(std::initializer_list<F*> fs, const Grid& g) {
-  std::vector<F*> v(fs);
+template <class F> static void fill_many(const std::vector<F*>& v, const Grid& g) {
   for (std::size_t s0 = 0; s0 < v.size(); s0 += kMaxFields) {
     const int nf = int(std::min<std::size_t>(kMaxFields, v.size() - s0));
     HaloMulti hx{}, hy{};
@@ -132,8 +131,9 @@ template <class F> static void fill_many(std::initializer_list<F*> fs, const Gri
   }
 }
 
-void fill_halos(std::initializer_list<Field3*> fs, const Grid& g) { fill_many(fs, g); }
-void fill_halos(std::initializer_list<Field2*> fs, const Grid& g) { fill_many(fs, g); }
+void fill_halos(std::initializer_list<Field3*> fs, const Grid& g) { fill_many(std::vector<Field3*>(fs), g); }
+void fill_halos(const std::vector<Field3*>& fs, const Grid& g) { fill_many(fs, g); }
+void fill_halos(std::initializer_list<Field2*> fs, const Grid& g) { fill_many(std::vector<Field2*>(fs), g); }
 
 void fill_halo(Field3& f, const Grid& g, Parity px, Parity py) {
   fill_impl(f.data(), f.layout(), g, f.stagger() == Stagger::U, f.stagger() == Stagger::V, px, py);

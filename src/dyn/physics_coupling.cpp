@@ -1,6 +1,7 @@
 #include "dyn/physics_coupling.hpp"
 
 #include <stdexcept>
+#include <vector>
 
 #include "core/backend.hpp"
 #include "core/constants.hpp"
@@ -118,9 +119,9 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
                                           real(pc::rhowater), g.nz});
   parallel_for(g.mass_cells(), KFinish{s.t_2.view(), s.h_diabatic.view(), th_phy.cview(), qv.cview(),
                                        qv_diabatic.cview(), dt, p_.mp_tend_lim});
-  fill_halo(s.t_2, g);
-  fill_halo(s.h_diabatic, g);
-  for (int n = 0; n < s.n_moist; ++n) fill_halo(s.q_2[n], g);
+  std::vector<Field3*> fs{&s.t_2, &s.h_diabatic};
+  for (int n = 0; n < s.n_moist; ++n) fs.push_back(&s.q_2[n]);
+  fill_halos(fs, g);
 }
 
 }  // namespace cppwrf::dyn

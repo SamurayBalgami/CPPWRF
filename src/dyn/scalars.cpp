@@ -1,6 +1,7 @@
 #include "dyn/scalars.hpp"
 
 #include <stdexcept>
+#include <vector>
 
 #include "core/backend.hpp"
 #include "core/halo.hpp"
@@ -245,8 +246,10 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
     }
     swap(q2, q_new_);
     if (bc_ && moist && n != s.P_QV) bc_->flow_dep(q2, s);  // have_bcs_moist = .false.
-    fill_halo(q2, g);
   }
+  std::vector<Field3*> qs;  // halos of the new scalars, batched (one launch per 8 fields)
+  for (int n = 0; n < ns; ++n) qs.push_back(&s.q_2[n]);
+  fill_halos(qs, g);
 }
 
 }  // namespace cppwrf::dyn
