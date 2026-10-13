@@ -23,6 +23,8 @@ struct SmallStepParams {
   real zdamp = 5000, dampcoef = 0.2;
 };
 
+class LateralBC;
+
 class SmallStep {
  public:
   SmallStep(const Grid& g, const SmallStepParams& p);
@@ -33,10 +35,12 @@ class SmallStep {
                  int rk_step = 0);
   // calc_p_rho_phi (non-hydrostatic, hypsometric_opt = 1): al, p from mu_2, ph_2, t_2 (+ moisture).
   void calc_p_rho_phi(State& s, const BaseState& base);
+  void set_lateral_bc(const LateralBC* bc) { bc_ = bc; }
 
  private:
   Grid g_;
   SmallStepParams p_;
+  const LateralBC* bc_ = nullptr;
   int stage_ = 0;
   // stage-start state (WRF *_save), ww1, c2a, pm1, t_2save, and the w-solver coefficients
   Field3 u_save, v_save, w_save, t_save, ph_save, ww1, c2a, pm1, t_2save, a, alpha, gamma;

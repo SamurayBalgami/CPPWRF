@@ -5,6 +5,7 @@
 #include "core/constants.hpp"
 #include "core/halo.hpp"
 #include "dyn/kernels_common.hpp"
+#include "dyn/lateral_bc.hpp"
 
 // Formulas follow TN ch. 3 (flux-form, perturbation equations 3.3-3.8 evaluated at t*) in
 // the discrete form of WRF dyn_em (module_big_step_utilities_em.F, module_advect_em.F).
@@ -340,7 +341,7 @@ struct KTendT {
 struct KTendPh {
   C3 u, v, w, ww, ph; C2 mut, muu, muv; B3 phb; VCoef c;
   V3 out; real rdx, rdy; int nz; bool do_y;
-  B2 msfty, msfux, msfvy; kern::Spec sp;
+  B2 msfty, msfux, msfvy; kern::Spec sp; C3 tendf; bool use_tendf;
   CPPWRF_HD real wdwn(int i, int j, int m) const {
     return H * (ww(i, j, m + 1) + ww(i, j, m)) * c.rdnw(m) *
            (ph(i, j, m + 1) - ph(i, j, m) + phb(i, j, m + 1) - phb(i, j, m));
@@ -400,6 +401,7 @@ struct KTendPh {
       t = t - cx * ((mup * up * msfux(i + 1, j) + mum * um * msfux(i, j)) * r60 * grad6<1, 0>(i, j, k));
     else if (o == 2)
       t = t - cx * (mup * up * msfux(i + 1, j) * dfwd<1, 0>(i, j, k) + mum * um * msfux(i, j) * dfwd<1, 0>(i - 1, j, k));
+    if (use_tendf) t = t + tendf(i, j, k) / msfty(i, j);  // rk_addtend_dry: ph_tend += ph_tendf/msfty
     out(i, j, k) = t;
   }
 };
@@ -532,6 +534,17 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
   const MapC m = MapC::from(b, b.mapped || b.coriolis);
   const kern::Spec sp{g.bc_x == BC::Specified, g.bc_y == BC::Specified, g.nx, g.ny};
   if (b.mapped && diff) throw std::runtime_error("diffusion with map factors is not implemented yet");
+  if (bc_) {  // WRF zero_tend: mu_tend every stage; the held *_tendf in stage 1 (diffusion assigns)
+    V2 mt = t.mu_tend.view();
+    parallel_for(Range3D{0, g.nx, 0, g.ny, 0, 1}, [=] CPPWRF_HD(int i, int j, int) { mt(i, j) = 0; });
+    if (rk_step == 1) {
+      for (Field3* f : {&t.ph_tendf, &t.ru_tendf, &t.rv_tendf, &t.rw_tendf, &t.t_tendf}) {
+        if (diff && f != &t.ph_tendf) continue;
+        V3 v = f->view();
+        parallel_for(g.cells(f->stagger()), [=] CPPWRF_HD(int i, int j, int k) { v(i, j, k) = 0; });
+      }
+    }
+  }
 
   if (diff && rk_step == 1) {  // WRF: diffusion only in the first RK stage, held in *_tendf
     parallel_for(ur, KDiffU{s.u_2.cview(), s.alt.cview(), s.mut.cview(), s.muu.cview(), c, t.ru_tendf.view(), kh, kv,
@@ -545,24 +558,27 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
     parallel_for(mr, kern::KDiffM{s.t_2.cview(), s.alt.cview(), b.t_init.view(), s.mut.cview(), c, t.t_tendf.view(),
                                   kh * p_.pr_inv, kv * p_.pr_inv, rdx, rdy, nz, do_y, true, true});
   }
+  if (bc_ && rk_step == 1) bc_->relax_dry(s, t, b);  // relax_bdy_dry -> *_save -> *_tendf (rk_addtend_dry)
+  const bool tendf = diff || bc_ != nullptr;
   parallel_for(ur, KTendU{s.u_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), s.ph_2.cview(),
                           s.alt.cview(), s.al.cview(), s.php.cview(), t.ru_tendf.cview(), s.mu_2.cview(),
-                          s.muu.cview(), b.pb.view(), c, moist_coef(s), t.ru_tend.view(), rdx, rdy, nz, do_y, p_.top_lid, diff, hup, vup,
+                          s.muu.cview(), b.pb.view(), c, moist_coef(s), t.ru_tend.view(), rdx, rdy, nz, do_y, p_.top_lid, tendf, hup, vup,
                           s.v_2.cview(), s.rw.cview(), m, sp});
   if (do_y)
     parallel_for(vr, KTendV{s.v_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), s.ph_2.cview(),
                             s.alt.cview(), s.al.cview(), s.php.cview(), t.rv_tendf.cview(), s.mu_2.cview(),
-                            s.muv.cview(), b.pb.view(), c, moist_coef(s), t.rv_tend.view(), rdx, rdy, nz, p_.top_lid, diff, hup, vup,
+                            s.muv.cview(), b.pb.view(), c, moist_coef(s), t.rv_tend.view(), rdx, rdy, nz, p_.top_lid, tendf, hup, vup,
                             s.u_2.cview(), s.rw.cview(), m, sp});
   parallel_for(wr, KTendW{s.w_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), t.rw_tendf.cview(),
-                          s.mu_2.cview(), b.mub.view(), c, moist_coef(s), t.rw_tend.view(), rdx, rdy, nz, do_y, diff, hup, vup,
+                          s.mu_2.cview(), b.mub.view(), c, moist_coef(s), t.rw_tend.view(), rdx, rdy, nz, do_y, tendf, hup, vup,
                           s.u_2.cview(), s.v_2.cview(), m, sp});
   parallel_for(mr, KTendT{s.t_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), t.t_tendf.cview(), c,
-                          t.t_tend.view(), rdx, rdy, nz, do_y, diff, hup, vup, s.h_diabatic.cview(), s.mut.cview(),
+                          t.t_tend.view(), rdx, rdy, nz, do_y, tendf, hup, vup, s.h_diabatic.cview(), s.mut.cview(),
                           s.n_moist > 0, b.msftx.view(), b.msfty.view(), sp});
   parallel_for(wr, KTendPh{s.u_2.cview(), s.v_2.cview(), s.w_2.cview(), s.ww.cview(), s.ph_2.cview(), s.mut.cview(),
                            s.muu.cview(), s.muv.cview(), b.phb.view(), c, t.ph_tend.view(), rdx, rdy, nz, do_y,
-                           b.msfty.view(), b.msfux.view(), b.msfvy.view(), sp});
+                           b.msfty.view(), b.msfux.view(), b.msfvy.view(), sp, t.ph_tendf.cview(), bc_ != nullptr});
+  if (bc_) bc_->spec_dry(t);  // spec_bdy_dry: spec-zone tendencies from the boundary file
   // mu_tend stays 0 (dry, no physics); allocated zero.
 }
 

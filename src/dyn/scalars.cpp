@@ -5,6 +5,7 @@
 #include "core/backend.hpp"
 #include "core/halo.hpp"
 #include "dyn/kernels_common.hpp"
+#include "dyn/lateral_bc.hpp"
 
 // WRF dyn_em/module_advect_em.F (advect_scalar, advect_scalar_pd) and module_em.F
 // (rk_scalar_tend, rk_update_scalar, rk_update_scalar_pd). C++ k = Fortran k - 1.
@@ -64,7 +65,12 @@ struct Fluxes {
     const real cr = vel * dt / dz / mu;
     return mu * (dz / dt) * kern::flux_upwind(qo(i, j, k - 1), qo(i, j, k), cr);
   }
+  // spec zone of a specified boundary: WRF advect_scalar(_pd) does not compute it (tendency 0)
+  CPPWRF_HD bool spec_cell(int i, int j) const {
+    return (sp.x && (i == 0 || i == sp.nx - 1)) || (sp.y && (j == 0 || j == sp.ny - 1));
+  }
   CPPWRF_HD real adv(int i, int j, int k) const {  // advect_scalar: horizontal terms times msftx
+    if (spec_cell(i, j)) return 0;
     real r = -(msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
     if (do_y) r -= (msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
     return r - c.rdnw(k) * (fz(i, j, k + 1) - fz(i, j, k));
@@ -97,6 +103,7 @@ struct KPreUpdatePD {
 struct KScalePD {
   Fluxes f; C2 mu_old; B2 mub; V3 scale;
   CPPWRF_HD void operator()(int i, int j, int k) const {
+    if (f.spec_cell(i, j)) { scale(i, j, k) = 1; return; }  // WRF limits interior cells only
     const VCoef& c = f.c;
     const real mxy = f.msftx(i, j) * f.msfty(i, j);
     real hlow = f.rdx * (f.fxl(i + 1, j, k) - f.fxl(i, j, k));
@@ -139,6 +146,10 @@ struct KUpdatePD {
     return d * (d > 0 ? scale(i, j, k) : (d < 0 ? scale(i, j, k - 1) : real(1)));
   }
   CPPWRF_HD void operator()(int i, int j, int k) const {  // WRF advect_scalar_pd final tendency
+    if (f.spec_cell(i, j)) {
+      qn(i, j, k) = m_full(f.c, k, mub(i, j), mu1(i, j)) * q1(i, j, k) / m_full(f.c, k, mub(i, j), mu2(i, j));
+      return;
+    }
     real tend = -f.c.rdnw(k) * (dz(i, j, k + 1) - dz(i, j, k) + f.fzl(i, j, k + 1) - f.fzl(i, j, k));
     tend -= f.msftx(i, j) * (f.rdx * (dx(i + 1, j, k) - dx(i, j, k) + f.fxl(i + 1, j, k) - f.fxl(i, j, k)));
     if (f.do_y) tend -= f.msftx(i, j) * (f.rdy * (dy(i, j + 1, k) - dy(i, j, k) + f.fyl(i, j + 1, k) - f.fyl(i, j, k)));
@@ -181,7 +192,9 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
       } else {
         parallel_for(mr, KZero{tf.view()});
       }
+      if (bc_ && n == s.P_QV) bc_->relax_scalar(tf, q2, s, b);  // relax_bdy_scalar (rk 1)
     }
+    if (bc_ && n == s.P_QV) bc_->spec_scalar(tf);  // spec_bdy_scalar (every stage)
     Fluxes fl{q2.cview(), q1.cview(), s.ru_m.cview(), s.rv_m.cview(), s.ww_m.cview(), s.muts.cview(), c,
               real(b.rdx), real(b.rdy), dt_rk, hup, vup, g.nz, do_y, b.msftx.view(), b.msfty.view(),
               kern::Spec{g.bc_x == BC::Specified, g.bc_y == BC::Specified, g.nx, g.ny}};

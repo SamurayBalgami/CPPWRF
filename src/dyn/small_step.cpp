@@ -7,6 +7,7 @@
 #include "core/halo.hpp"
 #include "dyn/kernels_common.hpp"
 #include "dyn/large_step.hpp"
+#include "dyn/lateral_bc.hpp"
 
 // Discrete forms follow WRF dyn_em/module_small_step_em.F (small_step_prep, calc_p_rho,
 // calc_coef_w, advance_uv, advance_mu_t, advance_w, sumflux, small_step_finish) and
@@ -503,6 +504,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                real(b.rdy), p_.emdiv * real(g.dx), do_y ? p_.emdiv * real(g.dy) : real(0), nz,
                                g.u_i0(), g.u_i1(), g.v_j0(), g.v_j1(), do_y, p_.top_lid, b.msfux.view(),
                                b.msfuy.view(), b.msfvx.view(), b.msfvy.view(), b.msfvx_inv.view(), ed});
+    if (bc_) bc_->update_uv(s, tend, dts);  // spec_bdyupdate u, v
     if (do_y) fill_halos({&s.u_2, &s.v_2}, g);
     else fill_halo(s.u_2, g);
 
@@ -517,7 +519,8 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                            t_2save.view(), s.ru_m.view(), s.rv_m.view(), s.muu.cview(), s.muv.cview(),
                                            c, dts, real(b.rdx), real(b.rdy), nz, it, n_small, do_y, b.msftx.view(),
                                            b.msfty.view(), b.msfuy.view(), b.msfvx_inv.view(), ed});
-    fill_halos({&s.mu_2, &mudf}, g);
+    if (bc_) bc_->update_mu_t(s, tend, dts);  // spec_bdyupdate t, mu, muts
+    fill_halos({&s.mu_2, &mudf, &s.muts}, g);
 
     {
       const KWCommon q{s.w_2.cview(), s.ph_2.cview(), tend.rw_tend.cview(), tend.ph_tend.cview(), s.ww.cview(),
@@ -532,6 +535,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                       gamma.cview(), ph_save.cview(), w_save.cview(), s.mut.cview(), s.muts.cview(),
                                       b.phb.view(), b.msfty.view(), c, dts, p_.epssm,
                                       p_.damp_opt == 3 ? dts * p_.dampcoef : real(0), p_.zdamp, nz, ed});
+      if (bc_) bc_->update_ph_w(s, ph_save, tend, b, dts);  // spec_bdyupdate_ph, zero_grad_bdy(w)
       parallel_for(g.mass_cells(), KWPRho{s.al.view(), s.p.view(), pm1.view(), s.ph_2.cview(), s.alt.cview(),
                                           s.t_2.cview(), t_save.cview(), c2a.cview(), s.mu_2.cview(), s.muts.cview(),
                                           c, p_.smdiv});

@@ -26,7 +26,8 @@ struct AcousticParams {
 // as start_em does for an initial state without w).
 void set_w_surface(Field3& w, Field3& u, Field3& v, const BaseState& b, const Grid& g, bool fill);
 
-class SmallStepHolder;  // wraps SmallStep (src/dyn/small_step.hpp) when present
+class SmallStepHolder;
+class LateralBC;  // wraps SmallStep (src/dyn/small_step.hpp) when present
 
 class RK3 {
  public:
@@ -41,6 +42,9 @@ class RK3 {
   void enable_physics(const PhysicsParams& pp) { phys_ = std::make_unique<PhysicsCoupling>(g_, pp); }
   PhysicsCoupling* physics() const { return phys_.get(); }
   void step(State& s, Tendencies& t, const BaseState& b);
+  // Specified lateral boundaries (real data); the RK3 driver does not own the data.
+  void set_lateral_bc(LateralBC* bc);
+  LateralBC* lateral_bc() const { return bc_; }
 
  private:
   Grid g_;
@@ -49,6 +53,7 @@ class RK3 {
   std::unique_ptr<PhysicsCoupling> phys_;
   int n_sound_;
   std::unique_ptr<SmallStepHolder> small_;
+  LateralBC* bc_ = nullptr;
 };
 
 }  // namespace cppwrf::dyn

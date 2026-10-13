@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "cases/cases.hpp"
+#include "dyn/lateral_bc.hpp"
 #include "dyn/rk3.hpp"
 #include "io/config.hpp"
 
@@ -25,8 +26,12 @@ struct Model {
   long nsteps = 0;
   int n_sound = 0;
   std::unique_ptr<dyn::RK3> rk;  // null when nsteps == 0
+  std::unique_ptr<dyn::LateralBC> bc;  // real data: specified lateral boundaries
   static Model build(const io::Config& cfg);
 };
+
+// case = real: grid, base and initial state, boundaries from wrfinput/wrfbdy (src/cases/real_case.cpp)
+void init_real_case(const io::Config& cfg, Model& m);
 
 // Comma-separated list (whitespace trimmed, empty entries dropped).
 std::vector<std::string> split_list(const std::string& s);

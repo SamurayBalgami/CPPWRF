@@ -16,6 +16,8 @@ struct ScalarParams {
   int h_adv_order = 5, v_adv_order = 3;
 };
 
+class LateralBC;
+
 class ScalarTransport {
  public:
   ScalarTransport(const Grid& g, const ScalarParams& p);
@@ -23,10 +25,12 @@ class ScalarTransport {
   // s.mu_1, s.mu_2, s.alt, s.mut; updates s.q_2 from s.q_1. rk = 1..3, dt_rk = stage length.
   void run_stage(State& s, Tendencies& t, const BaseState& b, int rk, real dt_rk);
   const ScalarParams& params() const { return p_; }
+  void set_lateral_bc(const LateralBC* bc) { bc_ = bc; }
 
  private:
   Grid g_;
   ScalarParams p_;
+  const LateralBC* bc_ = nullptr;
   Field3 q_new_, scale_;
 };
 

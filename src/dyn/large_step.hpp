@@ -23,6 +23,7 @@ struct VCoef {
 };
 
 namespace kern { struct MoistCoef; }
+class LateralBC;
 // calc_cq coefficients for the stage state (needs LargeStep::prep to have filled s.qtot)
 kern::MoistCoef moist_coef(const State& s);
 
@@ -35,10 +36,12 @@ class LargeStep {
   // rk_tendency + rk_addtend_dry. Diffusion is evaluated only when rk_step == 1 (*_tendf).
   void tendencies(const State& s, Tendencies& t, const BaseState& b, int rk_step) const;
   const LargeStepParams& params() const { return p_; }
+  void set_lateral_bc(const LateralBC* bc) { bc_ = bc; }
 
  private:
   Grid g_;
   LargeStepParams p_;
+  const LateralBC* bc_ = nullptr;
 };
 
 }  // namespace cppwrf::dyn

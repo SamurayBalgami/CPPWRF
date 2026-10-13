@@ -5,6 +5,7 @@
 
 #ifdef CPPWRF_HAVE_SMALL_STEP
 #include "core/halo.hpp"
+#include "dyn/lateral_bc.hpp"
 #include "dyn/small_step.hpp"
 #endif
 
@@ -37,6 +38,15 @@ RK3::RK3(const Grid& g, const LargeStepParams& lp, const AcousticParams& ap, int
 
 RK3::~RK3() = default;
 
+void RK3::set_lateral_bc(LateralBC* bc) {
+  bc_ = bc;
+  large_.set_lateral_bc(bc);
+  scalars_.set_lateral_bc(bc);
+#ifdef CPPWRF_HAVE_SMALL_STEP
+  small_->ss.set_lateral_bc(bc);
+#endif
+}
+
 int RK3::auto_sound_steps(double dt, double dx, double dy, bool two_d) {
   double spacing = two_d ? dx : std::min(dx, dy);
   return std::max(2 * (int(300.0 * dt / spacing - 0.01) + 1), 4);
@@ -47,6 +57,7 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
   (void)s; (void)t; (void)b;
   throw std::runtime_error("acoustic small step (src/dyn/small_step.*) not available in this build");
 #else
+  if (bc_) bc_->advance_time(g_.dt);  // solve_em: dtbc = dtbc + dt
   // time-t state (WRF small_step_prep, rk_step == 1)
   s.u_1.copy_from(s.u_2); s.v_1.copy_from(s.v_2); s.w_1.copy_from(s.w_2);
   s.t_1.copy_from(s.t_2); s.ph_1.copy_from(s.ph_2); s.mu_1.copy_from(s.mu_2);
@@ -65,6 +76,11 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
   if (phys_ && phys_->params().mp_physics != 0) {  // moist_physics_prep/microphysics/finish, calc_p_rho_phi
     phys_->step(s, b, real(dt));
     small_->ss.calc_p_rho_phi(s, b);
+  }
+  if (bc_) {  // spec_bdy_final: exact boundary values at t + dt
+    bc_->final(s, b);
+    fill_halos({&s.u_2, &s.v_2, &s.t_2, &s.ph_2}, g_);
+    fill_halo(s.mu_2, g_);
   }
   // solve_em: "reset surface w for consistency" (kinematic condition from the new u, v)
   if (!b.ht.uniform()) set_w_surface(s.w_2, s.u_2, s.v_2, b, g_, false);

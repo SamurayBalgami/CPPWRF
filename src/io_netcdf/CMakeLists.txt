@@ -12,6 +12,7 @@ find_library(NETCDF_LIB NAMES netcdf HINTS /usr/lib /usr/lib/x86_64-linux-gnu /u
 add_library(cppwrf_io_netcdf STATIC
   wrfout_writer.cpp
   restart.cpp
+  wrf_readers.cpp
 )
 
 target_include_directories(cppwrf_io_netcdf PUBLIC

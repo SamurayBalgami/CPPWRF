@@ -64,10 +64,8 @@ static void init_tracer(const io::Config& cfg, const std::string& n, const Grid&
   q1.copy_from(q2);
 }
 
-Model Model::build(const io::Config& cfg) {
-  Model m;
+static void init_ideal(const io::Config& cfg, Model& m, const std::string& cname) {
   Grid& g = m.g;
-  const std::string cname = cfg.get_string("run.case");
   g.nx = int(cfg.get_int("domain.nx"));
   g.ny = int(cfg.get_int("domain.ny", 1));
   g.nz = int(cfg.get_int("domain.nz"));
@@ -147,6 +145,14 @@ Model Model::build(const io::Config& cfg) {
     init_tracer(cfg, n, g, *m.base, m.st->q_1[idx], m.st->q_2[idx]);
   }
 
+}
+
+Model Model::build(const io::Config& cfg) {
+  Model m;
+  Grid& g = m.g;
+  const std::string cname = cfg.get_string("run.case");
+  if (cname == "real") init_real_case(cfg, m);
+  else init_ideal(cfg, m, cname);
   dyn::LargeStepParams& lp = m.lp;
   lp.khdif = real(cfg.get_double("dyn.khdif", 0.0));
   lp.kvdif = real(cfg.get_double("dyn.kvdif", 0.0));
@@ -161,7 +167,7 @@ Model Model::build(const io::Config& cfg) {
   m.ap.emdiv = real(cfg.get_double("dyn.emdiv", 0.01));
   m.ap.top_lid = lp.top_lid;
   // WRF takes hypsometric_opt from the input file: ideal.exe writes 1, real.exe 2 (namelist default)
-  m.ap.hypsometric_opt = int(cfg.get_int("dyn.hypsometric_opt", 1));
+  if (cname != "real") m.ap.hypsometric_opt = int(cfg.get_int("dyn.hypsometric_opt", 1));  // real: from the input
   if (m.ap.hypsometric_opt != 1 && m.ap.hypsometric_opt != 2) throw std::runtime_error("dyn.hypsometric_opt: 1 or 2");
   m.ap.damp_opt = int(cfg.get_int("dyn.damp_opt", 0));
   if (m.ap.damp_opt != 0 && m.ap.damp_opt != 3) throw std::runtime_error("dyn.damp_opt must be 0 or 3");
@@ -186,6 +192,7 @@ Model Model::build(const io::Config& cfg) {
     pp.mp_tend_lim = real(cfg.get_double("phys.mp_tend_lim", 10.0));
     pp.hail_opt = int(cfg.get_int("phys.hail_opt", 0));
     if (pp.mp_physics != 0) m.rk->enable_physics(pp);
+    if (m.bc) m.rk->set_lateral_bc(m.bc.get());
   }
   return m;
 }
