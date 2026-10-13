@@ -46,19 +46,14 @@ CPPWRF_HD inline real flux_upwind(real qm1, real q0, real cr) {
   return real(0.5) * (lo < real(1) ? lo : real(1)) * qm1 + real(0.5) * (hi > real(-1) ? hi : real(-1)) * q0;
 }
 
-// Moisture coefficients of WRF calc_cq / pg_buoy_w from qtot (sum of moist species, mass
-// points). on = false (dry) gives exactly cqu = cqv = cq1 = 1, cqw = cq2 = 0.
+// Moisture coefficients of WRF calc_cq (cqu, cqv at U/V points, cqw at w levels 1..nz-1),
+// precomputed per stage by LargeStep::prep in WRF's summation order. on = false (dry) gives
+// exactly cqu = cqv = cq1 = 1, cqw = 0. cq1 = 1/(1+cqw) as pg_buoy_w stores it.
 struct MoistCoef {
-  View3<const real> qt; bool on = false;
-  CPPWRF_HD real cqu(int i, int j, int k) const {
-    return on ? real(1) / (real(1) + real(0.5) * (qt(i, j, k) + qt(i - 1, j, k))) : real(1);
-  }
-  CPPWRF_HD real cqv(int i, int j, int k) const {
-    return on ? real(1) / (real(1) + real(0.5) * (qt(i, j, k) + qt(i, j - 1, k))) : real(1);
-  }
-  CPPWRF_HD real cqw(int i, int j, int k) const {  // w levels 1..nz-1 (calc_cq value)
-    return on ? real(0.5) * (qt(i, j, k) + qt(i, j, k - 1)) : real(0);
-  }
+  View3<const real> u, v, w; bool on = false;
+  CPPWRF_HD real cqu(int i, int j, int k) const { return on ? u(i, j, k) : real(1); }
+  CPPWRF_HD real cqv(int i, int j, int k) const { return on ? v(i, j, k) : real(1); }
+  CPPWRF_HD real cqw(int i, int j, int k) const { return on ? w(i, j, k) : real(0); }
   CPPWRF_HD real cq1(int i, int j, int k) const { return real(1) / (real(1) + cqw(i, j, k)); }
 };
 

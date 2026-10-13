@@ -98,6 +98,29 @@ struct MapC {
   }
 };
 
+struct KCq {  // calc_cq
+  static constexpr int kMax = 8;
+  C3 q[kMax]; int n;
+  V3 cqu, cqv, cqw; int nx, ny, nyv, nz;
+  CPPWRF_HD void operator()(int i, int j, int k) const {
+    if (j < ny) {
+      real t = 0;
+      for (int s = 0; s < n; ++s) t = t + q[s](i, j, k) + q[s](i - 1, j, k);
+      cqu(i, j, k) = real(1) / (real(1) + real(0.5) * t);
+    }
+    if (i < nx && j < nyv) {
+      real t = 0;
+      for (int s = 0; s < n; ++s) t = t + q[s](i, j, k) + q[s](i, j - 1, k);
+      cqv(i, j, k) = real(1) / (real(1) + real(0.5) * t);
+    }
+    if (i < nx && j < ny && k >= 1) {
+      real t = 0;
+      for (int s = 0; s < n; ++s) t = t + q[s](i, j, k) + q[s](i, j, k - 1);
+      cqw(i, j, k) = real(0.5) * t;
+    }
+  }
+};
+
 // ---------------------------------------------------------------- rk_tendency
 // U: advect_u (5th horizontal, 3rd vertical) + horizontal_pressure_gradient (+ ru_tendf)
 struct KTendU {
@@ -501,19 +524,19 @@ void LargeStep::prep(State& s, const BaseState& b) const {
   fill_halos({&s.ru, &s.rv, &s.rw, &s.alt, &s.php}, g);
   column_for(g.columns(), KWW{s.ru.cview(), s.rv.cview(), s.ww.view(), b.msftx.view(), c, real(b.rdx), real(b.rdy), g.nz});
   fill_halo(s.ww, g);
-  if (s.n_moist > 0) {  // calc_cq input: qtot = sum of moist species (stage state)
-    V3 qt = s.qtot.view();
-    parallel_for(g.mass_cells(), [=] CPPWRF_HD(int i, int j, int k) { qt(i, j, k) = 0; });
-    for (int n = 0; n < s.n_moist; ++n) {
-      C3 q = s.q_2[n].cview();
-      parallel_for(g.mass_cells(), [=] CPPWRF_HD(int i, int j, int k) { qt(i, j, k) += q(i, j, k); });
-    }
-    fill_halo(s.qtot, g);
+  if (s.n_moist > 0) {  // calc_cq: per species, sum of the two neighbours (WRF summation order)
+    if (s.n_moist > KCq::kMax) throw std::runtime_error("calc_cq: too many moist species");
+    KCq k{};
+    k.n = s.n_moist;
+    for (int q = 0; q < s.n_moist; ++q) k.q[q] = s.q_2[q].cview();
+    k.cqu = s.cqu.view(); k.cqv = s.cqv.view(); k.cqw = s.cqw.view();
+    k.nx = g.nx; k.ny = g.ny; k.nyv = nyv; k.nz = g.nz;
+    parallel_for(Range3D{0, g.nx + 1, 0, nyv, 0, g.nz}, k);
   }
 }
 
 kern::MoistCoef moist_coef(const State& s) {
-  return s.n_moist > 0 ? kern::MoistCoef{s.qtot.cview(), true} : kern::MoistCoef{};
+  return s.n_moist > 0 ? kern::MoistCoef{s.cqu.cview(), s.cqv.cview(), s.cqw.cview(), true} : kern::MoistCoef{};
 }
 
 void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, int rk_step) const {

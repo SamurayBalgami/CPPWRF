@@ -42,6 +42,12 @@ CPPWRF RTX 2060 FP32 1.26 s vs WRF FP32 4 OpenMP threads 13.2 s (~10x); FP64 4.3
 WRF real*8 serial 37.9 s (~9x, consumer GPU at 1/32 FP64 rate). GPU dycore 3D FP32:
 24.3 ns/cell/step (200x200x50).
 
+Real data with WSM6 (mp_physics 6, run_mp6_r8): step 1 matches WRF real*8 to roundoff; from
+step 2 ~600 ice cells differ (qi 2e-7, THM 5e-5). CPPWRF's own CPU FP64 vs CUDA FP64 diverge
+the same way (qi 2.08e-7 in 604 cells, THM 5.0e-5 at step 2), and standalone WSM6 on WRF's
+state is bit-exact with the Fortran: roundoff amplified by WSM6 thresholds near ice
+saturation, not a coupling error. calc_cq is precomputed in WRF's summation order (KCq).
+
 ## M2 done (2026-10-13)
 Items 1-2 were verified and committed (4f58fcc) and
 wrote items 3-4. Commands below were run with OMP_NUM_THREADS=4 (the machine is shared).

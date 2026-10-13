@@ -31,7 +31,10 @@ int State::add_scalar(const Grid& g, const std::string& name, bool moist) {
   q_2.emplace_back(g, S::M, name);
   const int idx = n_scalars() - 1;
   if (moist) {
-    if (n_moist == 0) { qtot = Field3(g, S::M, "qtot"); h_diabatic = Field3(g, S::M, "h_diabatic"); }
+    if (n_moist == 0) {
+      qtot = Field3(g, S::M, "qtot"); h_diabatic = Field3(g, S::M, "h_diabatic");
+      cqu = Field3(g, S::U, "cqu"); cqv = Field3(g, S::V, "cqv"); cqw = Field3(g, S::W, "cqw");
+    }
     ++n_moist;
     if (name == "qv") P_QV = idx;
     if (name == "qc") P_QC = idx;
