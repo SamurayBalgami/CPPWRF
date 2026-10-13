@@ -18,6 +18,8 @@ struct Model {
   Grid g;
   CaseDef cd;
   std::vector<double> eta;
+  std::vector<double> xlat;
+  std::vector<double> xlong;
   std::unique_ptr<dyn::BaseState> base;
   std::unique_ptr<dyn::State> st;
   std::unique_ptr<dyn::Tendencies> tend;

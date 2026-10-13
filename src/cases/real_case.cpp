@@ -27,7 +27,9 @@ namespace {
 double seconds_between(const std::string& a, const std::string& b) {
   auto secs = [](const std::string& s) {
     int Y, M, D, h, mi, se;
-    if (std::sscanf(s.c_str(), "%d-%d-%d_%d:%d:%d", &Y, &M, &D, &h, &mi, &se) != 6) return 0.0;
+    if (std::sscanf(s.c_str(), "%d-%d-%d_%d:%d:%d", &Y, &M, &D, &h, &mi, &se) != 6) {
+      throw std::runtime_error("seconds_between: invalid date string '" + s + "' (expected YYYY-MM-DD_HH:MM:SS)");
+    }
     const int y = Y - (M <= 2), era = (y >= 0 ? y : y - 399) / 400, yoe = y - era * 400;
     const int doy = (153 * (M + (M > 2 ? -3 : 9)) + 2) / 5 + D - 1, doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     const double days = double(era) * 146097 + doe - 719468;
@@ -52,6 +54,8 @@ void init_real_case(const io::Config& cfg, Model& m) {
   g.bc_x = g.bc_y = BC::Specified;
   m.run_time = cfg.get_double("run.run_time", 0.0);
   m.nsteps = std::lround(m.run_time / g.dt);
+  m.xlat = d.xlat;
+  m.xlong = d.xlong;
   const int nx = g.nx, ny = g.ny, nz = g.nz;
 
   // ---- base state and coefficients
@@ -186,7 +190,8 @@ void init_real_case(const io::Config& cfg, Model& m) {
     interval = seconds_between(bd->this_bdy_times[0], bd->next_bdy_times[0]);
   if (interval <= 0) throw std::runtime_error("real: cannot determine the boundary interval (set real.bdy_interval)");
   dyn::LateralBC* bc = m.bc.get();
-  auto load = [bd, bc, nx, ny, nz, nxs, nys](int rec) {
+  const int p_qv = m.st->P_QV;
+  auto load = [bd, bc, nx, ny, nz, nxs, nys, p_qv](int rec) {
     using LB = dyn::LateralBC;
     if (rec >= bd->n_times) throw std::runtime_error("real: run longer than the boundary file");
     auto put = [&](LB::Var v, int npx, int npy, int nk, const std::vector<double>* const (&a)[8]) {
@@ -194,6 +199,10 @@ void init_real_case(const io::Config& cfg, Model& m) {
       for (int sd = 0; sd < 4; ++sd) {
         const std::size_t n = std::size_t(npos[sd]) * nk * bd->bdy_width;
         auto cut = [&](const std::vector<double>& all) {
+          if (std::size_t((rec + 1) * n) > all.size()) {
+            throw std::runtime_error("real: boundary record " + std::to_string(rec) + " exceeds buffer size (" +
+                                     std::to_string(all.size()) + ")");
+          }
           return std::vector<double>(all.begin() + std::ptrdiff_t(rec * n), all.begin() + std::ptrdiff_t((rec + 1) * n));
         };
         bc->set(v, LB::Side(sd), cut(*a[sd]), cut(*a[4 + sd]));
@@ -212,7 +221,14 @@ void init_real_case(const io::Config& cfg, Model& m) {
       put(LB::MU, ny, nx, 1, a); }
     { const std::vector<double>* a[8] = {&d.qvapor_bxs, &d.qvapor_bxe, &d.qvapor_bys, &d.qvapor_bye,
                                          &d.qvapor_btxs, &d.qvapor_btxe, &d.qvapor_btys, &d.qvapor_btye};
-      put(LB::QV, ny, nx, nz, a); }
+      for (int sd = 0; sd < 4; ++sd) {  // QVAPOR -> scalar P_QV
+        const std::size_t n = std::size_t(sd < 2 ? ny : nx) * nz * bd->bdy_width;
+        auto cut = [&](const std::vector<double>& all) {
+          if (std::size_t((rec + 1) * n) > all.size()) throw std::runtime_error("real: QVAPOR boundary record too short");
+          return std::vector<double>(all.begin() + std::ptrdiff_t(rec * n), all.begin() + std::ptrdiff_t((rec + 1) * n));
+        };
+        bc->set_scalar(p_qv, LB::Side(sd), cut(*a[sd]), cut(*a[4 + sd]));
+      } }
   };
   load(0);
   auto rec_now = std::make_shared<int>(0);

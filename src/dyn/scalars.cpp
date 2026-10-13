@@ -223,9 +223,9 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
                                       do_y, false, is_qv});
       }
       if (dd_) dd_->scalar(s, b, n, tf, dt_rk);  // diff_opt 1 / sixth order (rk_scalar_tend, rk_step 1)
-      if (bc_ && n == s.P_QV) bc_->relax_scalar(tf, q2, s, b);  // relax_bdy_scalar (rk 1)
+      if (bc_) bc_->relax_scalar(n, tf, q2, s, b);  // relax_bdy_scalar (rk 1): scalars with boundary data
     }
-    if (bc_ && n == s.P_QV) bc_->spec_scalar(tf);  // spec_bdy_scalar (every stage)
+    if (bc_) bc_->spec_scalar(n, tf);  // spec_bdy_scalar (every stage)
     Fluxes fl{q2.cview(), q1.cview(), s.ru_m.cview(), s.rv_m.cview(), s.ww_m.cview(), s.muts.cview(), c,
               real(b.rdx), real(b.rdy), dt_rk, hup, vup, g.nz, do_y, b.msftx.view(), b.msfty.view(),
               kern::Spec{g.bc_x == BC::Specified, g.bc_y == BC::Specified, g.nx, g.ny}};
@@ -245,7 +245,7 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
                                  q_new_.view(), dt_rk});
     }
     swap(q2, q_new_);
-    if (bc_ && moist && n != s.P_QV) bc_->flow_dep(q2, s);  // have_bcs_moist = .false.
+    if (bc_ && moist && !bc_->has_scalar(n)) bc_->flow_dep(q2, s);  // no boundary data (have_bcs_moist = .false.)
   }
   std::vector<Field3*> qs;  // halos of the new scalars, batched (one launch per 8 fields)
   for (int n = 0; n < ns; ++n) qs.push_back(&s.q_2[n]);

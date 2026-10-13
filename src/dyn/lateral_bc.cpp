@@ -177,10 +177,12 @@ struct KFinal {  // spec_bdy_final: exact boundary values at the end of the step
 
 }  // namespace
 
-LateralBC::LateralBC(const Grid& g, double dt, int width, int spec_zone, int relax_zone)
-    : g_(g), width_(width), spec_zone_(spec_zone), relax_zone_(relax_zone), coef_(2 * std::size_t(width)) {
+LateralBC::LateralBC(const Grid& g, double dt, int width, int spec_zone, int relax_zone, bool nested)
+    : g_(g), width_(width), spec_zone_(spec_zone), relax_zone_(relax_zone), nested_(nested),
+      coef_(2 * std::size_t(width)) {
   if (g.two_d()) throw std::runtime_error("LateralBC: specified boundaries need a 3D grid");
-  // lbc_fcx_gcx (dyn_em/start_em.F), spec_exp = 0
+  // lbc_fcx_gcx (module_bc_em.F): the same ramp for specified (spongeweight = 1 with spec_exp = 0)
+  // and nested domains
   fcx_h_.assign(width, 0.0);
   gcx_h_.assign(width, 0.0);
   for (int loop = spec_zone + 1; loop <= spec_zone + relax_zone; ++loop) {  // Fortran index
@@ -192,8 +194,9 @@ LateralBC::LateralBC(const Grid& g, double dt, int width, int spec_zone, int rel
   for (int b = 0; b < width; ++b) { h[b] = real(fcx_h_[b]); h[width + b] = real(gcx_h_[b]); }
   copy_to_dev(coef_.get(), h.data(), h.size() * sizeof(real));
   const int nz = g.nz;
-  nk_ = {nz, nz, nz, nz + 1, 1, nz};
+  nk_ = {nz, nz, nz, nz + 1, 1, nz + 1};  // U V T PH MU W
   for (int v = 0; v < NVAR; ++v) {
+    if (v == W && !nested) continue;
     std::size_t o = 0;
     for (int half = 0; half < 2; ++half)
       for (int s = 0; s < 4; ++s) {
@@ -218,6 +221,27 @@ void LateralBC::set(Var v, Side s, const std::vector<double>& values, const std:
   have_[v] = true;
 }
 
+void LateralBC::set_scalar(int n, Side s, const std::vector<double>& values, const std::vector<double>& tends) {
+  if (n < 0) throw std::runtime_error("LateralBC::set_scalar: bad scalar index");
+  if (n >= int(sdata_.size())) sdata_.resize(n + 1);
+  ScalarData& d = sdata_[n];
+  const std::size_t per_x = std::size_t(g_.ny) * g_.nz * width_, per_y = std::size_t(g_.nx) * g_.nz * width_;
+  if (d.off.empty()) {
+    std::size_t o = 0;
+    for (int half = 0; half < 2; ++half)
+      for (int sd = 0; sd < 4; ++sd) {
+        d.off.push_back(o);
+        o += sd < 2 ? per_x : per_y;
+      }
+    d.data = Buffer(o);
+  }
+  const std::size_t nn = s < 2 ? per_x : per_y;
+  if (values.size() != nn || tends.size() != nn) throw std::runtime_error("LateralBC::set_scalar: wrong slab size");
+  std::vector<real> hv(values.begin(), values.end()), ht(tends.begin(), tends.end());
+  copy_to_dev(d.data.get() + d.off[s], hv.data(), nn * sizeof(real));
+  copy_to_dev(d.data.get() + d.off[4 + s], ht.data(), nn * sizeof(real));
+}
+
 namespace {
 SlabSet slabs(const Buffer& d, const std::array<std::size_t, 8>& off, int nk, int nposx, int nposy) {
   SlabSet s;
@@ -227,6 +251,11 @@ SlabSet slabs(const Buffer& d, const std::array<std::size_t, 8>& off, int nk, in
       (half == 0 ? s.v : s.t)[side] = sl;
     }
   return s;
+}
+SlabSet scalar_slabs(const Buffer& d, const std::vector<std::size_t>& off, int nk, int nposx, int nposy) {
+  std::array<std::size_t, 8> a{};
+  for (int i = 0; i < 8; ++i) a[i] = off[i];
+  return slabs(d, a, nk, nposx, nposy);
 }
 }  // namespace
 
@@ -262,6 +291,12 @@ void LateralBC::relax_dry(const State& s, Tendencies& t, const BaseState& b) con
     parallel_for(ring_range(r, 1, nb), KRelax{{}, t.mu_tend.view(), {}, s.mu_2.cview(), true, {}, {}, {}, false, {},
                                               false, sl(MU), r, fcx, gcx, dtbc_r});
   }
+  if (nested_ && have_[W]) {  // nests: w mass-weighted (c1f, c2f, mut) -> w_save -> rw_tendf (* msfty)
+    const Ring r = ring_for(g_, 'h', spec_zone_);
+    parallel_for(ring_range(r, g_.nz + 1, nb),
+                 KRelax{t.rw_tendf.view(), {}, s.w_2.cview(), {}, false, s.mut.cview(), b.c1f.view(), b.c2f.view(),
+                        true, b.msfty.view(), true, sl(W), r, fcx, gcx, dtbc_r});
+  }
 }
 
 void LateralBC::spec_dry(Tendencies& t) const {
@@ -273,6 +308,8 @@ void LateralBC::spec_dry(Tendencies& t) const {
   parallel_for(ring_range(r('h'), g_.nz + 1, nb), KSpecTend{t.ph_tend.view(), {}, false, sl(PH), r('h')});
   parallel_for(ring_range(r('t'), g_.nz, nb), KSpecTend{t.t_tend.view(), {}, false, sl(T), r('t')});
   parallel_for(ring_range(r('m'), 1, nb), KSpecTend{{}, t.mu_tend.view(), true, sl(MU), r('m')});
+  if (nested_ && have_[W])  // spec_bdytend rw_tend (nests)
+    parallel_for(ring_range(r('h'), g_.nz + 1, nb), KSpecTend{t.rw_tend.view(), {}, false, sl(W), r('h')});
 }
 
 void LateralBC::update_uv(State& s, const Tendencies& t, real dts) const {
@@ -296,25 +333,28 @@ void LateralBC::update_ph_w(State& s, const Field3& ph_save, const Tendencies& t
   parallel_for(ring_range(rh, g_.nz + 1, nb), KUpdatePh{s.ph_2.view(), ph_save.cview(), t.ph_tend.cview(),
                                                          t.mu_tend.cview(), s.muts.cview(), b.c1f.view(),
                                                          b.c2f.view(), rh, dts});
-  parallel_for(ring_range(rh, g_.nz + 1, nb), KZeroGrad{s.w_2.view(), rh});
+  if (nested_ && have_[W])  // nests: spec_bdyupdate(w, rw_tend) (solve_em 1603)
+    parallel_for(ring_range(rh, g_.nz + 1, nb), KUpdate{s.w_2.view(), t.rw_tend.cview(), {}, {}, false, rh, dts});
+  else
+    parallel_for(ring_range(rh, g_.nz + 1, nb), KZeroGrad{s.w_2.view(), rh});
 }
 
-void LateralBC::relax_scalar(Field3& q_tend, const Field3& q, const State& s, const BaseState& b) const {
-  if (!have_[QV]) return;
+void LateralBC::relax_scalar(int n, Field3& q_tend, const Field3& q, const State& s, const BaseState& b) const {
+  if (!has_scalar(n)) return;
   const A1 fcx{coef_.get()}, gcx{coef_.get() + width_};
   const Ring r = ring_for(g_, 'q', spec_zone_);
+  const ScalarData& d = sdata_[n];
   parallel_for(ring_range(r, g_.nz, relax_zone_ - 1),
                KRelax{q_tend.view(), {}, q.cview(), {}, false, s.mut.cview(), b.c1h.view(), b.c2h.view(), true, {},
-                      false, slabs(data_[QV], off_[QV], nk_[QV], npos(QV, XS), npos(QV, YS)), r, fcx, gcx,
-                      real(dtbc)});
+                      false, scalar_slabs(d.data, d.off, g_.nz, g_.ny, g_.nx), r, fcx, gcx, real(dtbc)});
 }
 
-void LateralBC::spec_scalar(Field3& q_tend) const {
-  if (!have_[QV]) return;
+void LateralBC::spec_scalar(int n, Field3& q_tend) const {
+  if (!has_scalar(n)) return;
   const Ring r = ring_for(g_, 'q', 0);
+  const ScalarData& d = sdata_[n];
   parallel_for(ring_range(r, g_.nz, spec_zone_),
-               KSpecTend{q_tend.view(), {}, false,
-                         slabs(data_[QV], off_[QV], nk_[QV], npos(QV, XS), npos(QV, YS)), r});
+               KSpecTend{q_tend.view(), {}, false, scalar_slabs(d.data, d.off, g_.nz, g_.ny, g_.nx), r});
 }
 
 void LateralBC::flow_dep(Field3& q, const State& s) const {
@@ -337,6 +377,16 @@ void LateralBC::final(State& s, const BaseState& b) const {
                                                          b.c2f.view(), true, b.msfty.view(), false, sl(PH), r('h'), d});
   parallel_for(ring_range(r('m'), 1, nb), KFinal{{}, s.mu_2.view(), true, s.muts.cview(), b.c1h.view(), b.c2h.view(),
                                                  false, b.msfty.view(), false, sl(MU), r('m'), d});
+  for (int n = 0; n < s.n_scalars() && n < int(sdata_.size()); ++n) {  // moist species with data ('t' type)
+    if (!has_scalar(n)) continue;
+    const ScalarData& sd = sdata_[n];
+    parallel_for(ring_range(r('t'), g_.nz, nb),
+                 KFinal{s.q_2[n].view(), {}, false, s.muts.cview(), b.c1h.view(), b.c2h.view(), true, b.msfty.view(),
+                        false, scalar_slabs(sd.data, sd.off, g_.nz, g_.ny, g_.nx), r('t'), d});
+  }
+  if (nested_ && have_[W])  // spec_bdy_final 'w': mu (c1f, c2f) and msfty coupled
+    parallel_for(ring_range(r('h'), g_.nz + 1, nb), KFinal{s.w_2.view(), {}, false, s.muts.cview(), b.c1f.view(),
+                                                           b.c2f.view(), true, b.msfty.view(), true, sl(W), r('h'), d});
 }
 
 }  // namespace cppwrf::dyn
