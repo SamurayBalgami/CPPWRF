@@ -126,6 +126,48 @@ struct WrfInputData {
   std::vector<double> qgraup;
   std::map<std::string, std::vector<double>> moist_species;
 
+  // Surface and soil fields
+  int num_soil_layers = 0;
+  std::vector<double> zs;
+  std::vector<double> dzs;
+  std::vector<double> tsk;
+  std::vector<double> tslb;
+  std::vector<double> smois;
+  std::vector<double> sh2o;
+  std::vector<double> snow;
+  std::vector<double> snowh;
+  std::vector<double> snowc;
+  std::vector<double> canwat;
+  std::vector<double> albedo;
+  std::vector<double> albbck;
+  std::vector<double> emiss;
+  std::vector<double> embck;
+  std::vector<double> snoalb;
+  std::vector<double> tmn;
+  std::vector<double> xland;
+  std::vector<double> seaice;
+  std::vector<double> lakemask;
+  std::vector<double> water_depth;
+  std::vector<double> vegfra;
+  std::vector<double> shdmin;
+  std::vector<double> shdmax;
+  std::vector<double> lai;
+  std::vector<double> lu_index;
+  std::vector<double> ivgtyp;
+  std::vector<double> isltyp;
+  std::vector<double> u10;
+  std::vector<double> v10;
+  std::vector<double> th2;
+  std::vector<double> t2;
+  std::vector<double> q2;
+  std::vector<double> ust;
+  std::vector<double> pblh;
+  std::vector<double> hfx;
+  std::vector<double> qfx;
+  std::vector<double> lh;
+  std::vector<double> znt;
+  std::vector<double> qsfc;
+
   // Indexing helper functions
   inline size_t idx_m2(int i, int j) const { return size_t(j) * nx + i; }
   inline size_t idx_u2(int i, int j) const { return size_t(j) * nx_stag + i; }

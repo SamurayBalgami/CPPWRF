@@ -119,13 +119,10 @@ Config Config::parse(const std::string& text, const std::string& source_name, co
     ++lineno;
     std::string line = raw_line;
     // Strip comments (# or ;)
-    // Inline comment allowed after whitespace
     for (size_t i = 0; i < line.size(); ++i) {
       if (line[i] == '#' || line[i] == ';') {
-        if (i == 0 || line[i - 1] == ' ' || line[i - 1] == '\t') {
-          line.erase(i);
-          break;
-        }
+        line.erase(i);
+        break;
       }
     }
 
@@ -203,10 +200,12 @@ Config Config::from_string(const std::string& text, const std::vector<std::strin
 }
 
 bool Config::has(const std::string& key) const {
+  accessed_keys_.insert(key);
   return data_.find(key) != data_.end();
 }
 
 std::string Config::get_string(const std::string& key) const {
+  accessed_keys_.insert(key);
   auto it = data_.find(key);
   if (it == data_.end()) {
     throw ConfigError("Key not found: '" + key + "'");
@@ -215,11 +214,13 @@ std::string Config::get_string(const std::string& key) const {
 }
 
 std::string Config::get_string(const std::string& key, const std::string& def) const {
+  accessed_keys_.insert(key);
   auto it = data_.find(key);
   return (it != data_.end()) ? it->second : def;
 }
 
 long long Config::get_int(const std::string& key) const {
+  accessed_keys_.insert(key);
   auto it = data_.find(key);
   if (it == data_.end()) {
     throw ConfigError("Key not found: '" + key + "'");
@@ -228,6 +229,7 @@ long long Config::get_int(const std::string& key) const {
 }
 
 long long Config::get_int(const std::string& key, long long def) const {
+  accessed_keys_.insert(key);
   auto it = data_.find(key);
   if (it == data_.end()) {
     return def;
@@ -236,6 +238,7 @@ long long Config::get_int(const std::string& key, long long def) const {
 }
 
 double Config::get_double(const std::string& key) const {
+  accessed_keys_.insert(key);
   auto it = data_.find(key);
   if (it == data_.end()) {
     throw ConfigError("Key not found: '" + key + "'");
@@ -244,6 +247,7 @@ double Config::get_double(const std::string& key) const {
 }
 
 double Config::get_double(const std::string& key, double def) const {
+  accessed_keys_.insert(key);
   auto it = data_.find(key);
   if (it == data_.end()) {
     return def;
@@ -252,6 +256,7 @@ double Config::get_double(const std::string& key, double def) const {
 }
 
 bool Config::get_bool(const std::string& key) const {
+  accessed_keys_.insert(key);
   auto it = data_.find(key);
   if (it == data_.end()) {
     throw ConfigError("Key not found: '" + key + "'");
@@ -260,6 +265,7 @@ bool Config::get_bool(const std::string& key) const {
 }
 
 bool Config::get_bool(const std::string& key, bool def) const {
+  accessed_keys_.insert(key);
   auto it = data_.find(key);
   if (it == data_.end()) {
     return def;
@@ -268,6 +274,7 @@ bool Config::get_bool(const std::string& key, bool def) const {
 }
 
 std::vector<double> Config::get_double_list(const std::string& key) const {
+  accessed_keys_.insert(key);
   auto it = data_.find(key);
   if (it == data_.end()) {
     throw ConfigError("Key not found: '" + key + "'");
@@ -282,6 +289,20 @@ std::vector<std::string> Config::keys() const {
     res.push_back(k);
   }
   return res;
+}
+
+std::vector<std::string> Config::unaccessed_keys() const {
+  std::vector<std::string> res;
+  for (const auto& [k, v] : data_) {
+    if (accessed_keys_.find(k) == accessed_keys_.end()) {
+      res.push_back(k);
+    }
+  }
+  return res;
+}
+
+void Config::mark_accessed(const std::string& key) const {
+  accessed_keys_.insert(key);
 }
 
 std::string Config::to_json() const {

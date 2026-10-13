@@ -375,10 +375,15 @@ void DiagWriter::row(const std::vector<double>& values) {
   for (size_t i = 0; i < values.size(); ++i) {
     if (i > 0) file_ << ",";
     char buf[64];
-    auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), values[i], std::chars_format::general, 9);
+    auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), values[i]);
     file_.write(buf, ptr - buf);
   }
   file_ << "\n";
+  file_.flush();
+}
+
+void DiagWriter::raw_line(std::string_view line) {
+  file_ << line << "\n";
   file_.flush();
 }
 

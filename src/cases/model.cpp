@@ -1,6 +1,7 @@
 #include "cases/model.hpp"
 #include "cases/hill2d.hpp"
 #include "cases/quarter_ss.hpp"
+#include "cases/squall2d_x.hpp"
 
 #include <cmath>
 #include <numbers>
@@ -134,6 +135,9 @@ static void init_ideal(const io::Config& cfg, Model& m, const std::string& cname
   } else if (cname == "quarter_ss") {
     init_quarter_ss(cfg, m.eta, gp, *m.base, *m.st);
     gp.p_top = g.p_top = m.base->p_top;
+  } else if (cname == "squall2d_x") {
+    init_squall2d_x(cfg, m.eta, gp, *m.base, *m.st);
+    gp.p_top = g.p_top = m.base->p_top;
   } else {
     initialize(m.cd, snd, m.eta, gp, *m.base, *m.st, moist.get());
   }
@@ -190,6 +194,9 @@ Model Model::build(const io::Config& cfg) {
   dyn::DiffusionConfig dc;
   dc.diff_opt = int(cfg.get_int("dyn.diff_opt", (lp.khdif > 0 || lp.kvdif > 0) ? 1 : 0));
   dc.km_opt = int(cfg.get_int("dyn.km_opt", 1));
+  m.diff_opt = dc.diff_opt;
+  m.km_opt = dc.km_opt;
+  m.hybrid_opt = int(cfg.get_int("dyn.hybrid_opt", 0));
   dc.khdif = lp.khdif; dc.kvdif = lp.kvdif;
   dc.c_s = real(cfg.get_double("dyn.c_s", 0.25));
   dc.diff_6th_opt = int(cfg.get_int("dyn.diff_6th_opt", 0));

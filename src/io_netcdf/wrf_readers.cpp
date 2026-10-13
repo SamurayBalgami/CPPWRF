@@ -11,12 +11,18 @@ namespace cppwrf::io_netcdf {
 
 namespace {
 
-bool read_dim(int ncid, const char* name, int& len) {
+bool read_dim(int ncid, const char* name, int& len, bool required = false) {
   int dimid = -1;
-  if (nc_inq_dimid(ncid, name, &dimid) != NC_NOERR) return false;
+  if (nc_inq_dimid(ncid, name, &dimid) != NC_NOERR) {
+    if (required) throw std::runtime_error("wrf_readers: missing required dimension '" + std::string(name) + "'");
+    return false;
+  }
   size_t dlen = 0;
-  if (nc_inq_dimlen(ncid, dimid, &dlen) != NC_NOERR) return false;
+  NC_CHECK(nc_inq_dimlen(ncid, dimid, &dlen));
   len = static_cast<int>(dlen);
+  if (required && len <= 0) {
+    throw std::runtime_error("wrf_readers: dimension '" + std::string(name) + "' has invalid length " + std::to_string(len));
+  }
   return true;
 }
 
@@ -48,8 +54,8 @@ std::vector<std::string> read_time_strings(int ncid, const char* varname) {
 }  // namespace
 
 WrfInputData read_wrfinput(const std::string& path) {
-  int ncid = -1;
-  int status = nc_open(path.c_str(), NC_NOWRITE, &ncid);
+  ScopedNcFile ncid;
+  int status = nc_open(path.c_str(), NC_NOWRITE, ncid.ptr());
   if (status != NC_NOERR) {
     throw std::runtime_error("read_wrfinput: failed to open '" + path + "': " + nc_strerror(status));
   }
@@ -57,12 +63,12 @@ WrfInputData read_wrfinput(const std::string& path) {
   WrfInputData data;
 
   // Inquire dimensions
-  read_dim(ncid, "west_east", data.nx);
-  read_dim(ncid, "south_north", data.ny);
-  read_dim(ncid, "bottom_top", data.nz);
-  read_dim(ncid, "west_east_stag", data.nx_stag);
-  read_dim(ncid, "south_north_stag", data.ny_stag);
-  read_dim(ncid, "bottom_top_stag", data.nz_stag);
+  read_dim(ncid, "west_east", data.nx, true);
+  read_dim(ncid, "south_north", data.ny, true);
+  read_dim(ncid, "bottom_top", data.nz, true);
+  read_dim(ncid, "west_east_stag", data.nx_stag, false);
+  read_dim(ncid, "south_north_stag", data.ny_stag, false);
+  read_dim(ncid, "bottom_top_stag", data.nz_stag, false);
 
   if (data.nx_stag == 0 && data.nx > 0) data.nx_stag = data.nx + 1;
   if (data.ny_stag == 0 && data.ny > 0) data.ny_stag = data.ny + 1;
@@ -142,6 +148,27 @@ WrfInputData read_wrfinput(const std::string& path) {
     return true;
   };
 
+  // Helper lambda to read a required variable with exact size verification
+  auto read_required_var = [&](const char* name, std::vector<double>& out, size_t expected_size) {
+    if (!read_var(name, out) || out.empty()) {
+      throw std::runtime_error("read_wrfinput: required variable '" + std::string(name) + "' missing in '" + path + "'");
+    }
+    if (out.size() != expected_size) {
+      throw std::runtime_error("read_wrfinput: variable '" + std::string(name) + "' size mismatch: got " +
+                               std::to_string(out.size()) + ", expected " + std::to_string(expected_size));
+    }
+  };
+
+  const size_t s_1d = size_t(data.nz);
+  const size_t s_1d_stag = size_t(data.nz_stag);
+  const size_t s_2d = size_t(data.ny) * data.nx;
+  const size_t s_2d_u = size_t(data.ny) * data.nx_stag;
+  const size_t s_2d_v = size_t(data.ny_stag) * data.nx;
+  const size_t s_3d = size_t(data.nz) * data.ny * data.nx;
+  const size_t s_3d_u = size_t(data.nz) * data.ny * data.nx_stag;
+  const size_t s_3d_v = size_t(data.nz) * data.ny_stag * data.nx;
+  const size_t s_3d_w = size_t(data.nz_stag) * data.ny * data.nx;
+
   // Scalars / 1D constants
   std::vector<double> tmp;
   if (read_var("CF1", tmp) && !tmp.empty()) data.cf1 = tmp[0];
@@ -152,72 +179,78 @@ WrfInputData read_wrfinput(const std::string& path) {
   if (read_var("P_TOP", tmp) && !tmp.empty()) data.p_top = tmp[0];
 
   // 1D Vertical fields
-  read_var("ZNW", data.znw);
-  read_var("ZNU", data.znu);
-  read_var("DN", data.dn);
-  read_var("DNW", data.dnw);
-  read_var("RDN", data.rdn);
-  read_var("RDNW", data.rdnw);
-  read_var("FNM", data.fnm);
-  read_var("FNP", data.fnp);
+  read_required_var("ZNW", data.znw, s_1d_stag);
+  read_required_var("ZNU", data.znu, s_1d);
+  read_required_var("DN", data.dn, s_1d);
+  read_required_var("DNW", data.dnw, s_1d);
+  read_required_var("RDN", data.rdn, s_1d);
+  read_required_var("RDNW", data.rdnw, s_1d);
+  read_required_var("FNM", data.fnm, s_1d);
+  read_required_var("FNP", data.fnp, s_1d);
 
   // Hybrid coordinate weights
-  read_var("C1H", data.c1h);
-  read_var("C2H", data.c2h);
-  read_var("C3H", data.c3h);
-  read_var("C4H", data.c4h);
-  read_var("C1F", data.c1f);
-  read_var("C2F", data.c2f);
-  read_var("C3F", data.c3f);
-  read_var("C4F", data.c4f);
+  read_required_var("C1H", data.c1h, s_1d);
+  read_required_var("C2H", data.c2h, s_1d);
+  read_required_var("C3H", data.c3h, s_1d);
+  read_required_var("C4H", data.c4h, s_1d);
+  read_required_var("C1F", data.c1f, s_1d_stag);
+  read_required_var("C2F", data.c2f, s_1d_stag);
+  read_required_var("C3F", data.c3f, s_1d_stag);
+  read_required_var("C4F", data.c4f, s_1d_stag);
 
   // 2D Mass fields
-  read_var("MUB", data.mub);
-  read_var("MU", data.mu);
-  read_var("HGT", data.hgt);
-  read_var("XLAT", data.xlat);
-  read_var("XLONG", data.xlong);
-  read_var("F", data.f);
-  read_var("E", data.e);
-  read_var("SINALPHA", data.sinalpha);
-  read_var("COSALPHA", data.cosalpha);
+  read_required_var("MUB", data.mub, s_2d);
+  read_required_var("MU", data.mu, s_2d);
+  read_required_var("HGT", data.hgt, s_2d);
+  read_required_var("XLAT", data.xlat, s_2d);
+  read_required_var("XLONG", data.xlong, s_2d);
+  read_required_var("F", data.f, s_2d);
+  read_required_var("E", data.e, s_2d);
+  read_required_var("SINALPHA", data.sinalpha, s_2d);
+  read_required_var("COSALPHA", data.cosalpha, s_2d);
 
   // Map factors
-  if (!read_var("MAPFAC_MX", data.mapfac_mx)) read_var("MAPFAC_M", data.mapfac_mx);
-  if (!read_var("MAPFAC_MY", data.mapfac_my)) read_var("MAPFAC_M", data.mapfac_my);
-  if (!read_var("MAPFAC_UX", data.mapfac_ux)) read_var("MAPFAC_U", data.mapfac_ux);
-  if (!read_var("MAPFAC_UY", data.mapfac_uy)) read_var("MAPFAC_U", data.mapfac_uy);
-  if (!read_var("MAPFAC_VX", data.mapfac_vx)) read_var("MAPFAC_V", data.mapfac_vx);
-  if (!read_var("MAPFAC_VY", data.mapfac_vy)) read_var("MAPFAC_V", data.mapfac_vy);
+  if (!read_var("MAPFAC_MX", data.mapfac_mx) || data.mapfac_mx.size() != s_2d) {
+    read_required_var("MAPFAC_M", data.mapfac_mx, s_2d);
+  }
+  if (!read_var("MAPFAC_MY", data.mapfac_my) || data.mapfac_my.size() != s_2d) {
+    read_required_var("MAPFAC_M", data.mapfac_my, s_2d);
+  }
+  if (!read_var("MAPFAC_UX", data.mapfac_ux) || data.mapfac_ux.size() != s_2d_u) {
+    read_required_var("MAPFAC_U", data.mapfac_ux, s_2d_u);
+  }
+  if (!read_var("MAPFAC_UY", data.mapfac_uy) || data.mapfac_uy.size() != s_2d_u) {
+    read_required_var("MAPFAC_U", data.mapfac_uy, s_2d_u);
+  }
+  if (!read_var("MAPFAC_VX", data.mapfac_vx) || data.mapfac_vx.size() != s_2d_v) {
+    read_required_var("MAPFAC_V", data.mapfac_vx, s_2d_v);
+  }
+  if (!read_var("MAPFAC_VY", data.mapfac_vy) || data.mapfac_vy.size() != s_2d_v) {
+    read_required_var("MAPFAC_V", data.mapfac_vy, s_2d_v);
+  }
 
   // 3D Mass fields
-  read_var("PB", data.pb);
-  read_var("P", data.p);
-  read_var("T", data.t);
-  read_var("T_INIT", data.t_init);
-  read_var("ALB", data.alb);
-  read_var("AL", data.al);
-  read_var("QVAPOR", data.qvapor);
+  read_required_var("PB", data.pb, s_3d);
+  read_required_var("P", data.p, s_3d);
+  read_required_var("T", data.t, s_3d);
+  read_required_var("T_INIT", data.t_init, s_3d);
+  read_required_var("ALB", data.alb, s_3d);
+  read_required_var("AL", data.al, s_3d);
+  read_required_var("QVAPOR", data.qvapor, s_3d);
 
   // 3D Staggered fields
-  read_var("U", data.u);
-  read_var("V", data.v);
-  read_var("W", data.w);
-  read_var("PHB", data.phb);
-  read_var("PH", data.ph);
+  read_required_var("U", data.u, s_3d_u);
+  read_required_var("V", data.v, s_3d_v);
+  read_required_var("W", data.w, s_3d_w);
+  read_required_var("PHB", data.phb, s_3d_w);
+  read_required_var("PH", data.ph, s_3d_w);
 
-  // Moist species
+  // Moist species (optional, not duplicated)
   read_var("QCLOUD", data.qcloud);
   read_var("QRAIN", data.qrain);
   read_var("QICE", data.qice);
   read_var("QSNOW", data.qsnow);
   read_var("QGRAUP", data.qgraup);
-
-  if (!data.qcloud.empty()) data.moist_species["QCLOUD"] = data.qcloud;
-  if (!data.qrain.empty()) data.moist_species["QRAIN"] = data.qrain;
-  if (!data.qice.empty()) data.moist_species["QICE"] = data.qice;
-  if (!data.qsnow.empty()) data.moist_species["QSNOW"] = data.qsnow;
-  if (!data.qgraup.empty()) data.moist_species["QGRAUP"] = data.qgraup;
 
   // Inquire all 3D moisture variables starting with 'Q'
   int nvars = 0;
@@ -236,28 +269,69 @@ WrfInputData read_wrfinput(const std::string& path) {
       }
     }
   }
+  // Soil dimensions and fields
+  read_dim(ncid, "soil_layers_stag", data.num_soil_layers);
+  read_var("ZS", data.zs);
+  read_var("DZS", data.dzs);
+  read_var("TSK", data.tsk);
+  read_var("TSLB", data.tslb);
+  read_var("SMOIS", data.smois);
+  read_var("SH2O", data.sh2o);
+  read_var("SNOW", data.snow);
+  read_var("SNOWH", data.snowh);
+  read_var("SNOWC", data.snowc);
+  read_var("CANWAT", data.canwat);
+  read_var("ALBEDO", data.albedo);
+  read_var("ALBBCK", data.albbck);
+  read_var("EMISS", data.emiss);
+  read_var("EMBCK", data.embck);
+  read_var("SNOALB", data.snoalb);
+  read_var("TMN", data.tmn);
+  read_var("XLAND", data.xland);
+  read_var("SEAICE", data.seaice);
+  if (data.seaice.empty()) read_var("XICE", data.seaice);
+  read_var("LAKEMASK", data.lakemask);
+  read_var("WATER_DEPTH", data.water_depth);
+  read_var("VEGFRA", data.vegfra);
+  read_var("SHDMIN", data.shdmin);
+  read_var("SHDMAX", data.shdmax);
+  read_var("LAI", data.lai);
+  read_var("LU_INDEX", data.lu_index);
+  read_var("IVGTYP", data.ivgtyp);
+  read_var("ISLTYP", data.isltyp);
+  read_var("U10", data.u10);
+  read_var("V10", data.v10);
+  read_var("TH2", data.th2);
+  read_var("T2", data.t2);
+  read_var("Q2", data.q2);
+  read_var("UST", data.ust);
+  read_var("PBLH", data.pblh);
+  read_var("HFX", data.hfx);
+  read_var("QFX", data.qfx);
+  read_var("LH", data.lh);
+  read_var("ZNT", data.znt);
+  read_var("QSFC", data.qsfc);
 
-  nc_close(ncid);
   return data;
 }
 
 WrfBdyData read_wrfbdy(const std::string& path) {
-  int ncid = -1;
-  int status = nc_open(path.c_str(), NC_NOWRITE, &ncid);
+  ScopedNcFile ncid;
+  int status = nc_open(path.c_str(), NC_NOWRITE, ncid.ptr());
   if (status != NC_NOERR) {
     throw std::runtime_error("read_wrfbdy: failed to open '" + path + "': " + nc_strerror(status));
   }
 
   WrfBdyData data;
 
-  read_dim(ncid, "Time", data.n_times);
-  read_dim(ncid, "bdy_width", data.bdy_width);
-  read_dim(ncid, "west_east", data.nx);
-  read_dim(ncid, "south_north", data.ny);
-  read_dim(ncid, "bottom_top", data.nz);
-  read_dim(ncid, "west_east_stag", data.nx_stag);
-  read_dim(ncid, "south_north_stag", data.ny_stag);
-  read_dim(ncid, "bottom_top_stag", data.nz_stag);
+  read_dim(ncid, "Time", data.n_times, true);
+  read_dim(ncid, "bdy_width", data.bdy_width, true);
+  read_dim(ncid, "west_east", data.nx, true);
+  read_dim(ncid, "south_north", data.ny, true);
+  read_dim(ncid, "bottom_top", data.nz, true);
+  read_dim(ncid, "west_east_stag", data.nx_stag, false);
+  read_dim(ncid, "south_north_stag", data.ny_stag, false);
+  read_dim(ncid, "bottom_top_stag", data.nz_stag, false);
 
   if (data.nx_stag == 0 && data.nx > 0) data.nx_stag = data.nx + 1;
   if (data.ny_stag == 0 && data.ny > 0) data.ny_stag = data.ny + 1;
@@ -288,81 +362,101 @@ WrfBdyData read_wrfbdy(const std::string& path) {
       out.clear();
       return false;
     }
-    data.raw_fields[name] = out;
     return true;
   };
 
+  auto read_required_bdy_var = [&](const char* name, std::vector<double>& out, size_t expected_size) {
+    if (!read_bdy_var(name, out) || out.empty()) {
+      throw std::runtime_error("read_wrfbdy: required variable '" + std::string(name) + "' missing in '" + path + "'");
+    }
+    if (out.size() != expected_size) {
+      throw std::runtime_error("read_wrfbdy: variable '" + std::string(name) + "' size mismatch: got " +
+                               std::to_string(out.size()) + ", expected " + std::to_string(expected_size));
+    }
+  };
+
+  const size_t b_x = size_t(data.n_times) * data.bdy_width * data.nz * data.ny;
+  const size_t b_y = size_t(data.n_times) * data.bdy_width * data.nz * data.nx;
+  const size_t b_x_u = b_x;
+  const size_t b_y_u = size_t(data.n_times) * data.bdy_width * data.nz * data.nx_stag;
+  const size_t b_x_v = size_t(data.n_times) * data.bdy_width * data.nz * data.ny_stag;
+  const size_t b_y_v = b_y;
+  const size_t b_w_x = size_t(data.n_times) * data.bdy_width * data.nz_stag * data.ny;
+  const size_t b_w_y = size_t(data.n_times) * data.bdy_width * data.nz_stag * data.nx;
+  const size_t b_mu_x = size_t(data.n_times) * data.bdy_width * data.ny;
+  const size_t b_mu_y = size_t(data.n_times) * data.bdy_width * data.nx;
+
   // U
-  read_bdy_var("U_BXS", data.u_bxs);
-  read_bdy_var("U_BXE", data.u_bxe);
-  read_bdy_var("U_BYS", data.u_bys);
-  read_bdy_var("U_BYE", data.u_bye);
-  read_bdy_var("U_BTXS", data.u_btxs);
-  read_bdy_var("U_BTXE", data.u_btxe);
-  read_bdy_var("U_BTYS", data.u_btys);
-  read_bdy_var("U_BTYE", data.u_btye);
+  read_required_bdy_var("U_BXS", data.u_bxs, b_x_u);
+  read_required_bdy_var("U_BXE", data.u_bxe, b_x_u);
+  read_required_bdy_var("U_BYS", data.u_bys, b_y_u);
+  read_required_bdy_var("U_BYE", data.u_bye, b_y_u);
+  read_required_bdy_var("U_BTXS", data.u_btxs, b_x_u);
+  read_required_bdy_var("U_BTXE", data.u_btxe, b_x_u);
+  read_required_bdy_var("U_BTYS", data.u_btys, b_y_u);
+  read_required_bdy_var("U_BTYE", data.u_btye, b_y_u);
 
   // V
-  read_bdy_var("V_BXS", data.v_bxs);
-  read_bdy_var("V_BXE", data.v_bxe);
-  read_bdy_var("V_BYS", data.v_bys);
-  read_bdy_var("V_BYE", data.v_bye);
-  read_bdy_var("V_BTXS", data.v_btxs);
-  read_bdy_var("V_BTXE", data.v_btxe);
-  read_bdy_var("V_BTYS", data.v_btys);
-  read_bdy_var("V_BTYE", data.v_btye);
+  read_required_bdy_var("V_BXS", data.v_bxs, b_x_v);
+  read_required_bdy_var("V_BXE", data.v_bxe, b_x_v);
+  read_required_bdy_var("V_BYS", data.v_bys, b_y_v);
+  read_required_bdy_var("V_BYE", data.v_bye, b_y_v);
+  read_required_bdy_var("V_BTXS", data.v_btxs, b_x_v);
+  read_required_bdy_var("V_BTXE", data.v_btxe, b_x_v);
+  read_required_bdy_var("V_BTYS", data.v_btys, b_y_v);
+  read_required_bdy_var("V_BTYE", data.v_btye, b_y_v);
 
   // W
-  read_bdy_var("W_BXS", data.w_bxs);
-  read_bdy_var("W_BXE", data.w_bxe);
-  read_bdy_var("W_BYS", data.w_bys);
-  read_bdy_var("W_BYE", data.w_bye);
-  read_bdy_var("W_BTXS", data.w_btxs);
-  read_bdy_var("W_BTXE", data.w_btxe);
-  read_bdy_var("W_BTYS", data.w_btys);
-  read_bdy_var("W_BTYE", data.w_btye);
+  read_required_bdy_var("W_BXS", data.w_bxs, b_w_x);
+  read_required_bdy_var("W_BXE", data.w_bxe, b_w_x);
+  read_required_bdy_var("W_BYS", data.w_bys, b_w_y);
+  read_required_bdy_var("W_BYE", data.w_bye, b_w_y);
+  read_required_bdy_var("W_BTXS", data.w_btxs, b_w_x);
+  read_required_bdy_var("W_BTXE", data.w_btxe, b_w_x);
+  read_required_bdy_var("W_BTYS", data.w_btys, b_w_y);
+  read_required_bdy_var("W_BTYE", data.w_btye, b_w_y);
 
   // PH
-  read_bdy_var("PH_BXS", data.ph_bxs);
-  read_bdy_var("PH_BXE", data.ph_bxe);
-  read_bdy_var("PH_BYS", data.ph_bys);
-  read_bdy_var("PH_BYE", data.ph_bye);
-  read_bdy_var("PH_BTXS", data.ph_btxs);
-  read_bdy_var("PH_BTXE", data.ph_btxe);
-  read_bdy_var("PH_BTYS", data.ph_btys);
-  read_bdy_var("PH_BTYE", data.ph_btye);
+  read_required_bdy_var("PH_BXS", data.ph_bxs, b_w_x);
+  read_required_bdy_var("PH_BXE", data.ph_bxe, b_w_x);
+  read_required_bdy_var("PH_BYS", data.ph_bys, b_w_y);
+  read_required_bdy_var("PH_BYE", data.ph_bye, b_w_y);
+  read_required_bdy_var("PH_BTXS", data.ph_btxs, b_w_x);
+  read_required_bdy_var("PH_BTXE", data.ph_btxe, b_w_x);
+  read_required_bdy_var("PH_BTYS", data.ph_btys, b_w_y);
+  read_required_bdy_var("PH_BTYE", data.ph_btye, b_w_y);
 
   // T
-  read_bdy_var("T_BXS", data.t_bxs);
-  read_bdy_var("T_BXE", data.t_bxe);
-  read_bdy_var("T_BYS", data.t_bys);
-  read_bdy_var("T_BYE", data.t_bye);
-  read_bdy_var("T_BTXS", data.t_btxs);
-  read_bdy_var("T_BTXE", data.t_btxe);
-  read_bdy_var("T_BTYS", data.t_btys);
-  read_bdy_var("T_BTYE", data.t_btye);
+  read_required_bdy_var("T_BXS", data.t_bxs, b_x);
+  read_required_bdy_var("T_BXE", data.t_bxe, b_x);
+  read_required_bdy_var("T_BYS", data.t_bys, b_y);
+  read_required_bdy_var("T_BYE", data.t_bye, b_y);
+  read_required_bdy_var("T_BTXS", data.t_btxs, b_x);
+  read_required_bdy_var("T_BTXE", data.t_btxe, b_x);
+  read_required_bdy_var("T_BTYS", data.t_btys, b_y);
+  read_required_bdy_var("T_BTYE", data.t_btye, b_y);
 
   // MU
-  read_bdy_var("MU_BXS", data.mu_bxs);
-  read_bdy_var("MU_BXE", data.mu_bxe);
-  read_bdy_var("MU_BYS", data.mu_bys);
-  read_bdy_var("MU_BYE", data.mu_bye);
-  read_bdy_var("MU_BTXS", data.mu_btxs);
-  read_bdy_var("MU_BTXE", data.mu_btxe);
-  read_bdy_var("MU_BTYS", data.mu_btys);
-  read_bdy_var("MU_BTYE", data.mu_btye);
+  read_required_bdy_var("MU_BXS", data.mu_bxs, b_mu_x);
+  read_required_bdy_var("MU_BXE", data.mu_bxe, b_mu_x);
+  read_required_bdy_var("MU_BYS", data.mu_bys, b_mu_y);
+  read_required_bdy_var("MU_BYE", data.mu_bye, b_mu_y);
+  read_required_bdy_var("MU_BTXS", data.mu_btxs, b_mu_x);
+  read_required_bdy_var("MU_BTXE", data.mu_btxe, b_mu_x);
+  read_required_bdy_var("MU_BTYS", data.mu_btys, b_mu_y);
+  read_required_bdy_var("MU_BTYE", data.mu_btye, b_mu_y);
 
   // QVAPOR
-  read_bdy_var("QVAPOR_BXS", data.qvapor_bxs);
-  read_bdy_var("QVAPOR_BXE", data.qvapor_bxe);
-  read_bdy_var("QVAPOR_BYS", data.qvapor_bys);
-  read_bdy_var("QVAPOR_BYE", data.qvapor_bye);
-  read_bdy_var("QVAPOR_BTXS", data.qvapor_btxs);
-  read_bdy_var("QVAPOR_BTXE", data.qvapor_btxe);
-  read_bdy_var("QVAPOR_BTYS", data.qvapor_btys);
-  read_bdy_var("QVAPOR_BTYE", data.qvapor_btye);
+  read_required_bdy_var("QVAPOR_BXS", data.qvapor_bxs, b_x);
+  read_required_bdy_var("QVAPOR_BXE", data.qvapor_bxe, b_x);
+  read_required_bdy_var("QVAPOR_BYS", data.qvapor_bys, b_y);
+  read_required_bdy_var("QVAPOR_BYE", data.qvapor_bye, b_y);
+  read_required_bdy_var("QVAPOR_BTXS", data.qvapor_btxs, b_x);
+  read_required_bdy_var("QVAPOR_BTXE", data.qvapor_btxe, b_x);
+  read_required_bdy_var("QVAPOR_BTYS", data.qvapor_btys, b_y);
+  read_required_bdy_var("QVAPOR_BTYE", data.qvapor_btye, b_y);
 
-  // QCLOUD
+  // QCLOUD (optional)
   read_bdy_var("QCLOUD_BXS", data.qcloud_bxs);
   read_bdy_var("QCLOUD_BXE", data.qcloud_bxe);
   read_bdy_var("QCLOUD_BYS", data.qcloud_bys);
@@ -372,7 +466,7 @@ WrfBdyData read_wrfbdy(const std::string& path) {
   read_bdy_var("QCLOUD_BTYS", data.qcloud_btys);
   read_bdy_var("QCLOUD_BTYE", data.qcloud_btye);
 
-  // QRAIN
+  // QRAIN (optional)
   read_bdy_var("QRAIN_BXS", data.qrain_bxs);
   read_bdy_var("QRAIN_BXE", data.qrain_bxe);
   read_bdy_var("QRAIN_BYS", data.qrain_bys);
@@ -382,7 +476,7 @@ WrfBdyData read_wrfbdy(const std::string& path) {
   read_bdy_var("QRAIN_BTYS", data.qrain_btys);
   read_bdy_var("QRAIN_BTYE", data.qrain_btye);
 
-  // QICE
+  // QICE (optional)
   read_bdy_var("QICE_BXS", data.qice_bxs);
   read_bdy_var("QICE_BXE", data.qice_bxe);
   read_bdy_var("QICE_BYS", data.qice_bys);
@@ -392,23 +486,6 @@ WrfBdyData read_wrfbdy(const std::string& path) {
   read_bdy_var("QICE_BTYS", data.qice_btys);
   read_bdy_var("QICE_BTYE", data.qice_btye);
 
-  // Generic sweep for any other boundary variable in the file
-  int nvars = 0;
-  nc_inq_nvars(ncid, &nvars);
-  for (int v = 0; v < nvars; ++v) {
-    char vname[NC_MAX_NAME + 1];
-    nc_inq_varname(ncid, v, vname);
-    std::string sname(vname);
-    if (!data.raw_fields.count(sname)) {
-      if (sname.find("_BX") != std::string::npos || sname.find("_BY") != std::string::npos ||
-          sname.find("_BTX") != std::string::npos || sname.find("_BTY") != std::string::npos) {
-        std::vector<double> buf;
-        read_bdy_var(vname, buf);
-      }
-    }
-  }
-
-  nc_close(ncid);
   return data;
 }
 

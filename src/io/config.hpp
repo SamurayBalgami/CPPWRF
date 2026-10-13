@@ -2,6 +2,7 @@
 #define CPPWRF_IO_CONFIG_HPP
 
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -25,9 +26,12 @@ class Config {
   std::vector<double> get_double_list(const std::string& key) const;     // comma separated
   std::vector<std::string> keys() const;                                 // sorted
   std::string to_json() const;  // {"domain":{"nx":"512",...},...}; values as JSON strings
+  std::vector<std::string> unaccessed_keys() const;
+  void mark_accessed(const std::string& key) const;
 
  private:
   std::map<std::string, std::string> data_;
+  mutable std::set<std::string> accessed_keys_;
   static Config parse(const std::string& text, const std::string& source_name, const std::vector<std::string>& overrides);
   void apply_overrides(const std::vector<std::string>& overrides);
 };

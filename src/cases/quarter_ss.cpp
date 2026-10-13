@@ -61,22 +61,22 @@ RawSounding read_sounding_file(const std::string& path) {
 }
 
 RawSounding load_sounding(const io::Config& cfg) {
-  std::vector<std::string> candidates;
   if (cfg.has("case.sounding_file")) {
-    candidates.push_back(cfg.get_string("case.sounding_file"));
+    std::string path = cfg.get_string("case.sounding_file");
+    std::ifstream test(path);
+    if (!test.good()) {
+      throw std::runtime_error("Cannot open specified sounding_file: " + path);
+    }
+    return read_sounding_file(path);
   }
-  candidates.push_back("configs/input_sounding_qss");
-  candidates.push_back("/home/ostriquetrum/wrf_ref/run_qss/input_sounding");
-  candidates.push_back("/home/ostriquetrum/wrf_ref/WRF_qss/test/em_quarter_ss/input_sounding");
-  candidates.push_back("input_sounding");
-
+  const std::vector<std::string> candidates = {"configs/input_sounding_qss", "input_sounding"};
   for (const auto& c : candidates) {
     std::ifstream test(c);
     if (test.good()) {
       return read_sounding_file(c);
     }
   }
-  throw std::runtime_error("Could not locate input_sounding file for quarter_ss");
+  throw std::runtime_error("Could not locate input_sounding file for quarter_ss (tried configs/input_sounding_qss, input_sounding)");
 }
 
 // 1D linear interpolation matching WRF interp_0 in module_init_utilities.F
@@ -125,11 +125,12 @@ void init_quarter_ss(const io::Config& cfg, const std::vector<double>& eta, cons
                      dyn::BaseState& b, dyn::State& s) {
   RawSounding raw = load_sounding(cfg);
   const int nl = int(raw.pts.size());
+  const bool has_qv = (s.P_QV >= 0);
   std::vector<double> h(nl), th(nl), qv(nl), u(nl), v(nl);
   for (int k = 0; k < nl; ++k) {
     h[k] = raw.pts[k].h;
     th[k] = raw.pts[k].th;
-    qv[k] = 0.001 * raw.pts[k].qv;
+    qv[k] = has_qv ? 0.001 * raw.pts[k].qv : 0.0;
     u[k] = raw.pts[k].u;
     v[k] = raw.pts[k].v;
   }

@@ -181,6 +181,10 @@ CaseDef make_case(const std::string& name, const io::Config& cfg, const Grid& G)
     c.theta_env = [=](double z) { return th0 * std::exp(N * N * z / g); };
     c.u_env = [=](double) { return 10.0; };
     c.params = {{"hm", cfg.get_double("case.hm", 100.0)}, {"xa", cfg.get_double("case.xa", 5.0)}};
+  } else if (name == "quarter_ss" || name == "squall2d_x") {
+    c.theta_env = [=](double) { return 300.0; };
+    c.p_surf = cfg.get_double("case.p_surf", 1.0e5);
+    c.params = {{"delt", cfg.get_double("case.delt", 3.0)}};
   } else {
     throw std::runtime_error("unknown case: " + name);
   }
@@ -196,7 +200,11 @@ CaseDef make_case(const std::string& name, const io::Config& cfg, const Grid& G)
 }
 
 std::vector<double> make_eta_levels(const io::Config& cfg, const Grid& G, const Sounding& snd) {
-  std::string mode = cfg.get_string("domain.eta", "uniform_z");
+  std::string default_mode = "uniform_z";
+  if (cfg.has("run.case") && (cfg.get_string("run.case") == "squall2d_x" || cfg.get_string("run.case") == "quarter_ss")) {
+    default_mode = "stretched";
+  }
+  std::string mode = cfg.get_string("domain.eta", default_mode);
   std::vector<double> e(G.nz + 1);
   if (mode == "uniform_z") {
     double ps = snd.p(0.0), pt = snd.p(G.ztop);
@@ -205,10 +213,18 @@ std::vector<double> make_eta_levels(const io::Config& cfg, const Grid& G, const 
     e[G.nz] = 0.0;
   } else if (mode == "uniform_eta") {
     for (int k = 0; k <= G.nz; ++k) e[k] = 1.0 - double(k) / G.nz;
+  } else if (mode == "stretched") {
+    const double z_scale = cfg.get_double("domain.z_scale", 8000.0 / G.ztop);
+    const double denom = 1.0 - std::exp(-1.0 / z_scale);
+    for (int k = 0; k <= G.nz; ++k) {
+      e[k] = (std::exp(-double(k) / double(G.nz) / z_scale) - std::exp(-1.0 / z_scale)) / denom;
+    }
+    e[0] = 1.0;
+    e[G.nz] = 0.0;
   } else if (mode == "list") {
     e = cfg.get_double_list("domain.eta_levels");
   } else {
-    throw std::runtime_error("domain.eta must be uniform_z, uniform_eta or list");
+    throw std::runtime_error("domain.eta must be uniform_z, uniform_eta, stretched or list");
   }
   return e;
 }

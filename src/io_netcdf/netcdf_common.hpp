@@ -65,6 +65,40 @@ struct WrfoutMeta {
   int hybrid_opt = 0;
   int hypsometric_opt = 1;
   double etac = 0.2;
+  bool is_restart = false;
+};
+
+class ScopedNcFile {
+ public:
+  explicit ScopedNcFile(int id = -1) : id_(id) {}
+  ~ScopedNcFile() { close(); }
+  ScopedNcFile(const ScopedNcFile&) = delete;
+  ScopedNcFile& operator=(const ScopedNcFile&) = delete;
+  ScopedNcFile(ScopedNcFile&& o) noexcept : id_(o.id_) { o.id_ = -1; }
+  ScopedNcFile& operator=(ScopedNcFile&& o) noexcept {
+    if (this != &o) {
+      close();
+      id_ = o.id_;
+      o.id_ = -1;
+    }
+    return *this;
+  }
+  int get() const { return id_; }
+  operator int() const { return id_; }
+  int* ptr() { return &id_; }
+  void close() {
+    if (id_ >= 0) {
+      nc_close(id_);
+      id_ = -1;
+    }
+  }
+  int release() {
+    int ret = id_;
+    id_ = -1;
+    return ret;
+  }
+ private:
+  int id_ = -1;
 };
 
 // Formats seconds into WRF 19-char timestamp "YYYY-MM-DD_hh:mm:ss" starting from base_date

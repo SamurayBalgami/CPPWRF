@@ -126,6 +126,8 @@ def main():
         ("squall2d", "configs/squall2d.ini", "build-cpu-dp", "fp64", 6.0, 300.0, 600.0),
         ("squall2d", "configs/squall2d.ini", "build-cuda", "fp32", 6.0, 300.0, 600.0),
         ("squall2d", "configs/squall2d.ini", "build-cuda-dp", "fp64", 6.0, 300.0, 600.0),
+        ("squall2d_wsm6", "configs/squall2d_wsm6.ini", "build-cpu-dp", "fp64", 6.0, 300.0, 600.0),
+        ("squall2d_wsm6", "configs/squall2d_wsm6.ini", "build-cuda-dp", "fp64", 6.0, 300.0, 600.0),
     ]
 
     for c in configs:

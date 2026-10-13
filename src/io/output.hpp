@@ -75,6 +75,7 @@ class DiagWriter {
   DiagWriter(const std::string& path, std::vector<std::string> columns);
   ~DiagWriter();
   void row(const std::vector<double>& values);
+  void raw_line(std::string_view line);
 
  private:
   std::string path_;

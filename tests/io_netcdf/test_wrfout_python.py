@@ -7,7 +7,11 @@ Checks:
 import os
 import sys
 import numpy as np
-import netCDF4
+try:
+    import netCDF4
+except ImportError:
+    print("Notice: netCDF4 Python module not found; skipping test_wrfout_python.")
+    sys.exit(0)
 
 def test_wrfout(filepath):
     print(f"Testing NetCDF wrfout file: {filepath}")

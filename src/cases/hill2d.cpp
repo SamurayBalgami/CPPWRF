@@ -1,5 +1,6 @@
 #include "cases/hill2d.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -60,23 +61,22 @@ RawSounding read_sounding_file(const std::string& path) {
 }
 
 RawSounding load_sounding(const io::Config& cfg) {
-  std::vector<std::string> candidates;
   if (cfg.has("case.sounding_file")) {
-    candidates.push_back(cfg.get_string("case.sounding_file"));
+    std::string path = cfg.get_string("case.sounding_file");
+    std::ifstream test(path);
+    if (!test.good()) {
+      throw std::runtime_error("Cannot open specified sounding_file: " + path);
+    }
+    return read_sounding_file(path);
   }
-  candidates.push_back("/home/ostriquetrum/wrf_ref/run_hill_p0/input_sounding");
-  candidates.push_back("/home/ostriquetrum/wrf_ref/run_hill/input_sounding");
-  candidates.push_back("input_sounding");
-  candidates.push_back("../wrf_ref/run_hill_p0/input_sounding");
-  candidates.push_back("configs/input_sounding_hill2d");
-
+  const std::vector<std::string> candidates = {"configs/input_sounding_hill2d", "input_sounding"};
   for (const auto& c : candidates) {
     std::ifstream test(c);
     if (test.good()) {
       return read_sounding_file(c);
     }
   }
-  throw std::runtime_error("Could not locate input_sounding file");
+  throw std::runtime_error("Could not locate input_sounding file for hill2d (tried configs/input_sounding_hill2d, input_sounding)");
 }
 
 // 1D linear interpolation matching WRF interp_0 in module_init_utilities.F
@@ -175,10 +175,15 @@ void init_hill2d(const io::Config& cfg, const std::vector<double>& eta, const Gr
   const double xa = cfg.get_double("case.xa", 5.0);
   const double icm = cfg.get_double("case.icm", double(g.nx / 2));
 
-  b.ht.fill_host_halo([&](int i, int, int) {
-    int iw = (i % g.nx + g.nx) % g.nx;
-    return hm / (1.0 + std::pow((double(iw) - icm) / xa, 2));
-  });
+  auto ht_func = [&](int i) {
+    double x = double(i);
+    if (g.bc_x == BC::Periodic) {
+      x = double((i % g.nx + g.nx) % g.nx);
+    }
+    return hm / (1.0 + std::pow((x - icm) / xa, 2));
+  };
+
+  b.ht.fill_host_halo([&](int i, int, int) { return ht_func(i); });
 
   // Base state columns
   const int nx = g.nx, nz = g.nz;
@@ -189,7 +194,7 @@ void init_hill2d(const io::Config& cfg, const std::vector<double>& eta, const Gr
   std::vector<double> phb_col((nz + 1) * nx);
 
   for (int i = 0; i < nx; ++i) {
-    const double zsfc = hm / (1.0 + std::pow((double(i) - icm) / xa, 2));
+    const double zsfc = ht_func(i);
     const double psurf = interp_0(pm_in, h, zsfc);
     mub_col[i] = psurf - p_top;
     phb_col[0 * nx + i] = cst::g * zsfc;
@@ -207,38 +212,43 @@ void init_hill2d(const io::Config& cfg, const std::vector<double>& eta, const Gr
     }
   }
 
-  // Fill BaseState arrays with periodic halo wrapping
-  b.mub.fill_host_halo([&](int i, int, int) {
-    int iw = (i % nx + nx) % nx;
-    return mub_col[iw];
-  });
-  b.pb.fill_host_halo([&](int i, int, int k) {
-    int iw = (i % nx + nx) % nx;
-    return pb_col[k * nx + iw];
-  });
-  b.alb.fill_host_halo([&](int i, int, int k) {
-    int iw = (i % nx + nx) % nx;
-    return alb_col[k * nx + iw];
-  });
-  b.t_init.fill_host_halo([&](int i, int, int k) {
-    int iw = (i % nx + nx) % nx;
-    return t_init_col[k * nx + iw];
-  });
-  b.phb.fill_host_halo([&](int i, int, int k) {
-    int iw = (i % nx + nx) % nx;
-    return phb_col[k * nx + iw];
-  });
+  // Fill BaseState arrays with boundary-aware halo wrapping
+  auto col_idx = [&](int i) {
+    if (g.bc_x == BC::Periodic) return (i % nx + nx) % nx;
+    return std::clamp(i, 0, nx - 1);
+  };
+  b.mub.fill_host_halo([&](int i, int, int) { return mub_col[col_idx(i)]; });
+  b.pb.fill_host_halo([&](int i, int, int k) { return pb_col[k * nx + col_idx(i)]; });
+  b.alb.fill_host_halo([&](int i, int, int k) { return alb_col[k * nx + col_idx(i)]; });
+  b.t_init.fill_host_halo([&](int i, int, int k) { return t_init_col[k * nx + col_idx(i)]; });
+  b.phb.fill_host_halo([&](int i, int, int k) { return phb_col[k * nx + col_idx(i)]; });
   b.qv_base.fill_host_halo([](int, int, int) { return 0.0; });
 
+  // Sounding wind interpolation (WRF interp_0 from sounding u, or override by case.u0)
+  const bool has_u0 = cfg.has("case.u0");
+  const double u0_val = cfg.get_double("case.u0", 10.0);
+  std::vector<double> u_stag((nx + 1) * nz);
+  for (int i = 0; i <= nx; ++i) {
+    const double zsfc_u = 0.5 * (ht_func(i) + ht_func(i > 0 ? i - 1 : (g.bc_x == BC::Periodic ? nx - 1 : 0)));
+    const double psurf_u = interp_0(pm_in, h, zsfc_u);
+    for (int k = 0; k < nz; ++k) {
+      if (has_u0) {
+        u_stag[k * (nx + 1) + i] = u0_val;
+      } else {
+        const double p_lvl = b.znu[k] * (psurf_u - p_top) + p_top;
+        u_stag[k * (nx + 1) + i] = interp_0(u, pm_in, p_lvl);
+      }
+    }
+  }
+
   // Fill State s
-  const double u0 = cfg.get_double("case.u0", 10.0);
   s.t_2.fill_host([&](int i, int, int k) { return t_init_col[k * nx + i]; });
   s.al.fill_host([](int, int, int) { return 0.0; });
   s.alt.fill_host([&](int i, int, int k) { return alb_col[k * nx + i]; });
   s.ph_2.fill_host([](int, int, int) { return 0.0; });
   s.p.fill_host([](int, int, int) { return 0.0; });
   s.mu_2.fill_host([](int, int, int) { return 0.0; });
-  s.u_2.fill_host([=](int, int, int) { return u0; });
+  s.u_2.fill_host([&](int i, int, int k) { return u_stag[k * (nx + 1) + i]; });
   s.v_2.fill_host([](int, int, int) { return 0.0; });
   s.w_2.fill_host([](int, int, int) { return 0.0; });
 

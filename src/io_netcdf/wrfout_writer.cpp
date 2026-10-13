@@ -20,28 +20,40 @@ std::string to_upper(std::string_view s) {
 }
 
 const VarView* find_var(const std::vector<VarView>& vars, std::string_view name) {
-  std::string target = to_upper(name);
+  // 1. Exact case-sensitive match
   for (const auto& v : vars) {
-    if (to_upper(v.name) == target) return &v;
+    if (v.name == name) return &v;
   }
-  // Check known aliases
-  if (target == "T") {
-    for (const auto& v : vars) {
-      std::string n = to_upper(v.name);
-      if (n == "TH_PERT" || n == "T_PERT") return &v;
-    }
-  }
+  std::string target = to_upper(name);
+  // 2. Specific perturbation / temperature aliases (strict, no accidental full-field matching)
   if (target == "P") {
     for (const auto& v : vars) {
-      std::string n = to_upper(v.name);
-      if (n == "P_PERT") return &v;
+      if (to_upper(v.name) == "P_PERT") return &v;
     }
+    return nullptr;
+  }
+  if (target == "PH") {
+    for (const auto& v : vars) {
+      if (to_upper(v.name) == "PH_PERT") return &v;
+    }
+    return nullptr;
   }
   if (target == "MU") {
     for (const auto& v : vars) {
-      std::string n = to_upper(v.name);
-      if (n == "MU_PERT") return &v;
+      if (to_upper(v.name) == "MU_PERT") return &v;
     }
+    return nullptr;
+  }
+  if (target == "T") {
+    for (const auto& v : vars) {
+      std::string n = to_upper(v.name);
+      if (n == "T_PERT" || n == "TH_300" || n == "THETA_300") return &v;
+    }
+    return nullptr;
+  }
+  // 3. Exact case-insensitive match for other variables
+  for (const auto& v : vars) {
+    if (to_upper(v.name) == target) return &v;
   }
   if (target == "QVAPOR") {
     for (const auto& v : vars) {
@@ -59,6 +71,24 @@ const VarView* find_var(const std::vector<VarView>& vars, std::string_view name)
     for (const auto& v : vars) {
       std::string n = to_upper(v.name);
       if (n == "QR") return &v;
+    }
+  }
+  if (target == "QICE") {
+    for (const auto& v : vars) {
+      std::string n = to_upper(v.name);
+      if (n == "QI") return &v;
+    }
+  }
+  if (target == "QSNOW") {
+    for (const auto& v : vars) {
+      std::string n = to_upper(v.name);
+      if (n == "QS") return &v;
+    }
+  }
+  if (target == "QGRAUP") {
+    for (const auto& v : vars) {
+      std::string n = to_upper(v.name);
+      if (n == "QG") return &v;
     }
   }
   return nullptr;
@@ -120,33 +150,43 @@ struct VarDef {
 }  // namespace
 
 std::string format_wrf_date(const std::string& base_date, double time_sec) {
-  int y = 1, m = 1, d = 1, hr = 0, mn = 0, sc = 0;
+  int Y = 2000, M = 1, D = 1, hr = 0, mn = 0, sc = 0;
   if (base_date.size() >= 19) {
-    std::sscanf(base_date.c_str(), "%4d-%2d-%2d_%2d:%2d:%2d", &y, &m, &d, &hr, &mn, &sc);
+    std::sscanf(base_date.c_str(), "%4d-%2d-%2d_%2d:%2d:%2d", &Y, &M, &D, &hr, &mn, &sc);
   }
-  long total_sec = std::lround(time_sec) + sc + mn * 60 + hr * 3600;
-  long days_add = total_sec / 86400;
-  total_sec %= 86400;
-  if (total_sec < 0) {
-    total_sec += 86400;
-    days_add -= 1;
-  }
-  hr = int(total_sec / 3600);
-  mn = int((total_sec % 3600) / 60);
-  sc = int(total_sec % 60);
-  d += int(days_add);
+  // Convert base date to civil days from 1970-01-01 (proleptic Gregorian)
+  const int y = Y - (M <= 2);
+  const int era = (y >= 0 ? y : y - 399) / 400;
+  const unsigned yoe = static_cast<unsigned>(y - era * 400);
+  const unsigned doy = (153 * (M + (M > 2 ? -3 : 9)) + 2) / 5 + D - 1;
+  const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  const long base_days = long(era) * 146097 + doe - 719468;
 
-  // Simplified calendar for simulation timestamps
-  while (d > 30) {
-    d -= 30;
-    m++;
-    if (m > 12) {
-      m = 1;
-      y++;
-    }
+  long total_sec = base_days * 86400L + hr * 3600L + mn * 60L + sc + std::lround(time_sec);
+  long new_days = total_sec / 86400L;
+  long sec_day = total_sec % 86400L;
+  if (sec_day < 0) {
+    sec_day += 86400L;
+    new_days -= 1;
   }
+  hr = int(sec_day / 3600);
+  mn = int((sec_day % 3600) / 60);
+  sc = int(sec_day % 60);
+
+  // Convert civil days back to date (Hinnant's algorithm)
+  const long z = new_days + 719468;
+  const long res_era = (z >= 0 ? z : z - 146096) / 146097;
+  const unsigned res_doe = static_cast<unsigned>(z - res_era * 146097);
+  const unsigned res_yoe = (res_doe - res_doe / 1460 + res_doe / 36524 - res_doe / 146096) / 365;
+  const long res_y = static_cast<long>(res_yoe) + res_era * 400;
+  const unsigned res_doy = res_doe - (365 * res_yoe + res_yoe / 4 - res_yoe / 100);
+  const unsigned mp = (5 * res_doy + 2) / 153;
+  const unsigned res_d = res_doy - (153 * mp + 2) / 5 + 1;
+  const unsigned res_m = mp < 10 ? mp + 3 : mp - 9;
+  const long final_y = res_y + (res_m <= 2);
+
   char buf[32];
-  std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d_%02d:%02d:%02d", y, m, d, hr, mn, sc);
+  std::snprintf(buf, sizeof(buf), "%04ld-%02u-%02u_%02d:%02d:%02d", final_y, res_m, res_d, hr, mn, sc);
   return std::string(buf);
 }
 
@@ -168,125 +208,155 @@ class WrfoutWriter::Impl {
     }
     out_written_file = file_path;
 
-    bool file_exists = std::filesystem::exists(file_path);
-    int ncid = -1;
-    size_t time_idx = 0;
+    if (!is_initialized_ || file_path != current_file_) {
+      ncid_.close();
+      current_file_ = file_path;
+      defs_.clear();
+      time_idx_ = 0;
 
-    int dim_time = -1, dim_datestrlen = -1, dim_we = -1, dim_sn = -1, dim_bt = -1;
-    int dim_we_stag = -1, dim_sn_stag = -1, dim_bt_stag = -1;
+      bool file_exists = std::filesystem::exists(file_path);
+      // W5: recreate with NC_CLOBBER at run start, append only on restart
+      bool do_open_existing = meta_.is_restart && file_exists;
 
-    std::map<std::string, VarDef> defs;
+      int dim_time = -1, dim_datestrlen = -1, dim_we = -1, dim_sn = -1, dim_bt = -1;
+      int dim_we_stag = -1, dim_sn_stag = -1, dim_bt_stag = -1;
 
-    if (!file_exists) {
-      NC_CHECK(nc_create(file_path.c_str(), NC_CLOBBER | NC_64BIT_OFFSET, &ncid));
+      if (!do_open_existing) {
+        int nid = -1;
+        NC_CHECK(nc_create(file_path.c_str(), NC_CLOBBER | NC_64BIT_OFFSET, &nid));
+        ncid_ = ScopedNcFile(nid);
 
-      // 1. Dimensions
-      NC_CHECK(nc_def_dim(ncid, "Time", NC_UNLIMITED, &dim_time));
-      NC_CHECK(nc_def_dim(ncid, "DateStrLen", 19, &dim_datestrlen));
-      NC_CHECK(nc_def_dim(ncid, "west_east", meta_.nx, &dim_we));
-      NC_CHECK(nc_def_dim(ncid, "south_north", meta_.ny, &dim_sn));
-      NC_CHECK(nc_def_dim(ncid, "bottom_top", meta_.nz, &dim_bt));
-      NC_CHECK(nc_def_dim(ncid, "bottom_top_stag", meta_.nz + 1, &dim_bt_stag));
-      NC_CHECK(nc_def_dim(ncid, "west_east_stag", meta_.nx + 1, &dim_we_stag));
-      NC_CHECK(nc_def_dim(ncid, "south_north_stag", meta_.ny + 1, &dim_sn_stag));
+        // 1. Dimensions
+        NC_CHECK(nc_def_dim(ncid_.get(), "Time", NC_UNLIMITED, &dim_time));
+        NC_CHECK(nc_def_dim(ncid_.get(), "DateStrLen", 19, &dim_datestrlen));
+        NC_CHECK(nc_def_dim(ncid_.get(), "west_east", meta_.nx, &dim_we));
+        NC_CHECK(nc_def_dim(ncid_.get(), "south_north", meta_.ny, &dim_sn));
+        NC_CHECK(nc_def_dim(ncid_.get(), "bottom_top", meta_.nz, &dim_bt));
+        NC_CHECK(nc_def_dim(ncid_.get(), "bottom_top_stag", meta_.nz + 1, &dim_bt_stag));
+        NC_CHECK(nc_def_dim(ncid_.get(), "west_east_stag", meta_.nx + 1, &dim_we_stag));
+        NC_CHECK(nc_def_dim(ncid_.get(), "south_north_stag", meta_.ny + 1, &dim_sn_stag));
 
-      // 2. Global attributes
-      write_global_attributes(ncid);
+        // 2. Global attributes
+        write_global_attributes(ncid_.get());
 
-      // 3. Define standard variables
-      // Times
-      defs["Times"] = {"Times", {dim_time, dim_datestrlen}, "", "", "WRF Output Times", "", ""};
+        // 3. Define standard variables
+        // Times
+        defs_["Times"] = {"Times", {dim_time, dim_datestrlen}, "", "", "WRF Output Times", "", ""};
 
-      // 3D Staggered U, V, W, PH, PHB
-      defs["U"] = {"U", {dim_time, dim_bt, dim_sn, dim_we_stag}, "XYZ", "X", "x-wind component", "m s-1", "XLONG_U XLAT_U XTIME"};
-      defs["V"] = {"V", {dim_time, dim_bt, dim_sn_stag, dim_we}, "XYZ", "Y", "y-wind component", "m s-1", "XLONG_V XLAT_V XTIME"};
-      defs["W"] = {"W", {dim_time, dim_bt_stag, dim_sn, dim_we}, "XYZ", "Z", "z-wind component", "m s-1", "XLONG XLAT XTIME"};
-      defs["PH"] = {"PH", {dim_time, dim_bt_stag, dim_sn, dim_we}, "XYZ", "Z", "perturbation geopotential", "m2 s-2", "XLONG XLAT XTIME"};
-      defs["PHB"] = {"PHB", {dim_time, dim_bt_stag, dim_sn, dim_we}, "XYZ", "Z", "base-state geopotential", "m2 s-2", "XLONG XLAT XTIME"};
+        // 3D Staggered U, V, W, PH, PHB
+        defs_["U"] = {"U", {dim_time, dim_bt, dim_sn, dim_we_stag}, "XYZ", "X", "x-wind component", "m s-1", "XLONG_U XLAT_U XTIME"};
+        defs_["V"] = {"V", {dim_time, dim_bt, dim_sn_stag, dim_we}, "XYZ", "Y", "y-wind component", "m s-1", "XLONG_V XLAT_V XTIME"};
+        defs_["W"] = {"W", {dim_time, dim_bt_stag, dim_sn, dim_we}, "XYZ", "Z", "z-wind component", "m s-1", "XLONG XLAT XTIME"};
+        defs_["PH"] = {"PH", {dim_time, dim_bt_stag, dim_sn, dim_we}, "XYZ", "Z", "perturbation geopotential", "m2 s-2", "XLONG XLAT XTIME"};
+        defs_["PHB"] = {"PHB", {dim_time, dim_bt_stag, dim_sn, dim_we}, "XYZ", "Z", "base-state geopotential", "m2 s-2", "XLONG XLAT XTIME"};
 
-      // 3D Unstaggered T, P, PB
-      defs["T"] = {"T", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "perturbation potential temperature (theta-t0)", "K", "XLONG XLAT XTIME"};
-      defs["P"] = {"P", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "perturbation pressure", "Pa", "XLONG XLAT XTIME"};
-      defs["PB"] = {"PB", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "BASE STATE PRESSURE", "Pa", "XLONG XLAT XTIME"};
+        // 3D Unstaggered T, P, PB
+        defs_["T"] = {"T", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "perturbation potential temperature (theta-t0)", "K", "XLONG XLAT XTIME"};
+        defs_["P"] = {"P", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "perturbation pressure", "Pa", "XLONG XLAT XTIME"};
+        defs_["PB"] = {"PB", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "BASE STATE PRESSURE", "Pa", "XLONG XLAT XTIME"};
 
-      // Optional moist species and surface diagnostics
-      if (find_var(vars, "QVAPOR") || find_var(vars, "QV")) {
-        defs["QVAPOR"] = {"QVAPOR", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "Water vapor mixing ratio", "kg kg-1", "XLONG XLAT XTIME"};
-      }
-      if (find_var(vars, "QCLOUD") || find_var(vars, "QC")) {
-        defs["QCLOUD"] = {"QCLOUD", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "Cloud water mixing ratio", "kg kg-1", "XLONG XLAT XTIME"};
-      }
-      if (find_var(vars, "QRAIN") || find_var(vars, "QR")) {
-        defs["QRAIN"] = {"QRAIN", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "Rain water mixing ratio", "kg kg-1", "XLONG XLAT XTIME"};
-      }
-      if (find_var(vars, "RAINNC")) {
-        defs["RAINNC"] = {"RAINNC", {dim_time, dim_sn, dim_we}, "XY ", "", "ACCUMULATED TOTAL GRID SCALE PRECIPITATION", "mm", "XLONG XLAT XTIME"};
-      }
+        // Optional moist species and surface diagnostics
+        if (find_var(vars, "QVAPOR") || find_var(vars, "QV")) {
+          defs_["QVAPOR"] = {"QVAPOR", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "Water vapor mixing ratio", "kg kg-1", "XLONG XLAT XTIME"};
+        }
+        if (find_var(vars, "QCLOUD") || find_var(vars, "QC")) {
+          defs_["QCLOUD"] = {"QCLOUD", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "Cloud water mixing ratio", "kg kg-1", "XLONG XLAT XTIME"};
+        }
+        if (find_var(vars, "QRAIN") || find_var(vars, "QR")) {
+          defs_["QRAIN"] = {"QRAIN", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "Rain water mixing ratio", "kg kg-1", "XLONG XLAT XTIME"};
+        }
+        if (find_var(vars, "QICE") || find_var(vars, "QI")) {
+          defs_["QICE"] = {"QICE", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "Ice mixing ratio", "kg kg-1", "XLONG XLAT XTIME"};
+        }
+        if (find_var(vars, "QSNOW") || find_var(vars, "QS")) {
+          defs_["QSNOW"] = {"QSNOW", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "Snow mixing ratio", "kg kg-1", "XLONG XLAT XTIME"};
+        }
+        if (find_var(vars, "QGRAUP") || find_var(vars, "QG")) {
+          defs_["QGRAUP"] = {"QGRAUP", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "Graupel mixing ratio", "kg kg-1", "XLONG XLAT XTIME"};
+        }
+        if (find_var(vars, "RAINNC")) {
+          defs_["RAINNC"] = {"RAINNC", {dim_time, dim_sn, dim_we}, "XY ", "", "ACCUMULATED TOTAL GRID SCALE PRECIPITATION", "mm", "XLONG XLAT XTIME"};
+        }
+        if (find_var(vars, "SNOWNC")) {
+          defs_["SNOWNC"] = {"SNOWNC", {dim_time, dim_sn, dim_we}, "XY ", "", "ACCUMULATED TOTAL GRID SCALE SNOW", "mm", "XLONG XLAT XTIME"};
+        }
+        if (find_var(vars, "GRAUPELNC")) {
+          defs_["GRAUPELNC"] = {"GRAUPELNC", {dim_time, dim_sn, dim_we}, "XY ", "", "ACCUMULATED TOTAL GRID SCALE GRAUPEL", "mm", "XLONG XLAT XTIME"};
+        }
+        if (find_var(vars, "SR")) {
+          defs_["SR"] = {"SR", {dim_time, dim_sn, dim_we}, "XY ", "", "fraction of frozen precipitation", "-", "XLONG XLAT XTIME"};
+        }
 
-      // 2D MU, MUB, XLAT, XLONG, HGT
-      defs["MU"] = {"MU", {dim_time, dim_sn, dim_we}, "XY ", "", "perturbation dry air mass in column", "Pa", "XLONG XLAT XTIME"};
-      defs["MUB"] = {"MUB", {dim_time, dim_sn, dim_we}, "XY ", "", "base state dry air mass in column", "Pa", "XLONG XLAT XTIME"};
-      defs["XLAT"] = {"XLAT", {dim_time, dim_sn, dim_we}, "XY ", "", "LATITUDE, SOUTH IS NEGATIVE", "degree_north", ""};
-      defs["XLONG"] = {"XLONG", {dim_time, dim_sn, dim_we}, "XY ", "", "LONGITUDE, WEST IS NEGATIVE", "degree_east", ""};
-      defs["HGT"] = {"HGT", {dim_time, dim_sn, dim_we}, "XY ", "", "Terrain Height", "m", "XLONG XLAT XTIME"};
+        // 2D MU, MUB, XLAT, XLONG, HGT
+        defs_["MU"] = {"MU", {dim_time, dim_sn, dim_we}, "XY ", "", "perturbation dry air mass in column", "Pa", "XLONG XLAT XTIME"};
+        defs_["MUB"] = {"MUB", {dim_time, dim_sn, dim_we}, "XY ", "", "base state dry air mass in column", "Pa", "XLONG XLAT XTIME"};
+        defs_["XLAT"] = {"XLAT", {dim_time, dim_sn, dim_we}, "XY ", "", "LATITUDE, SOUTH IS NEGATIVE", "degree_north", ""};
+        defs_["XLONG"] = {"XLONG", {dim_time, dim_sn, dim_we}, "XY ", "", "LONGITUDE, WEST IS NEGATIVE", "degree_east", ""};
+        defs_["HGT"] = {"HGT", {dim_time, dim_sn, dim_we}, "XY ", "", "Terrain Height", "m", "XLONG XLAT XTIME"};
 
-      // 1D Vertical coordinates
-      defs["ZNU"] = {"ZNU", {dim_time, dim_bt}, "Z  ", "", "eta values on half (mass) levels", "", ""};
-      defs["ZNW"] = {"ZNW", {dim_time, dim_bt_stag}, "Z  ", "Z", "eta values on full (w) levels", "", ""};
+        // 1D Vertical coordinates
+        defs_["ZNU"] = {"ZNU", {dim_time, dim_bt}, "Z  ", "", "eta values on half (mass) levels", "", ""};
+        defs_["ZNW"] = {"ZNW", {dim_time, dim_bt_stag}, "Z  ", "Z", "eta values on full (w) levels", "", ""};
 
-      // Hybrid vertical coordinate terms
-      defs["C1H"] = {"C1H", {dim_time, dim_bt}, "Z  ", "", "half levels, c1h = d bf / d eta, using znw", "Dimensionless", ""};
-      defs["C2H"] = {"C2H", {dim_time, dim_bt}, "Z  ", "", "half levels, c2h = (1-c1h)*(p0-pt)", "Pa", ""};
-      defs["C1F"] = {"C1F", {dim_time, dim_bt_stag}, "Z  ", "Z", "full levels, c1f = d bf / d eta, using znu", "Dimensionless", ""};
-      defs["C2F"] = {"C2F", {dim_time, dim_bt_stag}, "Z  ", "Z", "full levels, c2f = (1-c1f)*(p0-pt)", "Pa", ""};
-      defs["C3H"] = {"C3H", {dim_time, dim_bt}, "Z  ", "", "half levels, c3h = bh", "Dimensionless", ""};
-      defs["C4H"] = {"C4H", {dim_time, dim_bt}, "Z  ", "", "half levels, c4h = (eta-bh)*(p0-pt), using znu", "Pa", ""};
-      defs["C3F"] = {"C3F", {dim_time, dim_bt_stag}, "Z  ", "Z", "full levels, c3f = bf", "Dimensionless", ""};
-      defs["C4F"] = {"C4F", {dim_time, dim_bt_stag}, "Z  ", "Z", "full levels, c4f = (eta-bf)*(p0-pt), using znw", "Pa", ""};
+        // Hybrid vertical coordinate terms
+        defs_["C1H"] = {"C1H", {dim_time, dim_bt}, "Z  ", "", "half levels, c1h = d bf / d eta, using znw", "Dimensionless", ""};
+        defs_["C2H"] = {"C2H", {dim_time, dim_bt}, "Z  ", "", "half levels, c2h = (1-c1h)*(p0-pt)", "Pa", ""};
+        defs_["C1F"] = {"C1F", {dim_time, dim_bt_stag}, "Z  ", "Z", "full levels, c1f = d bf / d eta, using znu", "Dimensionless", ""};
+        defs_["C2F"] = {"C2F", {dim_time, dim_bt_stag}, "Z  ", "Z", "full levels, c2f = (1-c1f)*(p0-pt)", "Pa", ""};
+        defs_["C3H"] = {"C3H", {dim_time, dim_bt}, "Z  ", "", "half levels, c3h = bh", "Dimensionless", ""};
+        defs_["C4H"] = {"C4H", {dim_time, dim_bt}, "Z  ", "", "half levels, c4h = (eta-bh)*(p0-pt), using znu", "Pa", ""};
+        defs_["C3F"] = {"C3F", {dim_time, dim_bt_stag}, "Z  ", "Z", "full levels, c3f = bf", "Dimensionless", ""};
+        defs_["C4F"] = {"C4F", {dim_time, dim_bt_stag}, "Z  ", "Z", "full levels, c4f = (eta-bf)*(p0-pt), using znw", "Pa", ""};
 
-      // 0D Scalars
-      defs["RDX"] = {"RDX", {dim_time}, "0  ", "", "INVERSE X GRID LENGTH", "m-1", ""};
-      defs["RDY"] = {"RDY", {dim_time}, "0  ", "", "INVERSE Y GRID LENGTH", "m-1", ""};
-      defs["P_TOP"] = {"P_TOP", {dim_time}, "0  ", "", "PRESSURE TOP OF THE MODEL", "Pa", ""};
-      defs["XTIME"] = {"XTIME", {dim_time}, "0  ", "", "minutes since simulation start", "minutes", ""};
+        // 0D Scalars
+        defs_["RDX"] = {"RDX", {dim_time}, "0  ", "", "INVERSE X GRID LENGTH", "m-1", ""};
+        defs_["RDY"] = {"RDY", {dim_time}, "0  ", "", "INVERSE Y GRID LENGTH", "m-1", ""};
+        defs_["P_TOP"] = {"P_TOP", {dim_time}, "0  ", "", "PRESSURE TOP OF THE MODEL", "Pa", ""};
+        defs_["XTIME"] = {"XTIME", {dim_time}, "0  ", "", "minutes since simulation start", "minutes", ""};
 
-      for (auto& [name, d] : defs) {
-        nc_type xtype = (name == "Times") ? NC_CHAR : NC_FLOAT;
-        NC_CHECK(nc_def_var(ncid, name.c_str(), xtype, int(d.dimids.size()), d.dimids.data(), &d.varid));
-        if (name != "Times") {
-          put_att_int(ncid, d.varid, "FieldType", 104);
-          put_att_text(ncid, d.varid, "MemoryOrder", d.memory_order);
-          put_att_text(ncid, d.varid, "description", d.desc);
-          put_att_text(ncid, d.varid, "units", d.units);
-          put_att_text(ncid, d.varid, "stagger", d.stagger);
-          if (!d.coords.empty()) {
-            put_att_text(ncid, d.varid, "coordinates", d.coords);
+        for (auto& [name, d] : defs_) {
+          nc_type xtype = (name == "Times") ? NC_CHAR : NC_FLOAT;
+          NC_CHECK(nc_def_var(ncid_.get(), name.c_str(), xtype, int(d.dimids.size()), d.dimids.data(), &d.varid));
+          if (name != "Times") {
+            put_att_int(ncid_.get(), d.varid, "FieldType", 104);
+            put_att_text(ncid_.get(), d.varid, "MemoryOrder", d.memory_order);
+            put_att_text(ncid_.get(), d.varid, "description", d.desc);
+            put_att_text(ncid_.get(), d.varid, "units", d.units);
+            put_att_text(ncid_.get(), d.varid, "stagger", d.stagger);
+            if (!d.coords.empty()) {
+              put_att_text(ncid_.get(), d.varid, "coordinates", d.coords);
+            }
           }
         }
-      }
 
-      NC_CHECK(nc_enddef(ncid));
-      time_idx = 0;
-    } else {
-      NC_CHECK(nc_open(file_path.c_str(), NC_WRITE, &ncid));
-      NC_CHECK(nc_inq_dimid(ncid, "Time", &dim_time));
-      size_t tlen = 0;
-      NC_CHECK(nc_inq_dimlen(ncid, dim_time, &tlen));
-      time_idx = tlen;
+        NC_CHECK(nc_enddef(ncid_.get()));
+        time_idx_ = 0;
+      } else {
+        int nid = -1;
+        NC_CHECK(nc_open(file_path.c_str(), NC_WRITE, &nid));
+        ncid_ = ScopedNcFile(nid);
 
-      // Populate varids from existing file
-      int nvars = 0;
-      NC_CHECK(nc_inq_nvars(ncid, &nvars));
-      for (int i = 0; i < nvars; ++i) {
-        char vname[NC_MAX_NAME + 1];
-        NC_CHECK(nc_inq_varname(ncid, i, vname));
-        defs[vname] = VarDef{vname, {}, "", "", "", "", "", i};
+        NC_CHECK(nc_inq_dimid(ncid_.get(), "Time", &dim_time));
+        size_t tlen = 0;
+        NC_CHECK(nc_inq_dimlen(ncid_.get(), dim_time, &tlen));
+        time_idx_ = tlen;
+
+        // Populate varids from existing file
+        int nvars = 0;
+        NC_CHECK(nc_inq_nvars(ncid_.get(), &nvars));
+        for (int i = 0; i < nvars; ++i) {
+          char vname[NC_MAX_NAME + 1];
+          NC_CHECK(nc_inq_varname(ncid_.get(), i, vname));
+          defs_[vname] = VarDef{vname, {}, "", "", "", "", "", i};
+        }
       }
+      is_initialized_ = true;
     }
 
-    // Write data at time_idx
-    write_frame_data(ncid, time_idx, time_sec, date_str, vars, defs);
-    NC_CHECK(nc_close(ncid));
+    // Write data at time_idx_
+    write_frame_data(ncid_.get(), time_idx_, time_sec, date_str, vars, defs_);
+    NC_CHECK(nc_sync(ncid_.get()));
+    time_idx_++;
   }
 
  private:
@@ -487,12 +557,30 @@ class WrfoutWriter::Impl {
     if (defs.count("QRAIN")) {
       write_3d("QRAIN", nx, ny, nz);
     }
+    if (defs.count("QICE")) {
+      write_3d("QICE", nx, ny, nz);
+    }
+    if (defs.count("QSNOW")) {
+      write_3d("QSNOW", nx, ny, nz);
+    }
+    if (defs.count("QGRAUP")) {
+      write_3d("QGRAUP", nx, ny, nz);
+    }
 
     // 2D Fields
     write_2d("MU", nx, ny);
     write_2d("MUB", nx, ny);
     if (defs.count("RAINNC")) {
       write_2d("RAINNC", nx, ny);
+    }
+    if (defs.count("SNOWNC")) {
+      write_2d("SNOWNC", nx, ny);
+    }
+    if (defs.count("GRAUPELNC")) {
+      write_2d("GRAUPELNC", nx, ny);
+    }
+    if (defs.count("SR")) {
+      write_2d("SR", nx, ny);
     }
     write_2d("XLAT", nx, ny);
     write_2d("XLONG", nx, ny);
@@ -540,6 +628,11 @@ class WrfoutWriter::Impl {
 
   std::string out_dir_;
   WrfoutMeta meta_;
+  ScopedNcFile ncid_;
+  std::string current_file_;
+  size_t time_idx_ = 0;
+  std::map<std::string, VarDef> defs_;
+  bool is_initialized_ = false;
 };
 
 WrfoutWriter::WrfoutWriter(std::string out_dir, WrfoutMeta meta)

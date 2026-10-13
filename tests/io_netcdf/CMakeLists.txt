@@ -21,6 +21,12 @@ target_include_directories(test_restart PRIVATE ${NETCDF_INCDIR} ${CMAKE_SOURCE_
 target_compile_features(test_restart PRIVATE cxx_std_20)
 add_test(NAME test_restart COMMAND test_restart WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+add_executable(test_wrf_readers test_wrf_readers.cpp)
+target_link_libraries(test_wrf_readers PRIVATE cppwrf_io_netcdf)
+target_include_directories(test_wrf_readers PRIVATE ${NETCDF_INCDIR} ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(test_wrf_readers PRIVATE cxx_std_20)
+add_test(NAME test_wrf_readers COMMAND test_wrf_readers WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
   add_test(NAME test_wrfout_python
@@ -29,4 +35,19 @@ if(Python3_Interpreter_FOUND)
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   )
   set_tests_properties(test_wrfout_python PROPERTIES DEPENDS test_wrfout_writer)
+
+  # real R0 (10 steps) written as wrfout, then compared field by field with WRF's wrfout
+  # (skips inside the script if ~/wrf_real/run_R0_r8 is absent)
+  set(_r0dir "${CMAKE_CURRENT_BINARY_DIR}/real_r0_wrfout")
+  add_test(NAME test_real_r0_wrfout_run
+    COMMAND $<TARGET_FILE:cppwrf> "${CMAKE_SOURCE_DIR}/configs/real_r0_ref.ini" --set "output.dir=${_r0dir}"
+            --set output.format=both --set run.run_time=600
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  set_tests_properties(test_real_r0_wrfout_run PROPERTIES FIXTURES_SETUP real_r0_wrfout)
+  add_test(NAME test_compare_wrfout_real
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/compare_wrfout_real.py"
+            "${_r0dir}/wrfout_d01_2026-10-12_00:00:00"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  )
+  set_tests_properties(test_compare_wrfout_real PROPERTIES FIXTURES_REQUIRED real_r0_wrfout)
 endif()

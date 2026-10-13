@@ -34,11 +34,12 @@ void write_restart(const std::string& path, const RestartMeta& meta,
   auto p = std::filesystem::path(path).parent_path();
   if (!p.empty()) std::filesystem::create_directories(p);
 
-  int ncid = -1;
-  NC_CHECK(nc_create(path.c_str(), NC_CLOBBER | NC_64BIT_OFFSET, &ncid));
+  ScopedNcFile ncid;
+  NC_CHECK(nc_create(path.c_str(), NC_CLOBBER | NC_64BIT_OFFSET, ncid.ptr()));
 
   // Global attributes
-  NC_CHECK(nc_put_att_text(ncid, NC_GLOBAL, "TITLE", 25, "RESTART FILE FROM CPPWRF"));
+  std::string title = "RESTART FILE FROM CPPWRF";
+  NC_CHECK(nc_put_att_text(ncid, NC_GLOBAL, "TITLE", title.size(), title.data()));
   int flag_restart = 1;
   NC_CHECK(nc_put_att_int(ncid, NC_GLOBAL, "FLAG_RESTART", NC_INT, 1, &flag_restart));
   int step_i = int(meta.step);
@@ -134,8 +135,8 @@ void write_restart(const std::string& path, const RestartMeta& meta,
 
 void read_restart(const std::string& path, RestartMeta& meta,
                   std::vector<VarView>& vars) {
-  int ncid = -1;
-  NC_CHECK(nc_open(path.c_str(), NC_NOWRITE, &ncid));
+  ScopedNcFile ncid;
+  NC_CHECK(nc_open(path.c_str(), NC_NOWRITE, ncid.ptr()));
 
   // Global metadata
   int step_i = 0;
@@ -150,6 +151,11 @@ void read_restart(const std::string& path, RestartMeta& meta,
   NC_CHECK(nc_get_att_double(ncid, NC_GLOBAL, "DY", &meta.dy));
   NC_CHECK(nc_get_att_double(ncid, NC_GLOBAL, "DT", &meta.dt));
 
+  if (meta.nx <= 0 || meta.ny <= 0 || meta.nz <= 0) {
+    throw std::runtime_error("read_restart: invalid domain dimensions in " + path + ": " +
+                             std::to_string(meta.nx) + "x" + std::to_string(meta.ny) + "x" + std::to_string(meta.nz));
+  }
+
   size_t att_len = 0;
   if (nc_inq_attlen(ncid, NC_GLOBAL, "CASE", &att_len) == NC_NOERR && att_len > 0) {
     meta.case_name.resize(att_len);
@@ -160,11 +166,21 @@ void read_restart(const std::string& path, RestartMeta& meta,
     nc_get_att_text(ncid, NC_GLOBAL, "CURRENT_DATE", meta.date_str.data());
   }
 
+  auto is_required_prog = [](const std::string& n) {
+    return n == "u_1" || n == "u_2" || n == "v_1" || n == "v_2" ||
+           n == "w_1" || n == "w_2" || n == "t_1" || n == "t_2" ||
+           n == "ph_1" || n == "ph_2" || n == "mu_1" || n == "mu_2" ||
+           n == "p" || n == "al";
+  };
+
   // Read each requested variable if present in the restart file
   for (auto& v : vars) {
     int varid = -1;
     int rc = nc_inq_varid(ncid, v.name.c_str(), &varid);
     if (rc == NC_ENOTVAR) {
+      if (is_required_prog(v.name)) {
+        throw std::runtime_error("read_restart: missing required variable '" + v.name + "' in restart file '" + path + "'");
+      }
       continue;
     }
     NC_CHECK(rc);
@@ -173,6 +189,22 @@ void read_restart(const std::string& path, RestartMeta& meta,
     const int ny = v.ny > 0 ? v.ny : 1;
     const int nz = v.nz > 0 ? v.nz : 1;
     size_t count = size_t(nx) * ny * nz;
+
+    // Check variable dimension in file (R1 heap overflow prevention)
+    int ndims = 0;
+    NC_CHECK(nc_inq_varndims(ncid, varid, &ndims));
+    std::vector<int> dimids(ndims);
+    NC_CHECK(nc_inq_vardimid(ncid, varid, dimids.data()));
+    size_t file_count = 1;
+    for (int d = 0; d < ndims; ++d) {
+      size_t dlen = 0;
+      NC_CHECK(nc_inq_dimlen(ncid, dimids[d], &dlen));
+      file_count *= dlen;
+    }
+    if (file_count != count) {
+      throw std::runtime_error("read_restart: variable '" + v.name + "' dimension mismatch: file has " +
+                               std::to_string(file_count) + " elements, buffer expects " + std::to_string(count));
+    }
 
     const std::ptrdiff_t sj = (v.sj != 0 || v.sk != 0) ? v.sj : nx;
     const std::ptrdiff_t sk = v.sk != 0 ? v.sk : (std::ptrdiff_t)nx * ny;
@@ -204,8 +236,6 @@ void read_restart(const std::string& path, RestartMeta& meta,
       }
     }
   }
-
-  NC_CHECK(nc_close(ncid));
 }
 
 }  // namespace cppwrf::io_netcdf
