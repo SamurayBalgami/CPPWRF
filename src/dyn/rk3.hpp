@@ -44,6 +44,8 @@ class RK3 {
   void step(State& s, Tendencies& t, const BaseState& b);
   // Specified lateral boundaries (real data); the RK3 driver does not own the data.
   void set_lateral_bc(LateralBC* bc);
+  // Column physics of first_rk_step_part1/2 (radiation, surface, PBL, cumulus); not owned.
+  void set_column_physics(ColumnPhysics* cp) { cp_ = cp; large_.set_column_physics(cp); }
   LateralBC* lateral_bc() const { return bc_; }
 
  private:
@@ -54,6 +56,7 @@ class RK3 {
   int n_sound_;
   std::unique_ptr<SmallStepHolder> small_;
   LateralBC* bc_ = nullptr;
+  ColumnPhysics* cp_ = nullptr;
 };
 
 }  // namespace cppwrf::dyn

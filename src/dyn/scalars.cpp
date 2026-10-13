@@ -158,11 +158,6 @@ struct KUpdatePD {
   }
 };
 
-struct KZero {
-  V3 a;
-  CPPWRF_HD void operator()(int i, int j, int k) const { a(i, j, k) = 0; }
-};
-
 }  // namespace
 
 ScalarTransport::ScalarTransport(const Grid& g, const ScalarParams& p)
@@ -184,13 +179,12 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
     const bool moist = n < s.n_moist;
     const bool pd = rk == 3 && (moist ? p_.moist_adv_opt : p_.scalar_adv_opt) == 1;
     if (rk == 1) {  // rk_scalar_tend, rk_step == 1: diffusion into the held tendency (diff_opt = 1)
+      // q_tendf was zeroed by zero_tendf and holds the physics tendencies (update_phy_ten)
       if (diff) {
         const bool is_qv = n == s.P_QV;  // vertical_diffusion_mp diffuses qv - qv_base
         parallel_for(mr, kern::KDiffM{q2.cview(), s.alt.cview(), b.qv_base.view(), s.muts.cview(), c, tf.view(),
                                       p_.khdif * p_.pr_inv, p_.kvdif * p_.pr_inv, real(b.rdx), real(b.rdy), g.nz,
                                       do_y, false, is_qv});
-      } else {
-        parallel_for(mr, KZero{tf.view()});
       }
       if (bc_ && n == s.P_QV) bc_->relax_scalar(tf, q2, s, b);  // relax_bdy_scalar (rk 1)
     }

@@ -3,6 +3,7 @@
 // rk_step_prep, rk_tendency, rk_addtend_dry), dry, flat or terrain-following eta.
 #include "core/backend.hpp"
 #include "core/field.hpp"
+#include "dyn/column_physics.hpp"
 #include "dyn/state.hpp"
 
 namespace cppwrf::dyn {
@@ -26,6 +27,7 @@ struct VCoef {
 
 namespace kern { struct MoistCoef; }
 class LateralBC;
+class ColumnPhysics;
 // calc_cq coefficients for the stage state (needs LargeStep::prep to have filled s.qtot)
 kern::MoistCoef moist_coef(const State& s);
 
@@ -39,11 +41,16 @@ class LargeStep {
   void tendencies(const State& s, Tendencies& t, const BaseState& b, int rk_step) const;
   const LargeStepParams& params() const { return p_; }
   void set_lateral_bc(const LateralBC* bc) { bc_ = bc; }
+  // WRF init_zero_tendency: zero the held *_tendf and q_tendf. tendencies() does it at stage 1
+  // unless column physics is attached (then the RK driver calls it before ColumnPhysics::part1).
+  void zero_tendf(Tendencies& t) const;
+  void set_column_physics(ColumnPhysics* cp) { cp_ = cp; }
 
  private:
   Grid g_;
   LargeStepParams p_;
   const LateralBC* bc_ = nullptr;
+  ColumnPhysics* cp_ = nullptr;
 };
 
 }  // namespace cppwrf::dyn

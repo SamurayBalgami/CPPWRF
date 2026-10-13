@@ -459,7 +459,7 @@ struct KDiffU {
     real mu_u = c.c1h(k) * muu(i, j) + c.c2h(k);
     if (k < nz - 1)  // WRF: the top level gets no vertical diffusion (tendency loop to ktf-1)
       t += Gr * Gr * c.rdnw(k) / (mu_u * H * (alt(i - 1, j, k) + alt(i, j, k))) * (vf(i, j, k + 1) - vf(i, j, k));
-    out(i, j, k) = t;
+    out(i, j, k) += t;  // *_tendf zeroed at stage 1 (init_zero_tendency)
   }
 };
 
@@ -480,7 +480,7 @@ struct KDiffV {
     real mu_v = c.c1h(k) * muv(i, j) + c.c2h(k);
     if (k < nz - 1)  // WRF: the top level gets no vertical diffusion (tendency loop to ktf-1)
       t += Gr * Gr * c.rdnw(k) / (mu_v * H * (alt(i, j - 1, k) + alt(i, j, k))) * (vf(i, j, k + 1) - vf(i, j, k));
-    out(i, j, k) = t;
+    out(i, j, k) += t;  // *_tendf zeroed at stage 1 (init_zero_tendency)
   }
 };
 
@@ -500,7 +500,7 @@ struct KDiffW {  // levels 1..nz-1 (w = 0 at the rigid bottom and lid)
            (H * (m(i, j + 1, k) + m(i, j, k)) * (w(i, j + 1, k) - w(i, j, k)) -
             H * (m(i, j, k) + m(i, j - 1, k)) * (w(i, j, k) - w(i, j - 1, k)));
     t += c.rdn(k) * Gr * Gr / m(i, j, k) / (H * (alt(i, j, k) + alt(i, j, k - 1))) * (vf(i, j, k) - vf(i, j, k - 1));
-    out(i, j, k) = t;
+    out(i, j, k) += t;  // *_tendf zeroed at stage 1 (init_zero_tendency)
   }
 };
 
@@ -564,16 +564,11 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
   const MapC m = MapC::from(b, b.mapped || b.coriolis);
   const kern::Spec sp{g.bc_x == BC::Specified, g.bc_y == BC::Specified, g.nx, g.ny};
   if (b.mapped && diff) throw std::runtime_error("diffusion with map factors is not implemented yet");
-  if (bc_) {  // WRF zero_tend: mu_tend every stage; the held *_tendf in stage 1 (diffusion assigns)
+  // init_zero_tendency at stage 1 (with column physics the RK driver did it before part1)
+  if (rk_step == 1 && !cp_) zero_tendf(t);
+  if (bc_) {  // WRF zero_tend: mu_tend every stage
     V2 mt = t.mu_tend.view();
     parallel_for(Range3D{0, g.nx, 0, g.ny, 0, 1}, [=] CPPWRF_HD(int i, int j, int) { mt(i, j) = 0; });
-    if (rk_step == 1) {
-      for (Field3* f : {&t.ph_tendf, &t.ru_tendf, &t.rv_tendf, &t.rw_tendf, &t.t_tendf}) {
-        if (diff && f != &t.ph_tendf) continue;
-        V3 v = f->view();
-        parallel_for(g.cells(f->stagger()), [=] CPPWRF_HD(int i, int j, int k) { v(i, j, k) = 0; });
-      }
-    }
   }
 
   if (diff && rk_step == 1) {  // WRF: diffusion only in the first RK stage, held in *_tendf
@@ -588,8 +583,10 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
     parallel_for(mr, kern::KDiffM{s.t_2.cview(), s.alt.cview(), b.t_init.view(), s.mut.cview(), c, t.t_tendf.view(),
                                   kh * p_.pr_inv, kv * p_.pr_inv, rdx, rdy, nz, do_y, true, true});
   }
+  // first_rk_step_part2: calculate_phy_tend + update_phy_ten after the diffusion
+  if (cp_ && rk_step == 1) cp_->part2(s, b, t);
   if (bc_ && rk_step == 1) bc_->relax_dry(s, t, b);  // relax_bdy_dry -> *_save -> *_tendf (rk_addtend_dry)
-  const bool tendf = diff || bc_ != nullptr;
+  const bool tendf = diff || bc_ != nullptr || cp_ != nullptr;
   parallel_for(ur, KTendU{s.u_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), s.ph_2.cview(),
                           s.alt.cview(), s.al.cview(), s.php.cview(), t.ru_tendf.cview(), s.mu_2.cview(),
                           s.muu.cview(), b.pb.view(), c, moist_coef(s), t.ru_tend.view(), rdx, rdy, nz, do_y, p_.top_lid, tendf, hup, vup,
@@ -611,6 +608,16 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
                            b.msfty.view(), b.msfux.view(), b.msfvy.view(), sp, t.ph_tendf.cview(), bc_ != nullptr});
   if (bc_) bc_->spec_dry(t);  // spec_bdy_dry: spec-zone tendencies from the boundary file
   // mu_tend stays 0 (dry, no physics); allocated zero.
+}
+
+// WRF init_zero_tendency (first_rk_step_part1): the held stage-1 tendencies, scalars included.
+void LargeStep::zero_tendf(Tendencies& t) const {
+  std::vector<Field3*> fs{&t.ph_tendf, &t.ru_tendf, &t.rv_tendf, &t.rw_tendf, &t.t_tendf};
+  for (Field3& q : t.q_tendf) fs.push_back(&q);
+  for (Field3* f : fs) {
+    V3 v = f->view();
+    parallel_for(g_.cells(f->stagger()), [=] CPPWRF_HD(int i, int j, int k) { v(i, j, k) = 0; });
+  }
 }
 
 }  // namespace cppwrf::dyn

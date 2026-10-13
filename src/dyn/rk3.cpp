@@ -68,11 +68,16 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
     double dts_rk = rk == 1 ? dt_rk : dts;
     int ns = rk == 1 ? 1 : (rk == 2 ? n_sound_ / 2 : n_sound_);
     large_.prep(s, b);
-    large_.tendencies(s, t, b, rk);
+    if (rk == 1 && cp_) {  // first_rk_step_part1: init_zero_tendency, then the column physics
+      large_.zero_tendf(t);
+      cp_->part1(s, b, t);
+    }
+    large_.tendencies(s, t, b, rk);  // part2 (diffusion, update_phy_ten) + rk_tendency
     small_->ss.run_stage(s, t, b, real(dt_rk), real(dts_rk), ns, rk);
     scalars_.run_stage(s, t, b, rk, real(dt_rk));
     small_->ss.calc_p_rho_phi(s, b);
   }
+  if (cp_) cp_->after_rk(s, b);  // phy_prep_part2
   if (phys_ && phys_->params().mp_physics != 0) {  // moist_physics_prep/microphysics/finish, calc_p_rho_phi
     phys_->step(s, b, real(dt));
     small_->ss.calc_p_rho_phi(s, b);

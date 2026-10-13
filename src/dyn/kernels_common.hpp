@@ -82,7 +82,7 @@ struct KDiffM {
            (H * (m(i, j + 1, k) + m(i, j, k)) * (d(i, j + 1, k) - d(i, j, k)) -
             H * (m(i, j, k) + m(i, j - 1, k)) * (d(i, j, k) - d(i, j - 1, k)));
     r += Gr * Gr / (m(i, j, k) * alt(i, j, k)) * c.rdnw(k) * (vf(i, j, k + 1) - vf(i, j, k));
-    out(i, j, k) = r;
+    out(i, j, k) += r;  // accumulates into the held tendency (zeroed at stage 1)
   }
 };
 
