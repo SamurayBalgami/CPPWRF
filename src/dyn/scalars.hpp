@@ -9,8 +9,8 @@
 namespace cppwrf::dyn {
 
 struct ScalarParams {
-  int moist_adv_opt = 0;     // 0 = original (advect_scalar), 1 = positive definite (advect_scalar_pd)
-  int scalar_adv_opt = 0;    // same for passive tracers (WRF scalar_adv_opt / tracer_adv_opt)
+  int moist_adv_opt = 1;     // WRF default 1. 0 = original (advect_scalar), 1 = positive definite (advect_scalar_pd)
+  int scalar_adv_opt = 1;    // same for passive tracers (WRF scalar_adv_opt / tracer_adv_opt)
   real khdif = 0, kvdif = 0; // momentum K; scalars use K / prandtl (WRF rk_scalar_tend)
   real pr_inv = 3;           // 1 / prandtl (WRF module_model_constants: prandtl = 1/3)
   int h_adv_order = 5, v_adv_order = 3;

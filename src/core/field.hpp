@@ -69,7 +69,7 @@ class Buffer {
   real* p_ = nullptr;
 };
 
-// Prognostic/diagnostic field (rank 3 or 2). Move-only; std::swap swaps storage.
+// Prognostic/diagnostic field (rank 3 or 2). Move-only; swap() swaps storage, not names.
 template <int R> class FieldT {
  public:
   FieldT() = default;
@@ -101,8 +101,9 @@ template <int R> class FieldT {
     copy_to_host(h.data(), buf_.get(), bytes());
   }
   void copy_from(const FieldT& o) { copy_dev(buf_.get(), o.buf_.get(), bytes()); }
+  // Swaps the storage (data, layout, stagger); each field keeps its name (review D3).
   friend void swap(FieldT& a, FieldT& b) noexcept {
-    std::swap(a.name_, b.name_); std::swap(a.st_, b.st_); std::swap(a.L_, b.L_); std::swap(a.buf_, b.buf_);
+    std::swap(a.st_, b.st_); std::swap(a.L_, b.L_); std::swap(a.buf_, b.buf_);
   }
 
  private:

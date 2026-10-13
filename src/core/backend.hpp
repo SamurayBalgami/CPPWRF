@@ -8,6 +8,7 @@
 // Ranges are half-open. Kernels are trivially-copyable structs, no virtuals/exceptions.
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 #include <vector>
 
 #if defined(__CUDACC__)
@@ -102,6 +103,8 @@ template <class F, bool MAX> __global__ void kred(F f, Range3D r, double* part) 
 }  // namespace detail
 
 template <class K> void parallel_for(const Range3D& r, const K& k) {
+  static_assert(__nv_is_extended_host_device_lambda_closure_type(K) || std::is_trivially_copyable_v<K>,
+                "kernels are copied to the device: trivially copyable structs/lambdas only (no std::string, std::vector, ...)");
   if (r.i1 <= r.i0 || r.j1 <= r.j0 || r.k1 <= r.k0) return;
   dim3 b(64, 2, 1);
   dim3 g((r.i1 - r.i0 + 63) / 64, (r.j1 - r.j0 + 1) / 2, r.k1 - r.k0);
@@ -109,6 +112,8 @@ template <class K> void parallel_for(const Range3D& r, const K& k) {
   cuda_check_launch("parallel_for");
 }
 template <class K> void column_for(const Range2D& r, const K& k) {
+  static_assert(__nv_is_extended_host_device_lambda_closure_type(K) || std::is_trivially_copyable_v<K>,
+                "kernels are copied to the device: trivially copyable structs/lambdas only (no std::string, std::vector, ...)");
   if (r.i1 <= r.i0 || r.j1 <= r.j0) return;
   dim3 b(64, 2, 1);
   dim3 g((r.i1 - r.i0 + 63) / 64, (r.j1 - r.j0 + 1) / 2, 1);
@@ -118,6 +123,7 @@ template <class K> void column_for(const Range2D& r, const K& k) {
 #endif  // __CUDACC__
 #else   // ---- CPU / OpenMP ----
 template <class K> void parallel_for(const Range3D& r, const K& k) {
+  static_assert(std::is_trivially_copyable_v<K>, "kernels are copied to the device: trivially copyable structs/lambdas only (no std::string, std::vector, ...)");
 #pragma omp parallel for collapse(2) schedule(static)
   for (int kk = r.k0; kk < r.k1; ++kk)
     for (int j = r.j0; j < r.j1; ++j)
@@ -125,6 +131,7 @@ template <class K> void parallel_for(const Range3D& r, const K& k) {
       for (int i = r.i0; i < r.i1; ++i) k(i, j, kk);
 }
 template <class K> void column_for(const Range2D& r, const K& k) {
+  static_assert(std::is_trivially_copyable_v<K>, "kernels are copied to the device: trivially copyable structs/lambdas only (no std::string, std::vector, ...)");
 #pragma omp parallel for collapse(2) schedule(static)
   for (int j = r.j0; j < r.j1; ++j)
     for (int i = r.i0; i < r.i1; ++i) k(i, j);

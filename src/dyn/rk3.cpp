@@ -113,8 +113,9 @@ struct KSetWSurface {  // WRF module_bc_em set_w_surface
 };
 }  // namespace
 
-// Periodic lateral boundaries only (the halo supplies i-1, i+1); specified boundaries clamp
-// the stencil at the domain edge in WRF (TODO with the lateral boundary integration).
+// The ht halo supplies i-1, i+1. WRF clamps the stencil at non-periodic edges (im1 = ids,
+// ip1 = ide-1), i.e. ht(i) - ht(im1) = 0 there; the flat (specified) and mirror (symmetric)
+// mass-point halos of ht give exactly the same value (review item D2: not a bug).
 void set_w_surface(Field3& w, Field3& u, Field3& v, const BaseState& b, const Grid& g, bool fill) {
   fill_halos({&u, &v}, g);
   column_for(g.columns(), KSetWSurface{w.view(), u.cview(), v.cview(), b.ht.view(), b.msftx.view(), b.msfty.view(),

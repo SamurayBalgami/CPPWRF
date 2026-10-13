@@ -1,5 +1,6 @@
 #include "dyn/diagnostics.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -50,7 +51,8 @@ struct FEnergy {
 }  // namespace
 
 bool DiagRow::finite() const {
-  for (double v : {max_abs_u, max_abs_v, max_abs_w, min_th_pert, max_th_pert, dry_mass, theta_mass, total_energy})
+  for (double v : {max_abs_u, max_abs_v, max_abs_w, min_th_pert, max_th_pert, dry_mass, theta_mass, total_energy,
+                   max_abs_q})
     if (!std::isfinite(v)) return false;
   return true;
 }
@@ -62,6 +64,8 @@ DiagRow Diagnostics::compute(const State& s, const BaseState& b) {
   r.max_abs_u = red_.max(g.cells(Stagger::U), FMaxAbs{s.u_2.cview()});
   r.max_abs_v = red_.max(g.cells(Stagger::V), FMaxAbs{s.v_2.cview()});
   r.max_abs_w = red_.max(g.cells(Stagger::W), FMaxAbs{s.w_2.cview()});
+  for (int n = 0; n < s.n_scalars(); ++n)
+    r.max_abs_q = std::max(r.max_abs_q, red_.max(g.mass_cells(), FMaxAbs{s.q_2[n].cview()}));
   const bool moist = s.P_QV >= 0;
   const C3 qv = moist ? s.q_2[s.P_QV].cview() : C3{};
   r.max_th_pert = red_.max(g.mass_cells(), FThp{s.t_2.cview(), b.t_init.view(), 1.0, qv, moist});

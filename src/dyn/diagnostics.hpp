@@ -11,6 +11,7 @@ namespace cppwrf::dyn {
 
 struct DiagRow {
   double max_abs_u, max_abs_v, max_abs_w, min_th_pert, max_th_pert, dry_mass, theta_mass, total_energy;
+  double max_abs_q = 0;  // over all scalars (moist species, tracers): NaN checks only, not in diag.csv
   bool finite() const;
 };
 

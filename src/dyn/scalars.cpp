@@ -10,8 +10,8 @@
 
 // WRF dyn_em/module_advect_em.F (advect_scalar, advect_scalar_pd) and module_em.F
 // (rk_scalar_tend, rk_update_scalar, rk_update_scalar_pd). C++ k = Fortran k - 1.
-// Map factors = 1; periodic or symmetric lateral boundaries (no flux-order degradation, as
-// WRF for periodic/symmetric).
+// With map factors (msftx, msfty as in advect_scalar*) and periodic, symmetric or specified
+// lateral boundaries (degraded flux orders and the spec zone as WRF for specified).
 
 namespace cppwrf::dyn {
 namespace {

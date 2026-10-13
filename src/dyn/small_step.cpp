@@ -13,7 +13,7 @@
 // calc_coef_w, advance_uv, advance_mu_t, advance_w, sumflux, small_step_finish) and
 // calc_p_rho_phi (module_big_step_utilities_em.F, hypsometric_opt = 1 as ideal.exe writes it,
 // or 2 for real-data input).
-// C++ k = Fortran k - 1. Map factors = 1, flat terrain (ht = 0). Moisture enters through
+// C++ k = Fortran k - 1. With map factors, terrain and specified boundaries. Moisture enters through
 // theta_m (t_2) and the calc_cq coefficients cqu, cqv and cqw (= cq1 after pg_buoy_w).
 // Variables named *pp below are the acoustic perturbations (WRF keeps them in *_2, p, al).
 
