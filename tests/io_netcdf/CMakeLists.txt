@@ -13,19 +13,20 @@ add_executable(test_wrfout_writer test_wrfout_writer.cpp)
 target_link_libraries(test_wrfout_writer PRIVATE cppwrf_io_netcdf)
 target_include_directories(test_wrfout_writer PRIVATE ${NETCDF_INCDIR} ${CMAKE_SOURCE_DIR}/src)
 target_compile_features(test_wrfout_writer PRIVATE cxx_std_20)
-add_test(NAME test_wrfout_writer COMMAND test_wrfout_writer)
+add_test(NAME test_wrfout_writer COMMAND test_wrfout_writer WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_executable(test_restart test_restart.cpp)
 target_link_libraries(test_restart PRIVATE cppwrf_io_netcdf)
 target_include_directories(test_restart PRIVATE ${NETCDF_INCDIR} ${CMAKE_SOURCE_DIR}/src)
 target_compile_features(test_restart PRIVATE cxx_std_20)
-add_test(NAME test_restart COMMAND test_restart)
+add_test(NAME test_restart COMMAND test_restart WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
   add_test(NAME test_wrfout_python
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/test_wrfout_python.py"
-            "$<TARGET_FILE_DIR:test_wrfout_writer>/test_out/wrfout_d01_test.nc"
+            "${CMAKE_SOURCE_DIR}/tests/io_netcdf/test_out/wrfout_d01_test.nc"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   )
   set_tests_properties(test_wrfout_python PROPERTIES DEPENDS test_wrfout_writer)
 endif()

@@ -46,8 +46,8 @@ struct WrfoutMeta {
   double truelat1 = 0.0, truelat2 = 0.0;
   double moad_cen_lat = 0.0, stand_lon = 0.0;
   double pole_lat = 90.0, pole_lon = 0.0;
-  std::string start_date = "0001-01-01_00:00:00";
-  std::string simulation_start_date = "0001-01-01_00:00:00";
+  std::string start_date = "2000-01-01_00:00:00";
+  std::string simulation_start_date = "2000-01-01_00:00:00";
   // physics/dynamics params
   int diff_opt = 1;
   int km_opt = 1;

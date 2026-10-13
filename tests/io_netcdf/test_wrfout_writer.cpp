@@ -91,6 +91,7 @@ int main() {
   vars.emplace_back("P_TOP", '\0', 1, 1, 1, &p_top, DType::F32);
 
   std::string test_file = "tests/io_netcdf/test_out/wrfout_d01_test.nc";
+  std::remove(test_file.c_str());
   WrfoutWriter writer("tests/io_netcdf/test_out", meta);
 
   // Write frame 0 (t = 0 s)

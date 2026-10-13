@@ -10,19 +10,20 @@ namespace cppwrf::io_netcdf {
 
 namespace {
 
-void get_var_dims(int stagger, int nz, int dim_time, int dim_bt, int dim_bt_stag,
+void get_var_dims(int nx, int ny, int nz, const RestartMeta& meta,
+                  int dim_time, int dim_bt, int dim_bt_stag,
                   int dim_sn, int dim_sn_stag, int dim_we, int dim_we_stag,
                   std::vector<int>& dimids) {
   dimids.clear();
   dimids.push_back(dim_time);
   if (nz > 1) {
-    if (stagger == 'W' || stagger == 'Z') dimids.push_back(dim_bt_stag);
+    if (nz > meta.nz) dimids.push_back(dim_bt_stag);
     else dimids.push_back(dim_bt);
   }
-  if (stagger == 'V' || stagger == 'Y') dimids.push_back(dim_sn_stag);
+  if (ny > meta.ny) dimids.push_back(dim_sn_stag);
   else dimids.push_back(dim_sn);
 
-  if (stagger == 'U' || stagger == 'X') dimids.push_back(dim_we_stag);
+  if (nx > meta.nx) dimids.push_back(dim_we_stag);
   else dimids.push_back(dim_we);
 }
 
@@ -76,7 +77,7 @@ void write_restart(const std::string& path, const RestartMeta& meta,
   for (size_t i = 0; i < vars.size(); ++i) {
     const auto& v = vars[i];
     std::vector<int> dimids;
-    get_var_dims(v.stagger, v.nz, dim_time, dim_bt, dim_bt_stag,
+    get_var_dims(v.nx, v.ny, v.nz, meta, dim_time, dim_bt, dim_bt_stag,
                  dim_sn, dim_sn_stag, dim_we, dim_we_stag, dimids);
     nc_type xtype = (v.dtype == DType::F64) ? NC_DOUBLE : NC_FLOAT;
     NC_CHECK(nc_def_var(ncid, v.name.c_str(), xtype, int(dimids.size()), dimids.data(), &varids[i]));
@@ -97,7 +98,7 @@ void write_restart(const std::string& path, const RestartMeta& meta,
     const int nz = v.nz > 0 ? v.nz : 1;
     size_t count = size_t(nx) * ny * nz;
 
-    const std::ptrdiff_t sj = v.sj != 0 ? v.sj : nx;
+    const std::ptrdiff_t sj = (v.sj != 0 || v.sk != 0) ? v.sj : nx;
     const std::ptrdiff_t sk = v.sk != 0 ? v.sk : (std::ptrdiff_t)nx * ny;
     bool is_contiguous = (sj == nx && sk == (std::ptrdiff_t)nx * ny);
 
@@ -159,17 +160,21 @@ void read_restart(const std::string& path, RestartMeta& meta,
     nc_get_att_text(ncid, NC_GLOBAL, "CURRENT_DATE", meta.date_str.data());
   }
 
-  // Read each requested variable
+  // Read each requested variable if present in the restart file
   for (auto& v : vars) {
     int varid = -1;
-    NC_CHECK(nc_inq_varid(ncid, v.name.c_str(), &varid));
+    int rc = nc_inq_varid(ncid, v.name.c_str(), &varid);
+    if (rc == NC_ENOTVAR) {
+      continue;
+    }
+    NC_CHECK(rc);
 
     const int nx = v.nx > 0 ? v.nx : 1;
     const int ny = v.ny > 0 ? v.ny : 1;
     const int nz = v.nz > 0 ? v.nz : 1;
     size_t count = size_t(nx) * ny * nz;
 
-    const std::ptrdiff_t sj = v.sj != 0 ? v.sj : nx;
+    const std::ptrdiff_t sj = (v.sj != 0 || v.sk != 0) ? v.sj : nx;
     const std::ptrdiff_t sk = v.sk != 0 ? v.sk : (std::ptrdiff_t)nx * ny;
     bool is_contiguous = (sj == nx && sk == (std::ptrdiff_t)nx * ny);
 

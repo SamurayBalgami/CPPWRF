@@ -9,20 +9,28 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 MODE="quick"
-ENABLE_GPU=0
+ENABLE_GPU=-1
 
 for arg in "$@"; do
   case "$arg" in
     --quick) MODE="quick" ;;
     --full)  MODE="full" ;;
     --gpu)   ENABLE_GPU=1 ;;
+    --no-gpu) ENABLE_GPU=0 ;;
     *) echo "Unknown option: $arg"; exit 2 ;;
   esac
 done
 
+GPU_FLAG=""
+if [ ${ENABLE_GPU} -eq 1 ]; then
+  GPU_FLAG="--gpu"
+elif [ ${ENABLE_GPU} -eq 0 ]; then
+  GPU_FLAG="--no-gpu"
+fi
+
 echo "Refreshing golden references from HEAD..."
 # Execute run.sh to produce fresh outputs
-"${SCRIPT_DIR}/run.sh" "--${MODE}" $([ ${ENABLE_GPU} -eq 1 ] && echo "--gpu") || true
+"${SCRIPT_DIR}/run.sh" "--${MODE}" ${GPU_FLAG} || true
 
 GOLDEN_DIR="${SCRIPT_DIR}/golden"
 RUNS_DIR="${SCRIPT_DIR}/runs"

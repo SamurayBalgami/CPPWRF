@@ -12,14 +12,15 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
 export OMP_WAIT_POLICY="${OMP_WAIT_POLICY:-passive}"
 
 MODE="quick"
-ENABLE_GPU=0
+ENABLE_GPU=-1
 
 for arg in "$@"; do
   case "$arg" in
     --quick) MODE="quick" ;;
     --full)  MODE="full" ;;
     --gpu)   ENABLE_GPU=1 ;;
-    *) echo "Unknown option: $arg"; echo "Usage: $0 [--quick|--full] [--gpu]"; exit 2 ;;
+    --no-gpu) ENABLE_GPU=0 ;;
+    *) echo "Unknown option: $arg"; echo "Usage: $0 [--quick|--full] [--gpu|--no-gpu]"; exit 2 ;;
   esac
 done
 
@@ -37,7 +38,6 @@ echo "CPPWRF Regression Suite"
 echo "Commit: ${GIT_COMMIT}"
 echo "Date:   ${DATE_STR}"
 echo "Mode:   ${MODE}"
-echo "GPU:    $([ ${ENABLE_GPU} -eq 1 ] && echo "Requested" || echo "Disabled")"
 echo "OMP:    OMP_NUM_THREADS=${OMP_NUM_THREADS} OMP_WAIT_POLICY=${OMP_WAIT_POLICY}"
 echo "Logs:   ${LOG_DIR}"
 echo "Runs:   ${RUNS_DIR}"
@@ -53,17 +53,20 @@ declare -A GOLDEN_STATUS
 declare -A VERIFY_STATUS
 declare -A GPU_COMP_STATUS
 
-CONFIGS=("rest_state" "straka" "warm_bubble" "igw")
+CONFIGS=("rest_state" "straka" "warm_bubble" "igw" "squall2d")
 
 # Check GPU availability
 HAS_GPU=0
-if [ ${ENABLE_GPU} -eq 1 ]; then
+if [ ${ENABLE_GPU} -ne 0 ]; then
   if command -v nvcc >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
     HAS_GPU=1
   else
-    echo "Notice: GPU requested but nvcc or GPU driver not functional; GPU builds/runs will be skipped."
+    if [ ${ENABLE_GPU} -eq 1 ]; then
+      echo "Notice: GPU requested but nvcc or GPU driver not functional; GPU builds/runs will be skipped."
+    fi
   fi
 fi
+echo "GPU Status: $([ ${HAS_GPU} -eq 1 ] && echo "Active (CUDA enabled)" || echo "Disabled/Not found")"
 
 # Define build targets: name:enable_cuda:enable_double:backend:prec
 TARGETS=(
@@ -137,6 +140,7 @@ for tgt in "${TARGETS[@]}"; do
         straka)      EXTRA_ARGS=(--set run.run_time=2 --set output.out_interval=2 --set output.diag_interval=1) ;;
         warm_bubble) EXTRA_ARGS=(--set run.run_time=2 --set output.out_interval=2 --set output.diag_interval=1) ;;
         igw)         EXTRA_ARGS=(--set run.run_time=12 --set output.out_interval=2 --set output.diag_interval=1) ;;
+        squall2d)    EXTRA_ARGS=(--set run.run_time=12 --set output.out_interval=2 --set output.diag_interval=1) ;;
       esac
     fi
 
@@ -179,14 +183,19 @@ for tgt in "${TARGETS[@]}"; do
     fi
 
     # Run tests/verify/verify.py check
-    echo "   Running verify.py check..."
-    if python3 tests/verify/verify.py check "${c}" "${out_dir}" > "${LOG_DIR}/${case_key}.verify.log" 2>&1; then
-      VERIFY_STATUS["${case_key}"]="PASS"
-      echo "   Verifier: PASS"
+    if [ "${MODE}" == "quick" ] && [ "$c" == "straka" ]; then
+      VERIFY_STATUS["${case_key}"]="SKIP (quick: 2s vs 900s)"
+      echo "   Verifier: SKIP (quick mode: straka verification requires 900s)"
     else
-      VERIFY_STATUS["${case_key}"]="FAIL"
-      OVERALL_PASS=0
-      echo "   Verifier: FAIL (see ${LOG_DIR}/${case_key}.verify.log)"
+      echo "   Running verify.py check..."
+      if python3 tests/verify/verify.py check "${c}" "${out_dir}" > "${LOG_DIR}/${case_key}.verify.log" 2>&1; then
+        VERIFY_STATUS["${case_key}"]="PASS"
+        echo "   Verifier: PASS"
+      else
+        VERIFY_STATUS["${case_key}"]="FAIL"
+        OVERALL_PASS=0
+        echo "   Verifier: FAIL (see ${LOG_DIR}/${case_key}.verify.log)"
+      fi
     fi
 
     # Golden comparison
@@ -235,8 +244,52 @@ if [ ${HAS_GPU} -eq 1 ]; then
   done
 fi
 
+# WRF Reference Fidelity (straka_wrf on CPU FP64)
 echo ""
-echo "--- 4. Writing Report (tools/regression/last_report.md) ---"
+echo "--- 4. WRF Reference Fidelity (straka_wrf on CPU FP64) ---"
+WRF_REF="${HOME}/wrf_ref/run_straka_d1/wrfout_d01_0001-01-01_00:00:00"
+STRAKA_WRF_STATUS="SKIP"
+STRAKA_WRF_DETAILS="reference file missing"
+if [ -f "${WRF_REF}" ]; then
+  bin_path_dp="build-reg-cpu-dp/cppwrf"
+  if [ -x "${bin_path_dp}" ]; then
+    out_straka_wrf="${RUNS_DIR}/straka_wrf_cpu_fp64"
+    rm -rf "${out_straka_wrf}"
+    mkdir -p "${out_straka_wrf}"
+    echo ">> Running straka_wrf [cpu fp64] (tools/heavy.sh --exclusive)..."
+    run_log="${LOG_DIR}/straka_wrf_cpu_fp64.run.log"
+    if "${REPO_ROOT}/tools/heavy.sh" --exclusive "${bin_path_dp}" "configs/straka_wrf.ini" --set "output.dir=${out_straka_wrf}" > "${run_log}" 2>&1; then
+      echo "   Execution: PASS"
+      echo "   Running verify.py wrf..."
+      if python3 tests/verify/verify.py wrf "${WRF_REF}" "${out_straka_wrf}" > "${LOG_DIR}/straka_wrf.verify.log" 2>&1; then
+        STRAKA_WRF_STATUS="PASS"
+        STRAKA_WRF_DETAILS="all steps match within RMS tol 0.05 K"
+        echo ">> WRF Reference Comparison: PASS"
+      else
+        STRAKA_WRF_STATUS="FAIL"
+        STRAKA_WRF_DETAILS="verify.py wrf reported differences exceeding tolerance"
+        OVERALL_PASS=0
+        echo ">> WRF Reference Comparison: FAIL (see ${LOG_DIR}/straka_wrf.verify.log)"
+      fi
+    else
+      STRAKA_WRF_STATUS="FAIL (crash)"
+      STRAKA_WRF_DETAILS="simulation run crashed"
+      OVERALL_PASS=0
+      echo ">> WRF Reference Run: FAIL (see ${run_log})"
+    fi
+  else
+    STRAKA_WRF_STATUS="SKIP (no binary)"
+    STRAKA_WRF_DETAILS="build-reg-cpu-dp/cppwrf not found"
+    echo ">> WRF Reference Comparison: SKIP (build-reg-cpu-dp/cppwrf not found)"
+  fi
+else
+  STRAKA_WRF_STATUS="SKIP (no ref)"
+  STRAKA_WRF_DETAILS="${WRF_REF} not found"
+  echo ">> WRF Reference Comparison: SKIP (${WRF_REF} not found)"
+fi
+
+echo ""
+echo "--- 5. Writing Report (tools/regression/last_report.md) ---"
 REPORT="${SCRIPT_DIR}/last_report.md"
 {
   echo "# Regression Test Report"
@@ -244,7 +297,7 @@ REPORT="${SCRIPT_DIR}/last_report.md"
   echo "- **Date**: ${DATE_STR}"
   echo "- **Git Commit**: \`${GIT_COMMIT}\` (\`${GIT_SHORT}\`)"
   echo "- **Mode**: \`${MODE}\`"
-  echo "- **GPU Enabled**: $([ ${ENABLE_GPU} -eq 1 ] && echo "Yes" || echo "No")"
+  echo "- **GPU Enabled**: $([ ${HAS_GPU} -eq 1 ] && echo "Yes" || echo "No")"
   echo "- **Overall Result**: **$([ ${OVERALL_PASS} -eq 1 ] && echo "PASS" || echo "FAIL")**"
   echo ""
   echo "## 1. Build and CTest Status"
@@ -289,6 +342,13 @@ REPORT="${SCRIPT_DIR}/last_report.md"
       done
     done
   fi
+
+  echo ""
+  echo "## 4. WRF Reference Fidelity (straka_wrf on CPU FP64)"
+  echo ""
+  echo "| Case | Configuration | Reference File | Status | Details |"
+  echo "|---|---|---|---|---|"
+  echo "| \`straka_wrf\` | \`cpu fp64\` | \`${WRF_REF}\` | ${STRAKA_WRF_STATUS} | ${STRAKA_WRF_DETAILS} |"
 
   echo ""
   echo "---"

@@ -43,6 +43,24 @@ const VarView* find_var(const std::vector<VarView>& vars, std::string_view name)
       if (n == "MU_PERT") return &v;
     }
   }
+  if (target == "QVAPOR") {
+    for (const auto& v : vars) {
+      std::string n = to_upper(v.name);
+      if (n == "QV") return &v;
+    }
+  }
+  if (target == "QCLOUD") {
+    for (const auto& v : vars) {
+      std::string n = to_upper(v.name);
+      if (n == "QC") return &v;
+    }
+  }
+  if (target == "QRAIN") {
+    for (const auto& v : vars) {
+      std::string n = to_upper(v.name);
+      if (n == "QR") return &v;
+    }
+  }
   return nullptr;
 }
 
@@ -143,7 +161,7 @@ class WrfoutWriter::Impl {
     std::string file_path = target_file;
     if (file_path.empty()) {
       std::filesystem::create_directories(out_dir_);
-      file_path = out_dir_ + "/wrfout_d01_" + date_str;
+      file_path = out_dir_ + "/wrfout_d01_" + meta_.start_date;
     } else {
       auto p = std::filesystem::path(file_path).parent_path();
       if (!p.empty()) std::filesystem::create_directories(p);
@@ -191,9 +209,18 @@ class WrfoutWriter::Impl {
       defs["P"] = {"P", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "perturbation pressure", "Pa", "XLONG XLAT XTIME"};
       defs["PB"] = {"PB", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "BASE STATE PRESSURE", "Pa", "XLONG XLAT XTIME"};
 
-      // Optional QVAPOR
+      // Optional moist species and surface diagnostics
       if (find_var(vars, "QVAPOR") || find_var(vars, "QV")) {
         defs["QVAPOR"] = {"QVAPOR", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "Water vapor mixing ratio", "kg kg-1", "XLONG XLAT XTIME"};
+      }
+      if (find_var(vars, "QCLOUD") || find_var(vars, "QC")) {
+        defs["QCLOUD"] = {"QCLOUD", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "Cloud water mixing ratio", "kg kg-1", "XLONG XLAT XTIME"};
+      }
+      if (find_var(vars, "QRAIN") || find_var(vars, "QR")) {
+        defs["QRAIN"] = {"QRAIN", {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", "Rain water mixing ratio", "kg kg-1", "XLONG XLAT XTIME"};
+      }
+      if (find_var(vars, "RAINNC")) {
+        defs["RAINNC"] = {"RAINNC", {dim_time, dim_sn, dim_we}, "XY ", "", "ACCUMULATED TOTAL GRID SCALE PRECIPITATION", "mm", "XLONG XLAT XTIME"};
       }
 
       // 2D MU, MUB, XLAT, XLONG, HGT
@@ -454,10 +481,19 @@ class WrfoutWriter::Impl {
     if (defs.count("QVAPOR")) {
       write_3d("QVAPOR", nx, ny, nz);
     }
+    if (defs.count("QCLOUD")) {
+      write_3d("QCLOUD", nx, ny, nz);
+    }
+    if (defs.count("QRAIN")) {
+      write_3d("QRAIN", nx, ny, nz);
+    }
 
     // 2D Fields
     write_2d("MU", nx, ny);
     write_2d("MUB", nx, ny);
+    if (defs.count("RAINNC")) {
+      write_2d("RAINNC", nx, ny);
+    }
     write_2d("XLAT", nx, ny);
     write_2d("XLONG", nx, ny);
     write_2d("HGT", nx, ny);
