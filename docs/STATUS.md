@@ -1,4 +1,25 @@
-# CPPWRF status: M3 real-data dycore done (2026-10-13)
+# CPPWRF status, 2026-10-13
+
+## Current state
+Identical to WRF 4.6.1 (CPU and CUDA, FP32 and FP64; `tests/verify/wrf_suite.py`, all PASS):
+- Real-data dycore: specified lateral boundaries, hybrid_opt 0/2, map factors, Coriolis,
+  curvature, terrain, damp_opt 3, w_damping (active damping verified), moist (qv) PD advection.
+  FP64 vs WRF real*8: U 2.6e-14, THM 3.7e-16, QV 1.8e-15 rel L2 (CPU and CUDA).
+- Ideal: Straka (diff_opt 1, km_opt 1) theta' 7.4e-6 K at 900 s; em_hill2d_x.
+- Microphysics: Kessler, WSM6 (step 1 to roundoff; later steps show WSM6's own roundoff
+  sensitivity, equal to CPPWRF CPU-vs-GPU FP64).
+- Diffusion: diff_opt 1 with km_opt 1/4 and 6th order wired (kernels differential-tested
+  against WRF); real-data check vs WRF R4/R5 pending.
+In progress (agents): physics suite (sfclayrev, Noah, YSU, KF, RRTMG) behind the
+ColumnPhysics hook, Thompson, Tiedtke, MYJ, TKE (km_opt 2) and damp_opt 1/2, diff_opt 2,
+wrfout content fixes, real.exe in C++ (src/init_real), nesting (docs/NESTING.md: LateralBC
+nested mode done; interpolation kernels, driver next), namelist translator (done) and the
+operational chain.
+Speed (RTX 2060, 119x89x44 real, 1 h): dry FP32 ~32 ns/cell/step (WRF 4 threads ~10x slower);
+with WSM6 ~52 ns/cell/step.
+
+## History
+### M3 real-data dycore done (2026-10-13)
 
 ## Built
 - M0: CMake/Ninja (CPU OpenMP + CUDA backends, FP32/FP64), single-source kernels, SoA fields,
