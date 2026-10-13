@@ -264,6 +264,7 @@ struct KTendW {
   C3 w, ru, rv, ww, p, tendf; C2 mu; B2 mub; VCoef c; kern::MoistCoef mc;
   V3 out; real rdx, rdy; int nz; bool do_y, use_tendf; real hup, vup;
   C3 u, v; MapC m; kern::Spec sp;
+  C2 mut; real wd_dt, w_crit;  // w_damp (wd_dt = 0: off)
   CPPWRF_HD real rux(int i, int j, int k) const {  // ru interpolated to w level k
     if (k < nz) return c.fnm(k) * ru(i, j, k) + c.fnp(k) * ru(i, j, k - 1);
     return (real(2) - c.fnm(nz - 1)) * ru(i, j, nz - 1) - c.fnp(nz - 1) * ru(i, j, nz - 2);
@@ -302,6 +303,12 @@ struct KTendW {
       const real cqw = mc.cqw(i, j, k), cq1 = real(1) / (real(1) + cqw), cq2 = cqw * cq1;
       t += rmsft * Gr * (cq1 * c.rdn(k) * (p(i, j, k) - p(i, j, k - 1)) - c.c1f(k) * mu(i, j) -
                          cq2 * (c.c1f(k) * mub(i, j) + c.c2f(k)));
+      if (wd_dt != real(0)) {  // w_damp (w_beta = 1, w_alpha = 0.3): WRF uses rdnw of the layer above
+        const real muf = c.c1f(k) * mut(i, j) + c.c2f(k);
+        real cfl = ww(i, j, k) / muf * c.rdnw(k) * wd_dt;
+        cfl = cfl < real(0) ? -cfl : cfl;
+        if (cfl > real(1)) t = t - (w(i, j, k) < real(0) ? real(-1) : real(1)) * real(0.3) * (cfl - w_crit) * muf;
+      }
       // coriolis, curvature (levels 2..kde-1 in WRF)
       const real ruw = H * (c.fnm(k) * (ru(i, j, k) + ru(i + 1, j, k)) + c.fnp(k) * (ru(i, j, k - 1) + ru(i + 1, j, k - 1)));
       const real rvw = H * (c.fnm(k) * (rv(i, j, k) + rv(i, j + 1, k)) + c.fnp(k) * (rv(i, j, k - 1) + rv(i, j + 1, k - 1)));
@@ -594,7 +601,8 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
                             s.u_2.cview(), s.rw.cview(), m, sp});
   parallel_for(wr, KTendW{s.w_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), t.rw_tendf.cview(),
                           s.mu_2.cview(), b.mub.view(), c, moist_coef(s), t.rw_tend.view(), rdx, rdy, nz, do_y, tendf, hup, vup,
-                          s.u_2.cview(), s.v_2.cview(), m, sp});
+                          s.u_2.cview(), s.v_2.cview(), m, sp, s.mut.cview(),
+                          p_.w_damping == 1 ? real(g_.dt) : real(0), p_.w_crit_cfl});
   parallel_for(mr, KTendT{s.t_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), t.t_tendf.cview(), c,
                           t.t_tend.view(), rdx, rdy, nz, do_y, tendf, hup, vup, s.h_diabatic.cview(), s.mut.cview(),
                           s.n_moist > 0, b.msftx.view(), b.msfty.view(), sp});

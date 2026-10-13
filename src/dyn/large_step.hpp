@@ -13,6 +13,8 @@ struct LargeStepParams {
   bool top_lid = false;       // WRF top_lid (default .false.); true: rigid lid, p' extrapolated to the top
   int h_adv_order = 5;        // 5 (default) or 6 (centred); WRF h_mom/h_sca_adv_order
   int v_adv_order = 3;        // 3 (default) or 4 (centred); WRF v_mom/v_sca_adv_order
+  int w_damping = 0;          // WRF w_damping: 1 damps w where the vertical Courant number > 1
+  real w_crit_cfl = 1;        // WRF w_crit_cfl (subtracted from the Courant number)
 };
 
 // 1D vertical coefficients packed for kernels.

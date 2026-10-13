@@ -160,6 +160,8 @@ Model Model::build(const io::Config& cfg) {
   lp.top_lid = cfg.get_bool("dyn.top_lid", false);  // WRF default
   lp.h_adv_order = int(cfg.get_int("dyn.h_adv_order", 5));
   lp.v_adv_order = int(cfg.get_int("dyn.v_adv_order", 3));
+  lp.w_damping = int(cfg.get_int("dyn.w_damping", 0));
+  lp.w_crit_cfl = real(cfg.get_double("dyn.w_crit_cfl", 1.0));
   if ((lp.h_adv_order != 5 && lp.h_adv_order != 6) || (lp.v_adv_order != 3 && lp.v_adv_order != 4))
     throw std::runtime_error("dyn.h_adv_order must be 5 or 6, dyn.v_adv_order 3 or 4");
   m.ap.epssm = real(cfg.get_double("dyn.epssm", 0.1));
