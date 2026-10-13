@@ -24,7 +24,8 @@ constexpr real Gr_bs = real(cst::g);
 
 struct KHorizDiffU1 {
   View3<const real> field, xkmhd;
-  BView2<const real> mut, msftx, msfty, msfux, msfuy;
+  View2<const real> mut;
+  BView2<const real> msftx, msfty, msfux, msfuy;
   View1<const real> c1, c2;
   View3<real> tendency;
   real rdx, rdy;
@@ -58,7 +59,8 @@ struct KHorizDiffU1 {
 
 struct KHorizDiffV1 {
   View3<const real> field, xkmhd;
-  BView2<const real> mut, msftx, msfty, msfvx, msfvy;
+  View2<const real> mut;
+  BView2<const real> msftx, msfty, msfvx, msfvy;
   View1<const real> c1, c2;
   View3<real> tendency;
   real rdx, rdy;
@@ -91,7 +93,8 @@ struct KHorizDiffV1 {
 
 struct KHorizDiffW1 {
   View3<const real> field, xkmhd;
-  BView2<const real> mut, msftx, msfty, msfux, msfuy, msfvy, msfvx_inv;
+  View2<const real> mut;
+  BView2<const real> msftx, msfty, msfux, msfuy, msfvy, msfvx_inv;
   View1<const real> c1, c2;
   View3<real> tendency;
   real rdx, rdy;
@@ -132,7 +135,8 @@ struct KHorizDiffW1 {
 
 struct KHorizDiffM1 {
   View3<const real> field, xkmhd;
-  BView2<const real> mut, msftx, msfty, msfux, msfuy, msfvy, msfvx_inv;
+  View2<const real> mut;
+  BView2<const real> msftx, msfty, msfux, msfuy, msfvy, msfvx_inv;
   View1<const real> c1, c2;
   View3<real> tendency;
   real rdx, rdy;
@@ -147,7 +151,7 @@ struct KHorizDiffM1 {
     real mkrdym = (msfvy(i, j) * msfvx_inv(i, j)) * real(0.5) * (xkmhd(i, j, k) + xkmhd(i, j - 1, k)) *
                   real(0.5) * ((c1(k) * mut(i, j) + c2(k)) + (c1(k) * mut(i, j - 1) + c2(k))) * rdy;
     real mkrdyp = (msfvy(i, j + 1) * msfvx_inv(i, j + 1)) * real(0.5) * (xkmhd(i, j + 1, k) + xkmhd(i, j, k)) *
-                  real(0.5) * ((c1(k) * mut(i, j + 1) + c2(k)) + (c1(k) * mut(i, j + 1) + c2(k))) * rdy;
+                  real(0.5) * ((c1(k) * mut(i, j + 1) + c2(k)) + (c1(k) * mut(i, j) + c2(k))) * rdy;
     real mrdy = msftx(i, j) * msfty(i, j) * rdy;
 
     tendency(i, j, k) += mrdx * (mkrdxp * (field(i + 1, j, k) - field(i, j, k)) -
@@ -159,7 +163,8 @@ struct KHorizDiffM1 {
 
 struct KHorizDiff3DMP {
   View3<const real> field, base_3d, xkmhd;
-  BView2<const real> mut, msftx, msfty, msfux, msfuy, msfvy, msfvx_inv;
+  View2<const real> mut;
+  BView2<const real> msftx, msfty, msfux, msfuy, msfvy, msfvx_inv;
   View1<const real> c1, c2;
   View3<real> tendency;
   real rdx, rdy;
@@ -174,7 +179,7 @@ struct KHorizDiff3DMP {
     real mkrdym = (msfvy(i, j) * msfvx_inv(i, j)) * real(0.5) * (xkmhd(i, j, k) + xkmhd(i, j - 1, k)) *
                   real(0.5) * ((c1(k) * mut(i, j) + c2(k)) + (c1(k) * mut(i, j - 1) + c2(k))) * rdy;
     real mkrdyp = (msfvy(i, j + 1) * msfvx_inv(i, j + 1)) * real(0.5) * (xkmhd(i, j + 1, k) + xkmhd(i, j, k)) *
-                  real(0.5) * ((c1(k) * mut(i, j + 1) + c2(k)) + (c1(k) * mut(i, j + 1) + c2(k))) * rdy;
+                  real(0.5) * ((c1(k) * mut(i, j + 1) + c2(k)) + (c1(k) * mut(i, j) + c2(k))) * rdy;
     real mrdy = msftx(i, j) * msfty(i, j) * rdy;
 
     real dfield_xp = (field(i + 1, j, k) - field(i, j, k)) - (base_3d(i + 1, j, k) - base_3d(i, j, k));
@@ -193,7 +198,7 @@ struct KHorizDiff3DMP {
 
 struct KVertDiffW1 {
   View3<const real> field, alt;
-  BView2<const real> mut;
+  View2<const real> mut;
   View1<const real> c1f, c2f, rdn, rdnw;
   View3<real> tendency;
   real kvdif;
@@ -216,7 +221,7 @@ struct KVertDiffW1 {
 
 struct KVertDiffM1 {
   View3<const real> field, alt;
-  BView2<const real> mut;
+  View2<const real> mut;
   View1<const real> c1h, c2h, rdn, rdnw;
   View3<real> tendency;
   real kvdif;
@@ -241,9 +246,8 @@ struct KVertDiffM1 {
 };
 
 struct KVertDiffMP1 {
-  View3<const real> field, alt;
-  BView3<const real> base;
-  BView2<const real> mut;
+  View3<const real> field, alt, base;
+  View2<const real> mut;
   View1<const real> c1h, c2h, rdn, rdnw;
   View3<real> tendency;
   real kvdif;
@@ -269,8 +273,8 @@ struct KVertDiffMP1 {
 
 struct KVertDiffU1 {
   View3<const real> field, alt;
-  BView3<const real> u_base;
-  BView2<const real> muu;
+  View1<const real> u_base;
+  View2<const real> muu;
   View1<const real> c1h, c2h, rdn, rdnw;
   View3<real> tendency;
   real kvdif;
@@ -280,7 +284,7 @@ struct KVertDiffU1 {
     real vflux[128];
     for (int k = 0; k < nz - 1; ++k) {
       real a = real(0.25) * (alt(i, j, k) + alt(i - 1, j, k) + alt(i, j, k + 1) + alt(i - 1, j, k + 1));
-      real dpert = (field(i, j, k + 1) - field(i, j, k)) - (u_base(i, j, k + 1) - u_base(i, j, k));
+      real dpert = (field(i, j, k + 1) - field(i, j, k)) - (u_base(k + 1) - u_base(k));
       vflux[k] = kvdif * rdn(k + 1) / a * dpert;
     }
     real vf0 = vflux[0];
@@ -299,8 +303,8 @@ struct KVertDiffU1 {
 
 struct KVertDiffV1 {
   View3<const real> field, alt;
-  BView3<const real> v_base;
-  BView2<const real> muv;
+  View1<const real> v_base;
+  View2<const real> muv;
   View1<const real> c1h, c2h, rdn, rdnw;
   View3<real> tendency;
   real kvdif;
@@ -310,7 +314,7 @@ struct KVertDiffV1 {
     real vflux[128];
     for (int k = 0; k < nz - 1; ++k) {
       real a = real(0.25) * (alt(i, j, k) + alt(i, j - 1, k) + alt(i, j, k + 1) + alt(i, j - 1, k + 1));
-      real dpert = (field(i, j, k + 1) - field(i, j, k)) - (v_base(i, j, k + 1) - v_base(i, j, k));
+      real dpert = (field(i, j, k + 1) - field(i, j, k)) - (v_base(k + 1) - v_base(k));
       vflux[k] = kvdif * rdn(k + 1) / a * dpert;
     }
     real vf0 = vflux[0];
@@ -334,7 +338,7 @@ inline void horizontal_diffusion(char name,
                                  const DiffusionParams& p,
                                  View3<const real> field,
                                  View3<real> tendency,
-                                 BView2<const real> mut,
+                                 View2<const real> mut,
                                  BView2<const real> msftx,
                                  BView2<const real> msfty,
                                  BView2<const real> msfux,
@@ -390,7 +394,7 @@ inline void horizontal_diffusion_3dmp(const DiffusionParams& p,
                                       View3<const real> field,
                                       View3<const real> base_3d,
                                       View3<real> tendency,
-                                      BView2<const real> mut,
+                                      View2<const real> mut,
                                       BView2<const real> msftx,
                                       BView2<const real> msfty,
                                       BView2<const real> msfux,
@@ -415,7 +419,7 @@ inline void horizontal_diffusion_3dmp(const DiffusionParams& p,
 inline void vertical_diffusion(char name,
                                View3<const real> field,
                                View3<real> tendency,
-                               BView2<const real> mut,
+                               View2<const real> mut,
                                View1<const real> c1,
                                View1<const real> c2,
                                View3<const real> alt,
@@ -434,8 +438,8 @@ inline void vertical_diffusion(char name,
 
 inline void vertical_diffusion_mp(View3<const real> field,
                                   View3<real> tendency,
-                                  BView3<const real> base,
-                                  BView2<const real> mut,
+                                  View3<const real> base,
+                                  View2<const real> mut,
                                   View1<const real> c1,
                                   View1<const real> c2,
                                   View3<const real> alt,
@@ -450,8 +454,8 @@ inline void vertical_diffusion_mp(View3<const real> field,
 inline void vertical_diffusion_u(const DiffusionParams& p,
                                  View3<const real> field,
                                  View3<real> tendency,
-                                 BView3<const real> u_base,
-                                 BView2<const real> muu,
+                                 View1<const real> u_base,
+                                 View2<const real> muu,
                                  View1<const real> c1h,
                                  View1<const real> c2h,
                                  View3<const real> alt,
@@ -472,8 +476,8 @@ inline void vertical_diffusion_u(const DiffusionParams& p,
 inline void vertical_diffusion_v(const DiffusionParams& p,
                                  View3<const real> field,
                                  View3<real> tendency,
-                                 BView3<const real> v_base,
-                                 BView2<const real> muv,
+                                 View1<const real> v_base,
+                                 View2<const real> muv,
                                  View1<const real> c1h,
                                  View1<const real> c2h,
                                  View3<const real> alt,

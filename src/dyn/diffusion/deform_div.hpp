@@ -27,7 +27,7 @@ struct KDeformDiagAndDiv {
 
   CPPWRF_HD void operator()(int i, int j) const {
     const real mm = msftx(i, j) * msfty(i, j);
-    const int ktes1 = nz - 2;
+    const int ktes1 = nz - 1;
     const real cft2 = -real(0.5) * dnw(ktes1) / dn(ktes1);
     const real cft1 = real(1.0) - cft2;
 
@@ -62,18 +62,14 @@ struct KDeformDiagAndDiv {
                                 cft2 * (hat_v0[nz - 2] + hat_v1[nz - 2]));
 
     for (int k = 0; k < nz; ++k) {
-      real zx_kp1 = (k + 1 < nz) ? zx(i, j, k + 1) : real(0);
-      real zxp1_kp1 = (k + 1 < nz) ? zx(i + 1, j, k + 1) : real(0);
       real tmpzx = real(0.25) * (zx(i, j, k) + zx(i + 1, j, k) +
-                                 zx_kp1 + zxp1_kp1);
+                                 zx(i, j, k + 1) + zx(i + 1, j, k + 1));
       real tmp1_u = (hatavg_u[k + 1] - hatavg_u[k]) * tmpzx * rdzw(i, j, k);
       real dudx = mm * (rdx * (hat_u1[k] - hat_u0[k]) - tmp1_u);
       defor11(i, j, k) = real(2.0) * dudx;
 
-      real zy_kp1 = (k + 1 < nz) ? zy(i, j, k + 1) : real(0);
-      real zyp1_kp1 = (k + 1 < nz) ? zy(i, j + 1, k + 1) : real(0);
       real tmpzy = real(0.25) * (zy(i, j, k) + zy(i, j + 1, k) +
-                                 zy_kp1 + zyp1_kp1);
+                                 zy(i, j, k + 1) + zy(i, j + 1, k + 1));
       real tmp1_v = (hatavg_v[k + 1] - hatavg_v[k]) * tmpzy * rdzw(i, j, k);
       real dvdy = mm * (rdy * (hat_v1[k] - hat_v0[k]) - tmp1_v);
       defor22(i, j, k) = real(2.0) * dvdy;
@@ -93,19 +89,25 @@ struct KDeform12 {
   real cf1, cf2, cf3;
   View3<real> defor12;
   real rdx, rdy;
-  int nz;
+  int nx, ny, nz;
+  bool periodic_x, periodic_y;
 
   CPPWRF_HD void operator()(int i, int j) const {
-    const real mm = real(0.25) * (msfux(i, j - 1) + msfux(i, j)) * (msfvy(i - 1, j) + msfvy(i, j));
-    const int ktes1 = nz - 2;
+    int im1 = (i == 0) ? (periodic_x ? nx - 1 : 0) : i - 1;
+    int i0  = (i == nx) ? (periodic_x ? 0 : nx - 1) : i;
+    int jm1 = (j == 0) ? (periodic_y ? ny - 1 : 0) : j - 1;
+    int j0  = (j == ny) ? (periodic_y ? 0 : ny - 1) : j;
+
+    const real mm = real(0.25) * (msfux(i, jm1) + msfux(i, j0)) * (msfvy(im1, j) + msfvy(i0, j));
+    const int ktes1 = nz - 1;
     const real cft2 = -real(0.5) * dnw(ktes1) / dn(ktes1);
     const real cft1 = real(1.0) - cft2;
 
-    // --- u / msfux at u points (j-1 and j) ---
+    // --- u / msfux at u points (jm1 and j0) ---
     real hat_um[128], hat_up[128], hatavg_u[128];
     for (int k = 0; k < nz; ++k) {
-      hat_um[k] = u(i, j - 1, k) / msfux(i, j - 1);
-      hat_up[k] = u(i, j, k) / msfux(i, j);
+      hat_um[k] = u(i, jm1, k) / msfux(i, jm1);
+      hat_up[k] = u(i, j0, k) / msfux(i, j0);
     }
     for (int k = 1; k < nz; ++k) {
       hatavg_u[k] = real(0.5) * (fnm(k) * (hat_um[k] + hat_up[k]) +
@@ -116,11 +118,11 @@ struct KDeform12 {
     hatavg_u[nz] = real(0.5) * (cft1 * (hat_um[nz - 1] + hat_up[nz - 1]) +
                                 cft2 * (hat_um[nz - 2] + hat_up[nz - 2]));
 
-    // --- v / msfvy at v points (i-1 and i) ---
+    // --- v / msfvy at v points (im1 and i0) ---
     real hat_vm[128], hat_vp[128], hatavg_v[128];
     for (int k = 0; k < nz; ++k) {
-      hat_vm[k] = v(i - 1, j, k) / msfvy(i - 1, j);
-      hat_vp[k] = v(i, j, k) / msfvy(i, j);
+      hat_vm[k] = v(im1, j, k) / msfvy(im1, j);
+      hat_vp[k] = v(i0, j, k) / msfvy(i0, j);
     }
     for (int k = 1; k < nz; ++k) {
       hatavg_v[k] = real(0.5) * (fnm(k) * (hat_vm[k] + hat_vp[k]) +
@@ -132,19 +134,15 @@ struct KDeform12 {
                                 cft2 * (hat_vm[nz - 2] + hat_vp[nz - 2]));
 
     for (int k = 0; k < nz; ++k) {
-      real zy_kp1 = (k + 1 < nz) ? zy(i - 1, j, k + 1) : real(0);
-      real zyp1_kp1 = (k + 1 < nz) ? zy(i, j, k + 1) : real(0);
-      real tmpzy = real(0.25) * (zy(i - 1, j, k) + zy(i, j, k) +
-                                 zy_kp1 + zyp1_kp1);
-      real rdzw_avg = real(0.25) * (rdzw(i, j, k) + rdzw(i - 1, j, k) +
-                                    rdzw(i - 1, j - 1, k) + rdzw(i, j - 1, k));
+      real tmpzy = real(0.25) * (zy(im1, j, k) + zy(i0, j, k) +
+                                 zy(im1, j, k + 1) + zy(i0, j, k + 1));
+      real rdzw_avg = real(0.25) * (rdzw(i0, j0, k) + rdzw(im1, j0, k) +
+                                    rdzw(im1, jm1, k) + rdzw(i0, jm1, k));
       real tmp1_u = (hatavg_u[k + 1] - hatavg_u[k]) * tmpzy * rdzw_avg;
       real term_u = mm * (rdy * (hat_up[k] - hat_um[k]) - tmp1_u);
 
-      real zx_kp1 = (k + 1 < nz) ? zx(i, j - 1, k + 1) : real(0);
-      real zxp1_kp1 = (k + 1 < nz) ? zx(i, j, k + 1) : real(0);
-      real tmpzx = real(0.25) * (zx(i, j - 1, k) + zx(i, j, k) +
-                                 zx_kp1 + zxp1_kp1);
+      real tmpzx = real(0.25) * (zx(i, jm1, k) + zx(i, j0, k) +
+                                 zx(i, jm1, k + 1) + zx(i, j0, k + 1));
       real tmp1_v = (hatavg_v[k + 1] - hatavg_v[k]) * tmpzx * rdzw_avg;
       real term_v = mm * (rdx * (hat_vp[k] - hat_vm[k]) - tmp1_v);
 
@@ -156,17 +154,21 @@ struct KDeform12 {
 struct KDeform13 {
   View3<const real> u, w, zx, rdz;
   BView2<const real> msfux, msfuy, msfty;
+  View1<const real> u_base;
   View3<real> defor13;
   real rdx;
-  int nz;
+  int nx, nz;
+  bool periodic_x, mix_full_fields;
 
   CPPWRF_HD void operator()(int i, int j) const {
     const real mm = msfux(i, j) * msfuy(i, j);
+    int im1 = (i == 0) ? (periodic_x ? nx - 1 : 0) : i - 1;
+    int i0  = (i == nx) ? (periodic_x ? 0 : nx - 1) : i;
 
     real hat_wm[128], hat_wp[128], hatavg[128];
     for (int k = 0; k <= nz; ++k) {
-      hat_wm[k] = w(i - 1, j, k) / msfty(i - 1, j);
-      hat_wp[k] = w(i, j, k) / msfty(i, j);
+      hat_wm[k] = w(im1, j, k) / msfty(im1, j);
+      hat_wp[k] = w(i0, j, k) / msfty(i0, j);
     }
     for (int k = 0; k < nz; ++k) {
       hatavg[k] = real(0.25) * (hat_wp[k] + hat_wp[k + 1] + hat_wm[k] + hat_wm[k + 1]);
@@ -174,10 +176,12 @@ struct KDeform13 {
 
     defor13(i, j, 0) = real(0);
     for (int k = 1; k < nz; ++k) {
-      real rdz_avg = real(0.5) * (rdz(i, j, k) + rdz(i - 1, j, k));
+      real rdz_avg = real(0.5) * (rdz(i0, j, k) + rdz(im1, j, k));
       real tmp1_w = (hatavg[k] - hatavg[k - 1]) * zx(i, j, k) * rdz_avg;
       real dwdx = mm * (rdx * (hat_wp[k] - hat_wm[k]) - tmp1_w);
-      real dudz = (u(i, j, k) - u(i, j, k - 1)) * rdz_avg;
+      real u_cur  = u(i, j, k)     - (mix_full_fields ? real(0) : u_base(k));
+      real u_prev = u(i, j, k - 1) - (mix_full_fields ? real(0) : u_base(k - 1));
+      real dudz = (u_cur - u_prev) * rdz_avg;
       defor13(i, j, k) = dwdx + dudz;
     }
     defor13(i, j, nz) = real(0);
@@ -187,17 +191,21 @@ struct KDeform13 {
 struct KDeform23 {
   View3<const real> v, w, zy, rdz;
   BView2<const real> msfvx, msfvy, msftx;
+  View1<const real> v_base;
   View3<real> defor23;
   real rdy;
-  int nz;
+  int ny, nz;
+  bool periodic_y, mix_full_fields;
 
   CPPWRF_HD void operator()(int i, int j) const {
     const real mm = msfvx(i, j) * msfvy(i, j);
+    int jm1 = (j == 0) ? (periodic_y ? ny - 1 : 0) : j - 1;
+    int j0  = (j == ny) ? (periodic_y ? 0 : ny - 1) : j;
 
     real hat_wm[128], hat_wp[128], hatavg[128];
     for (int k = 0; k <= nz; ++k) {
-      hat_wm[k] = w(i, j - 1, k) / msftx(i, j - 1);
-      hat_wp[k] = w(i, j, k) / msftx(i, j);
+      hat_wm[k] = w(i, jm1, k) / msftx(i, jm1);
+      hat_wp[k] = w(i, j0, k) / msftx(i, j0);
     }
     for (int k = 0; k < nz; ++k) {
       hatavg[k] = real(0.25) * (hat_wp[k] + hat_wp[k + 1] + hat_wm[k] + hat_wm[k + 1]);
@@ -205,10 +213,12 @@ struct KDeform23 {
 
     defor23(i, j, 0) = real(0);
     for (int k = 1; k < nz; ++k) {
-      real rdz_avg = real(0.5) * (rdz(i, j, k) + rdz(i, j - 1, k));
+      real rdz_avg = real(0.5) * (rdz(i, j0, k) + rdz(i, jm1, k));
       real tmp1_w = (hatavg[k] - hatavg[k - 1]) * zy(i, j, k) * rdz_avg;
       real dwdy = mm * (rdy * (hat_wp[k] - hat_wm[k]) - tmp1_w);
-      real dvdz = (v(i, j, k) - v(i, j, k - 1)) * rdz_avg;
+      real v_cur  = v(i, j, k)     - (mix_full_fields ? real(0) : v_base(k));
+      real v_prev = v(i, j, k - 1) - (mix_full_fields ? real(0) : v_base(k - 1));
+      real dvdz = (v_cur - v_prev) * rdz_avg;
       defor23(i, j, k) = dwdy + dvdz;
     }
     defor23(i, j, nz) = real(0);
@@ -219,6 +229,8 @@ inline void cal_deform_and_div(const DiffusionParams& p,
                                View3<const real> u,
                                View3<const real> v,
                                View3<const real> w,
+                               View1<const real> u_base,
+                               View1<const real> v_base,
                                View3<const real> zx,
                                View3<const real> zy,
                                View3<const real> rdz,
@@ -258,64 +270,88 @@ inline void cal_deform_and_div(const DiffusionParams& p,
   column_for(Range2D{i12_s, i12_e, j12_s, j12_e},
              KDeform12{u, v, zx, zy, rdzw, msfux, msfvy,
                        fnm, fnp, dn, dnw, cf1, cf2, cf3, defor12,
-                       rdx, rdy, nz});
+                       rdx, rdy, nx, ny, nz, p.periodic_x, p.periodic_y});
 
-  if (p.specified) {
-    // Copy edges as WRF does in cal_deform_and_div
-    for (int k = 0; k < nz; ++k) {
-      for (int j = 0; j <= ny; ++j) {
-        defor12(0, j, k) = defor12(1, j, k);
-        defor12(nx, j, k) = defor12(nx - 1, j, k);
-      }
-      for (int i = 0; i <= nx; ++i) {
-        defor12(i, 0, k) = defor12(i, 1, k);
-        defor12(i, ny, k) = defor12(i, ny - 1, k);
-      }
-    }
+  if (p.periodic_x) {
+    column_for(Range2D{0, 1, 0, ny + 1}, [=] CPPWRF_HD (int, int j) {
+      for (int k = 0; k < nz; ++k) defor12(nx, j, k) = defor12(0, j, k);
+    });
+  } else if (p.specified) {
+    column_for(Range2D{0, 1, 0, ny}, [=] CPPWRF_HD (int, int j) {
+      for (int k = 0; k < nz; ++k) defor12(0, j, k) = defor12(1, j, k);
+    });
+  }
+
+  if (p.periodic_y) {
+    column_for(Range2D{0, nx + 1, 0, 1}, [=] CPPWRF_HD (int i, int) {
+      for (int k = 0; k < nz; ++k) defor12(i, ny, k) = defor12(i, 0, k);
+    });
+  } else if (p.specified) {
+    column_for(Range2D{0, nx, 0, 1}, [=] CPPWRF_HD (int i, int) {
+      for (int k = 0; k < nz; ++k) defor12(i, 0, k) = defor12(i, 1, k);
+    });
+  }
+
+  if (!p.periodic_x && p.specified) {
+    column_for(Range2D{0, 1, 0, ny}, [=] CPPWRF_HD (int, int j) {
+      for (int k = 0; k < nz; ++k) defor12(nx, j, k) = defor12(nx - 1, j, k);
+    });
+  }
+
+  if (!p.periodic_y && p.specified) {
+    column_for(Range2D{0, nx, 0, 1}, [=] CPPWRF_HD (int i, int) {
+      for (int k = 0; k < nz; ++k) defor12(i, ny, k) = defor12(i, ny - 1, k);
+    });
   }
 
   // 3. defor13 at u-w points (staggered in x and z: 0..nx, 0..ny-1)
   int i13_s = p.specified ? 1 : 0;
   int i13_e = p.specified ? nx : nx + 1;
   int j13_s = p.specified ? 1 : 0;
-  int j13_e = p.specified ? ny - 1 : ny;
+  int j13_e = ny;
 
   column_for(Range2D{i13_s, i13_e, j13_s, j13_e},
-             KDeform13{u, w, zx, rdz, msfux, msfuy, msfty, defor13, rdx, nz});
+             KDeform13{u, w, zx, rdz, msfux, msfuy, msfty, u_base, defor13, rdx, nx, nz, p.periodic_x, p.mix_full_fields});
 
-  if (p.specified) {
-    for (int k = 0; k <= nz; ++k) {
-      for (int j = 0; j < ny; ++j) {
+  if (p.periodic_x) {
+    column_for(Range2D{0, 1, 0, ny}, [=] CPPWRF_HD (int, int j) {
+      for (int k = 0; k <= nz; ++k) defor13(nx, j, k) = defor13(0, j, k);
+    });
+  } else if (p.specified) {
+    column_for(Range2D{0, 1, 0, ny}, [=] CPPWRF_HD (int, int j) {
+      for (int k = 0; k <= nz; ++k) {
         defor13(0, j, k) = defor13(1, j, k);
         defor13(nx, j, k) = defor13(nx - 1, j, k);
       }
-      for (int i = 0; i <= nx; ++i) {
-        defor13(i, 0, k) = defor13(i, 1, k);
-        defor13(i, ny - 1, k) = defor13(i, ny - 2, k);
-      }
-    }
+    });
+    column_for(Range2D{0, nx + 1, 0, 1}, [=] CPPWRF_HD (int i, int) {
+      for (int k = 0; k <= nz; ++k) defor13(i, 0, k) = defor13(i, 1, k);
+    });
   }
 
   // 4. defor23 at v-w points (staggered in y and z: 0..nx-1, 0..ny)
   int i23_s = p.specified ? 1 : 0;
-  int i23_e = p.specified ? nx - 1 : nx;
+  int i23_e = nx;
   int j23_s = p.specified ? 1 : 0;
   int j23_e = p.specified ? ny : ny + 1;
 
   column_for(Range2D{i23_s, i23_e, j23_s, j23_e},
-             KDeform23{v, w, zy, rdz, msfvx, msfvy, msftx, defor23, rdy, nz});
+             KDeform23{v, w, zy, rdz, msfvx, msfvy, msftx, v_base, defor23, rdy, ny, nz, p.periodic_y, p.mix_full_fields});
 
-  if (p.specified) {
-    for (int k = 0; k <= nz; ++k) {
-      for (int j = 0; j <= ny; ++j) {
-        defor23(0, j, k) = defor23(1, j, k);
-        defor23(nx - 1, j, k) = defor23(nx - 2, j, k);
-      }
-      for (int i = 0; i < nx; ++i) {
+  if (p.periodic_y) {
+    column_for(Range2D{0, nx, 0, 1}, [=] CPPWRF_HD (int i, int) {
+      for (int k = 0; k <= nz; ++k) defor23(i, ny, k) = defor23(i, 0, k);
+    });
+  } else if (p.specified) {
+    column_for(Range2D{0, 1, 0, ny + 1}, [=] CPPWRF_HD (int, int j) {
+      for (int k = 0; k <= nz; ++k) defor23(0, j, k) = defor23(1, j, k);
+    });
+    column_for(Range2D{0, nx, 0, 1}, [=] CPPWRF_HD (int i, int) {
+      for (int k = 0; k <= nz; ++k) {
         defor23(i, 0, k) = defor23(i, 1, k);
         defor23(i, ny, k) = defor23(i, ny - 1, k);
       }
-    }
+    });
   }
 }
 

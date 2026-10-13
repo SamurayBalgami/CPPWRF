@@ -28,6 +28,7 @@ struct DiffusionParams {
   bool periodic_x = false;
   bool periodic_y = false;
   bool specified = false;        // real-data lateral boundary conditions
+  bool mix_full_fields = false;  // mix perturbations vs full fields (WRF default = false)
   bool open_xs = false;
   bool open_xe = false;
   bool open_ys = false;

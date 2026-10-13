@@ -51,15 +51,11 @@ struct KSmag2dKm {
     if (diff_opt == 2) {
       real dxm = dx / msftx(i, j);
       real dym = dy / msfty(i, j);
-      real zx_kp1 = (k + 1 < nz) ? zx(i, j, k + 1) : real(0);
-      real zxp1_kp1 = (k + 1 < nz) ? zx(i + 1, j, k + 1) : real(0);
       real tmpzx = real(0.25) * (std::abs(zx(i, j, k)) + std::abs(zx(i + 1, j, k)) +
-                                 std::abs(zx_kp1) + std::abs(zxp1_kp1)) *
+                                 std::abs(zx(i, j, k + 1)) + std::abs(zx(i + 1, j, k + 1))) *
                    rdzw(i, j, k) * dxm;
-      real zy_kp1 = (k + 1 < nz) ? zy(i, j, k + 1) : real(0);
-      real zyp1_kp1 = (k + 1 < nz) ? zy(i, j + 1, k + 1) : real(0);
       real tmpzy = real(0.25) * (std::abs(zy(i, j, k)) + std::abs(zy(i, j + 1, k)) +
-                                 std::abs(zy_kp1) + std::abs(zyp1_kp1)) *
+                                 std::abs(zy(i, j, k + 1)) + std::abs(zy(i, j + 1, k + 1))) *
                    rdzw(i, j, k) * dym;
       real slope = std::sqrt(tmpzx * tmpzx + tmpzy * tmpzy);
       real alpha = slope > real(1.0) ? slope : real(1.0);
@@ -110,29 +106,30 @@ inline void calculate_km_kh(const DiffusionParams& p,
                            xkmh, xkmv, xkhh, xkhv, dx, dy, p.c_s, p.prandtl, p.diff_opt, nz});
 
     if (p.specified) {
-      // Copy borders as needed for specified boundary conditions
-      for (int k = 0; k < nz; ++k) {
-        for (int j = 0; j < ny; ++j) {
-          xkmh(0, j, k) = xkmh(1, j, k);
-          xkmh(nx - 1, j, k) = xkmh(nx - 2, j, k);
-          xkmv(0, j, k) = xkmv(1, j, k);
-          xkmv(nx - 1, j, k) = xkmv(nx - 2, j, k);
-          xkhh(0, j, k) = xkhh(1, j, k);
-          xkhh(nx - 1, j, k) = xkhh(nx - 2, j, k);
-          xkhv(0, j, k) = xkhv(1, j, k);
-          xkhv(nx - 1, j, k) = xkhv(nx - 2, j, k);
+      column_for(Range2D{0, 1, 0, ny}, [=] CPPWRF_HD (int, int j) {
+        for (int k = 0; k < nz; ++k) {
+          xkmh(0, j, k) = real(0);
+          xkmh(nx - 1, j, k) = real(0);
+          xkmv(0, j, k) = real(0);
+          xkmv(nx - 1, j, k) = real(0);
+          xkhh(0, j, k) = real(0);
+          xkhh(nx - 1, j, k) = real(0);
+          xkhv(0, j, k) = real(0);
+          xkhv(nx - 1, j, k) = real(0);
         }
-        for (int i = 0; i < nx; ++i) {
-          xkmh(i, 0, k) = xkmh(i, 1, k);
-          xkmh(i, ny - 1, k) = xkmh(i, ny - 2, k);
-          xkmv(i, 0, k) = xkmv(i, 1, k);
-          xkmv(i, ny - 1, k) = xkmv(i, ny - 2, k);
-          xkhh(i, 0, k) = xkhh(i, 1, k);
-          xkhh(i, ny - 1, k) = xkhh(i, ny - 2, k);
-          xkhv(i, 0, k) = xkhv(i, 1, k);
-          xkhv(i, ny - 1, k) = xkhv(i, ny - 2, k);
+      });
+      column_for(Range2D{0, nx, 0, 1}, [=] CPPWRF_HD (int i, int) {
+        for (int k = 0; k < nz; ++k) {
+          xkmh(i, 0, k) = real(0);
+          xkmh(i, ny - 1, k) = real(0);
+          xkmv(i, 0, k) = real(0);
+          xkmv(i, ny - 1, k) = real(0);
+          xkhh(i, 0, k) = real(0);
+          xkhh(i, ny - 1, k) = real(0);
+          xkhv(i, 0, k) = real(0);
+          xkhv(i, ny - 1, k) = real(0);
         }
-      }
+      });
     }
   }
 }

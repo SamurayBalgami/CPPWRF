@@ -96,11 +96,11 @@ inline void compute_diff_metrics(const DiffusionParams& p,
                                  int nx, int ny, int nz) {
   // Column-wise vertical metrics
   column_for(Range2D{0, nx, 0, ny}, KDiffMetricsZ{ph, phb, z, rdz, rdzw, nz});
-  // zx at U points: i = 0..nx, j = 0..ny-1, k = 0..nz-1
-  parallel_for(Range3D{0, nx + 1, 0, ny, 0, nz},
+  // zx at U points: i = 0..nx, j = 0..ny-1, k = 0..nz
+  parallel_for(Range3D{0, nx + 1, 0, ny, 0, nz + 1},
                KDiffMetricsZX{ph, phb, zx, rdx, nx, p.periodic_x});
-  // zy at V points: i = 0..nx-1, j = 0..ny, k = 0..nz-1
-  parallel_for(Range3D{0, nx, 0, ny + 1, 0, nz},
+  // zy at V points: i = 0..nx-1, j = 0..ny, k = 0..nz
+  parallel_for(Range3D{0, nx, 0, ny + 1, 0, nz + 1},
                KDiffMetricsZY{ph, phb, zy, rdy, ny, p.periodic_y});
 }
 

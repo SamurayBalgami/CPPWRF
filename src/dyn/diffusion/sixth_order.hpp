@@ -11,7 +11,8 @@ namespace cppwrf::dyn::diffusion {
 
 struct KSixthOrderU {
   View3<const real> field;
-  BView2<const real> mut, msfux, msfuy;
+  View2<const real> mut;
+  BView2<const real> msfux, msfuy;
   View1<const real> c1, c2;
   View3<real> tendency;
   real diff_6th_coef;
@@ -58,7 +59,8 @@ struct KSixthOrderU {
 
 struct KSixthOrderV {
   View3<const real> field;
-  BView2<const real> mut, msfvx, msfvy;
+  View2<const real> mut;
+  BView2<const real> msfvx, msfvy;
   View1<const real> c1, c2;
   View3<real> tendency;
   real diff_6th_coef;
@@ -105,7 +107,8 @@ struct KSixthOrderV {
 
 struct KSixthOrderM {
   View3<const real> field;
-  BView2<const real> mut, msftx, msfty;
+  View2<const real> mut;
+  BView2<const real> msftx, msfty;
   View1<const real> c1, c2;
   View3<real> tendency;
   real diff_6th_coef;
@@ -152,7 +155,7 @@ inline void sixth_order_diffusion(char name,
                                   const DiffusionParams& p,
                                   View3<const real> field,
                                   View3<real> tendency,
-                                  BView2<const real> mut,
+                                  View2<const real> mut,
                                   real dt,
                                   View1<const real> c1,
                                   View1<const real> c2,

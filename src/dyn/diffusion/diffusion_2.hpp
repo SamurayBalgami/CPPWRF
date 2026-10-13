@@ -114,16 +114,11 @@ struct KHorizDiffU2 {
                                   fnp(k) * (titau11(i - 1, j, k - 1) + titau11(i, j, k - 1)));
       titau2avg[k] = real(0.5) * (fnm(k) * (titau12(i, j + 1, k) + titau12(i, j, k)) +
                                   fnp(k) * (titau12(i, j + 1, k - 1) + titau12(i, j, k - 1)));
-      real zx_kp1 = (k + 1 < nz) ? zx(i, j, k + 1) : real(0);
-      zx_at_u[k] = real(0.5) * (zx(i, j, k) + zx_kp1);
-      real zy_im1_kp1 = (k + 1 < nz) ? zy(i - 1, j, k + 1) : real(0);
-      real zy_i0_kp1  = (k + 1 < nz) ? zy(i, j, k + 1) : real(0);
-      real zy_im1_jp1_kp1 = (k + 1 < nz) ? zy(i - 1, j + 1, k + 1) : real(0);
-      real zy_i0_jp1_kp1  = (k + 1 < nz) ? zy(i, j + 1, k + 1) : real(0);
+      zx_at_u[k] = real(0.5) * (zx(i, j, k) + zx(i, j, k + 1));
       zy_at_u[k] = real(0.125) * (zy(i - 1, j, k) + zy(i, j, k) +
                                   zy(i - 1, j + 1, k) + zy(i, j + 1, k) +
-                                  zy_im1_kp1 + zy_i0_kp1 +
-                                  zy_im1_jp1_kp1 + zy_i0_jp1_kp1);
+                                  zy(i - 1, j, k + 1) + zy(i, j, k + 1) +
+                                  zy(i - 1, j + 1, k + 1) + zy(i, j + 1, k + 1));
     }
     titau1avg[0] = real(0);
     titau1avg[nz] = real(0);
@@ -165,16 +160,11 @@ struct KHorizDiffV2 {
                                   fnp(k) * (titau12(i + 1, j, k - 1) + titau12(i, j, k - 1)));
       titau2avg[k] = real(0.5) * (fnm(k) * (titau22(i, j - 1, k) + titau22(i, j, k)) +
                                   fnp(k) * (titau22(i, j - 1, k - 1) + titau22(i, j, k - 1)));
-      real zx_kp1 = (k + 1 < nz) ? zx(i, j, k + 1) : real(0);
-      real zx_ip1_kp1 = (k + 1 < nz) ? zx(i + 1, j, k + 1) : real(0);
-      real zx_jm1_kp1 = (k + 1 < nz) ? zx(i, j - 1, k + 1) : real(0);
-      real zx_ip1_jm1_kp1 = (k + 1 < nz) ? zx(i + 1, j - 1, k + 1) : real(0);
       zx_at_v[k] = real(0.125) * (zx(i, j, k) + zx(i + 1, j, k) +
                                   zx(i, j - 1, k) + zx(i + 1, j - 1, k) +
-                                  zx_kp1 + zx_ip1_kp1 +
-                                  zx_jm1_kp1 + zx_ip1_jm1_kp1);
-      real zy_kp1 = (k + 1 < nz) ? zy(i, j, k + 1) : real(0);
-      zy_at_v[k] = real(0.5) * (zy(i, j, k) + zy_kp1);
+                                  zx(i, j, k + 1) + zx(i + 1, j, k + 1) +
+                                  zx(i, j - 1, k + 1) + zx(i + 1, j - 1, k + 1));
+      zy_at_v[k] = real(0.5) * (zy(i, j, k) + zy(i, j, k + 1));
     }
     titau1avg[0] = real(0);
     titau1avg[nz] = real(0);
@@ -247,7 +237,7 @@ struct KHorizDiffS2 {
   int nz;
 
   CPPWRF_HD void operator()(int i, int j) const {
-    const int ktes1 = nz - 2;
+    const int ktes1 = nz - 1;
     real factor_top = real(0.5) * dnw(ktes1) / dn(ktes1);
 
     // H1 along x: need at u points (i and i+1)
@@ -265,8 +255,7 @@ struct KHorizDiffS2 {
 
       for (int k = 0; k < nz; ++k) {
         real xkxavg = real(0.25) * (xkhh(ii - 1, j, k) + xkhh(ii, j, k)) * (rho(ii - 1, j, k) + rho(ii, j, k));
-        real zx_kp1 = (k + 1 < nz) ? zx(ii, j, k + 1) : real(0);
-        real tmpzx = real(0.5) * (zx(ii, j, k) + zx_kp1);
+        real tmpzx = real(0.5) * (zx(ii, j, k) + zx(ii, j, k + 1));
         real rdzu = real(2.0) / (real(1.0) / rdzw(ii, j, k) + real(1.0) / rdzw(ii - 1, j, k));
         real h = -msfux(ii, j) * xkxavg * (rdx * (var(ii, j, k) - var(ii - 1, j, k)) -
                                            tmpzx * (H1avg[k + 1] - H1avg[k]) * rdzu);
@@ -290,8 +279,7 @@ struct KHorizDiffS2 {
 
       for (int k = 0; k < nz; ++k) {
         real xkxavg = real(0.25) * (xkhh(i, jj - 1, k) + xkhh(i, jj, k)) * (rho(i, jj - 1, k) + rho(i, jj, k));
-        real zy_kp1 = (k + 1 < nz) ? zy(i, jj, k + 1) : real(0);
-        real tmpzy = real(0.5) * (zy(i, jj, k) + zy_kp1);
+        real tmpzy = real(0.5) * (zy(i, jj, k) + zy(i, jj, k + 1));
         real rdzv = real(2.0) / (real(1.0) / rdzw(i, jj, k) + real(1.0) / rdzw(i, jj - 1, k));
         real h = -msfvy(i, jj) * xkxavg * (rdy * (var(i, jj, k) - var(i, jj - 1, k)) -
                                            tmpzy * (H2avg[k + 1] - H2avg[k]) * rdzv);
@@ -314,13 +302,8 @@ struct KHorizDiffS2 {
     real mrdy = msfty(i, j) * rdy;
 
     for (int k = 0; k < nz; ++k) {
-      real zx_kp1 = (k + 1 < nz) ? zx(i, j, k + 1) : real(0);
-      real zx_ip1_kp1 = (k + 1 < nz) ? zx(i + 1, j, k + 1) : real(0);
-      real zx_at_m = real(0.25) * (zx(i, j, k) + zx(i + 1, j, k) + zx_kp1 + zx_ip1_kp1);
-
-      real zy_kp1 = (k + 1 < nz) ? zy(i, j, k + 1) : real(0);
-      real zy_jp1_kp1 = (k + 1 < nz) ? zy(i, j + 1, k + 1) : real(0);
-      real zy_at_m = real(0.25) * (zy(i, j, k) + zy(i, j + 1, k) + zy_kp1 + zy_jp1_kp1);
+      real zx_at_m = real(0.25) * (zx(i, j, k) + zx(i + 1, j, k) + zx(i, j, k + 1) + zx(i + 1, j, k + 1));
+      real zy_at_m = real(0.25) * (zy(i, j, k) + zy(i, j + 1, k) + zy(i, j, k + 1) + zy(i, j + 1, k + 1));
 
       real term_x = mrdx * (H1_1[k] - H1_0[k]);
       real term_y = mrdy * (H2_1[k] - H2_0[k]);
@@ -391,6 +374,28 @@ struct KVertDiffS2 {
       real xkxavg = (fnm(k) * xkhv(i, j, k) + fnp(k) * xkhv(i, j, k - 1)) *
                     (fnm(k) * rho(i, j, k) + fnp(k) * rho(i, j, k - 1));
       H3[k] = -xkxavg * (var(i, j, k) - var(i, j, k - 1)) * rdz(i, j, k);
+    }
+    for (int k = 0; k < nz; ++k) {
+      tendf(i, j, k) += Gr * (H3[k + 1] - H3[k]) / dnw(k);
+    }
+  }
+};
+
+struct KVertDiffS2Pert {
+  View3<const real> var, xkhv, rho, rdz;
+  View1<const real> base, fnm, fnp, dnw;
+  View3<real> tendf;
+  int nz;
+
+  CPPWRF_HD void operator()(int i, int j) const {
+    real H3[128];
+    H3[0] = real(0);
+    H3[nz] = real(0);
+    for (int k = 1; k < nz; ++k) {
+      real xkxavg = (fnm(k) * xkhv(i, j, k) + fnp(k) * xkhv(i, j, k - 1)) *
+                    (fnm(k) * rho(i, j, k) + fnp(k) * rho(i, j, k - 1));
+      real dpert = (var(i, j, k) - var(i, j, k - 1)) - (base(k) - base(k - 1));
+      H3[k] = -xkxavg * dpert * rdz(i, j, k);
     }
     for (int k = 0; k < nz; ++k) {
       tendf(i, j, k) += Gr * (H3[k + 1] - H3[k]) / dnw(k);
@@ -515,11 +520,39 @@ inline void horizontal_diffusion_2(const DiffusionParams& p,
   }
 }
 
+inline void cal_titau_vert(View3<const real> rho,
+                           View3<const real> xkmh,
+                           View3<const real> xkmv,
+                           View3<const real> defor13,
+                           View3<const real> defor23,
+                           View3<const real> defor33,
+                           View1<const real> fnm,
+                           View1<const real> fnp,
+                           View3<real> titau13,
+                           View3<real> titau23,
+                           View3<real> titau33,
+                           bool specified, int nx, int ny, int nz) {
+  parallel_for(Range3D{0, nx, 0, ny, 0, nz}, KCalTitauDiag{rho, xkmh, defor33, titau33});
+  int i13_s = specified ? 1 : 0;
+  int i13_e = specified ? nx : nx + 1;
+  int j13_s = specified ? 1 : 0;
+  int j13_e = ny;
+  parallel_for(Range3D{i13_s, i13_e, j13_s, j13_e, 0, nz},
+               KCalTitau13{rho, xkmv, defor13, fnm, fnp, titau13, nz});
+  int i23_s = specified ? 1 : 0;
+  int i23_e = nx;
+  int j23_s = specified ? 1 : 0;
+  int j23_e = specified ? ny : ny + 1;
+  parallel_for(Range3D{i23_s, i23_e, j23_s, j23_e, 0, nz},
+               KCalTitau23{rho, xkmv, defor23, fnm, fnp, titau23, nz});
+}
+
 inline void vertical_diffusion_2(const DiffusionParams& p,
                                  View3<const real> titau13,
                                  View3<const real> titau23,
                                  View3<const real> titau33,
                                  View3<const real> var_th,
+                                 View1<const real> t_base,
                                  View3<const real> xkhv,
                                  View3<const real> rho,
                                  View3<const real> rdz,
@@ -545,10 +578,10 @@ inline void vertical_diffusion_2(const DiffusionParams& p,
 
   // 2. Vertical diffusion of V
   int iv_s = p.specified ? 1 : 0;
-  int iv_e = p.specified ? 1 : 0;
+  int iv_e = p.specified ? nx - 1 : nx;
   int jv_s = p.specified ? 1 : 0;
   int jv_e = p.specified ? ny : ny + 1;
-  column_for(Range2D{iv_s, p.specified ? nx - 1 : nx, jv_s, jv_e},
+  column_for(Range2D{iv_s, iv_e, jv_s, jv_e},
              KVertDiffV2{titau23, dnw, rv_tendf, nz});
 
   // 3. Vertical diffusion of W
@@ -565,7 +598,7 @@ inline void vertical_diffusion_2(const DiffusionParams& p,
   int js_s = p.specified ? 1 : 0;
   int js_e = p.specified ? ny - 1 : ny;
   column_for(Range2D{is_s, is_e, js_s, js_e},
-             KVertDiffS2{var_th, xkhv, rho, rdz, fnm, fnp, dnw, t_tendf, nz});
+             KVertDiffS2Pert{var_th, xkhv, rho, rdz, t_base, fnm, fnp, dnw, t_tendf, nz});
 
   if (has_moist) {
     column_for(Range2D{is_s, is_e, js_s, js_e},

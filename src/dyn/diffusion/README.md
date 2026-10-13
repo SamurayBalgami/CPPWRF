@@ -84,19 +84,50 @@ flowchart TD
     B --> C["Begin RK3 Stage (rk_step = 1, 2, 3)"]
     C --> D["cal_deform_and_div: defor11..33, div"]
     D --> E["calculate_km_kh: Km, Kh (km_opt=1 or 4)"]
-    E --> F{"diff_opt"}
-    F -- "diff_opt == 1" --> G["horizontal_diffusion & vertical_diffusion along eta"]
-    F -- "diff_opt == 2" --> H["horizontal_diffusion_2 & vertical_diffusion_2 in z-space"]
-    G --> I{"diff_6th_opt > 0"}
-    H --> I
-    I -- "Yes" --> J["sixth_order_diffusion (opt 1 or 2)"]
-    I -- "No" --> K["Advance RK step / Update velocities"]
-    J --> K
-    K --> L{"w_damping == 1"}
-    L -- "Yes" --> M["w_damp: Damps excessive vertical CFL"]
-    L -- "No" --> N["Next RK stage / Output"]
-    M --> N
+    E --> F{"rk_step == 1?"}
+    F -- "Yes (rk_step == 1)" --> G{"diff_opt"}
+    F -- "No (rk_step > 1)" --> K["Skip *_tendf physical diffusion"]
+    G -- "diff_opt == 1" --> H["horizontal_diffusion & vertical_diffusion along eta -> *_tendf"]
+    G -- "diff_opt == 2" --> I["horizontal_diffusion_2 & vertical_diffusion_2 in z-space -> *_tendf"]
+    H --> J{"diff_6th_opt > 0"}
+    I --> J
+    K --> J
+    J -- "Yes" --> L["sixth_order_diffusion (opt 1 or 2)"]
+    J -- "No" --> M["Advance RK step / Acoustic sub-stepping"]
+    L --> M
+    M --> N{"w_damping == 1"}
+    N -- "Yes" --> O["w_damp: Damps excessive vertical CFL on rw_tend"]
+    N -- "No" --> P["Next RK stage / State update"]
+    O --> P
 ```
+
+### RK Stage Calling Details
+- **`compute_diff_metrics`:** Called before entering the RK loop whenever physical heights or dry air mass change.
+- **`cal_deform_and_div` & `calculate_km_kh`:** Evaluated at `rk_step == 1` (or each stage if diagnostic turbulence updating is configured) before diffusion tendencies are accumulated.
+- **Physical Diffusion (`*_tendf`):** In WRF ARW (`solve_em.F`), physical diffusion tendencies from `horizontal_diffusion`, `vertical_diffusion`, `horizontal_diffusion_2`, and `vertical_diffusion_2` are accumulated into `ru_tendf`, `rv_tendf`, `rw_tendf`, `t_tendf`, and `scalar_tendf` strictly when `rk_step == 1`. These tendencies are then held constant across the three Runge-Kutta sub-steps.
+- **Numerical Diffusion (`sixth_order_diffusion`):** Evaluated inside `rk_tendency` across RK steps.
+- **Acoustic/CFL Damping (`w_damp`):** Evaluated inside `rk_update_extra` / big step completion to prevent vertical Courant number blowups.
+
+---
+
+## Input Halo Requirements per Launcher
+
+The following table summarizes the lateral ($x, y$) halo cells required on input for each launcher across subdomains / distributed tiles:
+
+| Launcher Function | Header File | Input Fields Needing Valid Halos | Required Halo Width & Direction | Notes |
+|---|---|---|---|---|
+| `compute_diff_metrics` | `diff_metrics.hpp` | *None* | Halo 0 | Boundary/periodic conditions handled internally |
+| `cal_deform_and_div` | `deform_div.hpp` | `u`<br>`v`<br>`w`<br>`zx`<br>`zy`<br>`rdzw`<br>`rdz` | Halo 1 in Y ($j-1$ for $D_{12}$)<br>Halo 1 in X ($i-1$ for $D_{12}$)<br>Halo 1 in X and Y ($w(i-1)$ in $D_{13}$, $w(j-1)$ in $D_{23}$)<br>Halo 1 in Y ($zx(i, j-1)$)<br>Halo 1 in X ($zy(i-1, j)$)<br>Halo 1 in X and Y ($rdzw(i-1, j-1)$)<br>Halo 1 in X and Y ($rdz(i-1)$ in $D_{13}$, $rdz(j-1)$ in $D_{23}$) | Map factors (`msf*`) pointwise local (Halo 0) |
+| `calculate_km_kh` | `km_kh.hpp` | `defor12`<br>`zx`<br>`zy` | Halo 1 on East & North ($i+1, j+1$)<br>Halo 1 on East ($i+1$)<br>Halo 1 on North ($j+1$) | `defor11`, `defor22`, `rdzw`, `msft*` require Halo 0 |
+| `horizontal_diffusion_2` | `diffusion_2.hpp` | `thp`, `moist`<br>`rho`, `xkhh`, `xkmh`, `xkmv`<br>`zx`<br>`zy`<br>`rdz`, `rdzw` | Halo 1 in X and Y ($i\pm 1, j\pm 1$ stencils)<br>Halo 1 in X and Y (face/edge averages)<br>Halo 1 on East & South ($zx(i+1, j), zx(i, j-1)$)<br>Halo 1 on North & West ($zy(i, j+1), zy(i-1, j)$)<br>Halo 1 on West & South ($rdz/rdzw(i-1, j), rdzw(i, j-1)$) | `defor*` components local to tile (Halo 0) |
+| `vertical_diffusion_2` | `diffusion_2.hpp` | *None* | Halo 0 | Purely 1D vertical columns per $(i, j)$ point |
+| `horizontal_diffusion` | `big_step_diffusion.hpp` | `field` ($u, v, w, m$)<br>`xkmhd`<br>`mut` | Halo 1 in X and Y<br>Halo 1 in X and Y<br>Halo 1 in X and Y | 2nd-order Laplacian stencil ($i\pm 1, j\pm 1$); map factors are Halo 0 |
+| `horizontal_diffusion_3dmp` | `big_step_diffusion.hpp` | `field`, `base_3d`<br>`xkmhd`, `mut` | Halo 1 in X and Y<br>Halo 1 in X and Y | Same as `horizontal_diffusion` |
+| `vertical_diffusion` / `*_mp` | `big_step_diffusion.hpp` | *None* | Halo 0 | Purely 1D vertical columns; `mut` is Halo 0 |
+| `vertical_diffusion_u` | `big_step_diffusion.hpp` | `alt` | Halo 1 on West ($alt(i-1, j)$ across $u$-faces) | `field`, `u_base`, `muu` are Halo 0 |
+| `vertical_diffusion_v` | `big_step_diffusion.hpp` | `alt` | Halo 1 on South ($alt(i, j-1)$ across $v$-faces) | `field`, `v_base`, `muv` are Halo 0 |
+| `sixth_order_diffusion` | `sixth_order.hpp` | `field` ($u, v, w, m$)<br>`mut` | **Halo 3 in X and Y** ($i-3..i+3, j-3..j+3$)<br>Halo 1 in X and Y | Map factors are Halo 0 |
+| `w_damp` | `w_damp.hpp` | *None* | Halo 0 | Purely pointwise evaluations across tile |
 
 ---
 
