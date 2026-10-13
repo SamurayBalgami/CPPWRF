@@ -352,6 +352,16 @@ bool DomainRunner::start() {
     wm.khdif = double(lp.khdif); wm.kvdif = double(lp.kvdif);
     wm.mp_physics = int(m_.rk && m_.rk->physics() ? m_.rk->physics()->params().mp_physics : 0);
     wm.hybrid_opt = m_.hybrid_opt;
+    wm.hypsometric_opt = m_.ap.hypsometric_opt;
+    wm.damp_opt = m_.ap.damp_opt;
+    wm.dampcoef = double(m_.ap.dampcoef);
+    wm.use_theta_m = m_.st->P_QV >= 0 ? 1 : 0;  // t_2 holds theta_m - t0 when qv is carried
+    if (m_.suite) {
+      const auto& so = m_.suite->options();
+      wm.sf_sfclay_physics = so.sf_sfclay_physics;
+      wm.sf_surface_physics = so.sf_surface_physics;
+      wm.bl_pbl_physics = so.bl_pbl_physics;
+    }
     wm.map_proj = m_.map_proj;
     wm.cen_lat = m_.cen_lat; wm.cen_lon = m_.cen_lon;
     wm.truelat1 = m_.truelat1; wm.truelat2 = m_.truelat2;

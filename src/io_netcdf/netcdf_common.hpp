@@ -64,6 +64,7 @@ struct WrfoutMeta {
   int cu_physics = 0;
   int hybrid_opt = 0;
   int hypsometric_opt = 1;
+  int use_theta_m = 0;  // 1 when the prognostic temperature is theta_m (moist runs)
   double etac = 0.2;
   bool is_restart = false;
 };

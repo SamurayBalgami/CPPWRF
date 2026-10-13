@@ -399,7 +399,7 @@ class WrfoutWriter::Impl {
     put_att_int(ncid, NC_GLOBAL, "SGFDDA_INTERVAL_M", 0);
     put_att_int(ncid, NC_GLOBAL, "SGFDDA_END_H", 0);
     put_att_int(ncid, NC_GLOBAL, "HYPSOMETRIC_OPT", meta_.hypsometric_opt);
-    put_att_int(ncid, NC_GLOBAL, "USE_THETA_M", 0);
+    put_att_int(ncid, NC_GLOBAL, "USE_THETA_M", meta_.use_theta_m);
     put_att_int(ncid, NC_GLOBAL, "GWD_OPT", 0);
     put_att_int(ncid, NC_GLOBAL, "SF_URBAN_PHYSICS", 0);
     put_att_int(ncid, NC_GLOBAL, "SF_SURFACE_MOSAIC", 0);

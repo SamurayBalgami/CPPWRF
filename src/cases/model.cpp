@@ -202,7 +202,7 @@ Model Model::build(const io::Config& cfg) {
   dc.km_opt = int(cfg.get_int("dyn.km_opt", 1));
   m.diff_opt = dc.diff_opt;
   m.km_opt = dc.km_opt;
-  m.hybrid_opt = int(cfg.get_int("dyn.hybrid_opt", 0));
+  m.hybrid_opt = int(cfg.get_int("dyn.hybrid_opt", m.hybrid_opt));  // real: from the input file
   dc.khdif = lp.khdif; dc.kvdif = lp.kvdif;
   dc.c_s = real(cfg.get_double("dyn.c_s", 0.25));
   dc.diff_6th_opt = int(cfg.get_int("dyn.diff_6th_opt", 0));
