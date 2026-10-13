@@ -36,6 +36,7 @@ class ScalarTransport {
   const LateralBC* bc_ = nullptr;
   const DiffusionDriver* dd_ = nullptr;
   Field3 q_new_, scale_;
+  Field3 dhx_, lox_, dhy_, loy_, dhz_, loz_;  // advect_scalar_pd face fluxes (high - low, low)
 };
 
 }  // namespace cppwrf::dyn

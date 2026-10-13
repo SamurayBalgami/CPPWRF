@@ -100,24 +100,56 @@ struct KPreUpdatePD {
   }
 };
 
+// advect_scalar_pd, step 1: every face flux once. dh = high-order minus first-order upwind
+// flux, lo = upwind flux, on x (U points), y (V points) and eta (W levels) faces. The limiter and
+// the update read them (the same expressions as evaluating Fluxes per cell: bitwise identical).
+struct KFacePDX {
+  Fluxes f; V3 dh, lo;
+  CPPWRF_HD void operator()(int i, int j, int k) const {
+    const real l = f.fxl(i, j, k);
+    dh(i, j, k) = f.fx(i, j, k) - l;
+    lo(i, j, k) = l;
+  }
+};
+struct KFacePDY {
+  Fluxes f; V3 dh, lo;
+  CPPWRF_HD void operator()(int i, int j, int k) const {
+    const real l = f.fyl(i, j, k);
+    dh(i, j, k) = f.fy(i, j, k) - l;
+    lo(i, j, k) = l;
+  }
+};
+struct KFacePDZ {
+  Fluxes f; V3 dh, lo;
+  CPPWRF_HD void operator()(int i, int j, int k) const {
+    const real l = f.fzl(i, j, k);
+    dh(i, j, k) = f.fz(i, j, k) - l;
+    lo(i, j, k) = l;
+  }
+};
+
+struct FacesPD {
+  C3 dhx, lox, dhy, loy, dhz, loz;
+};
+
 // advect_scalar_pd limiter: scale factor of the outgoing high-minus-low fluxes of each cell
 struct KScalePD {
-  Fluxes f; C2 mu_old; B2 mub; V3 scale;
+  Fluxes f; FacesPD a; C2 mu_old; B2 mub; V3 scale;
   CPPWRF_HD void operator()(int i, int j, int k) const {
     if (f.spec_cell(i, j)) { scale(i, j, k) = 1; return; }  // WRF limits interior cells only
     const VCoef& c = f.c;
     const real mxy = f.msftx(i, j) * f.msfty(i, j);
-    real hlow = f.rdx * (f.fxl(i + 1, j, k) - f.fxl(i, j, k));
-    if (f.do_y) hlow += f.rdy * (f.fyl(i, j + 1, k) - f.fyl(i, j, k));
+    real hlow = f.rdx * (a.lox(i + 1, j, k) - a.lox(i, j, k));
+    if (f.do_y) hlow += f.rdy * (a.loy(i, j + 1, k) - a.loy(i, j, k));
     const real ph_low = ((c.c1h(k) * mub(i, j) + c.c2h(k)) + c.c1h(k) * mu_old(i, j)) * f.qo(i, j, k) -
-                        f.dt * (mxy * hlow + f.msfty(i, j) * c.rdnw(k) * (f.fzl(i, j, k + 1) - f.fzl(i, j, k)));
-    const real fxp = f.fx(i + 1, j, k) - f.fxl(i + 1, j, k), fxm = f.fx(i, j, k) - f.fxl(i, j, k);
+                        f.dt * (mxy * hlow + f.msfty(i, j) * c.rdnw(k) * (a.loz(i, j, k + 1) - a.loz(i, j, k)));
+    const real fxp = a.dhx(i + 1, j, k), fxm = a.dhx(i, j, k);
     real hout = f.rdx * ((fxp > 0 ? fxp : real(0)) - (fxm < 0 ? fxm : real(0)));
     if (f.do_y) {
-      const real fyp = f.fy(i, j + 1, k) - f.fyl(i, j + 1, k), fym = f.fy(i, j, k) - f.fyl(i, j, k);
+      const real fyp = a.dhy(i, j + 1, k), fym = a.dhy(i, j, k);
       hout += f.rdy * ((fyp > 0 ? fyp : real(0)) - (fym < 0 ? fym : real(0)));
     }
-    const real fzp = f.fz(i, j, k + 1) - f.fzl(i, j, k + 1), fzm = f.fz(i, j, k) - f.fzl(i, j, k);
+    const real fzp = a.dhz(i, j, k + 1), fzm = a.dhz(i, j, k);
     const real out = mxy * hout + f.msfty(i, j) * c.rdnw(k) * ((fzp < 0 ? fzp : real(0)) - (fzm > 0 ? fzm : real(0)));
     const real flux_out = f.dt * out;
     real s = 1;
@@ -131,19 +163,19 @@ struct KScalePD {
 
 // PD-limited flux divergence + rk_update_scalar (tendf already folded into q_1)
 struct KUpdatePD {
-  Fluxes f; C3 scale, q1; C2 mu1, mu2; B2 mub; V3 qn; real dt_rk;
+  Fluxes f; FacesPD a; C3 scale, q1; C2 mu1, mu2; B2 mub; V3 qn; real dt_rk;
   // limited high-minus-low flux on the west face of (i,j,k): scaled by the upwind (outflow) cell
   CPPWRF_HD real dx(int i, int j, int k) const {
-    const real d = f.fx(i, j, k) - f.fxl(i, j, k);
+    const real d = a.dhx(i, j, k);
     return d * (d > 0 ? scale(i - 1, j, k) : (d < 0 ? scale(i, j, k) : real(1)));
   }
   CPPWRF_HD real dy(int i, int j, int k) const {
-    const real d = f.fy(i, j, k) - f.fyl(i, j, k);
+    const real d = a.dhy(i, j, k);
     return d * (d > 0 ? scale(i, j - 1, k) : (d < 0 ? scale(i, j, k) : real(1)));
   }
   CPPWRF_HD real dz(int i, int j, int k) const {  // eta decreases upward: fz > 0 leaves cell k
     if (k == 0 || k == f.nz) return 0;
-    const real d = f.fz(i, j, k) - f.fzl(i, j, k);
+    const real d = a.dhz(i, j, k);
     return d * (d > 0 ? scale(i, j, k) : (d < 0 ? scale(i, j, k - 1) : real(1)));
   }
   CPPWRF_HD void operator()(int i, int j, int k) const {  // WRF advect_scalar_pd final tendency
@@ -151,9 +183,9 @@ struct KUpdatePD {
       qn(i, j, k) = m_full(f.c, k, mub(i, j), mu1(i, j)) * q1(i, j, k) / m_full(f.c, k, mub(i, j), mu2(i, j));
       return;
     }
-    real tend = -f.c.rdnw(k) * (dz(i, j, k + 1) - dz(i, j, k) + f.fzl(i, j, k + 1) - f.fzl(i, j, k));
-    tend -= f.msftx(i, j) * (f.rdx * (dx(i + 1, j, k) - dx(i, j, k) + f.fxl(i + 1, j, k) - f.fxl(i, j, k)));
-    if (f.do_y) tend -= f.msftx(i, j) * (f.rdy * (dy(i, j + 1, k) - dy(i, j, k) + f.fyl(i, j + 1, k) - f.fyl(i, j, k)));
+    real tend = -f.c.rdnw(k) * (dz(i, j, k + 1) - dz(i, j, k) + a.loz(i, j, k + 1) - a.loz(i, j, k));
+    tend -= f.msftx(i, j) * (f.rdx * (dx(i + 1, j, k) - dx(i, j, k) + a.lox(i + 1, j, k) - a.lox(i, j, k)));
+    if (f.do_y) tend -= f.msftx(i, j) * (f.rdy * (dy(i, j + 1, k) - dy(i, j, k) + a.loy(i, j + 1, k) - a.loy(i, j, k)));
     qn(i, j, k) = (m_full(f.c, k, mub(i, j), mu1(i, j)) * q1(i, j, k) + dt_rk * (tend * f.msfty(i, j))) /
                   m_full(f.c, k, mub(i, j), mu2(i, j));
   }
@@ -162,7 +194,9 @@ struct KUpdatePD {
 }  // namespace
 
 ScalarTransport::ScalarTransport(const Grid& g, const ScalarParams& p)
-    : g_(g), p_(p), q_new_(g, Stagger::M, "q_new"), scale_(g, Stagger::M, "pd_scale") {}
+    : g_(g), p_(p), q_new_(g, Stagger::M, "q_new"), scale_(g, Stagger::M, "pd_scale"),
+      dhx_(g, Stagger::U, "pd_dhx"), lox_(g, Stagger::U, "pd_lox"), dhy_(g, Stagger::V, "pd_dhy"),
+      loy_(g, Stagger::V, "pd_loy"), dhz_(g, Stagger::W, "pd_dhz"), loz_(g, Stagger::W, "pd_loz") {}
 
 void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int rk, real dt_rk) {
   const Grid& g = g_;
@@ -200,9 +234,13 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
     } else {
       parallel_for(mr, KPreUpdatePD{q1.view(), tf.cview(), s.mu_1.cview(), b.mub.view(), c, dt_rk});
       fill_halo(q1, g);
-      parallel_for(mr, KScalePD{fl, s.mu_1.cview(), b.mub.view(), scale_.view()});
+      parallel_for(Range3D{0, g.nx + 1, 0, g.ny, 0, g.nz}, KFacePDX{fl, dhx_.view(), lox_.view()});
+      if (do_y) parallel_for(Range3D{0, g.nx, 0, g.ny + 1, 0, g.nz}, KFacePDY{fl, dhy_.view(), loy_.view()});
+      parallel_for(Range3D{0, g.nx, 0, g.ny, 0, g.nz + 1}, KFacePDZ{fl, dhz_.view(), loz_.view()});
+      const FacesPD fa{dhx_.cview(), lox_.cview(), dhy_.cview(), loy_.cview(), dhz_.cview(), loz_.cview()};
+      parallel_for(mr, KScalePD{fl, fa, s.mu_1.cview(), b.mub.view(), scale_.view()});
       fill_halo(scale_, g);
-      parallel_for(mr, KUpdatePD{fl, scale_.cview(), q1.cview(), s.mu_1.cview(), s.mu_2.cview(), b.mub.view(),
+      parallel_for(mr, KUpdatePD{fl, fa, scale_.cview(), q1.cview(), s.mu_1.cview(), s.mu_2.cview(), b.mub.view(),
                                  q_new_.view(), dt_rk});
     }
     swap(q2, q_new_);
