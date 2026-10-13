@@ -37,6 +37,7 @@ specified boundaries, qv advected with PD). tests/verify/compare_real.py, relati
 | vs WRF FP32 (R0) | CUDA FP32 | 1 h | 2.8e-5 | 4.4e-3 | 4.5e-7 | 6.1e-7 | 4.5e-6 |
 | hybrid_opt 2 vs WRF FP32 (R2) | CUDA FP32 | 1 h | 3.9e-5 | 4.4e-3 | 5.1e-7 | 6.5e-7 | 7.2e-6 |
 | + w_damping 1, damp_opt 3 (R3) | CUDA FP32 | 1 h | 3.5e-5 | 3.4e-3 | 2.6e-7 | 4.6e-7 | 7.1e-6 |
+| w_damp active (W1_r8, dt 450 s, up to 2224 damped cells) | CPU FP64 | 10 steps | 3.0e-13 | 5.9e-12 | - | 2.9e-15 | - |
 
 Ideal cases vs WRF: Straka (diff_opt=1) theta' RMS 7.4e-6 K at 900 s; em_hill2d_x w RMS
 8e-5 m/s at 1 h. Wall time of the 1 h real run (WRF timed exclusive):
