@@ -1,6 +1,7 @@
 #pragma once
 // Model assembly from a config (host side): grid, case, vertical levels, base and initial
 // state, scalars, numerical parameters and the RK3 integrator. Shared by main and tests.
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -27,6 +28,8 @@ struct Model {
   int n_sound = 0;
   std::unique_ptr<dyn::RK3> rk;  // null when nsteps == 0
   std::unique_ptr<dyn::LateralBC> bc;  // real data: specified lateral boundaries
+  // Called before step n (1-based) of the time loop: boundary interval switching (real data).
+  std::function<void(long)> before_step;
   static Model build(const io::Config& cfg);
 };
 

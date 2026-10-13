@@ -388,6 +388,7 @@ static int run(int argc, char** argv) {
   do_snap(start_step);
   for (long n = start_step + 1; n <= nsteps; ++n) {
     auto a = std::chrono::steady_clock::now();
+    if (M.before_step) M.before_step(n);  // real data: boundary interval
     rk->step(st, tend, base);
     dev_sync();
     step_time += std::chrono::duration<double>(std::chrono::steady_clock::now() - a).count();

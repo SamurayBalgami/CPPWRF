@@ -7,6 +7,8 @@
 //   - al from ph (hypsometric_opt from the input, 2 for real.exe), p from al and theta_m.
 //   - w = 0 in the input -> set_w_surface with the znw^2 fill (start_em w_needs_to_be_set).
 #include <cmath>
+#include <cstdio>
+#include <memory>
 #include <stdexcept>
 
 #include "cases/model.hpp"
@@ -18,6 +20,23 @@
 #endif
 
 namespace cppwrf::cases {
+
+#ifdef CPPWRF_HAVE_NETCDF
+namespace {
+// "YYYY-MM-DD_HH:MM:SS" -> seconds between two times (proleptic Gregorian, UTC)
+double seconds_between(const std::string& a, const std::string& b) {
+  auto secs = [](const std::string& s) {
+    int Y, M, D, h, mi, se;
+    if (std::sscanf(s.c_str(), "%d-%d-%d_%d:%d:%d", &Y, &M, &D, &h, &mi, &se) != 6) return 0.0;
+    const int y = Y - (M <= 2), era = (y >= 0 ? y : y - 399) / 400, yoe = y - era * 400;
+    const int doy = (153 * (M + (M > 2 ? -3 : 9)) + 2) / 5 + D - 1, doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    const double days = double(era) * 146097 + doe - 719468;
+    return days * 86400.0 + h * 3600.0 + mi * 60.0 + se;
+  };
+  return secs(b) - secs(a);
+}
+}  // namespace
+#endif
 
 #ifndef CPPWRF_HAVE_NETCDF
 void init_real_case(const io::Config&, Model&) { throw std::runtime_error("case = real needs NetCDF"); }
@@ -146,34 +165,54 @@ void init_real_case(const io::Config& cfg, Model& m) {
   dyn::set_w_surface(s.w_2, s.u_2, s.v_2, b, g, true);
   m.ap.hypsometric_opt = hypso;
 
-  // ---- lateral boundaries: first record of wrfbdy (boundary interval starting at the start time)
-  const io_netcdf::WrfBdyData bd = io_netcdf::read_wrfbdy(dir + "/" + cfg.get_string("real.wrfbdy", "wrfbdy_d01"));
-  if (bd.bdy_width != 5) throw std::runtime_error("real: spec_bdy_width must be 5");
-  m.bc = std::make_unique<dyn::LateralBC>(g, g.dt, bd.bdy_width);
-  using LB = dyn::LateralBC;
-  auto slab = [&](const std::vector<double>& all, std::size_t n) {
-    return std::vector<double>(all.begin(), all.begin() + std::ptrdiff_t(n));  // time record 0
+  // ---- lateral boundaries: wrfbdy record r covers [t_r, t_r + interval); the record needed for
+  // a step is loaded before it, and dtbc is the time since the start of that interval.
+  auto bd = std::make_shared<io_netcdf::WrfBdyData>(
+      io_netcdf::read_wrfbdy(dir + "/" + cfg.get_string("real.wrfbdy", "wrfbdy_d01")));
+  if (bd->bdy_width != 5) throw std::runtime_error("real: spec_bdy_width must be 5");
+  m.bc = std::make_unique<dyn::LateralBC>(g, g.dt, bd->bdy_width);
+  double interval = cfg.get_double("real.bdy_interval", 0.0);
+  if (interval <= 0 && !bd->this_bdy_times.empty() && !bd->next_bdy_times.empty())
+    interval = seconds_between(bd->this_bdy_times[0], bd->next_bdy_times[0]);
+  if (interval <= 0) throw std::runtime_error("real: cannot determine the boundary interval (set real.bdy_interval)");
+  dyn::LateralBC* bc = m.bc.get();
+  auto load = [bd, bc, nx, ny, nz, nxs, nys](int rec) {
+    using LB = dyn::LateralBC;
+    if (rec >= bd->n_times) throw std::runtime_error("real: run longer than the boundary file");
+    auto put = [&](LB::Var v, int npx, int npy, int nk, const std::vector<double>* const (&a)[8]) {
+      const int npos[4] = {npx, npx, npy, npy};
+      for (int sd = 0; sd < 4; ++sd) {
+        const std::size_t n = std::size_t(npos[sd]) * nk * bd->bdy_width;
+        auto cut = [&](const std::vector<double>& all) {
+          return std::vector<double>(all.begin() + std::ptrdiff_t(rec * n), all.begin() + std::ptrdiff_t((rec + 1) * n));
+        };
+        bc->set(v, LB::Side(sd), cut(*a[sd]), cut(*a[4 + sd]));
+      }
+    };
+    const io_netcdf::WrfBdyData& d = *bd;
+    { const std::vector<double>* a[8] = {&d.u_bxs, &d.u_bxe, &d.u_bys, &d.u_bye, &d.u_btxs, &d.u_btxe, &d.u_btys, &d.u_btye};
+      put(LB::U, ny, nxs, nz, a); }
+    { const std::vector<double>* a[8] = {&d.v_bxs, &d.v_bxe, &d.v_bys, &d.v_bye, &d.v_btxs, &d.v_btxe, &d.v_btys, &d.v_btye};
+      put(LB::V, nys, nx, nz, a); }
+    { const std::vector<double>* a[8] = {&d.t_bxs, &d.t_bxe, &d.t_bys, &d.t_bye, &d.t_btxs, &d.t_btxe, &d.t_btys, &d.t_btye};
+      put(LB::T, ny, nx, nz, a); }
+    { const std::vector<double>* a[8] = {&d.ph_bxs, &d.ph_bxe, &d.ph_bys, &d.ph_bye, &d.ph_btxs, &d.ph_btxe, &d.ph_btys, &d.ph_btye};
+      put(LB::PH, ny, nx, nz + 1, a); }
+    { const std::vector<double>* a[8] = {&d.mu_bxs, &d.mu_bxe, &d.mu_bys, &d.mu_bye, &d.mu_btxs, &d.mu_btxe, &d.mu_btys, &d.mu_btye};
+      put(LB::MU, ny, nx, 1, a); }
+    { const std::vector<double>* a[8] = {&d.qvapor_bxs, &d.qvapor_bxe, &d.qvapor_bys, &d.qvapor_bye,
+                                         &d.qvapor_btxs, &d.qvapor_btxe, &d.qvapor_btys, &d.qvapor_btye};
+      put(LB::QV, ny, nx, nz, a); }
   };
-  auto put = [&](LB::Var v, int npx, int npy, int nk, const std::vector<double>* const (&a)[8]) {
-    const int npos[4] = {npx, npx, npy, npy};
-    for (int sd = 0; sd < 4; ++sd) {
-      const std::size_t n = std::size_t(npos[sd]) * nk * bd.bdy_width;
-      m.bc->set(v, LB::Side(sd), slab(*a[sd], n), slab(*a[4 + sd], n));
-    }
+  load(0);
+  auto rec_now = std::make_shared<int>(0);
+  const double dt = g.dt;
+  m.before_step = [load, bc, rec_now, interval, dt](long n) {
+    const double t0 = double(n - 1) * dt;  // model time at the start of step n
+    const int need = int(std::floor(t0 / interval + 1e-9));
+    if (need != *rec_now) { load(need); *rec_now = need; }
+    bc->dtbc = t0 - need * interval;  // RK3::step adds dt (solve_em: dtbc = dtbc + dt)
   };
-  { const std::vector<double>* a[8] = {&bd.u_bxs, &bd.u_bxe, &bd.u_bys, &bd.u_bye, &bd.u_btxs, &bd.u_btxe, &bd.u_btys, &bd.u_btye};
-    put(LB::U, ny, nxs, nz, a); }
-  { const std::vector<double>* a[8] = {&bd.v_bxs, &bd.v_bxe, &bd.v_bys, &bd.v_bye, &bd.v_btxs, &bd.v_btxe, &bd.v_btys, &bd.v_btye};
-    put(LB::V, nys, nx, nz, a); }
-  { const std::vector<double>* a[8] = {&bd.t_bxs, &bd.t_bxe, &bd.t_bys, &bd.t_bye, &bd.t_btxs, &bd.t_btxe, &bd.t_btys, &bd.t_btye};
-    put(LB::T, ny, nx, nz, a); }
-  { const std::vector<double>* a[8] = {&bd.ph_bxs, &bd.ph_bxe, &bd.ph_bys, &bd.ph_bye, &bd.ph_btxs, &bd.ph_btxe, &bd.ph_btys, &bd.ph_btye};
-    put(LB::PH, ny, nx, nz + 1, a); }
-  { const std::vector<double>* a[8] = {&bd.mu_bxs, &bd.mu_bxe, &bd.mu_bys, &bd.mu_bye, &bd.mu_btxs, &bd.mu_btxe, &bd.mu_btys, &bd.mu_btye};
-    put(LB::MU, ny, nx, 1, a); }
-  { const std::vector<double>* a[8] = {&bd.qvapor_bxs, &bd.qvapor_bxe, &bd.qvapor_bys, &bd.qvapor_bye,
-                                       &bd.qvapor_btxs, &bd.qvapor_btxe, &bd.qvapor_btys, &bd.qvapor_btye};
-    put(LB::QV, ny, nx, nz, a); }
 }
 #endif
 
