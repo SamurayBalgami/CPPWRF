@@ -221,12 +221,12 @@ void LateralBC::set(Var v, Side s, const std::vector<double>& values, const std:
   have_[v] = true;
 }
 
-void LateralBC::set_scalar(int n, Side s, const std::vector<double>& values, const std::vector<double>& tends) {
-  if (n < 0) throw std::runtime_error("LateralBC::set_scalar: bad scalar index");
+real* LateralBC::scalar_slab(int n, Side s, bool tend) {
+  if (n < 0) throw std::runtime_error("LateralBC: bad scalar index");
   if (n >= int(sdata_.size())) sdata_.resize(n + 1);
   ScalarData& d = sdata_[n];
-  const std::size_t per_x = std::size_t(g_.ny) * g_.nz * width_, per_y = std::size_t(g_.nx) * g_.nz * width_;
   if (d.off.empty()) {
+    const std::size_t per_x = std::size_t(g_.ny) * g_.nz * width_, per_y = std::size_t(g_.nx) * g_.nz * width_;
     std::size_t o = 0;
     for (int half = 0; half < 2; ++half)
       for (int sd = 0; sd < 4; ++sd) {
@@ -235,6 +235,13 @@ void LateralBC::set_scalar(int n, Side s, const std::vector<double>& values, con
       }
     d.data = Buffer(o);
   }
+  return d.data.get() + d.off[(tend ? 4 : 0) + s];
+}
+
+void LateralBC::set_scalar(int n, Side s, const std::vector<double>& values, const std::vector<double>& tends) {
+  scalar_slab(n, s, false);  // allocate
+  ScalarData& d = sdata_[n];
+  const std::size_t per_x = std::size_t(g_.ny) * g_.nz * width_, per_y = std::size_t(g_.nx) * g_.nz * width_;
   const std::size_t nn = s < 2 ? per_x : per_y;
   if (values.size() != nn || tends.size() != nn) throw std::runtime_error("LateralBC::set_scalar: wrong slab size");
   std::vector<real> hv(values.begin(), values.end()), ht(tends.begin(), tends.end());

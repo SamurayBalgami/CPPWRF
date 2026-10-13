@@ -38,6 +38,14 @@ class LateralBC {
   void set(Var v, Side s, const std::vector<double>& values, const std::vector<double>& tends);
   // The same for scalar n (State order: moist species first), e.g. QVAPOR of wrfbdy.
   void set_scalar(int n, Side s, const std::vector<double>& values, const std::vector<double>& tends);
+  // Device-side access for nest forcing (src/nest): the slab of variable v / scalar n, side s,
+  // values (tend = false) or tendencies, layout (pos, k, b) with pos fastest; npos = slab_npos,
+  // nk = slab_nk. mark_set() declares the data valid (has() / has_scalar() true).
+  real* slab(Var v, Side s, bool tend) { return data_[v].get() + off_[v][(tend ? 4 : 0) + s]; }
+  real* scalar_slab(int n, Side s, bool tend);  // allocates scalar n on first use
+  int slab_npos(Var v, Side s) const { return npos(v, s); }
+  int slab_nk(Var v) const { return nk_[v]; }
+  void mark_set(Var v) { have_[v] = true; }
   bool has(Var v) const { return have_[v]; }
   bool has_scalar(int n) const { return n >= 0 && n < int(sdata_.size()) && !sdata_[n].off.empty(); }
   bool nested() const { return nested_; }
