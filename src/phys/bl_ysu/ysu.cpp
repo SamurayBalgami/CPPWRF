@@ -1,0 +1,81 @@
+#include "phys/bl_ysu/ysu.hpp"
+
+namespace cppwrf::phys::ysu {
+
+void run_ysu(
+    View3<const real> ux,
+    View3<const real> vx,
+    View3<const real> tx,
+    View3<const real> qvx,
+    View3<const real> qcx,
+    View3<const real> qix,
+    View3<const real> p2d,
+    View3<const real> p2di,
+    View3<const real> pi2d,
+    View3<const real> dz8w2d,
+    View3<const real> rthraten,
+    View2<const real> psfcpa,
+    View2<const real> znt,
+    View2<const real> ust,
+    View2<const real> psim,
+    View2<const real> psih,
+    View2<const real> xland,
+    View2<const real> hfx,
+    View2<const real> qfx,
+    View2<const real> wspd,
+    View2<const real> br,
+    View2<real> u10,
+    View2<real> v10,
+    View2<const real> uox,
+    View2<const real> vox,
+    View2<const real> ctopo,
+    View2<const real> ctopo2,
+    View3<real> utnp,
+    View3<real> vtnp,
+    View3<real> ttnp,
+    View3<real> qvtnp,
+    View3<real> qctnp,
+    View3<real> qitnp,
+    View3<real> exch_hx,
+    View3<real> exch_mx,
+    View2<real> hpbl,
+    View2<int> kpbl1d,
+    View2<real> wstar,
+    View2<real> delta,
+    View2<real> dusfc,
+    View2<real> dvsfc,
+    View2<real> dtsfc,
+    View2<real> dqsfc,
+    real dt,
+    const Range2D& range,
+    int nz,
+    bool f_qc,
+    bool f_qi,
+    bool ysu_topdown_pblmix,
+    bool have_ctopo,
+    bool have_surface_diag,
+    real cp,
+    real g,
+    real rovcp,
+    real rd,
+    real rovg,
+    real ep1,
+    real ep2,
+    real karman,
+    real xlv,
+    real rv) {
+  assert(nz <= kMaxLevels);
+
+  YSUKernel kernel{
+      ux, vx, tx, qvx, qcx, qix, p2d, p2di, pi2d, dz8w2d, rthraten,
+      psfcpa, znt, ust, psim, psih, xland, hfx, qfx, wspd, br,
+      u10, v10, uox, vox, ctopo, ctopo2,
+      utnp, vtnp, ttnp, qvtnp, qctnp, qitnp, exch_hx, exch_mx,
+      hpbl, kpbl1d, wstar, delta, dusfc, dvsfc, dtsfc, dqsfc,
+      dt, nz, f_qc, f_qi, ysu_topdown_pblmix, have_ctopo, have_surface_diag,
+      cp, g, rovcp, rd, rovg, ep1, ep2, karman, xlv, rv};
+
+  column_for(range, kernel);
+}
+
+}  // namespace cppwrf::phys::ysu

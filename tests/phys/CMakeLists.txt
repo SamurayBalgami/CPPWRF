@@ -92,3 +92,81 @@ add_test(
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+# ==============================================================================
+# Revised MM5 Surface Layer Scheme (sf_sfclayrev)
+# ==============================================================================
+set(FORTRAN_SFCLAYREV_SRCS
+  "${CMAKE_CURRENT_SOURCE_DIR}/fortran/ccpp_kind_types.F"
+  "${CMAKE_CURRENT_SOURCE_DIR}/fortran/sf_sfclayrev.F90"
+  "${CMAKE_CURRENT_SOURCE_DIR}/fortran/module_sf_sfclayrev.F"
+)
+
+add_executable(driver_sfclayrev_fortran
+  sf_sfclayrev/driver_sfclayrev.f90
+  ${FORTRAN_SFCLAYREV_SRCS}
+)
+set_target_properties(driver_sfclayrev_fortran PROPERTIES
+  Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fortran_modules_sfclayrev"
+  COMPILE_FLAGS "${PHYS_FORTRAN_FLAGS} -DEM_CORE=1"
+)
+
+add_executable(driver_sfclayrev_cpu
+  sf_sfclayrev/driver_sfclayrev.cpp
+  ${CPPWRF_ROOT}/src/phys/sf_sfclayrev/sfclayrev.cpp
+  ${CPPWRF_ROOT}/src/core/backend.cpp
+)
+target_include_directories(driver_sfclayrev_cpu PRIVATE
+  ${CPPWRF_ROOT}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_compile_definitions(driver_sfclayrev_cpu PRIVATE CPPWRF_DOUBLE)
+target_compile_options(driver_sfclayrev_cpu PRIVATE -O3 -march=native -ffp-contract=off)
+target_link_libraries(driver_sfclayrev_cpu PRIVATE
+  OpenMP::OpenMP_CXX
+)
+
+add_test(
+  NAME test_phys_sfclayrev
+  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/sf_sfclayrev/run_test.sh ${CMAKE_CURRENT_BINARY_DIR}
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+# ==============================================================================
+# YSU PBL Scheme (bl_ysu)
+# ==============================================================================
+set(FORTRAN_YSU_SRCS
+  "${CMAKE_CURRENT_SOURCE_DIR}/fortran/ccpp_kind_types.F"
+  "${CMAKE_CURRENT_SOURCE_DIR}/fortran/bl_ysu.F90"
+  "${CMAKE_CURRENT_SOURCE_DIR}/fortran/module_bl_ysu.F"
+)
+
+add_executable(driver_ysu_fortran
+  bl_ysu/driver_ysu.f90
+  ${FORTRAN_YSU_SRCS}
+)
+set_target_properties(driver_ysu_fortran PROPERTIES
+  Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fortran_modules_ysu"
+  COMPILE_FLAGS "${PHYS_FORTRAN_FLAGS} -ffree-line-length-none"
+)
+
+add_executable(driver_ysu_cpu
+  bl_ysu/driver_ysu.cpp
+  ${CPPWRF_ROOT}/src/phys/bl_ysu/ysu.cpp
+  ${CPPWRF_ROOT}/src/core/backend.cpp
+)
+target_include_directories(driver_ysu_cpu PRIVATE
+  ${CPPWRF_ROOT}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_compile_definitions(driver_ysu_cpu PRIVATE CPPWRF_DOUBLE)
+target_compile_options(driver_ysu_cpu PRIVATE -O3 -march=native -ffp-contract=off)
+target_link_libraries(driver_ysu_cpu PRIVATE
+  OpenMP::OpenMP_CXX
+)
+
+add_test(
+  NAME test_phys_ysu
+  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/bl_ysu/run_test.sh ${CMAKE_CURRENT_BINARY_DIR}
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+

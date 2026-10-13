@@ -1,6 +1,8 @@
 add_library(cppwrf_phys STATIC
   mp_kessler/kessler.cpp
   mp_wsm6/wsm6.cpp
+  sf_sfclayrev/sfclayrev.cpp
+  bl_ysu/ysu.cpp
 )
 
 target_include_directories(cppwrf_phys PUBLIC
@@ -18,6 +20,8 @@ if(COMMAND cppwrf_device_sources)
   cppwrf_device_sources(
     ${CMAKE_CURRENT_SOURCE_DIR}/mp_kessler/kessler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/mp_wsm6/wsm6.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sf_sfclayrev/sfclayrev.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bl_ysu/ysu.cpp
   )
 endif()
 
