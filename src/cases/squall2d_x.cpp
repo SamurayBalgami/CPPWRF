@@ -309,10 +309,6 @@ void init_squall2d_x(const io::Config& cfg, const std::vector<double>& eta, cons
   b.phb.fill_host([&](int, int, int k) { return phb[k]; });
   b.ht.fill_host([](int, int, int) { return 0.0; });
   b.qv_base.fill_host([&](int, int, int k) { return qv_1d[k]; });
-  for (int k = 0; k < nz; ++k) {
-    b.u_base[k] = u_lvl[k];
-    b.v_base[k] = v_lvl[k];
-  }
 
   // 7. Fill State s (t_2 holds theta_m - t0 in CPPWRF moist formulation)
   s.t_2.fill_host([&](int i, int j, int k) {

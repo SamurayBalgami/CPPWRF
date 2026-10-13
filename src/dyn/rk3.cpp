@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <vector>
 
 #ifdef CPPWRF_HAVE_SMALL_STEP
 #include "core/halo.hpp"
@@ -86,7 +87,9 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
   }
   if (bc_) {  // spec_bdy_final: exact boundary values at t + dt
     bc_->final(s, b);
-    fill_halos({&s.u_2, &s.v_2, &s.t_2, &s.ph_2}, g_);
+    std::vector<Field3*> f{&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2};
+    for (int n = 0; n < s.n_scalars(); ++n) f.push_back(&s.q_2[n]);  // calc_cq reads the q halos
+    fill_halos(f, g_);
     fill_halo(s.mu_2, g_);
   }
   // solve_em: "reset surface w for consistency" (kinematic condition from the new u, v)

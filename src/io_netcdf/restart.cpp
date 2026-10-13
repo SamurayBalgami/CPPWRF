@@ -130,7 +130,8 @@ void write_restart(const std::string& path, const RestartMeta& meta,
     }
   }
 
-  NC_CHECK(nc_close(ncid));
+  const int id = ncid.release();
+  NC_CHECK(nc_close(id));
 }
 
 void read_restart(const std::string& path, RestartMeta& meta,
