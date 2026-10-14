@@ -61,6 +61,15 @@ CASES = [
     ("real_p3_fp32_1h", "cuda", "configs/real_p3_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P3", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P3/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-4, "W": 1e-2, "THM": 2e-6, "QV": 1e-4}),
+    # P4 (KF + WSM6 + RRTMG with clouds, effective radii): step 1 at roundoff except one KF column where
+    # a cancelling 1e-25 qr at cloud top has the opposite sign of WRF's and WSM6 turns it into a 1e-7
+    # QRAIN difference (docs/PHYSICS_SUITE.md section 9); cloudy RRTMG is checked column by column.
+    ("real_p4_r8_fp64_cpu", "cpu_dp", "configs/real_p4_r8.ini", ["run.run_time=60"],
+     f"{WR}/run_P4_r8/steps/wrfout_d01_2026-10-12_00:00:00", 60,
+     {"U": 1e-13, "W": 1e-10, "PH": 1e-14, "THM": 1e-11, "QV": 1e-9, "MU": 1e-14}),
+    ("real_p4_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p4_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_P4_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 6e-4, "W": 1e-2, "THM": 8e-6, "QV": 5e-4}),
     ("wdamp_w1_fp64", "cpu_dp", "configs/real_r3.ini",
      ["real.dir=" + f"{WR}/run_W1_r8", "time.dt=450", "run.run_time=4500", "output.out_interval=1",
       "output.diag_interval=1"], f"{WR}/run_W1_r8/wrfout_d01_2026-10-12_00:00:00", 4500,

@@ -63,7 +63,7 @@ void rrtmg_sw_core(int nlayers, double heatfac, const double* play, const double
                    const double* relqmcl, const double* resnmcl, double* swuflx, double* swdflx, double* swhr,
                    double* swuflxc, double* swdflxc, double* swhrc, double* swdkdir, double* swdkdif,
                    double* sibvisdir, double* sibvisdif, double* sibnirdir, double* sibnirdif, RrtmgSwWorkspace& ws,
-                   const RrtmgSwTables& tables);
+                   const RrtmgSwTables& tables, int inflag = 2, int iceflag = 3, int liqflag = 1);
 
 // Single column execution
 CPPWRF_HD void rrtmg_sw_column(
@@ -112,7 +112,11 @@ CPPWRF_HD void rrtmg_sw_column(
     double* rthratensw,  // [nz] K/s
     double* rthratenswc, // [nz] K/s
     // Workspace
-    RrtmgSwWorkspace& ws
+    RrtmgSwWorkspace& ws,
+    // effective radii from the microphysics [nz] (m): WRF has_reqc / has_reqi / has_reqs != 0
+    const double* re_cloud = nullptr,
+    const double* re_ice = nullptr,
+    const double* re_snow = nullptr
 );
 
 // Multi-column driver (OpenMP CPU or sequential)

@@ -15,6 +15,8 @@ struct PhysicsParams {
   int mp_physics = 0;        // 0 = none, 1 = Kessler (src/phys/mp_kessler), 6 = WSM6 (src/phys/mp_wsm6)
   int hail_opt = 0;          // WSM6 graupel (0) or hail (1) parameters, WRF namelist hail_opt
   real mp_tend_lim = 10;     // K/s, WRF namelist mp_tend_lim (limit on the mp heating rate)
+  bool microp_re = false;    // WSM6 effective radii for RRTMG (WRF has_reqc = has_reqi = has_reqs = 1:
+                             // use_mp_re = 1 with RRTMG LW and SW)
 };
 
 class PhysicsCoupling {
@@ -25,6 +27,7 @@ class PhysicsCoupling {
   const PhysicsParams& params() const { return p_; }
   Field2 rainnc, rainncv;  // accumulated / last-step grid-scale precipitation [mm]
   Field2 snownc, snowncv, graupelnc, graupelncv, sr;  // WSM6: snow, graupel [mm]; sr = frozen fraction
+  Field3 re_cloud, re_ice, re_snow;  // microp_re: effective radii [m] (RE_QC_BG ... before the first call)
 
  private:
   Grid g_;

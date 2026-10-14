@@ -111,7 +111,7 @@ void rrtmg_lw_core(int nlayers, double cp, const double* play, const double* ple
                    const double* cfc12vmr, const double* cfc22vmr, const double* ccl4vmr, const double* semiss,
                    const double* rei, const double* rel, const double* res, double* totuflux, double* totdflux,
                    double* htr, double* totuclfl, double* totdclfl, double* htrc, RrtmgLwWorkspace& ws,
-                   const RrtmgLwTables& tables) {
+                   const RrtmgLwTables& tables, int inflag, int iceflag, int liqflag) {
   // 7. Atmospheric preparation (inatm)
   constexpr double amd = 28.9660;
   constexpr double amw = 18.0160;
@@ -175,7 +175,7 @@ void rrtmg_lw_core(int nlayers, double cp, const double* play, const double* ple
   double pwvcm = wvsh * (1.0e3 * pz[0]) / (1.0e2 * grav);
 
   // 8. In-cloud optical depths calculation (cldprmc)
-  rrtmg_lw_cldprmc(nlayers, 2, 3, 1, ws.cldfmc_ptrs, ws.ciwpmc_ptrs, ws.clwpmc_ptrs, ws.cswpmc_ptrs,
+  rrtmg_lw_cldprmc(nlayers, inflag, iceflag, liqflag, ws.cldfmc_ptrs, ws.ciwpmc_ptrs, ws.clwpmc_ptrs, ws.cswpmc_ptrs,
                    rei, rel, res, ws.taucmc_ptrs, tables);
 
   // 9. Radiative transfer coefficients and Planck functions (setcoef)
@@ -334,13 +334,63 @@ void rrtmg_lw_column(
     double& lwdnbc,
     double* rthratenlw,
     double* rthratenlwc,
-    RrtmgLwWorkspace& ws
+    RrtmgLwWorkspace& ws,
+    const double* re_cloud,
+    const double* re_ice,
+    const double* re_snow
 ) {
   constexpr double deltap = 4.0; // mb
   // rrtmg_lwinit: NLAYERS = kme + nint(p_top*0.01/deltap) - 1 with kme = nz + 1 (Fortran NINT)
   const int nlayers = num_levels + int(std::lround(config.p_top * 0.01 / deltap));
 
-  // 1. Compute effective droplet and ice sizes (CAM relcalc / reicalc)
+  // 1. Hydrometeors and the cloud optics flags (RRTMG_LWRAD, icloud != 0)
+  double qc1d[RRTMG_LW_MAX_LAYERS], qi1d[RRTMG_LW_MAX_LAYERS], qs1d[RRTMG_LW_MAX_LAYERS];
+  for (int k = 0; k < num_levels; ++k) {
+    qc1d[k] = std::max(0.0, qc3d[k]);
+    qi1d[k] = std::max(0.0, qi3d[k]);
+    qs1d[k] = std::max(0.0, qs3d[k]);
+  }
+  int inflglw = 2, iceflglw = 3;
+  const int liqflglw = 1;
+  double recloud1d[RRTMG_LW_MAX_LAYERS], reice1d[RRTMG_LW_MAX_LAYERS], resnow1d[RRTMG_LW_MAX_LAYERS];
+  for (int k = 0; k < num_levels; ++k) {
+    if (re_cloud) {
+      double r = std::max(2.5, re_cloud[k] * 1.E6);
+      if (r <= 2.5 && cldfra3d[k] > 0. && (xland - 1.5) > 0.) r = 10.5;       // ocean
+      else if (r <= 2.5 && cldfra3d[k] > 0. && (xland - 1.5) < 0.) r = 7.5;   // land
+      recloud1d[k] = r;
+    } else {
+      recloud1d[k] = 5.0;
+    }
+    if (re_ice) {
+      double r = std::max(5., re_ice[k] * 1.E6);
+      if (r <= 5. && cldfra3d[k] > 0.) {
+        int idx_rei = int(t3d[k] - 179.);
+        idx_rei = std::min(std::max(idx_rei, 1), 75);
+        const double corr = t3d[k] - int(t3d[k]);
+        r = retab[idx_rei - 1] * (1. - corr) + retab[idx_rei] * corr;
+        r = std::max(r, 5.0);
+      }
+      reice1d[k] = r;
+    } else {
+      reice1d[k] = 10.0;
+    }
+    resnow1d[k] = re_snow ? std::max(10., re_snow[k] * 1.E6) : 10.0;
+  }
+  if (re_cloud) inflglw = 3;
+  if (re_ice) { inflglw = 4; iceflglw = 4; }
+  if (re_snow) { inflglw = 5; iceflglw = 5; }
+  if (!re_snow && re_ice && re_cloud) {  // P3: ice into the snow category for the optics
+    inflglw = 5; iceflglw = 5;
+    for (int k = 0; k < num_levels; ++k) {
+      resnow1d[k] = std::max(10., re_ice[k] * 1.E6);
+      qs1d[k] = qi3d[k];
+      qi1d[k] = 0.;
+      reice1d[k] = 10.;
+    }
+  }
+
+  // CAM relcalc / reicalc
   double reliq[RRTMG_LW_MAX_LAYERS];
   double reice[RRTMG_LW_MAX_LAYERS];
 
@@ -360,11 +410,16 @@ void rrtmg_lw_column(
     int idx = static_cast<int>(t3d[k] - 179.0);
     idx = std::min(std::max(idx, 1), 94);
     double corr = t3d[k] - static_cast<int>(t3d[k]);
-    double ri = retab[idx - 1] * (1.0 - corr) + retab[idx] * corr;
-    // Fu generalized effective size conversion for iceflglw = 3
-    ri = ri * 1.0315;
-    if (ri > 140.0) ri = 140.0;
-    reice[k] = ri;
+    reice[k] = retab[idx - 1] * (1.0 - corr) + retab[idx] * corr;
+  }
+  // microphysics sizes replace the CAM ones (EM_CORE: iceflglw >= 4 for the ice)
+  for (int k = 0; k < num_levels; ++k) {
+    if (inflglw >= 3) reliq[k] = recloud1d[k];
+    if (iceflglw >= 4) reice[k] = reice1d[k];
+    if (iceflglw == 3) {  // Fu (1996) generalized effective size
+      reice[k] = reice[k] * 1.0315;
+      reice[k] = std::min(140.0, reice[k]);
+    }
   }
 
   // 2. Base layer vertical variables
@@ -418,22 +473,38 @@ void rrtmg_lw_column(
     hgt[k] = dzsum + 0.5 * dz8w[k];
     dzsum += dz8w[k];
 
-    // Grid box water paths (g/m2)
-    double qc_val = std::max(0.0, qc3d[k]);
-    double qi_val = std::max(0.0, qi3d[k]);
-    double qs_val = std::max(0.0, qs3d[k]);
-    double cf_val = cldfra3d[k];
-
-    double gicewp = (qi_val + qs_val) * pdel[k] * 100.0 / config.g * 1000.0;
-    double gliqwp = qc_val * pdel[k] * 100.0 / config.g * 1000.0;
-
-    double denom = std::max(0.01, cf_val);
-    clwpth[k] = gliqwp / denom;
-    ciwpth[k] = gicewp / denom;
-    cswpth[k] = 0.0;
+    // Grid box water paths (g/m2), in-cloud paths (CAM method; snow as ice unless iceflglw >= 4)
+    const double cf_val = cldfra3d[k];
+    double gicewp = (qi1d[k] + qs1d[k]) * pdel[k] * 100.0 / config.g * 1000.0;
+    const double gliqwp = qc1d[k] * pdel[k] * 100.0 / config.g * 1000.0;
+    double cicewp = gicewp / std::max(0.01, cf_val);
+    const double cliqwp = gliqwp / std::max(0.01, cf_val);
+    if (iceflglw >= 4) {
+      gicewp = qi1d[k] * pdel[k] * 100.0 / config.g * 1000.0;
+      cicewp = gicewp / std::max(0.01, cf_val);
+    }
+    double csnowp = 0.0;
+    if (iceflglw == 5) {
+      double snow_mass_factor = 0.99;  // 1% of the snow assumed in the cloud ice category (WRF adds it
+                                       // to gicewp after cicewp is set, so it has no effect)
+      if (resnow1d[k] > 130.) {
+        snow_mass_factor = std::min(snow_mass_factor, (130.0 / resnow1d[k]) * (130.0 / resnow1d[k]));
+        resnow1d[k] = 130.0;
+      }
+      const double gsnowp = qs1d[k] * snow_mass_factor * pdel[k] * 100.0 / config.g * 1000.0;
+      csnowp = gsnowp / std::max(0.01, cf_val);
+    }
+    clwpth[k] = cliqwp;
+    ciwpth[k] = cicewp;
     rel[k] = reliq[k];
     rei[k] = reice[k];
-    res[k] = 10.0;
+    if (inflglw == 5) {
+      cswpth[k] = csnowp;
+      res[k] = resnow1d[k];
+    } else {
+      cswpth[k] = 0.;
+      res[k] = 10.;
+    }
     cldfrac[k] = cf_val;
   }
 
@@ -572,7 +643,7 @@ void rrtmg_lw_column(
   double htrc[RRTMG_LW_MAX_LAYERS + 1];
   rrtmg_lw_core(nlayers, config.cp, play, plev, tlay, tlev, tsk, h2ovmr, o3vmr, co2vmr, ch4vmr, n2ovmr, o2vmr,
                 cfc11vmr, cfc12vmr, cfc22vmr, ccl4vmr, semiss, rei, rel, res, totuflux, totdflux, htr, totuclfl,
-                totdclfl, htrc, ws, tables);
+                totdclfl, htrc, ws, tables, inflglw, iceflglw, liqflglw);
 
   // 12. Map outputs
   glw = totdflux[0];

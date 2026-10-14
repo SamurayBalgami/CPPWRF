@@ -620,7 +620,7 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   mk3(tslb, gs_, "tslb"); mk3(smois, gs_, "smois"); mk3(sh2o, gs_, "sh2o"); mk3(smcrel, gs_, "smcrel");
   mk3(exch_h, g, "exch_h"); mk3(exch_m, g, "exch_m");
   mk3(w0avg, g, "w0avg"); mk3(cldfra_dp, g, "cldfra_dp"); mk3(cldfra_sh, g, "cldfra_sh");
-  mk3(qc_cu, g, "qc_cu"); mk3(qi_cu, g, "qi_cu");
+  mk3(qc_cu, g, "qc_cu"); mk3(qi_cu, g, "qi_cu"); mk3(cldfra, g, "cldfra");
   mk3(n_stc, gs_, "n_stc"); mk3(n_smc, gs_, "n_smc"); mk3(n_swc, gs_, "n_swc"); mk3(n_et, gs_, "n_et");
   mk3(n_smav, gs_, "n_smav"); mk3(zero3_, g, "zero3");
   for (Field2* f : {&n_lwdn, &n_soldn, &n_solnet, &n_sfcprs, &n_prcp, &n_sfctmp, &n_th2, &n_q2, &n_q2sat, &n_dqsdt2,
@@ -687,6 +687,9 @@ std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
                     &qc_cu, &qi_cu, &pt.rucuten, &pt.rvcuten, &pt.rthcuten, &pt.rqvcuten, &pt.rqccuten, &pt.rqrcuten,
                     &pt.rqicuten, &pt.rqscuten})
     v.emplace_back("sfc_" + f->name(), f);
+  if (rad_) v.emplace_back("sfc_cldfra", &cldfra);
+  for (Field3* f : {re_cloud_, re_ice_, re_snow_})
+    if (f) v.emplace_back("sfc_" + f->name(), f);
   return v;
 }
 
@@ -700,10 +703,12 @@ void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
   if (rad_) {  // radiation_driver: xtime (minutes) and julian of the step start
     const double xtime = double(itimestep - 1) * g_.dt / 60.;
     const double julian = double(o_.rad.julday - 1) + (o_.rad.gmt * 3600. + xtime * 60.) / 86400.;
+    auto q = [&](int n) -> const Field3* { return n >= 0 ? &s.q_2[n] : nullptr; };
     rad_->run(itimestep, xtime, julian,
               RadiationInputs{&prep.t_phy, &prep.p_hyd, &prep.p_hyd_w, &prep.pi_phy, &prep.rho, &prep.dz8w,
-                              &prep.t8w, &s.q_2[s.P_QV], nullptr, &tsk, &albedo, &emiss, &xland, &xice, &snow},
-              RadiationOutputs{&pt.rthraten, &glw, &gsw, &swdown, &coszen});
+                              &prep.t8w, &s.q_2[s.P_QV], q(s.P_QC), q(s.P_QI), q(s.P_QS), re_cloud_, re_ice_,
+                              re_snow_, &tsk, &albedo, &emiss, &xland, &xice, &snow},
+              RadiationOutputs{&pt.rthraten, &glw, &gsw, &swdown, &coszen, &cldfra});
   }
   surface_driver(s);
   pbl_driver(s);

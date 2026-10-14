@@ -10,6 +10,7 @@
 #include <memory>
 #include <vector>
 
+#include "phys/driver/radiation.hpp"
 #include "phys/ra_rrtmg_common/cam_gases.hpp"
 #include "phys/ra_rrtmg_lw/rrtmg_lw.hpp"
 #include "phys/ra_rrtmg_lw/rrtmg_lw_tables.hpp"
@@ -36,6 +37,16 @@ int main(int argc, char** argv) {
   auto p8w = in.arr(n3), p = in.arr(n3), pi = in.arr(n3), dz8w = in.arr(n3), t = in.arr(n3), t8w = in.arr(n3),
        rho = in.arr(n3), qv = in.arr(n3), o3 = in.arr(n3), cldfra = in.arr(n3);
   auto tsk = in.arr(n2), emiss = in.arr(n2), xlat = in.arr(n2), xland = in.arr(n2), xice = in.arr(n2), snow = in.arr(n2);
+  // cloud extension of the dump (09 UTC dumps): has_reqc/i/s, mp_physics, qc qr qi qs qg, re_cloud/ice/snow
+  int hrc = 0, hri = 0, hrs = 0, mp = 0;
+  std::vector<double> qc(n3, 0.), qi(n3, 0.), qs(n3, 0.), rec(n3, 0.), rei(n3, 0.), res(n3, 0.);
+  const bool clouds = in.o < in.b.size();
+  if (clouds) {
+    hrc = in.i4(); hri = in.i4(); hrs = in.i4(); mp = in.i4();
+    qc = in.arr(n3); in.arr(n3); qi = in.arr(n3); qs = in.arr(n3); in.arr(n3);
+    rec = in.arr(n3); rei = in.arr(n3); res = in.arr(n3);
+    std::printf("clouds: has_reqc %d has_reqi %d has_reqs %d mp_physics %d\n", hrc, hri, hrs, mp);
+  }
   auto w_rth = out.arr(n3), w_rthc = out.arr(n3);
   auto w_glw = out.arr(n2), w_olr = out.arr(n2), w_lwcf = out.arr(n2), w_lwupt = out.arr(n2), w_lwupb = out.arr(n2),
        w_lwdnb = out.arr(n2);
@@ -59,7 +70,9 @@ int main(int argc, char** argv) {
   std::printf("ghg %d: co2 %.17g n2o %.17g ch4 %.17g cfc11 %.17g cfc12 %.17g\n", ghg, c.co2, c.n2o, c.ch4, c.cfc11, c.cfc12);
   const int nz = kte - kts + 1;
   std::vector<double> cp8w(nz + 1), ct8w(nz + 1), cp(nz), cpi(nz), cdz(nz), ct(nz), crho(nz), cqv(nz), zero(nz, 0.0),
-      ccld(nz), co3(nz), rth(nz), rthc(nz);
+      ccld(nz), co3(nz), rth(nz), rthc(nz), cqc(nz), cqi(nz), cqs(nz), crec(nz), crei(nz), cres(nz), cfc(nz);
+  double cf_mx = 0;
+  long cf_ndiff = 0, ncloudy = 0;
   double mx[4] = {0}, sc[4] = {0};
   long ncol = 0, nexact = 0;
   for (int j = jts; j <= jte; ++j)
@@ -69,13 +82,25 @@ int main(int argc, char** argv) {
         const size_t q = I3(i, k + kts, j);
         cp[k] = p[q]; cpi[k] = pi[q]; cdz[k] = dz8w[q]; ct[k] = t[q]; crho[k] = rho[q]; cqv[k] = qv[q];
         ccld[k] = cldfra[q]; co3[k] = o3[q];
+        cqc[k] = qc[q]; cqi[k] = qi[q]; cqs[k] = qs[q]; crec[k] = rec[q]; crei[k] = rei[q]; cres[k] = res[q];
+      }
+      if (clouds) {  // C++ cal_cldfra1 vs WRF's CLDFRA (t = t_phy, p = p_hyd)
+        driver::cal_cldfra1(nz, cqv.data(), cqc.data(), cqi.data(), cqs.data(), ct.data(), cp.data(), cfc.data());
+        bool cl = false;
+        for (int k = 0; k < nz; ++k) {
+          cf_mx = std::max(cf_mx, std::abs(cfc[k] - ccld[k]));
+          cf_ndiff += cfc[k] != ccld[k];
+          cl = cl || ccld[k] > 0;
+        }
+        ncloudy += cl;
       }
       double glw, olr, lwcf, lwupt, lwuptc, lwdnt, lwdntc, lwupb, lwupbc, lwdnb, lwdnbc;
       const size_t q2 = I2(i, j);
       rrtmg_lw_column(nz, c, *tables, tsk[q2], emiss[q2], xland[q2], xice[q2], snow[q2], xlat[q2], cp8w.data(),
-                      ct8w.data(), cp.data(), cpi.data(), cdz.data(), ct.data(), crho.data(), cqv.data(), zero.data(),
-                      zero.data(), zero.data(), zero.data(), zero.data(), ccld.data(), co3.data(), glw, olr, lwcf,
-                      lwupt, lwuptc, lwdnt, lwdntc, lwupb, lwupbc, lwdnb, lwdnbc, rth.data(), rthc.data(), *ws);
+                      ct8w.data(), cp.data(), cpi.data(), cdz.data(), ct.data(), crho.data(), cqv.data(), cqc.data(),
+                      zero.data(), cqi.data(), cqs.data(), zero.data(), ccld.data(), co3.data(), glw, olr, lwcf,
+                      lwupt, lwuptc, lwdnt, lwdntc, lwupb, lwupbc, lwdnb, lwdnbc, rth.data(), rthc.data(), *ws,
+                      hrc ? crec.data() : nullptr, hri ? crei.data() : nullptr, hrs ? cres.data() : nullptr);
       bool ex = true;
       auto upd = [&](int v, double w, double x) {
         mx[v] = std::max(mx[v], std::abs(w - x)); sc[v] = std::max(sc[v], std::abs(w)); if (w != x) ex = false;
@@ -86,6 +111,7 @@ int main(int argc, char** argv) {
     }
   const char* nm[4] = {"glw", "olr", "lwupb", "rthratlw"};
   std::printf("%ld columns, %ld bit-identical\n", ncol, nexact);
+  if (clouds) std::printf("cal_cldfra1: %ld cloudy columns, %ld values differ, max|d| %.3e\n", ncloudy, cf_ndiff, cf_mx);
   for (int v = 0; v < 4; ++v) std::printf("%-9s max|d| %.3e  rel %.3e\n", nm[v], mx[v], mx[v] / sc[v]);
   return 0;
 }

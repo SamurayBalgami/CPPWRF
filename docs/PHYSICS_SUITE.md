@@ -275,6 +275,57 @@ CAM ozone is bit-identical on all columns; COSZEN differs by 1 ulp (the WRF bina
 sin/cos, libmvec). Tables: `~/wrf_real/rrtmg_tables` (rrtmg_lw/sw_tables.bin dumped from WRF's
 rrtmg_lw/swinit with the _DBL data, ozone*.formatted, CAMtr_volume_mixing_ratio; config key
 phys.rrtmg_tables). The columns run on the host with OpenMP for now (GPU port pending).
-Not yet: clouds (cal_cldfra1, effective radii from the microphysics: P4), aer_opt, swint_opt.
+Clouds: section 9. Not yet: aer_opt, swint_opt.
 Acceptance (wrf_suite.py): real_p3_r8_fp64_cpu steps 1-3 U 2.2e-14, THM 1.8e-16; P3 1 h CPU FP64
 interior U 7e-12; real_p3_fp32_1h U 1.9e-4, THM 7.3e-7.
+
+
+## 9. Clouds in the radiation (P4 = P2 + WSM6 + RRTMG + diff_opt 1 / km_opt 4)
+
+Reference: WRF v4.6.1 real*8 run ~/wrf_real/run_P4_r8 (kf + WSM6 + RRTMG radt = 1,
+icloud = 1, use_mp_re = 1 (default); steps/ = 3 minutes with history every step and RQRCUTEN,
+RQICUTEN, RQSCUTEN, RE_CLOUD, RE_ICE, RE_SNOW in the history; `configs/real_p4_r8.ini`).
+
+What WRF executes (and the port):
+- **phy_init**: with use_mp_re = 1, RRTMG LW + SW and mp_physics = WSM6 (also WSM3/5/7, WDM*,
+  Thompson, ...) `has_reqc = has_reqi = has_reqs = 1`; RE_CLOUD/RE_ICE/RE_SNOW start at
+  RE_QC_BG/RE_QI_BG/RE_QS_BG = 2.49/4.99/9.99 um (`PhysicsParams::microp_re`, set in model.cpp;
+  `PhysicsCoupling::re_cloud/re_ice/re_snow`).
+- **module_mp_wsm6.F after every WSM6 call**: `mp_wsm6_effectRad_run` with t = th*pii of the new
+  column, the background values and RE_Q*_MAX = 50/125/999 um (`Wsm6EffRadKernel`,
+  src/phys/mp_wsm6/wsm6.hpp, run on the microphysics columns only). The per-row has_qc/qi/qs
+  flags only skip work.
+- **radiation_driver**: CLDFRA = 0, then with icloud = 1 and F_QC or F_QI `cal_cldfra1`
+  (Randall / Hong-Pan, t = t_phy, p = p_hyd; `driver::cal_cldfra1`); icloud_cu = 0, no KF cloud
+  fraction. CLDFRA is a suite field (wrfout, restart).
+- **RRTMG_LWRAD / RRTMG_SWRAD** (`rrtmg_lw_column` / `rrtmg_sw_column` take re_cloud/re_ice/re_snow,
+  nullptr when has_req* = 0): qc/qi/qs clipped at 0; inflg = 3 with re_cloud (recloud =
+  max(2.5, re*1e6), 10.5 over ocean / 7.5 over land when <= 2.5 in a cloudy layer), inflg = iceflg
+  = 4 with re_ice (max(5, re*1e6), retab with index <= 75 when <= 5 in a cloudy layer), inflg =
+  iceflg = 5 with re_snow (max(10, re*1e6)); the P3 special case (no re_snow) is ported too. With
+  iceflg >= 4 the ice path excludes the snow; with iceflg = 5 the snow path uses snow_mass_factor
+  (resnow > 130 um: (130/resnow)^2 and resnow = 130; WRF's `gicewp = gicewp + 1% of the snow`
+  happens after cicewp is set and has no effect). reliq/reice from relcalc/reicalc are replaced
+  by the microphysics sizes (inflg >= 3, iceflg >= 4); the Fu 1.0315 factor only for iceflg = 3.
+  The cores take inflag/iceflag/liqflag (they were fixed at 2/3/1).
+- **SW cldprmc_sw**: the asymmetry factor uses WRF's grouping
+  `scatice*((gice - forwice)/(1 - forwice))` (and the same for snow); the port had
+  `(scatice*(gice - forwice))/(1 - forwice)`.
+
+Verification:
+- WSM6 on real data: `CPPWRF_WSM6_DUMP` debug dumps (not in main) of the first and second WSM6
+  calls of P4/P5 through WRF's Fortran WSM6 (tests/phys/fortran, WRF and scalar flags): C++ =
+  Fortran bit for bit, including rain/ice/snow sedimentation. RE_ICE/RE_SNOW after step 1 equal
+  WRF's to 2e-12 / exactly.
+- P4 step 1 (wrf_suite real_p4_r8_fp64_cpu): every physics tendency (RTHCUTEN, RQ*CUTEN, R*BLTEN,
+  RTHRATEN, GLW) and U at roundoff. Two columns differ in QRAIN/QCLOUD (1e-7): a debug-WRF dump of
+  WRF's WSM6 inputs equals CPPWRF's to roundoff, but at the cloud top of KF column (j=76, i=12) the
+  advected qr is a cancellation residue, +3.3e-25 in WRF and -1.1e-25 in CPPWRF, and WSM6 turns
+  that sign into a 12% QRAIN difference one level below (WRF's sign in CPPWRF's input reproduces
+  WRF's QRAIN bit for bit). Step 2 radiation: of 5341 cloudy columns only the 157 whose CLDFRA
+  differs (from that roundoff) differ in GLW (McICA subcolumns flip with cldf); the others agree
+  to < 1e-9.
+- P4 1 h CUDA FP64 vs WRF (real_p4_r8_fp64_cuda_1h): U 2.7e-4, THM 3.7e-6, QV 2.5e-4 (rel L2), the
+  same size as P2's.
+- Restart (P4, CPU FP64): step 3 straight vs restarted after step 1 bit-identical (CLDFRA,
+  RE_* carried).

@@ -20,8 +20,8 @@ void rrtmg_sw_core(int nlayers, double heatfac, const double* play, const double
                    const double* relqmcl, const double* resnmcl, double* swuflx, double* swdflx, double* swhr,
                    double* swuflxc, double* swdflxc, double* swhrc, double* swdkdir, double* swdkdif,
                    double* sibvisdir, double* sibvisdif, double* sibnirdir, double* sibnirdif, RrtmgSwWorkspace& ws,
-                   const RrtmgSwTables& tables) {
-  cldprmc_sw(nlayers, /*inflag=*/2, /*iceflag=*/3, /*liqflag=*/1, ws.cldfmc, ws.ciwpmc, ws.clwpmc, ws.cswpmc,
+                   const RrtmgSwTables& tables, int inflag, int iceflag, int liqflag) {
+  cldprmc_sw(nlayers, inflag, iceflag, liqflag, ws.cldfmc, ws.ciwpmc, ws.clwpmc, ws.cswpmc,
              reicmcl, relqmcl, resnmcl, ws.fsfcmc, ws.taormc, ws.taucmc, ws.ssacmc, ws.asmcmc, tables);
   // 7. Atmospheric preparation (inatm)
   constexpr double amd = 28.9660;
@@ -210,7 +210,10 @@ void rrtmg_sw_column(
     double& swnirdif,
     double* rthratensw,
     double* rthratenswc,
-    RrtmgSwWorkspace& ws
+    RrtmgSwWorkspace& ws,
+    const double* re_cloud,
+    const double* re_ice,
+    const double* re_snow
 ) {
   // If sun is below horizon, deactivate shortwave
   if (coszen <= 0.0) {
@@ -322,21 +325,70 @@ void rrtmg_sw_column(
     }
   }
 
-  // 4. Cloud physical properties (EM_CORE: iceflgsw=3, inflgsw=2)
+  // 4. Cloud physical properties (RRTMG_SWRAD, icloud != 0; EM_CORE branches)
+  int inflgsw = 2, iceflgsw = 3;
+  const int liqflgsw = 1;
   for (int k = 0; k < num_levels; ++k) {
-    double cldf = (cldfra3d && config.icloud != 0) ? cldfra3d[k] : 0.0;
+    const double cldf = (cldfra3d && config.icloud != 0) ? cldfra3d[k] : 0.0;
+    double qc1 = std::max(0., qc3d[k]), qi1 = std::max(0., qi3d[k]), qs1 = std::max(0., qs3d[k]);
+    double recloud1d = 5.0, reice1d = 10., resnow1d = 10.0;
+    if (re_cloud) {
+      recloud1d = std::max(2.5, re_cloud[k] * 1.E6);
+      if (recloud1d <= 2.5 && cldf > 0. && (xland - 1.5) > 0.) recloud1d = 10.5;       // ocean
+      else if (recloud1d <= 2.5 && cldf > 0. && (xland - 1.5) < 0.) recloud1d = 7.5;   // land
+      inflgsw = 3;
+    }
+    if (re_ice) {
+      inflgsw = 4; iceflgsw = 4;
+      reice1d = std::max(5., re_ice[k] * 1.E6);
+      if (reice1d <= 5. && cldf > 0.) {
+        int idx_rei = int(t3d[k] - 179.);
+        idx_rei = std::min(std::max(idx_rei, 1), 75);
+        const double corr = t3d[k] - int(t3d[k]);
+        reice1d = RETAB[idx_rei - 1] * (1. - corr) + RETAB[idx_rei] * corr;
+        reice1d = std::max(reice1d, 5.0);
+      }
+    }
+    if (re_snow) {
+      inflgsw = 5; iceflgsw = 5;
+      resnow1d = std::max(10., re_snow[k] * 1.E6);
+    }
+    if (!re_snow && re_ice && re_cloud) {  // P3: ice into the snow category for the optics
+      inflgsw = 5; iceflgsw = 5;
+      resnow1d = std::max(10., re_ice[k] * 1.E6);
+      qs1 = qi3d[k];
+      qi1 = 0.;
+      reice1d = 10.;
+    }
     cldfrac[k] = cldf;
-    double gicewp = (qi3d[k] + qs3d[k]) * pdel[k] * 100.0 / config.g * 1000.0; // g/m2
-    double gliqwp = qc3d[k] * pdel[k] * 100.0 / config.g * 1000.0;             // g/m2
-    double denom = std::max(0.01, cldf);
-    ciwpth[k] = gicewp / denom;
-    clwpth[k] = gliqwp / denom;
-    cswpth[k] = 0.0;
-
-    rel[k] = rrtmg_relcalc_single(tlay[k], xland, snow, xice);
-    double ri = rrtmg_reicalc_single(tlay[k]);
-    rei[k] = std::min(140.0, ri * 1.0315); // Fu ice size conversion
-    res[k] = 10.0;
+    double gicewp = (qi1 + qs1) * pdel[k] * 100.0 / config.g * 1000.0; // g/m2
+    const double gliqwp = qc1 * pdel[k] * 100.0 / config.g * 1000.0;   // g/m2
+    ciwpth[k] = gicewp / std::max(0.01, cldf);
+    clwpth[k] = gliqwp / std::max(0.01, cldf);
+    if (iceflgsw >= 4) {  // ice path without the snow
+      gicewp = qi1 * pdel[k] * 100.0 / config.g * 1000.0;
+      ciwpth[k] = gicewp / std::max(0.01, cldf);
+    }
+    double csnowp = 0.0;
+    if (iceflgsw == 5) {
+      double snow_mass_factor = 0.99;
+      if (resnow1d > 130.) {
+        snow_mass_factor = std::min(snow_mass_factor, (130.0 / resnow1d) * (130.0 / resnow1d));
+        resnow1d = 130.0;
+      }
+      const double gsnowp = qs1 * snow_mass_factor * pdel[k] * 100.0 / config.g * 1000.0;
+      csnowp = gsnowp / std::max(0.01, cldf);
+    }
+    rel[k] = inflgsw >= 3 ? recloud1d : rrtmg_relcalc_single(tlay[k], xland, snow, xice);
+    if (iceflgsw >= 4) rei[k] = reice1d;
+    else rei[k] = std::min(140.0, rrtmg_reicalc_single(tlay[k]) * 1.0315);  // Fu ice size conversion
+    if (inflgsw == 5) {
+      cswpth[k] = csnowp;
+      res[k] = resnow1d;
+    } else {
+      cswpth[k] = 0.0;
+      res[k] = 10.0;
+    }
   }
 
   cldfrac[num_levels] = 0.0;
@@ -413,7 +465,8 @@ void rrtmg_sw_column(
       nidif[RRTMG_SW_MAX_LAYERS + 1];
   rrtmg_sw_core(nlayers, config.heatfac, play, plev, tlay, tlev, h2ovmr, o3vmr, co2vmr, ch4vmr, n2ovmr, o2vmr,
                 albedo, albedo, albedo, albedo, coszen, 1.0, config.solcon, reicmcl, relqmcl, resnmcl, swuflx, swdflx,
-                swhr, swuflxc, swdflxc, swhrc, swdkdir, swdkdif, uvdir, uvdif, nidir, nidif, ws, tables);
+                swhr, swuflxc, swdflxc, swhrc, swdkdir, swdkdif, uvdir, uvdif, nidir, nidif, ws, tables, inflgsw,
+                iceflgsw, liqflgsw);
 
   // RRTMG_SWRAD outputs (level index 0 = surface, nlayers = top)
   gsw = swdflx[0] - swuflx[0];

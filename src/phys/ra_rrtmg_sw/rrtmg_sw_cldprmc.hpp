@@ -153,9 +153,10 @@ CPPWRF_HD inline void cldprmc_sw(
             ssacmc[idx] = (scatliq + scatice) / taucmc[idx];
 
             if (iceflag == 3 || iceflag == 4) {
+              // WRF grouping: scatliq*(gliq - forwliq)/(1 - forwliq) + scatice*((gice - forwice)/(1 - forwice))
               asmcmc[idx] = (1.0 / (scatliq + scatice)) *
                             (scatliq * (gliq - forwliq) / (1.0 - forwliq) +
-                             scatice * (gice - forwice) / (1.0 - forwice));
+                             scatice * ((gice - forwice) / (1.0 - forwice)));
             } else {
               asmcmc[idx] = (scatliq * (gliq - forwliq) / (1.0 - forwliq) +
                              scatice * (gice - forwice) / (1.0 - forwice)) / (scatliq + scatice);
@@ -174,8 +175,8 @@ CPPWRF_HD inline void cldprmc_sw(
 
             asmcmc[idx] = (1.0 / (scatliq + scatice + scatsno)) *
                           (scatliq * (gliq - forwliq) / (1.0 - forwliq) +
-                           scatice * (gice - forwice) / (1.0 - forwice) +
-                           scatsno * (gsno - forwsno) / (1.0 - forwsno));
+                           scatice * ((gice - forwice) / (1.0 - forwice)) +
+                           scatsno * ((gsno - forwsno) / (1.0 - forwsno)));
           }
         }
       }

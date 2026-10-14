@@ -375,9 +375,17 @@ bool DomainRunner::start() {
     if (su.radiation_on()) {
       for (const Field2* f : {&su.glw, &su.gsw, &su.swdown, &su.coszen}) extra_2d_.push_back(f);
       extra_3d_.push_back(&su.pt.rthraten);
+      extra_3d_.push_back(&su.cldfra);
+      if (auto* pc = m_.rk->physics(); pc && pc->params().microp_re)
+        extra_3d_.insert(extra_3d_.end(), {&pc->re_cloud, &pc->re_ice, &pc->re_snow});
     }
     if (su.options().cu_physics != 0)
+    {
       extra_3d_.insert(extra_3d_.end(), {&su.w0avg, &su.pt.rthcuten, &su.pt.rqvcuten, &su.pt.rqccuten});
+      if (m_.st->P_QR >= 0) extra_3d_.push_back(&su.pt.rqrcuten);
+      if (m_.st->P_QI >= 0) extra_3d_.push_back(&su.pt.rqicuten);
+      if (m_.st->P_QS >= 0) extra_3d_.push_back(&su.pt.rqscuten);
+    }
     if (m_.st->P_QC >= 0) extra_3d_.push_back(&su.pt.rqcblten);
     if (m_.st->P_QI >= 0) extra_3d_.push_back(&su.pt.rqiblten);
   }

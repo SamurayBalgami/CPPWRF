@@ -126,8 +126,14 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   Field3 t1_lag_;  // WRF grid%t_1 as seen by first_rk_step_part2 (wrf_t1_lag)
   Field2 coszen;   // radiation: cosine of the solar zenith angle (middle of the radiation interval)
   std::unique_ptr<RadiationDriver> rad_;
+  Field3 *re_cloud_ = nullptr, *re_ice_ = nullptr, *re_snow_ = nullptr;
   // radiation needs latitude/longitude (wrfinput XLAT/XLONG, i + nx*j); call before the first step
   void init_radiation(const std::vector<double>& xlat, const std::vector<double>& xlong);
+  // WSM6 effective radii (PhysicsCoupling, has_reqc = has_reqi = has_reqs = 1) seen by the radiation
+  void set_effective_radii(Field3* re_cloud, Field3* re_ice, Field3* re_snow) {
+    re_cloud_ = re_cloud; re_ice_ = re_ice; re_snow_ = re_snow;
+  }
+  Field3 cldfra;  // radiation cloud fraction (WRF CLDFRA)
   bool radiation_on() const { return o_.rad.ra_lw_physics != 0 || o_.rad.ra_sw_physics != 0; }
   bool t1_lag_set_ = false;
 

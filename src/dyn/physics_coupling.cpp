@@ -80,6 +80,14 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
     wp_.rv = real(pc::r_v); wp_.t0c = real(pc::svpt0); wp_.ep1 = real(pc::ep_1); wp_.ep2 = real(pc::ep_2);
     wp_.qmin = real(1e-15); wp_.xls = real(pc::xls); wp_.xlv0 = real(pc::xlv); wp_.xlf0 = real(pc::xlf);
     wp_.cliq = real(pc::cliq); wp_.cice = real(pc::cice); wp_.psat = real(610.78);
+    if (p_.microp_re) {  // phy_init: background values RE_QC_BG, RE_QI_BG, RE_QS_BG
+      re_cloud = Field3(g, Stagger::M, "re_cloud");
+      re_ice = Field3(g, Stagger::M, "re_ice");
+      re_snow = Field3(g, Stagger::M, "re_snow");
+      re_cloud.fill_host([](int, int, int) { return real(2.49E-6); });
+      re_ice.fill_host([](int, int, int) { return real(4.99E-6); });
+      re_snow.fill_host([](int, int, int) { return real(9.99E-6); });
+    }
     // wsm6init (WRF microphysics_driver arguments); once, not every step (review P1)
     wp_.init(real(pc::rhoair0), real(pc::rhowater), real(pc::rhosnow), real(pc::cliq), real(4.0 * pc::r_v),
              p_.hail_opt);
@@ -112,6 +120,13 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
                                             s.q_2[s.P_QG].view(), rho.cview(), pii.cview(), p_phy.cview(),
                                             dz8w.cview(), rainnc.view(), rainncv.view(), snownc.view(),
                                             snowncv.view(), graupelnc.view(), graupelncv.view(), sr.view()});
+    if (p_.microp_re)
+      parallel_for(Range3D{mp_cols.i0, mp_cols.i1, mp_cols.j0, mp_cols.j1, 0, g.nz},
+                   phys::wsm6::Wsm6EffRadKernel<real>{
+                       wp_.pidnc, wp_.pidn0s, wp_.alpha, wp_.n0s, wp_.n0smax, wp_.t0c, wp_.qmin, real(2.49E-6),
+                       real(4.99E-6), real(9.99E-6), real(50.E-6), real(125.E-6), real(999.E-6), th_phy.cview(),
+                       pii.cview(), s.q_2[s.P_QC].cview(), s.q_2[s.P_QI].cview(), s.q_2[s.P_QS].cview(), rho.cview(),
+                       re_cloud.view(), re_ice.view(), re_snow.view()});
   } else
   column_for(mp_cols,
              phys::kessler::KesslerKernel{th_phy.view(), qv.view(), s.q_2[s.P_QC].view(), s.q_2[s.P_QR].view(),

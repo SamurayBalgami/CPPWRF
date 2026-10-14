@@ -42,6 +42,14 @@ int main(int argc, char** argv) {
        rho = in.arr(n3), qv = in.arr(n3), o3 = in.arr(n3), cldfra = in.arr(n3);
   auto xlat = in.arr(n2), xlong = in.arr(n2), albedo = in.arr(n2), tsk = in.arr(n2), xland = in.arr(n2),
        xice = in.arr(n2), snow = in.arr(n2), coszen = in.arr(n2);
+  int hrc = 0, hri = 0, hrs = 0, mp = 0;  // cloud extension of the dump (09 UTC dumps)
+  std::vector<double> qc(n3, 0.), qi(n3, 0.), qs(n3, 0.), rec(n3, 0.), rei(n3, 0.), res(n3, 0.);
+  if (in.o < in.b.size()) {
+    hrc = in.i4(); hri = in.i4(); hrs = in.i4(); mp = in.i4();
+    qc = in.arr(n3); in.arr(n3); qi = in.arr(n3); qs = in.arr(n3); in.arr(n3);
+    rec = in.arr(n3); rei = in.arr(n3); res = in.arr(n3);
+    std::printf("clouds: has_reqc %d has_reqi %d has_reqs %d mp_physics %d\n", hrc, hri, hrs, mp);
+  }
   auto w_rth = out.arr(n3), w_rthc = out.arr(n3);
   auto w_gsw = out.arr(n2), w_swdnb = out.arr(n2), w_swupb = out.arr(n2), w_swdnt = out.arr(n2),
        w_swupt = out.arr(n2);
@@ -64,7 +72,7 @@ int main(int argc, char** argv) {
   }
   const int nz = kte - kts + 1;
   std::vector<double> cp8w(nz + 1), ct8w(nz + 1), cp(nz), cpi(nz), cdz(nz), ct(nz), crho(nz), cqv(nz), zero(nz, 0.0),
-      ccld(nz), co3(nz), rth(nz), rthc(nz);
+      ccld(nz), co3(nz), rth(nz), rthc(nz), cqc(nz), cqi(nz), cqs(nz), crec(nz), crei(nz), cres(nz);
   double mx[4] = {0}, sc[4] = {0};
   long nday = 0, nexact = 0, nnight = 0;
   for (int j = jts; j <= jte; ++j)
@@ -76,12 +84,14 @@ int main(int argc, char** argv) {
         const size_t q = I3(i, k + kts, j);
         cp[k] = p[q]; cpi[k] = pi[q]; cdz[k] = dz8w[q]; ct[k] = t[q]; crho[k] = rho[q]; cqv[k] = qv[q];
         ccld[k] = cldfra[q]; co3[k] = o3[q];
+        cqc[k] = qc[q]; cqi[k] = qi[q]; cqs[k] = qs[q]; crec[k] = rec[q]; crei[k] = rei[q]; cres[k] = res[q];
       }
       double gsw, swcf, swupt, swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc, a, b, cc, d;
       rrtmg_sw_column(nz, c, *tables, coszen[q2], albedo[q2], xland[q2], xice[q2], snow[q2], xlat[q2], cp8w.data(),
-                      ct8w.data(), cp.data(), cpi.data(), cdz.data(), ct.data(), crho.data(), cqv.data(), zero.data(),
-                      zero.data(), zero.data(), zero.data(), zero.data(), ccld.data(), co3.data(), gsw, swcf, swupt,
-                      swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc, a, b, cc, d, rth.data(), rthc.data(), *ws);
+                      ct8w.data(), cp.data(), cpi.data(), cdz.data(), ct.data(), crho.data(), cqv.data(), cqc.data(),
+                      zero.data(), cqi.data(), cqs.data(), zero.data(), ccld.data(), co3.data(), gsw, swcf, swupt,
+                      swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc, a, b, cc, d, rth.data(), rthc.data(), *ws,
+                      hrc ? crec.data() : nullptr, hri ? crei.data() : nullptr, hrs ? cres.data() : nullptr);
       bool ex = true;
       auto upd = [&](int v, double w, double x) {
         mx[v] = std::max(mx[v], std::abs(w - x)); sc[v] = std::max(sc[v], std::abs(w)); if (w != x) ex = false;

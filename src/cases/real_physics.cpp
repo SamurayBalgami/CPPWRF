@@ -239,6 +239,8 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   }
   // CANWAT = 0 (lsminit), the accumulations and fluxes stay zero
   su.init_radiation(m.xlat, m.xlong);
+  if (auto* pc = m.rk->physics(); pc && pc->params().microp_re)
+    su.set_effective_radii(&pc->re_cloud, &pc->re_ice, &pc->re_snow);
   m.rk->set_column_physics(m.suite.get());
 }
 #endif

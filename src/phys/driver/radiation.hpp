@@ -26,14 +26,21 @@ struct RadiationOptions {
 
 struct RadiationInputs {  // device fields (mass points) read by the radiation
   const Field3 *t_phy, *p_hyd, *p_hyd_w, *pi_phy, *rho, *dz8w, *t8w, *qv;
-  const Field3* cldfra;  // nullptr: no clouds (cldfra = 0)
+  const Field3 *qc, *qi, *qs;  // moist species (nullptr when the scheme has none: WRF F_QC, F_QI, F_QS)
+  const Field3 *re_cloud, *re_ice, *re_snow;  // microphysics effective radii (m): has_reqc/i/s, else nullptr
   const Field2 *tsk, *albedo, *emiss, *xland, *xice, *snow;
 };
 
 struct RadiationOutputs {
   Field3* rthraten;  // uncoupled theta tendency (K/s), LW + SW
   Field2 *glw, *gsw, *swdown, *coszen;
+  Field3* cldfra;    // cloud fraction (icloud = 1: cal_cldfra1), may be nullptr
 };
+
+// module_radiation_driver.F cal_cldfra1 for one column (bottom to top): qi / qs nullptr when the
+// scheme has no F_QI / F_QS; t (K) and p (Pa) are t_phy and p_hyd
+void cal_cldfra1(int nz, const double* qv, const double* qc, const double* qi, const double* qs, const double* t,
+                 const double* p, double* cldfra);
 
 class RadiationDriver {
  public:

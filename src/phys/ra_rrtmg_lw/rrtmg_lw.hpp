@@ -107,7 +107,7 @@ void rrtmg_lw_core(int nlayers, double cp, const double* play, const double* ple
                    const double* cfc12vmr, const double* cfc22vmr, const double* ccl4vmr, const double* semiss,
                    const double* rei, const double* rel, const double* res, double* totuflux, double* totdflux,
                    double* htr, double* totuclfl, double* totdclfl, double* htrc, RrtmgLwWorkspace& ws,
-                   const RrtmgLwTables& tables);
+                   const RrtmgLwTables& tables, int inflag = 2, int iceflag = 3, int liqflag = 1);
 
 // Single column execution
 CPPWRF_HD void rrtmg_lw_column(
@@ -153,7 +153,12 @@ CPPWRF_HD void rrtmg_lw_column(
     double* rthratenlw,  // [nz] K/s
     double* rthratenlwc, // [nz] K/s
     // Workspace
-    RrtmgLwWorkspace& ws
+    RrtmgLwWorkspace& ws,
+    // effective radii from the microphysics [nz] (m): WRF has_reqc / has_reqi / has_reqs != 0
+    // when given (nullptr: CAM relcalc / reicalc sizes, no separate snow)
+    const double* re_cloud = nullptr,
+    const double* re_ice = nullptr,
+    const double* re_snow = nullptr
 );
 
 // Multi-column driver (OpenMP CPU or sequential)

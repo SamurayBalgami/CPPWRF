@@ -1513,6 +1513,46 @@ struct Wsm6Kernel {
     }
 };
 
+// WRF physics_mmm/mp_wsm6_effectRad.F90 mp_wsm6_effectRad_run (do_microp_re: has_reqc = has_reqi =
+// has_reqs = 1), called by module_mp_wsm6.F after each WSM6 call with t = th*pii of the updated
+// column. The per-row has_qc/has_qi/has_qs flags only skip work, so the cell tests suffice.
+template <typename Real>
+struct Wsm6EffRadKernel {
+    Real pidnc, pidn0s, alpha, n0s, n0smax, t0c, qmin;
+    Real re_qc_bg, re_qi_bg, re_qs_bg, re_qc_max, re_qi_max, re_qs_max;
+    View3<const Real> th, pii, qc, qi, qs, den;
+    View3<Real> re_qc, re_qi, re_qs;
+    CPPWRF_HD void operator()(int i, int j, int k) const {
+        const Real R1 = Real(1.e-12), R2 = Real(1.e-6), obmr = Real(1.0) / Real(3.0), nc0 = Real(3.e8);
+        const Real rho = den(i, j, k), t = th(i, j, k) * pii(i, j, k);
+        Real rc = re_qc_bg, ri = re_qi_bg, rs = re_qs_bg;
+        const Real rqc = std::max(R1, qc(i, j, k) * rho);
+        const Real rqi = std::max(R1, qi(i, j, k) * rho);
+        Real temp = rho * std::max(qi(i, j, k), qmin);
+        temp = std::sqrt(std::sqrt(temp * temp * temp));
+        const Real ni = std::min(std::max(Real(5.38e7) * temp, Real(1.e3)), Real(1.e6));
+        const Real rni = std::max(R2, ni * rho);
+        const Real rqs = std::max(R1, qs(i, j, k) * rho);
+        if (rqc > R1) {
+            const Real lamdac = std::pow(pidnc * nc0 / rqc, obmr);
+            rc = std::max(Real(2.51E-6), std::min(Real(1.5) * (Real(1.0) / lamdac), re_qc_max));
+        }
+        if (rqi > R1 && rni > R2) {
+            const Real diai = Real(11.9) * std::sqrt(rqi / ni);
+            ri = std::max(Real(10.01E-6), std::min(Real(0.75) * Real(0.163) * diai, re_qi_max));
+        }
+        if (rqs > R1) {
+            const Real supcol = t0c - t;
+            const Real n0sfac = std::max(std::min(std::exp(alpha * supcol), n0smax / n0s), Real(1.));
+            const Real lamdas = std::sqrt(std::sqrt(pidn0s * n0sfac / rqs));
+            rs = std::max(Real(25.E-6), std::min(Real(0.5) * (Real(1.) / lamdas), re_qs_max));
+        }
+        re_qc(i, j, k) = std::max(re_qc_bg, std::min(rc, re_qc_max));
+        re_qi(i, j, k) = std::max(re_qi_bg, std::min(ri, re_qi_max));
+        re_qs(i, j, k) = std::max(re_qs_bg, std::min(rs, re_qs_max));
+    }
+};
+
 void run_wsm6(
     View3<real> th,
     View3<real> q,
