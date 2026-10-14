@@ -88,7 +88,7 @@ void DomainRunner::save_restart_file(const std::string& path, long step, double 
   if (rk && rk->physics()) {
     add_field2("rainnc", rk->physics()->rainnc);
     add_field2("rainncv", rk->physics()->rainncv);
-    if (rk->physics()->params().mp_physics == 6) {
+    if (rk->physics()->params().mp_physics == 6 || rk->physics()->params().mp_physics == 8) {
       add_field2("snownc", rk->physics()->snownc);
       add_field2("snowncv", rk->physics()->snowncv);
       add_field2("graupelnc", rk->physics()->graupelnc);
@@ -165,7 +165,7 @@ void DomainRunner::load_restart_file(const std::string& path) {
   if (rk && rk->physics()) {
     reg_field2("rainnc", rk->physics()->rainnc);
     reg_field2("rainncv", rk->physics()->rainncv);
-    if (rk->physics()->params().mp_physics == 6) {
+    if (rk->physics()->params().mp_physics == 6 || rk->physics()->params().mp_physics == 8) {
       reg_field2("snownc", rk->physics()->snownc);
       reg_field2("snowncv", rk->physics()->snowncv);
       reg_field2("graupelnc", rk->physics()->graupelnc);
@@ -353,7 +353,7 @@ bool DomainRunner::start() {
 
   if (m_.rk && m_.rk->physics()) {
     extra_2d_ = {&m_.rk->physics()->rainnc, &m_.rk->physics()->rainncv};
-    if (m_.rk->physics()->params().mp_physics == 6) {
+    if (m_.rk->physics()->params().mp_physics == 6 || m_.rk->physics()->params().mp_physics == 8) {
       extra_2d_.push_back(&m_.rk->physics()->snownc);
       extra_2d_.push_back(&m_.rk->physics()->snowncv);
       extra_2d_.push_back(&m_.rk->physics()->graupelnc);
@@ -630,6 +630,8 @@ void DomainRunner::do_snap(long n) {
       else if (qname == "qi") qname = "QICE";
       else if (qname == "qs") qname = "QSNOW";
       else if (qname == "qg") qname = "QGRAUP";
+      else if (qname == "qni") qname = "QNICE";
+      else if (qname == "qnr") qname = "QNRAIN";
       nc_vars.emplace_back(qname, 'M', nx, ny, nz, scalar_bufs[s].data(), f32, nx, (std::ptrdiff_t)nx * ny);
     }
 

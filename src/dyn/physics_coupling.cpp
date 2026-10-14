@@ -7,6 +7,7 @@
 #include "core/constants.hpp"
 #include "core/halo.hpp"
 #include "phys/mp_kessler/kessler.hpp"
+#include "phys/mp_thompson/thompson.hpp"
 #include "phys/mp_wsm6/wsm6.hpp"
 #include "phys/phys_constants.hpp"
 
@@ -65,8 +66,8 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
       th_phy(g, Stagger::M, "th_phy"), rho(g, Stagger::M, "rho"), pii(g, Stagger::M, "pii"), z(g, Stagger::M, "z"),
       dz8w(g, Stagger::M, "dz8w"), qv_diabatic(g, Stagger::M, "qv_diabatic"),
       p_phy(g, Stagger::M, "p_phy") {
-  if (p_.mp_physics != 0 && p_.mp_physics != 1 && p_.mp_physics != 6)
-    throw std::runtime_error("phys.mp_physics must be 0, 1 or 6");
+  if (p_.mp_physics != 0 && p_.mp_physics != 1 && p_.mp_physics != 6 && p_.mp_physics != 8)
+    throw std::runtime_error("phys.mp_physics must be 0, 1, 6 or 8");
   if (p_.mp_physics == 1 && g.nz > phys::kessler::kMaxLevels) throw std::runtime_error("Kessler: nz > kMaxLevels");
   if (p_.mp_physics == 6) {
     if (g.nz > phys::wsm6::kMaxLevels) throw std::runtime_error("WSM6: nz > kMaxLevels");
@@ -97,6 +98,21 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
       throw std::runtime_error("WSM6: cudaDeviceSetLimit(cudaLimitStackSize, 64 KB) failed");
 #endif
   }
+  if (p_.mp_physics == 8) {
+    if (g.nz > phys::mp_thompson::kMaxLevels) throw std::runtime_error("Thompson: nz > kMaxLevels");
+    snownc = Field2(g, Stagger::M, "snownc");
+    snowncv = Field2(g, Stagger::M, "snowncv");
+    graupelnc = Field2(g, Stagger::M, "graupelnc");
+    graupelncv = Field2(g, Stagger::M, "graupelncv");
+    sr = Field2(g, Stagger::M, "sr");
+    phys::mp_thompson::ThompsonHostTables<real> h;
+    phys::mp_thompson::init_thompson_tables(h);
+    tp_.upload(h);
+#if defined(CPPWRF_USE_CUDA)
+    if (cudaDeviceSetLimit(cudaLimitStackSize, 64 * 1024) != cudaSuccess)
+      throw std::runtime_error("Thompson: cudaDeviceSetLimit(cudaLimitStackSize, 64 KB) failed");
+#endif
+  }
 }
 
 void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
@@ -104,6 +120,8 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
   if (s.P_QV < 0 || s.P_QC < 0 || s.P_QR < 0) throw std::runtime_error("microphysics needs qv, qc, qr");
   if (p_.mp_physics == 6 && (s.P_QI < 0 || s.P_QS < 0 || s.P_QG < 0))
     throw std::runtime_error("mp_physics = 6 (WSM6) needs qv, qc, qr, qi, qs, qg");
+  if (p_.mp_physics == 8 && (s.P_QI < 0 || s.P_QS < 0 || s.P_QG < 0 || s.P_QNI < 0 || s.P_QNR < 0))
+    throw std::runtime_error("mp_physics = 8 (Thompson) needs qv, qc, qr, qi, qs, qg, qni, qnr");
   const Grid& g = g_;
   Field3& qv = s.q_2[s.P_QV];
   parallel_for(g.mass_cells(), KPrep{s.t_2.cview(), qv.cview(), s.ph_2.cview(), s.al.cview(), s.p.cview(),
@@ -127,17 +145,28 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
                        real(4.99E-6), real(9.99E-6), real(50.E-6), real(125.E-6), real(999.E-6), th_phy.cview(),
                        pii.cview(), s.q_2[s.P_QC].cview(), s.q_2[s.P_QI].cview(), s.q_2[s.P_QS].cview(), rho.cview(),
                        re_cloud.view(), re_ice.view(), re_snow.view()});
-  } else
-  column_for(mp_cols,
-             phys::kessler::KesslerKernel{th_phy.view(), qv.view(), s.q_2[s.P_QC].view(), s.q_2[s.P_QR].view(),
-                                          rho.cview(), pii.cview(), dz8w.cview(), z.cview(), rainnc.view(),
-                                          rainncv.view(), dt, real(pc::xlv), real(pc::cp), real(pc::ep_2),
-                                          real(pc::svp1), real(pc::svp2), real(pc::svp3), real(pc::svpt0),
-                                          real(pc::rhowater), g.nz});
+  } else if (p_.mp_physics == 8) {
+    phys::mp_thompson::run_thompson<real>(
+        th_phy.view(), qv.view(), s.q_2[s.P_QC].view(), s.q_2[s.P_QR].view(),
+        s.q_2[s.P_QI].view(), s.q_2[s.P_QS].view(), s.q_2[s.P_QG].view(),
+        s.q_2[s.P_QNI].view(), s.q_2[s.P_QNR].view(), pii.cview(), p_phy.cview(),
+        s.w_2.cview(), dz8w.cview(), rainnc.view(), rainncv.view(), snownc.view(),
+        snowncv.view(), graupelnc.view(), graupelncv.view(), sr.view(),
+        dt, mp_cols, g.nz, tp_.view());
+  } else {
+    column_for(mp_cols,
+               phys::kessler::KesslerKernel{th_phy.view(), qv.view(), s.q_2[s.P_QC].view(), s.q_2[s.P_QR].view(),
+                                            rho.cview(), pii.cview(), dz8w.cview(), z.cview(), rainnc.view(),
+                                            rainncv.view(), dt, real(pc::xlv), real(pc::cp), real(pc::ep_2),
+                                            real(pc::svp1), real(pc::svp2), real(pc::svp3), real(pc::svpt0),
+                                            real(pc::rhowater), g.nz});
+  }
   parallel_for(g.mass_cells(), KFinish{s.t_2.view(), s.h_diabatic.view(), th_phy.cview(), qv.cview(),
                                        qv_diabatic.cview(), dt, p_.mp_tend_lim});
   std::vector<Field3*> fs{&s.t_2, &s.h_diabatic};
   for (int n = 0; n < s.n_moist; ++n) fs.push_back(&s.q_2[n]);
+  if (s.P_QNI >= 0) fs.push_back(&s.q_2[s.P_QNI]);
+  if (s.P_QNR >= 0) fs.push_back(&s.q_2[s.P_QNR]);
   fill_halos(fs, g);
 }
 

@@ -218,11 +218,15 @@ void init_real_case(const io::Config& cfg, Model& m) {
     s.add_scalar(g, n, true);
     m.tend->add_scalar(g, n);
   }
+  for (const std::string& n : split_list(cfg.get_string("tracers.names", ""))) {
+    s.add_scalar(g, n, false);
+    m.tend->add_scalar(g, n);
+  }
   if (s.P_QV < 0) throw std::runtime_error("case = real needs qv in moist.species");
   const std::vector<double>& qv = d.qvapor;
+  const std::string wi_path = dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01");
   // t_2 = theta_m - t0: WRF reads it from wrfinput (Registry dataname THM); older inputs: from T, qv
-  std::vector<double> thm = read_var_if_present(dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01"), "THM",
-                                                qv.size());
+  std::vector<double> thm = read_var_if_present(wi_path, "THM", qv.size());
   if (thm.empty()) {
     thm.resize(qv.size());
     for (std::size_t n = 0; n < thm.size(); ++n) thm[n] = (d.t[n] + cst::t0) * (1.0 + cst::rvovrd * qv[n]) - cst::t0;
@@ -235,11 +239,15 @@ void init_real_case(const io::Config& cfg, Model& m) {
   s.ph_2.fill_host([&](int i, int j, int k) { return d.ph[idx3(i, j, k, nx, ny)]; });
   s.mu_2.fill_host([&](int i, int j, int) { return d.mu[std::size_t(j) * nx + i]; });
   s.q_2[s.P_QV].fill_host([&](int i, int j, int k) { return qv[idx3(i, j, k, nx, ny)]; });
-  for (int q = 0; q < s.n_moist; ++q) {  // other moist species from wrfinput if present, else 0
+  for (int q = 0; q < s.n_scalars(); ++q) {  // other moist/scalar species from wrfinput if present, else 0
     if (q == s.P_QV) continue;
     const std::string& nm = s.q_names[q];
+    std::vector<double> extra_q;
+    if (nm == "qni") extra_q = read_var_if_present(wi_path, "QNICE", qv.size());
+    else if (nm == "qnr") extra_q = read_var_if_present(wi_path, "QNRAIN", qv.size());
     const std::vector<double>* src = nm == "qc" ? &d.qcloud : nm == "qr" ? &d.qrain : nm == "qi" ? &d.qice
-                                     : nm == "qs" ? &d.qsnow : nm == "qg" ? &d.qgraup : nullptr;
+                                     : nm == "qs" ? &d.qsnow : nm == "qg" ? &d.qgraup
+                                     : (!extra_q.empty() ? &extra_q : nullptr);
     const bool have = src && src->size() == qv.size();
     s.q_2[q].fill_host([&](int i, int j, int k) { return have ? (*src)[idx3(i, j, k, nx, ny)] : 0.0; });
     fill_halo(s.q_2[q], g);

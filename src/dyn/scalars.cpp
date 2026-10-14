@@ -245,7 +245,7 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
                                  q_new_.view(), dt_rk});
     }
     swap(q2, q_new_);
-    if (bc_ && moist && !bc_->has_scalar(n)) bc_->flow_dep(q2, s);  // no boundary data (have_bcs_moist = .false.)
+    if (bc_ && !bc_->has_scalar(n)) bc_->flow_dep(q2, s);  // no boundary data (have_bcs_moist/scalar = .false.)
   }
   std::vector<Field3*> qs;  // halos of the new scalars, batched (one launch per 8 fields)
   for (int n = 0; n < ns; ++n) qs.push_back(&s.q_2[n]);

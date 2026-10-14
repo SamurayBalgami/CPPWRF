@@ -66,7 +66,11 @@ list(APPEND CPPWRF_SOURCES
   ${CMAKE_SOURCE_DIR}/src/phys/lsm_noah/noah.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/lsm_noah/noah_tables.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/cu_kf/kf.cpp
-  ${CMAKE_SOURCE_DIR}/src/phys/cu_kf/kf_tables.cpp)
+  ${CMAKE_SOURCE_DIR}/src/phys/cu_kf/kf_tables.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/mp_thompson/thompson.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/mp_thompson/thompson_tables.cpp)
+set_source_files_properties(${CMAKE_SOURCE_DIR}/src/phys/mp_thompson/thompson.cpp
+  PROPERTIES COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>")
 
 add_library(cppwrf_core STATIC ${CPPWRF_SOURCES})
 # tables shipped with the sources (data/rrtmg)

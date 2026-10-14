@@ -23,6 +23,7 @@ Tendencies::Tendencies(const Grid& g)
       t_tendf(g, S::M, "t_tendf"), ph_tendf(g, S::W, "ph_tendf") {}
 
 int State::add_scalar(const Grid& g, const std::string& name, bool moist) {
+  if (name == "qni" || name == "qnr") moist = false;  // number concentrations [#/kg] are WRF 'scalar', not 'moist'
   for (auto& n : q_names)
     if (n == name) throw std::runtime_error("duplicate scalar '" + name + "'");
   if (moist && n_moist != n_scalars()) throw std::runtime_error("moist species must precede passive tracers");
@@ -43,6 +44,8 @@ int State::add_scalar(const Grid& g, const std::string& name, bool moist) {
     if (name == "qs") P_QS = idx;
     if (name == "qg") P_QG = idx;
   }
+  if (name == "qni") P_QNI = idx;
+  if (name == "qnr") P_QNR = idx;
   return idx;
 }
 
