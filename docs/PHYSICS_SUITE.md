@@ -195,3 +195,16 @@ Acceptance against WRF v4.6.1 real*8, run P1_r8 (`configs/real_p1_r8.ini`, tests
 CPPWRF CPU FP64 vs CUDA FP64 differ by the same amount as either does from WRF (TSK 7.5e-5,
 TSLB 1e-4 max rel at 1 h, from 5e-13 at 10 min), so this is the sensitivity of the problem,
 not a port difference.
+
+## 6. Microphysics with the column physics (P5 = P1 + WSM6 + diff_opt 1, km_opt 4)
+
+Reference: WRF v4.6.1 real*8 run ~/wrf_real/run_P5_r8 (run_P4_r8 inputs with
+ra_lw/ra_sw/cu_physics = 0; history every step; `configs/real_p5_r8.ini`). Step 1 is at
+roundoff (U 7e-15, QCLOUD 3e-12, QICE 5e-13; wrf_suite.py real_p5_r8_fp64_cpu). From step 2,
+QICE differs by ~4e-5 (rel L2). Proven not to be a port difference: a debug build of WRF dumped
+its WSM6 inputs at step 2; they equal CPPWRF's to 5e-12 (th 2e-15, qi 2.5e-12, rho 6e-14), the
+scalar Fortran driver (tests/phys/mp_wsm6) reproduces WRF's QICE bit for bit from WRF's inputs
+and CPPWRF's WSM6 bit for bit from CPPWRF's inputs. WSM6 amplifies the input roundoff by ~1e8
+(ice processes at thresholds once ice exists): CPPWRF CPU FP64 vs CUDA FP64 differ by the same
+7e-5 at step 2. Microphysics runs can therefore only be checked at roundoff for the first step;
+later steps and FP32 are statistical comparisons.

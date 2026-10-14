@@ -369,8 +369,10 @@ bool DomainRunner::start() {
                             &su.acgrdflx, &su.achfx, &su.aclhf, &su.sfcevp, &su.potevp, &su.mol, &su.rmol, &su.br,
                             &su.wspd, &su.fm, &su.fh, &su.zol, &su.regime, &su.sfcexc, &su.lai, &su.xland})
       extra_2d_.push_back(f);
-    extra_3d_ = {&su.tslb, &su.smois, &su.sh2o, &su.pt.rublten, &su.pt.rvblten, &su.pt.rthblten, &su.pt.rqvblten,
-                 &su.exch_h};
+    extra_3d_.insert(extra_3d_.end(), {&su.tslb, &su.smois, &su.sh2o, &su.pt.rublten, &su.pt.rvblten, &su.pt.rthblten,
+                                       &su.pt.rqvblten, &su.exch_h});
+    if (m_.st->P_QC >= 0) extra_3d_.push_back(&su.pt.rqcblten);
+    if (m_.st->P_QI >= 0) extra_3d_.push_back(&su.pt.rqiblten);
   }
 
 #ifdef CPPWRF_HAVE_NETCDF

@@ -40,6 +40,11 @@ CASES = [
     ("real_p1_fp32_1h", "cuda", "configs/real_p1_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P1", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P1/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-4, "W": 1e-2, "THM": 2e-6, "QV": 1e-4}),
+    # P1 + WSM6 + diff_opt 1/km_opt 4 (run P5_r8): step 1 at roundoff. From step 2 on
+    # WSM6 amplifies input roundoff ~1e8 (CPU vs CUDA FP64 QICE 7e-5): only step 1 is checked.
+    ("real_p5_r8_fp64_cpu", "cpu_dp", "configs/real_p5_r8.ini", ["run.run_time=60"],
+     f"{WR}/run_P5_r8/wrfout_d01_2026-10-12_00:00:00", 60,
+     {"U": 1e-13, "W": 1e-10, "THM": 1e-14, "QV": 1e-14, "MU": 1e-14, "QCLOUD": 1e-10, "QICE": 1e-10}),
     ("wdamp_w1_fp64", "cpu_dp", "configs/real_r3.ini",
      ["real.dir=" + f"{WR}/run_W1_r8", "time.dt=450", "run.run_time=4500", "output.out_interval=1",
       "output.diag_interval=1"], f"{WR}/run_W1_r8/wrfout_d01_2026-10-12_00:00:00", 4500,
