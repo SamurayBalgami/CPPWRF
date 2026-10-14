@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/backend.hpp"
+#include "phys/ra_rrtmg_common/strided.hpp"
 #include "phys/ra_rrtmg_sw/rrtmg_sw_tables.hpp"
 #include <algorithm>
 #include <cmath>
@@ -9,34 +10,34 @@ namespace cppwrf::phys {
 
 CPPWRF_HD inline void setcoef_sw(
     int nlayers,
-    const double* pavel,      // (nlayers)
-    const double* tavel,      // (nlayers)
-    const double* coldry,     // (nlayers)
-    const double* const* wkl, // wkl[imol][lay], 1-based in WRF: wkl[0]=h2o, wkl[1]=co2, wkl[2]=o3, wkl[3]=n2o, wkl[5]=ch4, wkl[6]=o2
+    SD pavel,      // (nlayers)
+    SD tavel,      // (nlayers)
+    SD coldry,     // (nlayers)
+    SD2 wkl, // wkl[imol][lay], 1-based in WRF: wkl[0]=h2o, wkl[1]=co2, wkl[2]=o3, wkl[3]=n2o, wkl[5]=ch4, wkl[6]=o2
     int& laytrop,
     int& layswtch,
     int& laylow,
-    int* jp,                  // (nlayers)
-    int* jt,                  // (nlayers)
-    int* jt1,                 // (nlayers)
-    double* colh2o,           // (nlayers)
-    double* colco2,           // (nlayers)
-    double* colo3,            // (nlayers)
-    double* coln2o,           // (nlayers)
-    double* colch4,           // (nlayers)
-    double* colo2,            // (nlayers)
-    double* colmol,           // (nlayers)
-    double* co2mult,          // (nlayers)
-    int* indself,             // (nlayers)
-    int* indfor,              // (nlayers)
-    double* selffac,          // (nlayers)
-    double* selffrac,         // (nlayers)
-    double* forfac,           // (nlayers)
-    double* forfrac,          // (nlayers)
-    double* fac00,            // (nlayers)
-    double* fac01,            // (nlayers)
-    double* fac10,            // (nlayers)
-    double* fac11,            // (nlayers)
+    SI jp,                  // (nlayers)
+    SI jt,                  // (nlayers)
+    SI jt1,                 // (nlayers)
+    SD colh2o,           // (nlayers)
+    SD colco2,           // (nlayers)
+    SD colo3,            // (nlayers)
+    SD coln2o,           // (nlayers)
+    SD colch4,           // (nlayers)
+    SD colo2,            // (nlayers)
+    SD colmol,           // (nlayers)
+    SD co2mult,          // (nlayers)
+    SI indself,             // (nlayers)
+    SI indfor,              // (nlayers)
+    SD selffac,          // (nlayers)
+    SD selffrac,         // (nlayers)
+    SD forfac,           // (nlayers)
+    SD forfrac,          // (nlayers)
+    SD fac00,            // (nlayers)
+    SD fac01,            // (nlayers)
+    SD fac10,            // (nlayers)
+    SD fac11,            // (nlayers)
     const RrtmgSwTables& tables
 ) {
   constexpr double stpfac = 296.0 / 1013.0;

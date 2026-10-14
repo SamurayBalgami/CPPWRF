@@ -274,7 +274,7 @@ after these corrections:
 CAM ozone is bit-identical on all columns; COSZEN differs by 1 ulp (the WRF binary's vectorised
 sin/cos, libmvec). Tables: `~/wrf_real/rrtmg_tables` (rrtmg_lw/sw_tables.bin dumped from WRF's
 rrtmg_lw/swinit with the _DBL data, ozone*.formatted, CAMtr_volume_mixing_ratio; config key
-phys.rrtmg_tables). The columns run on the host with OpenMP for now (GPU port pending).
+phys.rrtmg_tables). Execution: section 10.
 Clouds: section 9. Not yet: aer_opt, swint_opt.
 Acceptance (wrf_suite.py): real_p3_r8_fp64_cpu steps 1-3 U 2.2e-14, THM 1.8e-16; P3 1 h CPU FP64
 interior U 7e-12; real_p3_fp32_1h U 1.9e-4, THM 7.3e-7.
@@ -329,3 +329,37 @@ Verification:
   same size as P2's.
 - Restart (P4, CPU FP64): step 3 straight vs restarted after step 1 bit-identical (CLDFRA,
   RE_* carried).
+
+
+## 10. RRTMG on the GPU
+
+RRTMG_LWRAD / RRTMG_SWRAD are written as stages over strided per-column views
+(`src/phys/ra_rrtmg_common/strided.hpp`: x[i] = p[i*s]; one column in local arrays with s = 1, or a
+batch of columns in device memory with the column index fastest, s = ncol):
+
+| stage | LW (`rrtmg_lw_stages.hpp`) | SW (`rrtmg_sw_stages.hpp`) | GPU kernel over |
+|---|---|---|---|
+| prep | RRTMG_LWRAD profiles, buffer layers, inirad/CAM ozone, cloud properties, McICA subcolumns, inatm, setcoef, secdiff | RRTMG_SWRAD profiles, ozone, cloud properties, McICA, inatm_sw, setcoef_sw, taumol_sw | column |
+| layer | cldprmc, taumol (one layer, all bands), cloudy-layer flag | - | column x layer |
+| band / g-point | rtrnmc's g-point loop of one band (band sums of every level) | spcvmc_sw for one g-point (its cldprmc_sw, delta scaling, reftra, vrtqdr), contributions to every level | column x band (16) / column x g-point (112) |
+| level | band sums in band order (fluxfac, fnet) | g-point sums in WRF's order (also UV/visible, near-IR) | column x level |
+| finish | heating rates, GLW, RTHRATENLW | heating rates, GSW, RTHRATENSW | column |
+
+Every value keeps WRF's arithmetic and summation order (the McICA random numbers are drawn
+subcolumn by subcolumn in WRF's order; the subcolumn water paths are the layer paths where the
+subcolumn is cloudy; WRF's clear-sky assignments clrdrad = drad stay inside the band loop).
+CPU builds run the stages column by column (`rrtmg_lw_column` / `rrtmg_sw_column`, OpenMP over
+columns): **bit-identical to WRF** (P3 night and 09 UTC dumps, 10591/10591 columns, cores and
+wrappers). CUDA builds (`RrtmgLwBatch`, `RrtmgSwBatch`, `RadiationDriver` device path: inputs
+staged once, coszen, CAM ozone and cal_cldfra1 per column on the device, no host transfers) run in
+chunks of 2048 columns (~0.7 GB of work arrays) and are compiled with `--fmad=false` (the table
+indices int(tblint*x + 0.5) jump with contracted products): on the same dumps 10484/10591 (LW) and
+10488/10591 (SW) columns bit-identical to WRF, the rest at roundoff (GLW 3e-16, RTHRATENLW 7e-15,
+GSW 2e-15, RTHRATENSW 2e-13; device exp/log). The batch path also runs on the CPU
+(tests/phys/ra_rrtmg_{lw,sw}/batch_check.cpp: bit-identical, but 2.4x slower than the column path
+there because of the column-fastest layout).
+
+Speed (RTX 2060 mobile, FP64, 119 x 89 x 44, one call for all 10591 columns): LW 0.17 s
+(band 40 %, layer 33 %, prep 25 %), SW 0.37 s in daytime (g-point 83 %); the host path took
+3.4 s (LW) single-threaded. Model, radt = 1 (radiation every step): P3 CUDA FP64 3200 ->
+510 ns/cell/step, P4 1 h 3234 -> 650 ns/cell/step.

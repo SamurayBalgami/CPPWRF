@@ -2,14 +2,18 @@
 // WRF phys/module_radiation_driver.F radiation_driver for ra_lw_physics = 4 / ra_sw_physics = 4
 // (RRTMG) with o3input = 2 (CAM ozone), ghg_input = 1 (CAMtr_volume_mixing_ratio), aer_opt = 0,
 // swint_opt = 0, icloud = 1, cldovrlp, idcor, slope_rad = topo_shading = 0, single domain.
-// First version: the columns run on the host (OpenMP); in CUDA builds the inputs are downloaded
-// and the outputs uploaded once per radiation call.
+// CPU builds: one RRTMG column at a time per OpenMP thread (rrtmg_lw_column / rrtmg_sw_column).
+// CUDA builds: everything on the device: inputs staged column-fastest, coszen, CAM ozone and
+// cal_cldfra1 per column, the RRTMG stages as kernels (RrtmgLwBatch / RrtmgSwBatch).
+#include <algorithm>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "core/field.hpp"
 #include "core/grid.hpp"
+#include "phys/ra_rrtmg_common/strided.hpp"
 
 namespace cppwrf::phys::driver {
 
@@ -37,10 +41,66 @@ struct RadiationOutputs {
   Field3* cldfra;    // cloud fraction (icloud = 1: cal_cldfra1), may be nullptr
 };
 
-// module_radiation_driver.F cal_cldfra1 for one column (bottom to top): qi / qs nullptr when the
-// scheme has no F_QI / F_QS; t (K) and p (Pa) are t_phy and p_hyd
-void cal_cldfra1(int nz, const double* qv, const double* qc, const double* qi, const double* qs, const double* t,
-                 const double* p, double* cldfra);
+// calc_coszen (module_radiation_driver.F) for one column; xtime in minutes, angles in degrees
+CPPWRF_HD inline double calc_coszen(double julian, double xtime, double gmt, double declin, double xlon,
+                                    double xlat) {
+  constexpr double piconst = 3.1415926535897932384626433;
+  constexpr double degrad = piconst / 180.;
+  const double da = 6.2831853071795862 * (julian - 1) / 365.;
+  const double eot = (0.000075 + 0.001868 * std::cos(da) - 0.032077 * std::sin(da) - 0.014615 * std::cos(2 * da) -
+                      0.04089 * std::sin(2 * da)) * (229.18);
+  const double xt24 = std::fmod(xtime, 1440.) + eot;
+  const double tloctm = gmt + xt24 / 60. + xlon / 15.;
+  const double hrang = 15. * (tloctm - 12.) * degrad;
+  const double xxlat = xlat * degrad;
+  double c = std::sin(xxlat) * std::sin(declin) + std::cos(xxlat) * std::cos(declin) * std::cos(hrang);
+  return std::min(std::max(c, -1.0), 1.0);
+}
+
+// module_radiation_driver.F cal_cldfra1 for one column (bottom to top): qi / qs with p == nullptr
+// when the scheme has no F_QI / F_QS; t (K) and p (Pa) are t_phy and p_hyd. mp_physics !=
+// FER_MP_HIRES; F_QC and not F_QI but F_QS needs F_ICE_PHY (not ported).
+CPPWRF_HD inline void cal_cldfra1(int nz, SD qv, SD qc, SD qi, SD qs, SD t, SD p, SD cldfra) {
+  constexpr double ALPHA0 = 100., GAMMA = 0.49, QCLDMIN = 1.E-12, PEXP = 0.25, RHGRID = 1.0;
+  constexpr double SVP1 = 0.61078, SVP2 = 17.2693882, SVPI2 = 21.8745584, SVP3 = 35.86, SVPI3 = 7.66,
+                   SVPT0 = 273.15, r_d = 287., r_v = 461.6, ep_2 = r_d / r_v;
+  for (int k = 0; k < nz; ++k) {
+    const double tk = t[k], pk = p[k];
+    const double tc = tk - SVPT0;
+    const double esw = 1000.0 * SVP1 * std::exp(SVP2 * tc / (tk - SVP3));
+    const double esi = 1000.0 * SVP1 * std::exp(SVPI2 * tc / (tk - SVPI3));
+    const double QVSW = ep_2 * esw / (pk - esw);
+    const double QVSI = ep_2 * esi / (pk - esi);
+    double QCLD = 0, weight = 0;
+    if (qi.p && qs.p) {
+      QCLD = qi[k] + qc[k] + qs[k];
+      weight = QCLD < QCLDMIN ? 0. : (qi[k] + qs[k]) / QCLD;
+    } else if (qi.p) {
+      QCLD = qi[k] + qc[k];
+      weight = QCLD < QCLDMIN ? 0. : qi[k] / QCLD;
+    } else {  // F_QC only
+      QCLD = qc[k];
+      if (QCLD < QCLDMIN) weight = 0.;
+      else weight = tk > 273.15 ? 0. : 1.;
+    }
+    const double QVS_WEIGHT = (1 - weight) * QVSW + weight * QVSI;
+    double RHUM = qv[k] / QVS_WEIGHT;
+    double cf;
+    if (QCLD < QCLDMIN) {
+      cf = 0.;
+    } else if (RHUM >= RHGRID) {
+      cf = 1.;
+    } else {
+      const double SUBSAT = std::max(1.E-10, RHGRID * QVS_WEIGHT - qv[k]);
+      const double DENOM = std::pow(SUBSAT, GAMMA);
+      const double ARG = std::max(-6.9, -ALPHA0 * QCLD / DENOM);
+      RHUM = std::max(1.E-10, RHUM);
+      cf = std::pow(RHUM / RHGRID, PEXP) * (1. - std::exp(ARG));
+      if (cf < .01) cf = 0.;
+    }
+    cldfra[k] = cf;
+  }
+}
 
 class RadiationDriver {
  public:

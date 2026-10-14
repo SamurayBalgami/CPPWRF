@@ -7,6 +7,7 @@
 #include "phys/ra_rrtmg_lw/rrtmg_lw_setcoef.hpp"
 #include "phys/ra_rrtmg_lw/rrtmg_lw_tables.hpp"
 #include "phys/ra_rrtmg_lw/rrtmg_lw_taumol.hpp"
+#include "phys/ra_rrtmg_lw/rrtmg_lw_stages.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -46,7 +47,11 @@ struct RrtmgLwWorkspace {
   double* wkl_ptrs[7];
   double* wx_ptrs[4];
 
-  CPPWRF_HD void init_pointers() {
+  // stride-1 storage of the stage views (rrtmg_lw_stages.hpp) of the column driver
+  std::vector<double> d;
+  std::vector<int> i;
+
+  void init_pointers() {
     for (int i = 0; i < 140; ++i) {
       cldfmc_ptrs[i] = cldfmc[i];
       ciwpmc_ptrs[i] = ciwpmc[i];
@@ -87,16 +92,14 @@ struct RrtmgLwConfig {
   double co2{0}, n2o{0}, ch4{0}, cfc11{0}, cfc12{0};
 };
 
+// call configuration of the stages (nlayers, heatfac, gases) and the RRTMG_LWRAD constants
+RrtmgLwCallConfig rrtmg_lw_call_config(int num_levels, const RrtmgLwConfig& config, bool hrc, bool hri, bool hrs);
+const RrtmgLwConsts& rrtmg_lw_consts();
+
 // RRTMG_LWRAD trace gases without ghg_input (WRF's fixed values, CO2 from the year)
 void rrtmg_default_gases(RrtmgLwConfig& c);
 
-// Compute standard ozone profile climatology (INIRAD / O3DATA from WRF)
-CPPWRF_HD void rrtmg_lw_inirad(
-    double* o3mmr,
-    const double* plev, // [nlayers + 1] in mb
-    int kts,
-    int kte
-);
+
 
 // WRF rrtmg_lw (inatm, cldprmc, setcoef, taumol, rtrnmc) for one column whose McICA subcolumn
 // cloud arrays are already in ws (cldfmc, ciwpmc, clwpmc, cswpmc). Layer arrays have nlayers
@@ -110,7 +113,7 @@ void rrtmg_lw_core(int nlayers, double cp, const double* play, const double* ple
                    const RrtmgLwTables& tables, int inflag = 2, int iceflag = 3, int liqflag = 1);
 
 // Single column execution
-CPPWRF_HD void rrtmg_lw_column(
+void rrtmg_lw_column(
     int num_levels, // model nz (e.g. 50)
     const RrtmgLwConfig& config,
     const RrtmgLwTables& tables,

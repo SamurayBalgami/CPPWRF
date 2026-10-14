@@ -53,7 +53,6 @@ int main(int argc, char** argv) {
     in.arr(wuc.data(), nlay + 1); in.arr(wdc.data(), nlay + 1); in.arr(whrc.data(), nlay);
     for (int g = 0; g < 140; ++g)
       for (int l = 0; l < nlay; ++l) ws->cldfmc[g][l] = ws->ciwpmc[g][l] = ws->clwpmc[g][l] = ws->cswpmc[g][l] = ws->taucmc[g][l] = 0;
-    if (ncol == 0) g_rrtmg_lw_dbg = std::fopen("cdbg.bin", "wb");
     rrtmg_lw_core(nlay, 1004.5, play.data(), plev.data(), tlay.data(), tlev.data(), tsfc, h2o.data(), o3.data(),
                   co2.data(), ch4.data(), n2o.data(), o2.data(), c11.data(), c12.data(), c22.data(), ccl4.data(),
                   emis.data(), rei.data(), rel.data(), res.data(), cu.data(), cd.data(), chr.data(), cuc.data(),

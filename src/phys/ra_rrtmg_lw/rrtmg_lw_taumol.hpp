@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/backend.hpp"
+#include "phys/ra_rrtmg_common/strided.hpp"
 #include "phys/ra_rrtmg_lw/rrtmg_lw_tables.hpp"
 #include "phys/ra_rrtmg_lw/rrtmg_lw_setcoef.hpp"
 #include <algorithm>
@@ -10,56 +11,57 @@ namespace cppwrf::phys {
 
 CPPWRF_HD inline void rrtmg_lw_taugb01(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b01;
   int lay, ind0, ind1, inds, indf, indm, ig;
   double pp, corradj, scalen2, tauself, taufor, taun2;
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   ind0 = ((jp[lay]-1)*5+(jt[lay]-1))*1 + 1;
   ind1 = (jp[lay]*5+(jt1[lay]-1))*1 + 1;
   inds = indself[lay];
@@ -79,7 +81,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb01(
   fracs[lay][ig - 1] = b.fracrefa[ig - 1];
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*1 + 1;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*1 + 1;
   indf = indfor[lay];
@@ -98,56 +100,57 @@ CPPWRF_HD inline void rrtmg_lw_taugb01(
 
 CPPWRF_HD inline void rrtmg_lw_taugb02(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b02;
   int lay, ind0, ind1, inds, indf, ig;
   double pp, corradj, tauself, taufor;
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   ind0 = ((jp[lay]-1)*5+(jt[lay]-1))*1 + 1;
   ind1 = (jp[lay]*5+(jt1[lay]-1))*1 + 1;
   inds = indself[lay];
@@ -161,7 +164,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb02(
   fracs[lay][10+ig - 1] = b.fracrefa[ig - 1];
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*1 + 1;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*1 + 1;
   indf = indfor[lay];
@@ -175,50 +178,51 @@ CPPWRF_HD inline void rrtmg_lw_taugb02(
 
 CPPWRF_HD inline void rrtmg_lw_taugb03(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b03;
@@ -238,7 +242,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb03(
   refrat_planck_b = get_chi_mls(tables, 1, 13)/get_chi_mls(tables, 2, 13);
   refrat_m_a = get_chi_mls(tables, 1, 3)/get_chi_mls(tables, 2, 3);
   refrat_m_b = get_chi_mls(tables, 1, 13)/get_chi_mls(tables, 2, 13);
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   speccomb = colh2o[lay] + rat_h2oco2[lay]*colco2[lay];
   specparm = colh2o[lay]/speccomb;
   if (specparm  >=  oneminus) specparm = oneminus;
@@ -361,7 +365,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb03(
   fracs[lay][22+ig - 1] = b.fracrefa[(jpl - 1) * 16 + (ig - 1)] + fpl * (b.fracrefa[(jpl+1 - 1) * 16 + (ig - 1)]-b.fracrefa[(jpl - 1) * 16 + (ig - 1)]);
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   speccomb = colh2o[lay] + rat_h2oco2[lay]*colco2[lay];
   specparm = colh2o[lay]/speccomb;
   if (specparm  >=  oneminus) specparm = oneminus;
@@ -420,50 +424,51 @@ CPPWRF_HD inline void rrtmg_lw_taugb03(
 
 CPPWRF_HD inline void rrtmg_lw_taugb04(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b04;
@@ -480,7 +485,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb04(
   double tau_major, tau_major1;
   refrat_planck_a = get_chi_mls(tables, 1, 11)/get_chi_mls(tables, 2, 11);
   refrat_planck_b = get_chi_mls(tables, 3, 13)/get_chi_mls(tables, 2, 13);
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   speccomb = colh2o[lay] + rat_h2oco2[lay]*colco2[lay];
   specparm = colh2o[lay]/speccomb;
   if (specparm  >=  oneminus) specparm = oneminus;
@@ -584,7 +589,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb04(
   fracs[lay][38+ig - 1] = b.fracrefa[(jpl - 1) * 14 + (ig - 1)] + fpl * (b.fracrefa[(jpl+1 - 1) * 14 + (ig - 1)]-b.fracrefa[(jpl - 1) * 14 + (ig - 1)]);
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   speccomb = colo3[lay] + rat_o3co2[lay]*colco2[lay];
   specparm = colo3[lay]/speccomb;
   if (specparm  >=  oneminus) specparm = oneminus;
@@ -629,50 +634,51 @@ CPPWRF_HD inline void rrtmg_lw_taugb04(
 
 CPPWRF_HD inline void rrtmg_lw_taugb05(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b05;
@@ -691,7 +697,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb05(
   refrat_planck_a = get_chi_mls(tables, 1, 5)/get_chi_mls(tables, 2, 5);
   refrat_planck_b = get_chi_mls(tables, 3, 43)/get_chi_mls(tables, 2, 43);
   refrat_m_a = get_chi_mls(tables, 1, 7)/get_chi_mls(tables, 2, 7);
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   speccomb = colh2o[lay] + rat_h2oco2[lay]*colco2[lay];
   specparm = colh2o[lay]/speccomb;
   if (specparm  >=  oneminus) specparm = oneminus;
@@ -805,7 +811,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb05(
   fracs[lay][52+ig - 1] = b.fracrefa[(jpl - 1) * 16 + (ig - 1)] + fpl * (b.fracrefa[(jpl+1 - 1) * 16 + (ig - 1)]-b.fracrefa[(jpl - 1) * 16 + (ig - 1)]);
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   speccomb = colo3[lay] + rat_o3co2[lay]*colco2[lay];
   specparm = colo3[lay]/speccomb;
   if (specparm  >=  oneminus) specparm = oneminus;
@@ -843,57 +849,58 @@ CPPWRF_HD inline void rrtmg_lw_taugb05(
 
 CPPWRF_HD inline void rrtmg_lw_taugb06(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b06;
   int lay, ind0, ind1, inds, indf, indm, ig;
   double chi_co2, ratco2, adjfac, adjcolco2;
   double tauself, taufor, absco2;
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   chi_co2 = colco2[lay]/(coldry[lay]);
   ratco2 = 1.e20*chi_co2/get_chi_mls(tables, 2, jp[lay]+1);
   if (ratco2  >  3.0) {
@@ -915,7 +922,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb06(
   fracs[lay][68+ig - 1] = b.fracrefa[ig - 1];
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   for (int ig = 1; ig <= 8; ++ig) {
   taug[lay][68+ig - 1] = 0.0 + wx[2 - 1][lay] * b.cfc11adj[ig - 1] + wx[3 - 1][lay] * b.cfc12[ig - 1];
   fracs[lay][68+ig - 1] = b.fracrefa[ig - 1];
@@ -925,50 +932,51 @@ CPPWRF_HD inline void rrtmg_lw_taugb06(
 
 CPPWRF_HD inline void rrtmg_lw_taugb07(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b07;
@@ -987,7 +995,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb07(
   double tau_major, tau_major1;
   refrat_planck_a = get_chi_mls(tables, 1, 3)/get_chi_mls(tables, 3, 3);
   refrat_m_a = get_chi_mls(tables, 1, 3)/get_chi_mls(tables, 3, 3);
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   speccomb = colh2o[lay] + rat_h2oo3[lay]*colo3[lay];
   specparm = colh2o[lay]/speccomb;
   if (specparm  >=  oneminus) specparm = oneminus;
@@ -1109,7 +1117,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb07(
   fracs[lay][76+ig - 1] = b.fracrefa[(jpl - 1) * 12 + (ig - 1)] + fpl * (b.fracrefa[(jpl+1 - 1) * 12 + (ig - 1)]-b.fracrefa[(jpl - 1) * 12 + (ig - 1)]);
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   chi_co2 = colco2[lay]/(coldry[lay]);
   ratco2 = 1.e20*chi_co2/get_chi_mls(tables, 2, jp[lay]+1);
   if (ratco2  >  3.0) {
@@ -1137,57 +1145,58 @@ CPPWRF_HD inline void rrtmg_lw_taugb07(
 
 CPPWRF_HD inline void rrtmg_lw_taugb08(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b08;
   int lay, ind0, ind1, inds, indf, indm, ig;
   double tauself, taufor, absco2, abso3, absn2o;
   double chi_co2, ratco2, adjfac, adjcolco2;
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   chi_co2 = colco2[lay]/(coldry[lay]);
   ratco2 = 1.e20*chi_co2/get_chi_mls(tables, 2, jp[lay]+1);
   if (ratco2  >  3.0) {
@@ -1211,7 +1220,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb08(
   fracs[lay][88+ig - 1] = b.fracrefa[ig - 1];
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   chi_co2 = colco2[lay]/coldry[lay];
   ratco2 = 1.e20*chi_co2/get_chi_mls(tables, 2, jp[lay]+1);
   if (ratco2  >  3.0) {
@@ -1234,50 +1243,51 @@ CPPWRF_HD inline void rrtmg_lw_taugb08(
 
 CPPWRF_HD inline void rrtmg_lw_taugb09(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b09;
@@ -1296,7 +1306,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb09(
   double tau_major, tau_major1;
   refrat_planck_a = get_chi_mls(tables, 1, 9)/get_chi_mls(tables, 6, 9);
   refrat_m_a = get_chi_mls(tables, 1, 3)/get_chi_mls(tables, 6, 3);
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   speccomb = colh2o[lay] + rat_h2och4[lay]*colch4[lay];
   specparm = colh2o[lay]/speccomb;
   if (specparm  >=  oneminus) specparm = oneminus;
@@ -1418,7 +1428,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb09(
   fracs[lay][96+ig - 1] = b.fracrefa[(jpl - 1) * 12 + (ig - 1)] + fpl * (b.fracrefa[(jpl+1 - 1) * 12 + (ig - 1)]-b.fracrefa[(jpl - 1) * 12 + (ig - 1)]);
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   chi_n2o = coln2o[lay]/(coldry[lay]);
   ratn2o = 1.e20*chi_n2o/get_chi_mls(tables, 4, jp[lay]+1);
   if (ratn2o  >  1.5) {
@@ -1440,56 +1450,57 @@ CPPWRF_HD inline void rrtmg_lw_taugb09(
 
 CPPWRF_HD inline void rrtmg_lw_taugb10(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b10;
   int lay, ind0, ind1, inds, indf, ig;
   double tauself, taufor;
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   ind0 = ((jp[lay]-1)*5+(jt[lay]-1))*1 + 1;
   ind1 = (jp[lay]*5+(jt1[lay]-1))*1 + 1;
   inds = indself[lay];
@@ -1501,7 +1512,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb10(
   fracs[lay][108+ig - 1] = b.fracrefa[ig - 1];
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*1 + 1;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*1 + 1;
   indf = indfor[lay];
@@ -1515,56 +1526,57 @@ CPPWRF_HD inline void rrtmg_lw_taugb10(
 
 CPPWRF_HD inline void rrtmg_lw_taugb11(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b11;
   int lay, ind0, ind1, inds, indf, indm, ig;
   double scaleo2, tauself, taufor, tauo2;
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   ind0 = ((jp[lay]-1)*5+(jt[lay]-1))*1 + 1;
   ind1 = (jp[lay]*5+(jt1[lay]-1))*1 + 1;
   inds = indself[lay];
@@ -1579,7 +1591,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb11(
   fracs[lay][114+ig - 1] = b.fracrefa[ig - 1];
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*1 + 1;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*1 + 1;
   indf = indfor[lay];
@@ -1596,50 +1608,51 @@ CPPWRF_HD inline void rrtmg_lw_taugb11(
 
 CPPWRF_HD inline void rrtmg_lw_taugb12(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b12;
@@ -1655,7 +1668,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb12(
   double refrat_planck_a;
   double tau_major, tau_major1;
   refrat_planck_a = get_chi_mls(tables, 1, 10)/get_chi_mls(tables, 2, 10);
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   speccomb = colh2o[lay] + rat_h2oco2[lay]*colco2[lay];
   specparm = colh2o[lay]/speccomb;
   if (specparm  >=  oneminus) specparm = oneminus;
@@ -1759,7 +1772,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb12(
   fracs[lay][122+ig - 1] = b.fracrefa[(jpl - 1) * 8 + (ig - 1)] + fpl * (b.fracrefa[(jpl+1 - 1) * 8 + (ig - 1)]-b.fracrefa[(jpl - 1) * 8 + (ig - 1)]);
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   for (int ig = 1; ig <= 8; ++ig) {
   taug[lay][122+ig - 1] = 0.0;
   fracs[lay][122+ig - 1] = 0.0;
@@ -1769,50 +1782,51 @@ CPPWRF_HD inline void rrtmg_lw_taugb12(
 
 CPPWRF_HD inline void rrtmg_lw_taugb13(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b13;
@@ -1834,7 +1848,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb13(
   refrat_planck_a = get_chi_mls(tables, 1, 5)/get_chi_mls(tables, 4, 5);
   refrat_m_a = get_chi_mls(tables, 1, 1)/get_chi_mls(tables, 4, 1);
   refrat_m_a3 = get_chi_mls(tables, 1, 3)/get_chi_mls(tables, 4, 3);
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   speccomb = colh2o[lay] + rat_h2on2o[lay]*coln2o[lay];
   specparm = colh2o[lay]/speccomb;
   if (specparm  >=  oneminus) specparm = oneminus;
@@ -1965,7 +1979,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb13(
   fracs[lay][130+ig - 1] = b.fracrefa[(jpl - 1) * 4 + (ig - 1)] + fpl * (b.fracrefa[(jpl+1 - 1) * 4 + (ig - 1)]-b.fracrefa[(jpl - 1) * 4 + (ig - 1)]);
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   indm = indminor[lay];
   for (int ig = 1; ig <= 4; ++ig) {
   abso3 = b.kb_mo3[(ig - 1) * 19 + (indm - 1)] + minorfrac[lay] * (b.kb_mo3[(ig - 1) * 19 + (indm+1 - 1)] - b.kb_mo3[(ig - 1) * 19 + (indm - 1)]);
@@ -1977,56 +1991,57 @@ CPPWRF_HD inline void rrtmg_lw_taugb13(
 
 CPPWRF_HD inline void rrtmg_lw_taugb14(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b14;
   int lay, ind0, ind1, inds, indf, ig;
   double tauself, taufor;
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   ind0 = ((jp[lay]-1)*5+(jt[lay]-1))*1 + 1;
   ind1 = (jp[lay]*5+(jt1[lay]-1))*1 + 1;
   inds = indself[lay];
@@ -2038,7 +2053,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb14(
   fracs[lay][134+ig - 1] = b.fracrefa[ig - 1];
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*1 + 1;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*1 + 1;
   for (int ig = 1; ig <= 2; ++ig) {
@@ -2050,50 +2065,51 @@ CPPWRF_HD inline void rrtmg_lw_taugb14(
 
 CPPWRF_HD inline void rrtmg_lw_taugb15(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b15;
@@ -2111,7 +2127,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb15(
   double tau_major, tau_major1;
   refrat_planck_a = get_chi_mls(tables, 4, 1)/get_chi_mls(tables, 2, 1);
   refrat_m_a = get_chi_mls(tables, 4, 1)/get_chi_mls(tables, 2, 1);
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   speccomb = coln2o[lay] + rat_n2oco2[lay]*colco2[lay];
   specparm = coln2o[lay]/speccomb;
   if (specparm  >=  oneminus) specparm = oneminus;
@@ -2226,7 +2242,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb15(
   fracs[lay][136+ig - 1] = b.fracrefa[(jpl - 1) * 2 + (ig - 1)] + fpl * (b.fracrefa[(jpl+1 - 1) * 2 + (ig - 1)]-b.fracrefa[(jpl - 1) * 2 + (ig - 1)]);
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   for (int ig = 1; ig <= 2; ++ig) {
   taug[lay][136+ig - 1] = 0.0;
   fracs[lay][136+ig - 1] = 0.0;
@@ -2236,50 +2252,51 @@ CPPWRF_HD inline void rrtmg_lw_taugb15(
 
 CPPWRF_HD inline void rrtmg_lw_taugb16(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,
-    double* const* taug,
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,
+    SD2 taug,
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b16;
@@ -2295,7 +2312,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb16(
   double refrat_planck_a;
   double tau_major, tau_major1;
   refrat_planck_a = get_chi_mls(tables, 1, 6)/get_chi_mls(tables, 6, 6);
-  for (int lay = 0; lay < laytrop; ++lay) {
+  for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   speccomb = colh2o[lay] + rat_h2och4[lay]*colch4[lay];
   specparm = colh2o[lay]/speccomb;
   if (specparm  >=  oneminus) specparm = oneminus;
@@ -2399,7 +2416,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb16(
   fracs[lay][138+ig - 1] = b.fracrefa[(jpl - 1) * 2 + (ig - 1)] + fpl * (b.fracrefa[(jpl+1 - 1) * 2 + (ig - 1)]-b.fracrefa[(jpl - 1) * 2 + (ig - 1)]);
   }
   }
-  for (int lay = laytrop; lay < nlayers; ++lay) {
+  for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   // WRF nspb(16) = 0: the upper-atmosphere lookup always uses absb(1..2, ig) (as in WRF)
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*0 + 1;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*0 + 1;
@@ -2412,67 +2429,68 @@ CPPWRF_HD inline void rrtmg_lw_taugb16(
 
 CPPWRF_HD inline void rrtmg_lw_taumol(
     int nlayers,
-    const double* pavel,
-    const double* const* wx,
-    const double* coldry,
+    SD pavel,
+    SD2 wx,
+    SD coldry,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colo3,
-    const double* coln2o,
-    const double* colco,
-    const double* colch4,
-    const double* colo2,
-    const double* colbrd,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* rat_h2oco2,
-    const double* rat_h2oco2_1,
-    const double* rat_h2oo3,
-    const double* rat_h2oo3_1,
-    const double* rat_h2on2o,
-    const double* rat_h2on2o_1,
-    const double* rat_h2och4,
-    const double* rat_h2och4_1,
-    const double* rat_n2oco2,
-    const double* rat_n2oco2_1,
-    const double* rat_o3co2,
-    const double* rat_o3co2_1,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    const double* minorfrac,
-    const double* scaleminor,
-    const double* scaleminorn2,
-    const int* indminor,
-    double* const* fracs,  // [nlayers][140]
-    double* const* taug,   // [nlayers][140]
-    const RrtmgLwTables& tables
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colo3,
+    SD coln2o,
+    SD colco,
+    SD colch4,
+    SD colo2,
+    SD colbrd,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD rat_h2oco2,
+    SD rat_h2oco2_1,
+    SD rat_h2oo3,
+    SD rat_h2oo3_1,
+    SD rat_h2on2o,
+    SD rat_h2on2o_1,
+    SD rat_h2och4,
+    SD rat_h2och4_1,
+    SD rat_n2oco2,
+    SD rat_n2oco2_1,
+    SD rat_o3co2,
+    SD rat_o3co2_1,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD minorfrac,
+    SD scaleminor,
+    SD scaleminorn2,
+    SI indminor,
+    SD2 fracs,  // [nlayers][140]
+    SD2 taug,   // [nlayers][140]
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
-  rrtmg_lw_taugb01(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb02(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb03(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb04(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb05(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb06(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb07(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb08(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb09(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb10(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb11(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb12(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb13(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb14(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb15(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
-  rrtmg_lw_taugb16(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables);
+  rrtmg_lw_taugb01(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb02(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb03(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb04(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb05(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb06(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb07(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb08(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb09(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb10(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb11(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb12(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb13(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb14(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb15(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
+  rrtmg_lw_taugb16(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);
 }
 
 }  // namespace cppwrf::phys

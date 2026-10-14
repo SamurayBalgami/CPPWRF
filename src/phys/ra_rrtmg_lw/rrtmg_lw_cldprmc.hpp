@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/backend.hpp"
+#include "phys/ra_rrtmg_common/strided.hpp"
 #include "phys/ra_rrtmg_lw/rrtmg_lw_tables.hpp"
 
 namespace cppwrf::phys {
@@ -12,22 +13,25 @@ CPPWRF_HD inline void rrtmg_lw_cldprmc(
     int inflag,
     int iceflag,
     int liqflag,
-    const double* const* cldfmc,   // [140][nlayers]
-    const double* const* ciwpmc,   // [140][nlayers]
-    const double* const* clwpmc,   // [140][nlayers]
-    const double* const* cswpmc,   // [140][nlayers]
-    const double* reicmc,          // [nlayers]
-    const double* relqmc,          // [nlayers]
-    const double* resnmc,          // [nlayers]
-    double* const* taucmc,         // [140][nlayers] (inout)
-    const RrtmgLwTables& tables
+    SD2 cldfmc,   // [140][nlayers] McICA cloud flags (0 or 1)
+    SD ciwpth,    // [nlayers] in-cloud paths: the McICA subcolumn paths are these where cldfmc = 1
+    SD clwpth,    //           and 0 elsewhere (generate_stochastic_clouds)
+    SD cswpth,
+    SD reicmc,          // [nlayers]
+    SD relqmc,          // [nlayers]
+    SD resnmc,          // [nlayers]
+    SD2 taucmc,         // [140][nlayers] (inout)
+    const RrtmgLwTables& tables,
+    int lay0, int lay1  // layers [lay0, lay1)
 ) {
   constexpr double cldmin = 1.0e-20;
   const int icb[16] = {0, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4};
 
-  for (int lay = 0; lay < nlayers; ++lay) {
+  for (int lay = lay0; lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
     for (int ig = 0; ig < 140; ++ig) {
-      double cwp = ciwpmc[ig][lay] + clwpmc[ig][lay] + cswpmc[ig][lay];
+      const bool cl = cldfmc[ig][lay] == 1.0;
+      const double ciwp = cl ? ciwpth[lay] : 0.0, clwp = cl ? clwpth[lay] : 0.0, cswp = cl ? cswpth[lay] : 0.0;
+      double cwp = ciwp + clwp + cswp;
       if (cldfmc[ig][lay] >= cldmin && (cwp >= cldmin || taucmc[ig][lay] >= cldmin)) {
         if (inflag == 0) {
           // Cloud optical depth already defined in taucmc
@@ -37,7 +41,7 @@ CPPWRF_HD inline void rrtmg_lw_cldprmc(
           double abscoice = 0.0;
           double abscosno = 0.0;
 
-          if ((ciwpmc[ig][lay] + cswpmc[ig][lay]) > 0.0) {
+          if ((ciwp + cswp) > 0.0) {
             if (iceflag == 0) {
               abscoice = tables.absice0[0] + tables.absice0[1] / radice;
             } else if (iceflag == 1) {
@@ -68,7 +72,7 @@ CPPWRF_HD inline void rrtmg_lw_cldprmc(
           }
 
           // Incorporate snow if iceflag == 5
-          if (cswpmc[ig][lay] > 0.0 && iceflag == 5) {
+          if (cswp > 0.0 && iceflag == 5) {
             double radsno = resnmc[lay];
             double factor = (radsno - 2.0) / 3.0;
             int index = static_cast<int>(factor);
@@ -83,7 +87,7 @@ CPPWRF_HD inline void rrtmg_lw_cldprmc(
 
           // Liquid water droplets
           double abscoliq = 0.0;
-          if (clwpmc[ig][lay] > 0.0) {
+          if (clwp > 0.0) {
             if (liqflag == 0) {
               abscoliq = tables.absliq0;
             } else if (liqflag == 1) {
@@ -100,9 +104,9 @@ CPPWRF_HD inline void rrtmg_lw_cldprmc(
             }
           }
 
-          taucmc[ig][lay] = ciwpmc[ig][lay] * abscoice +
-                            clwpmc[ig][lay] * abscoliq +
-                            cswpmc[ig][lay] * abscosno;
+          taucmc[ig][lay] = ciwp * abscoice +
+                            clwp * abscoliq +
+                            cswp * abscosno;
         }
       } else {
         taucmc[ig][lay] = 0.0;

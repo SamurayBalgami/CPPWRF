@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/backend.hpp"
+#include "phys/ra_rrtmg_common/strided.hpp"
 
 namespace cppwrf::phys {
 
@@ -25,7 +26,7 @@ void ozone_time_weights(double julian, int& nm, int& np, double& fact1, double& 
 
 // ozn_time_int + ozn_p_int for one column: p[nz] (Pa, bottom to top), o3[nz] (vmr)
 CPPWRF_HD inline void ozone_column(const double* ozm_month_m, const double* ozm_month_p, double fact1, double fact2,
-                                   const double* pin, int nz, const double* p, double* o3) {
+                                   const double* pin, int nz, SD p, SD o3) {
   constexpr int levsiz = CamOzone::levsiz;
   double ozmixt[levsiz];
   for (int k = 0; k < levsiz; ++k) ozmixt[k] = ozm_month_m[k] * fact1 + ozm_month_p[k] * fact2;

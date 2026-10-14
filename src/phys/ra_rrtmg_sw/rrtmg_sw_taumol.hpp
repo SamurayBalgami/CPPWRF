@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/backend.hpp"
+#include "phys/ra_rrtmg_common/strided.hpp"
 #include "phys/ra_rrtmg_sw/rrtmg_sw_tables.hpp"
 #include <algorithm>
 #include <cmath>
@@ -10,28 +11,28 @@ namespace cppwrf::phys {
 CPPWRF_HD inline void taumol_sw(
     int nlayers,
     int laytrop,
-    const int* jp,
-    const int* jt,
-    const int* jt1,
-    const double* colh2o,
-    const double* colco2,
-    const double* colch4,
-    const double* colo2,
-    const double* colo3,
-    const double* colmol,
-    const double* fac00,
-    const double* fac01,
-    const double* fac10,
-    const double* fac11,
-    const double* selffac,
-    const double* selffrac,
-    const int* indself,
-    const double* forfac,
-    const double* forfrac,
-    const int* indfor,
-    double taug[][112],       // (nlayers, 112)
-    double taur[][112],       // (nlayers, 112)
-    double* sfluxzen,         // (112)
+    SI jp,
+    SI jt,
+    SI jt1,
+    SD colh2o,
+    SD colco2,
+    SD colch4,
+    SD colo2,
+    SD colo3,
+    SD colmol,
+    SD fac00,
+    SD fac01,
+    SD fac10,
+    SD fac11,
+    SD selffac,
+    SD selffrac,
+    SI indself,
+    SD forfac,
+    SD forfrac,
+    SI indfor,
+    SD2 taug,                 // (nlayers, 112)
+    SD2 taur,                 // (nlayers, 112)
+    SD sfluxzen,         // (112)
     const RrtmgSwTables& tables
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;

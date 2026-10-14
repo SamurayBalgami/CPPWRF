@@ -36,7 +36,6 @@ int main(int, char** argv) {
     in.arr(wuc.data(), nlay + 1); in.arr(wdc.data(), nlay + 1); in.arr(whrc.data(), nlay);
     in.arr(wdir.data(), nlay + 1); in.arr(wdif.data(), nlay + 1);
     for (int i = 0; i < nlay * 112; ++i) { ws->cldfmc[i] = ws->ciwpmc[i] = ws->clwpmc[i] = ws->cswpmc[i] = ws->taucmc[i] = 0; ws->ssacmc[i] = 1; ws->asmcmc[i] = ws->fsfcmc[i] = ws->taormc[i] = 0; }
-    if (n == 0) g_rrtmg_sw_dbg = std::fopen("csw_dbg.bin", "wb");
     rrtmg_sw_core(nlay, 8.4349451468392243, play.data(), plev.data(), tlay.data(), tlev.data(), h2o.data(), o3.data(), co2.data(),
                   ch4.data(), n2o.data(), o2.data(), asdir, asdif, aldir, aldif, cz, adjes, scon, rei.data(), rel.data(), res.data(),
                   u.data(), d.data(), hr.data(), uc.data(), dc.data(), hrc.data(), dir.data(), dif.data(), a1.data(), a2.data(), a3.data(), a4.data(), *ws, *t);

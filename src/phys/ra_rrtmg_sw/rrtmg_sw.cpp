@@ -1,4 +1,5 @@
 #include "phys/ra_rrtmg_sw/rrtmg_sw.hpp"
+#include "phys/ra_rrtmg_lw/rrtmg_lw.hpp"
 #include "phys/ra_rrtmg_common/rrtmg_common.hpp"
 
 #include <algorithm>
@@ -11,8 +12,30 @@
 
 namespace cppwrf::phys {
 
-CPPWRF_HD // WRF rrtmg_sw (cldprmc_sw, inatm_sw, setcoef_sw, spcvmc_sw, fluxes, heating rates) for one column whose
-// McICA subcolumn arrays are in ws. Level arrays: nlayers + 1 (0 = surface); heating rates K/day.
+namespace {
+void ensure(RrtmgSwWorkspace& ws, const SwLayout& lay) {
+  if (ws.d.size() < lay.nd) ws.d.assign(lay.nd, 0.0);
+  if (ws.i.size() < lay.ni) ws.i.assign(lay.ni, 0);
+}
+SD cv(const double* p) { return SD{const_cast<double*>(p), 1}; }
+constexpr double rrsw_scon = 1.36822e+03;
+}  // namespace
+
+RrtmgSwCallConfig rrtmg_sw_call_config(int num_levels, const RrtmgSwConfig& config) {
+  RrtmgSwCallConfig c{};
+  c.num_levels = num_levels;
+  c.nlayers = num_levels + 1;  // one buffer layer to the TOA (1e-5 mb)
+  c.o3input = config.o3input;
+  c.co2 = config.co2; c.n2o = config.n2o; c.ch4 = config.ch4;
+  c.g = config.g;
+  c.heatfac = config.heatfac;
+  c.adjflux = 1.0 * (config.solcon / rrsw_scon);  // inatm_sw: adjflux = adjes * (scon / rrsw_scon)
+  return c;
+}
+
+// WRF rrtmg_sw (cldprmc_sw, inatm_sw, setcoef_sw, spcvmc_sw, fluxes, heating rates) for one column whose
+// McICA subcolumn cloud flags are in ws.cldfmc (the core check has no clouds: the paths are zero).
+// Level arrays: nlayers + 1 (0 = surface); heating rates K/day.
 void rrtmg_sw_core(int nlayers, double heatfac, const double* play, const double* plev, const double* tlay,
                    const double* tlev, const double* h2ovmr, const double* o3vmr, const double* co2vmr,
                    const double* ch4vmr, const double* n2ovmr, const double* o2vmr, double asdir, double asdif,
@@ -21,152 +44,47 @@ void rrtmg_sw_core(int nlayers, double heatfac, const double* play, const double
                    double* swuflxc, double* swdflxc, double* swhrc, double* swdkdir, double* swdkdif,
                    double* sibvisdir, double* sibvisdif, double* sibnirdir, double* sibnirdif, RrtmgSwWorkspace& ws,
                    const RrtmgSwTables& tables, int inflag, int iceflag, int liqflag) {
-  cldprmc_sw(nlayers, inflag, iceflag, liqflag, ws.cldfmc, ws.ciwpmc, ws.clwpmc, ws.cswpmc,
-             reicmcl, relqmcl, resnmcl, ws.fsfcmc, ws.taormc, ws.taucmc, ws.ssacmc, ws.asmcmc, tables);
-  // 7. Atmospheric preparation (inatm)
-  constexpr double amd = 28.9660;
-  constexpr double amw = 18.0160;
-  constexpr double avogad = 6.02214199e23;
-  constexpr double grav = 9.8066;
-
-  double pavel[RRTMG_SW_MAX_LAYERS];
-  double tavel[RRTMG_SW_MAX_LAYERS];
-  double pz[RRTMG_SW_MAX_LAYERS + 1];
-  double tz[RRTMG_SW_MAX_LAYERS + 1];
-  double coldry[RRTMG_SW_MAX_LAYERS];
-
-  pz[0] = plev[0];
-  tz[0] = tlev[0];
-  ws.init_pointers();
-
-  double pdp[RRTMG_SW_MAX_LAYERS];
+  SwLayout lay(nlayers);
+  ensure(ws, lay);
+  const SwViews v = lay.views(ws.d.data(), ws.i.data(), 0, 1);
+  v.pz[0] = plev[0];
+  v.tz[0] = tlev[0];
   for (int l = 0; l < nlayers; ++l) {
-    pavel[l] = play[l];
-    tavel[l] = tlay[l];
-    pz[l + 1] = plev[l + 1];
-    tz[l + 1] = tlev[l + 1];
-    pdp[l] = pz[l] - pz[l + 1];
-
-    ws.wkl[0][l] = h2ovmr[l];
-    ws.wkl[1][l] = co2vmr[l];
-    ws.wkl[2][l] = o3vmr[l];
-    ws.wkl[3][l] = n2ovmr[l];
-    ws.wkl[4][l] = 0.0;
-    ws.wkl[5][l] = ch4vmr[l];
-    ws.wkl[6][l] = o2vmr[l];
-
-    double amm = (1.0 - ws.wkl[0][l]) * amd + ws.wkl[0][l] * amw;
-    coldry[l] = (pz[l] - pz[l + 1]) * 1.0e3 * avogad / (1.0e2 * grav * amm * (1.0 + ws.wkl[0][l]));
-    for (int imol = 0; imol < 7; ++imol) {
-      ws.wkl[imol][l] *= coldry[l];
-    }
+    v.pavel[l] = play[l];
+    v.tavel[l] = tlay[l];
+    v.pz[l + 1] = plev[l + 1];
+    v.tz[l + 1] = tlev[l + 1];
+    v.wkl[0][l] = h2ovmr[l]; v.wkl[1][l] = co2vmr[l]; v.wkl[2][l] = o3vmr[l]; v.wkl[3][l] = n2ovmr[l];
+    v.wkl[4][l] = 0.0; v.wkl[5][l] = ch4vmr[l]; v.wkl[6][l] = o2vmr[l];
+    v.reicmc[l] = reicmcl[l]; v.relqmc[l] = relqmcl[l]; v.resnmc[l] = resnmcl[l];
+    v.ciwpth[l] = 0.0; v.clwpth[l] = 0.0; v.cswpth[l] = 0.0;
+    for (int g = 0; g < 112; ++g) v.cldfmc[l][g] = ws.cldfmc[l * 112 + g];
   }
-
-  // 8. Molecular absorption coefficients interpolation (setcoef)
-  int laytrop, layswtch, laylow;
-  int jp[RRTMG_SW_MAX_LAYERS];
-  int jt[RRTMG_SW_MAX_LAYERS];
-  int jt1[RRTMG_SW_MAX_LAYERS];
-  double colh2o[RRTMG_SW_MAX_LAYERS];
-  double colco2[RRTMG_SW_MAX_LAYERS];
-  double colo3[RRTMG_SW_MAX_LAYERS];
-  double coln2o[RRTMG_SW_MAX_LAYERS];
-  double colch4[RRTMG_SW_MAX_LAYERS];
-  double colo2[RRTMG_SW_MAX_LAYERS];
-  double colmol[RRTMG_SW_MAX_LAYERS];
-  double co2mult[RRTMG_SW_MAX_LAYERS];
-  int indself[RRTMG_SW_MAX_LAYERS];
-  int indfor[RRTMG_SW_MAX_LAYERS];
-  double selffac[RRTMG_SW_MAX_LAYERS];
-  double selffrac[RRTMG_SW_MAX_LAYERS];
-  double forfac[RRTMG_SW_MAX_LAYERS];
-  double forfrac[RRTMG_SW_MAX_LAYERS];
-  double fac00[RRTMG_SW_MAX_LAYERS];
-  double fac01[RRTMG_SW_MAX_LAYERS];
-  double fac10[RRTMG_SW_MAX_LAYERS];
-  double fac11[RRTMG_SW_MAX_LAYERS];
-
-  setcoef_sw(
-      nlayers, pavel, tavel, coldry, ws.wkl_ptrs,
-      laytrop, layswtch, laylow, jp, jt, jt1,
-      colh2o, colco2, colo3, coln2o, colch4, colo2, colmol, co2mult,
-      indself, indfor, selffac, selffrac, forfac, forfrac,
-      fac00, fac01, fac10, fac11, tables
-  );
-
-  // 9. Surface albedo per spectral band: WRF bands 1-9 and 14 near-IR (al*), 10-13 UV/vis (as*)
-  double albdir[14];
-  double albdif[14];
-  for (int ib = 0; ib < 9; ++ib) { albdir[ib] = aldir; albdif[ib] = aldif; }
-  albdir[13] = aldir;
-  albdif[13] = aldif;
-  for (int ib = 9; ib < 13; ++ib) { albdir[ib] = asdir; albdif[ib] = asdif; }
-
-  // 10. Solar flux scaling (inatm_sw: adjflux = adjflx * solvar, dyofyr = 0 -> adjflx = adjes)
-  double adjflux[30];
-  constexpr double rrsw_scon = 1.36822e+03;
-  for (int ib = 0; ib < 30; ++ib) adjflux[ib] = adjes * (scon / rrsw_scon);
-  double prmu0 = coszen;
-  if (prmu0 <= 1.e-10) prmu0 = 1.e-10;  // zepzen
-
-  // Zero aerosols
-  double taua[RRTMG_SW_MAX_LAYERS * 14] = {0.0};
-  double asma[RRTMG_SW_MAX_LAYERS * 14] = {0.0};
-  double ssaa[RRTMG_SW_MAX_LAYERS * 14];
-  for (int i = 0; i < nlayers * 14; ++i) ssaa[i] = 1.0;
-
-  // 11. Call 2-stream spectral radiative transfer solver (spcvmc_sw)
-  double pbbfd[RRTMG_SW_MAX_LAYERS + 1];
-  double pbbfu[RRTMG_SW_MAX_LAYERS + 1];
-  double pbbcd[RRTMG_SW_MAX_LAYERS + 1];
-  double pbbcu[RRTMG_SW_MAX_LAYERS + 1];
-  double puvfd[RRTMG_SW_MAX_LAYERS + 1];
-  double puvcd[RRTMG_SW_MAX_LAYERS + 1];
-  double pnifd[RRTMG_SW_MAX_LAYERS + 1];
-  double pnicd[RRTMG_SW_MAX_LAYERS + 1];
-  double pbbfddir[RRTMG_SW_MAX_LAYERS + 1];
-  double pbbcddir[RRTMG_SW_MAX_LAYERS + 1];
-  double puvfddir[RRTMG_SW_MAX_LAYERS + 1];
-  double puvcddir[RRTMG_SW_MAX_LAYERS + 1];
-  double pnifddir[RRTMG_SW_MAX_LAYERS + 1];
-  double pnicddir[RRTMG_SW_MAX_LAYERS + 1];
-
-  spcvmc_sw(
-      nlayers,
-      /*icpr=*/1,
-      albdif, albdir,
-      ws.cldfmc, ws.taucmc, ws.asmcmc, ws.ssacmc, ws.taormc,
-      taua, asma, ssaa,
-      prmu0, adjflux,
-      laytrop, layswtch, laylow, jp, jt, jt1,
-      colh2o, colco2, colch4, colo2, colo3, colmol,
-      fac00, fac01, fac10, fac11,
-      selffac, selffrac, indself, forfac, forfrac, indfor,
-      pbbfd, pbbfu, pbbcd, pbbcu,
-      puvfd, puvcd, pnifd, pnicd,
-      pbbfddir, pbbcddir, puvfddir, puvcddir, pnifddir, pnicddir,
-      tables
-  );
-
-  for (int i = 0; i <= nlayers; ++i) {
-    swuflxc[i] = pbbcu[i];
-    swdflxc[i] = pbbcd[i];
-    swuflx[i] = pbbfu[i];
-    swdflx[i] = pbbfd[i];
-    swdkdir[i] = pbbfddir[i];
-    swdkdif[i] = swdflx[i] - pbbfddir[i];
-    sibvisdir[i] = puvfddir[i];
-    sibvisdif[i] = puvfd[i] - puvfddir[i];
-    sibnirdir[i] = pnifddir[i];
-    sibnirdif[i] = pnifd[i] - pnifddir[i];
-  }
+  v.iscal[2] = inflag; v.iscal[3] = iceflag; v.iscal[4] = liqflag;
+  rrtmg_sw_core_prep(nlayers, v, tables, coszen, asdir, asdif, aldir, aldif);
+  RrtmgSwCallConfig c{};
+  c.num_levels = nlayers - 1; c.nlayers = nlayers; c.heatfac = heatfac; c.adjflux = adjes * (scon / rrsw_scon);
+  for (int g = 0; g < 112; ++g) rrtmg_sw_gpoint(c, g, v, tables);
+  for (int lev = 0; lev <= nlayers; ++lev) rrtmg_sw_level(lev, v, tables);
   for (int i = 0; i < nlayers; ++i) {
-    const double zdpgcp = heatfac / pdp[i];
-    swhrc[i] = ((swdflxc[i + 1] - swuflxc[i + 1]) - (swdflxc[i] - swuflxc[i])) * zdpgcp;
-    swhr[i] = ((swdflx[i + 1] - swuflx[i + 1]) - (swdflx[i] - swuflx[i])) * zdpgcp;
+    const double zdpgcp = heatfac / v.pdp[i];
+    swhrc[i] = ((v.cd[i + 1] - v.cu[i + 1]) - (v.cd[i] - v.cu[i])) * zdpgcp;
+    swhr[i] = ((v.fd[i + 1] - v.fu[i + 1]) - (v.fd[i] - v.fu[i])) * zdpgcp;
   }
   swhrc[nlayers - 1] = 0.;
   swhr[nlayers - 1] = 0.;
+  for (int i = 0; i <= nlayers; ++i) {
+    swuflxc[i] = v.cu[i];
+    swdflxc[i] = v.cd[i];
+    swuflx[i] = v.fu[i];
+    swdflx[i] = v.fd[i];
+    swdkdir[i] = v.fddir[i];
+    swdkdif[i] = swdflx[i] - v.fddir[i];
+    sibvisdir[i] = v.uvfddir[i];
+    sibvisdif[i] = v.uvfd[i] - v.uvfddir[i];
+    sibnirdir[i] = v.nifddir[i];
+    sibnirdif[i] = v.nifd[i] - v.nifddir[i];
+  }
 }
 
 void rrtmg_sw_column(
@@ -215,278 +133,28 @@ void rrtmg_sw_column(
     const double* re_ice,
     const double* re_snow
 ) {
-  // If sun is below horizon, deactivate shortwave
-  if (coszen <= 0.0) {
-    gsw = 0.0;
-    swcf = 0.0;
-    swupt = 0.0;
-    swuptc = 0.0;
-    swdnt = 0.0;
-    swdntc = 0.0;
-    swupb = 0.0;
-    swupbc = 0.0;
-    swdnb = 0.0;
-    swdnbc = 0.0;
-    swvisdir = 0.0;
-    swvisdif = 0.0;
-    swnirdir = 0.0;
-    swnirdif = 0.0;
-    for (int k = 0; k < num_levels; ++k) {
-      rthratensw[k] = 0.0;
-      rthratenswc[k] = 0.0;
-    }
-    return;
-  }
-
-  int nlayers = num_levels + 1; // SW adds 1 buffer layer to TOA (1.0e-5 mb)
-
-  // 1. Atmosphere base arrays
-  double play[RRTMG_SW_MAX_LAYERS];
-  double plev[RRTMG_SW_MAX_LAYERS + 1];
-  double tlay[RRTMG_SW_MAX_LAYERS];
-  double tlev[RRTMG_SW_MAX_LAYERS + 1];
-  double pdel[RRTMG_SW_MAX_LAYERS];
-  double hgt[RRTMG_SW_MAX_LAYERS];
-
-  double h2ovmr[RRTMG_SW_MAX_LAYERS];
-  double o3vmr[RRTMG_SW_MAX_LAYERS];
-  double co2vmr[RRTMG_SW_MAX_LAYERS];
-  double ch4vmr[RRTMG_SW_MAX_LAYERS];
-  double n2ovmr[RRTMG_SW_MAX_LAYERS];
-  double o2vmr[RRTMG_SW_MAX_LAYERS];
-
-  double cldfrac[RRTMG_SW_MAX_LAYERS];
-  double clwpth[RRTMG_SW_MAX_LAYERS];
-  double ciwpth[RRTMG_SW_MAX_LAYERS];
-  double cswpth[RRTMG_SW_MAX_LAYERS];
-  double rel[RRTMG_SW_MAX_LAYERS];
-  double rei[RRTMG_SW_MAX_LAYERS];
-  double res[RRTMG_SW_MAX_LAYERS];
-
-  double relqmcl[RRTMG_SW_MAX_LAYERS];
-  double reicmcl[RRTMG_SW_MAX_LAYERS];
-  double resnmcl[RRTMG_SW_MAX_LAYERS];
-
-  constexpr double amdw = 1.607793;
-  constexpr double amdo = 0.603461;
-  constexpr double o2_const = 0.209488;
-  const double ch4_const = config.ch4;  // ghg_input = 1: read_CAMgases, else the WRF defaults
-  const double n2o_const = config.n2o;
-  const double co2_const = config.co2;
-
-  plev[0] = p8w[0] / 100.0; // Pa -> mb
-  tlev[0] = t8w[0];
-
-  double dzsum = 0.0;
-  for (int k = 0; k < num_levels; ++k) {
-    play[k] = p3d[k] / 100.0;
-    plev[k + 1] = p8w[k + 1] / 100.0;
-    tlay[k] = t3d[k];
-    tlev[k + 1] = t8w[k + 1];
-    pdel[k] = plev[k] - plev[k + 1];
-
-    double dz = dz8w[k];
-    hgt[k] = dzsum + 0.5 * dz;
-    dzsum += dz;
-
-    h2ovmr[k] = std::max(qv3d[k], 1.0e-12) * amdw;
-    co2vmr[k] = co2_const;
-    o2vmr[k] = o2_const;
-    ch4vmr[k] = ch4_const;
-    n2ovmr[k] = n2o_const;
-  }
-
-  // 2. Extra layer from model top to TOA (1.0e-5 mb)
-  play[num_levels] = 0.5 * plev[num_levels];
-  tlay[num_levels] = tlev[num_levels];
-  plev[num_levels + 1] = 1.0e-5;
-  tlev[num_levels + 1] = tlev[num_levels];
-  pdel[num_levels] = plev[num_levels] - plev[num_levels + 1];
-  hgt[num_levels] = dzsum + 0.5 * dz8w[num_levels - 1];
-
-  h2ovmr[num_levels] = h2ovmr[num_levels - 1];
-  co2vmr[num_levels] = co2vmr[num_levels - 1];
-  o2vmr[num_levels] = o2vmr[num_levels - 1];
-  ch4vmr[num_levels] = ch4vmr[num_levels - 1];
-  n2ovmr[num_levels] = n2ovmr[num_levels - 1];
-
-  // 3. Ozone profile calculation via inirad
-  double o3mmr[RRTMG_SW_MAX_LAYERS + 1];
-  rrtmg_inirad(o3mmr, plev, 0, num_levels);
-  for (int k = 0; k < nlayers; ++k) {
-    o3vmr[k] = o3mmr[k] * amdo;
-    if (config.o3input == 2) {  // CAM ozone on model levels, the climatology shifted to it above
-      if (k < num_levels) {
-        o3vmr[k] = o33d[k];
-      } else {
-        o3vmr[k] = o33d[num_levels - 1] - o3mmr[num_levels - 1] * amdo + o3mmr[k] * amdo;
-        if (o3vmr[k] <= 0.) o3vmr[k] = o3mmr[k] * amdo;
-      }
-    }
-  }
-
-  // 4. Cloud physical properties (RRTMG_SWRAD, icloud != 0; EM_CORE branches)
-  int inflgsw = 2, iceflgsw = 3;
-  const int liqflgsw = 1;
-  for (int k = 0; k < num_levels; ++k) {
-    const double cldf = (cldfra3d && config.icloud != 0) ? cldfra3d[k] : 0.0;
-    double qc1 = std::max(0., qc3d[k]), qi1 = std::max(0., qi3d[k]), qs1 = std::max(0., qs3d[k]);
-    double recloud1d = 5.0, reice1d = 10., resnow1d = 10.0;
-    if (re_cloud) {
-      recloud1d = std::max(2.5, re_cloud[k] * 1.E6);
-      if (recloud1d <= 2.5 && cldf > 0. && (xland - 1.5) > 0.) recloud1d = 10.5;       // ocean
-      else if (recloud1d <= 2.5 && cldf > 0. && (xland - 1.5) < 0.) recloud1d = 7.5;   // land
-      inflgsw = 3;
-    }
-    if (re_ice) {
-      inflgsw = 4; iceflgsw = 4;
-      reice1d = std::max(5., re_ice[k] * 1.E6);
-      if (reice1d <= 5. && cldf > 0.) {
-        int idx_rei = int(t3d[k] - 179.);
-        idx_rei = std::min(std::max(idx_rei, 1), 75);
-        const double corr = t3d[k] - int(t3d[k]);
-        reice1d = RETAB[idx_rei - 1] * (1. - corr) + RETAB[idx_rei] * corr;
-        reice1d = std::max(reice1d, 5.0);
-      }
-    }
-    if (re_snow) {
-      inflgsw = 5; iceflgsw = 5;
-      resnow1d = std::max(10., re_snow[k] * 1.E6);
-    }
-    if (!re_snow && re_ice && re_cloud) {  // P3: ice into the snow category for the optics
-      inflgsw = 5; iceflgsw = 5;
-      resnow1d = std::max(10., re_ice[k] * 1.E6);
-      qs1 = qi3d[k];
-      qi1 = 0.;
-      reice1d = 10.;
-    }
-    cldfrac[k] = cldf;
-    double gicewp = (qi1 + qs1) * pdel[k] * 100.0 / config.g * 1000.0; // g/m2
-    const double gliqwp = qc1 * pdel[k] * 100.0 / config.g * 1000.0;   // g/m2
-    ciwpth[k] = gicewp / std::max(0.01, cldf);
-    clwpth[k] = gliqwp / std::max(0.01, cldf);
-    if (iceflgsw >= 4) {  // ice path without the snow
-      gicewp = qi1 * pdel[k] * 100.0 / config.g * 1000.0;
-      ciwpth[k] = gicewp / std::max(0.01, cldf);
-    }
-    double csnowp = 0.0;
-    if (iceflgsw == 5) {
-      double snow_mass_factor = 0.99;
-      if (resnow1d > 130.) {
-        snow_mass_factor = std::min(snow_mass_factor, (130.0 / resnow1d) * (130.0 / resnow1d));
-        resnow1d = 130.0;
-      }
-      const double gsnowp = qs1 * snow_mass_factor * pdel[k] * 100.0 / config.g * 1000.0;
-      csnowp = gsnowp / std::max(0.01, cldf);
-    }
-    rel[k] = inflgsw >= 3 ? recloud1d : rrtmg_relcalc_single(tlay[k], xland, snow, xice);
-    if (iceflgsw >= 4) rei[k] = reice1d;
-    else rei[k] = std::min(140.0, rrtmg_reicalc_single(tlay[k]) * 1.0315);  // Fu ice size conversion
-    if (inflgsw == 5) {
-      cswpth[k] = csnowp;
-      res[k] = resnow1d;
-    } else {
-      cswpth[k] = 0.0;
-      res[k] = 10.0;
-    }
-  }
-
-  cldfrac[num_levels] = 0.0;
-  clwpth[num_levels] = 0.0;
-  ciwpth[num_levels] = 0.0;
-  cswpth[num_levels] = 0.0;
-  rel[num_levels] = 10.0;
-  rei[num_levels] = 10.0;
-  res[num_levels] = 10.0;
-
-  // 5. McICA stochastic subcolumn generator (KISSVEC PRNG, permuteseed = 1)
-  KissRng rng;
-  rng.init_from_pressure(play[0] * 100.0, play[1] * 100.0, play[2] * 100.0, play[3] * 100.0);
-  rng.permute(1);
-
-  double cldf[RRTMG_SW_MAX_LAYERS];
-  for (int ilev = 0; ilev < nlayers; ++ilev) {
-    cldf[ilev] = (cldfrac[ilev] < 1.0e-20) ? 0.0 : cldfrac[ilev];
-  }
-
-  double cdf[112][RRTMG_SW_MAX_LAYERS];
-  for (int isubcol = 0; isubcol < 112; ++isubcol) {
-    for (int ilev = 0; ilev < nlayers; ++ilev) {
-      cdf[isubcol][ilev] = rng.step<double>();
-    }
-  }
-
-  // Max/random overlap (cldovrlp == 2)
-  for (int ilev = 1; ilev < nlayers; ++ilev) {
-    for (int isubcol = 0; isubcol < 112; ++isubcol) {
-      if (cdf[isubcol][ilev - 1] > 1.0 - cldf[ilev - 1]) {
-        cdf[isubcol][ilev] = cdf[isubcol][ilev - 1];
-      } else {
-        cdf[isubcol][ilev] = cdf[isubcol][ilev] * (1.0 - cldf[ilev - 1]);
-      }
-    }
-  }
-
-  for (int ilev = 0; ilev < nlayers; ++ilev) {
-    reicmcl[ilev] = rei[ilev];
-    relqmcl[ilev] = rel[ilev];
-    resnmcl[ilev] = res[ilev];
-
-    for (int isubcol = 0; isubcol < 112; ++isubcol) {
-      int idx = ilev * 112 + isubcol;
-      bool is_cloudy = (cdf[isubcol][ilev] >= 1.0 - cldf[ilev]);
-      if (is_cloudy) {
-        ws.cldfmc[idx] = 1.0;
-        ws.clwpmc[idx] = clwpth[ilev];
-        ws.ciwpmc[idx] = ciwpth[ilev];
-        ws.cswpmc[idx] = cswpth[ilev];
-        ws.taucmc[idx] = 0.0;
-        ws.ssacmc[idx] = 1.0;
-        ws.asmcmc[idx] = 0.0;
-        ws.fsfcmc[idx] = 0.0;
-      } else {
-        ws.cldfmc[idx] = 0.0;
-        ws.clwpmc[idx] = 0.0;
-        ws.ciwpmc[idx] = 0.0;
-        ws.cswpmc[idx] = 0.0;
-        ws.taucmc[idx] = 0.0;
-        ws.ssacmc[idx] = 1.0;
-        ws.asmcmc[idx] = 0.0;
-        ws.fsfcmc[idx] = 0.0;
-      }
-    }
-  }
-
-  // 6-11. rrtmg_sw core (cldprmc_sw, inatm_sw, setcoef_sw, spcvmc_sw), WRF dyofyr = 0, adjes = 1
-  double swuflx[RRTMG_SW_MAX_LAYERS + 1], swdflx[RRTMG_SW_MAX_LAYERS + 1], swhr[RRTMG_SW_MAX_LAYERS];
-  double swuflxc[RRTMG_SW_MAX_LAYERS + 1], swdflxc[RRTMG_SW_MAX_LAYERS + 1], swhrc[RRTMG_SW_MAX_LAYERS];
-  double swdkdir[RRTMG_SW_MAX_LAYERS + 1], swdkdif[RRTMG_SW_MAX_LAYERS + 1];
-  double uvdir[RRTMG_SW_MAX_LAYERS + 1], uvdif[RRTMG_SW_MAX_LAYERS + 1], nidir[RRTMG_SW_MAX_LAYERS + 1],
-      nidif[RRTMG_SW_MAX_LAYERS + 1];
-  rrtmg_sw_core(nlayers, config.heatfac, play, plev, tlay, tlev, h2ovmr, o3vmr, co2vmr, ch4vmr, n2ovmr, o2vmr,
-                albedo, albedo, albedo, albedo, coszen, 1.0, config.solcon, reicmcl, relqmcl, resnmcl, swuflx, swdflx,
-                swhr, swuflxc, swdflxc, swhrc, swdkdir, swdkdif, uvdir, uvdif, nidir, nidif, ws, tables, inflgsw,
-                iceflgsw, liqflgsw);
-
-  // RRTMG_SWRAD outputs (level index 0 = surface, nlayers = top)
-  gsw = swdflx[0] - swuflx[0];
-  swcf = (swdflx[nlayers] - swuflx[nlayers]) - (swdflxc[nlayers] - swuflxc[nlayers]);
-  swupt = swuflx[nlayers];
-  swuptc = swuflxc[nlayers];
-  swdnt = swdflx[nlayers];
-  swdntc = swdflxc[nlayers];
-  swupb = swuflx[0];
-  swupbc = swuflxc[0];
-  swdnb = swdflx[0];
-  swdnbc = swdflxc[0];
-  swvisdir = uvdir[0];
-  swvisdif = uvdif[0];
-  swnirdir = nidir[0];
-  swnirdif = nidif[0];
-  for (int k = 0; k < num_levels; ++k) {
-    rthratensw[k] = (swhr[k] / 86400.) / pi3d[k];
-    rthratenswc[k] = (swhrc[k] / 86400.) / pi3d[k];
-  }
+  (void)xlat; (void)dz8w; (void)rho3d; (void)qr3d; (void)qg3d;
+  const RrtmgSwCallConfig c = rrtmg_sw_call_config(num_levels, config);
+  SwLayout lay(c.nlayers);
+  ensure(ws, lay);
+  const SwViews v = lay.views(ws.d.data(), ws.i.data(), 0, 1);
+  std::vector<double> zero;
+  if (!cldfra3d || config.icloud == 0) zero.assign(num_levels, 0.0);
+  SwColumnIn in{};
+  in.coszen = coszen; in.albedo = albedo; in.xland = xland; in.xice = xice; in.snow = snow;
+  in.p8w = cv(p8w); in.t8w = cv(t8w); in.p3d = cv(p3d); in.pi3d = cv(pi3d); in.t3d = cv(t3d); in.qv3d = cv(qv3d);
+  in.qc3d = cv(qc3d); in.qi3d = cv(qi3d); in.qs3d = cv(qs3d);
+  in.cldfra3d = cv(zero.empty() ? cldfra3d : zero.data());
+  in.o33d = cv(o33d ? o33d : qv3d);
+  in.re_cloud = cv(re_cloud); in.re_ice = cv(re_ice); in.re_snow = cv(re_snow);
+  in.has_qc = in.has_qi = in.has_qs = true;  // absent species are passed as zero arrays
+  rrtmg_sw_prep(c, in, v, tables, rrtmg_lw_consts());
+  for (int g = 0; g < 112; ++g) rrtmg_sw_gpoint(c, g, v, tables);
+  for (int lev = 0; lev <= c.nlayers; ++lev) rrtmg_sw_level(lev, v, tables);
+  const SwColumnOut o = rrtmg_sw_finish(c, v, cv(pi3d), SD{rthratensw, 1}, SD{rthratenswc, 1});
+  gsw = o.gsw; swcf = o.swcf; swupt = o.swupt; swuptc = o.swuptc; swdnt = o.swdnt; swdntc = o.swdntc;
+  swupb = o.swupb; swupbc = o.swupbc; swdnb = o.swdnb; swdnbc = o.swdnbc; swvisdir = o.swvisdir;
+  swvisdif = o.swvisdif; swnirdir = o.swnirdir; swnirdif = o.swnirdif;
 }
 
 void rrtmg_swrad(

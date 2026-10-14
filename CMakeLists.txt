@@ -54,8 +54,10 @@ list(APPEND CPPWRF_SOURCES
   ${CMAKE_SOURCE_DIR}/src/phys/driver/landuse_tables.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/driver/radiation.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_lw/rrtmg_lw.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_lw/rrtmg_lw_batch.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_lw/rrtmg_lw_tables.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_sw/rrtmg_sw.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_sw/rrtmg_sw_batch.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_sw/rrtmg_sw_tables.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/cam_gases.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/cam_ozone.cpp
@@ -105,13 +107,18 @@ endfunction()
 
 if(CPPWRF_ENABLE_CUDA)
   cppwrf_device_sources(${CPPWRF_SOURCES})
-  # RRTMG radiation runs on the host for now (host tables, OpenMP): compile it as C++
+  # RRTMG host code (tables, constants, the column drivers of the checks): C++; the device path is
+  # radiation.cpp + rrtmg_lw_batch.cpp + rrtmg_sw_batch.cpp
   set_source_files_properties(
-    ${CMAKE_SOURCE_DIR}/src/phys/driver/radiation.cpp
     ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_lw/rrtmg_lw.cpp ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_lw/rrtmg_lw_tables.cpp
     ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_sw/rrtmg_sw.cpp ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_sw/rrtmg_sw_tables.cpp
     ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/cam_gases.cpp ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/cam_ozone.cpp
     PROPERTIES LANGUAGE CXX)
+  # RRTMG on the device: no FMA contraction (WRF's x86 arithmetic; table indices int(tblint*x + 0.5)
+  # are discontinuous, so contracted products move them)
+  set_source_files_properties(
+    ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_lw/rrtmg_lw_batch.cpp ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_sw/rrtmg_sw_batch.cpp
+    PROPERTIES COMPILE_OPTIONS "--fmad=false")
   target_compile_definitions(cppwrf_core PUBLIC CPPWRF_USE_CUDA)
   target_compile_options(cppwrf_core PUBLIC $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --extended-lambda>)
   target_link_libraries(cppwrf_core PUBLIC CUDA::cudart)

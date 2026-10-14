@@ -8,7 +8,7 @@
 #include "phys/ra_rrtmg_sw/rrtmg_sw_reftra.hpp"
 #include "phys/ra_rrtmg_sw/rrtmg_sw_vrtqdr.hpp"
 #include "phys/ra_rrtmg_sw/rrtmg_sw_taumol.hpp"
-#include "phys/ra_rrtmg_sw/rrtmg_sw_spcvmc.hpp"
+#include "phys/ra_rrtmg_sw/rrtmg_sw_stages.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -32,8 +32,11 @@ struct RrtmgSwWorkspace {
   double fsfcmc[RRTMG_SW_MAX_LAYERS * 112];
   double wkl[7][RRTMG_SW_MAX_LAYERS];
   double* wkl_ptrs[7];
+  // stride-1 storage of the stage views (rrtmg_sw_stages.hpp) of the column driver
+  std::vector<double> d;
+  std::vector<int> i;
 
-  CPPWRF_HD void init_pointers() {
+  void init_pointers() {
     for (int m = 0; m < 7; ++m) {
       wkl_ptrs[m] = wkl[m];
     }
@@ -56,6 +59,8 @@ struct RrtmgSwConfig {
   double heatfac{8.4349451468392243};  // rrsw_con heatfac (rrtmg_sw_ini), checked against WRF
 };
 
+RrtmgSwCallConfig rrtmg_sw_call_config(int num_levels, const RrtmgSwConfig& config);
+
 void rrtmg_sw_core(int nlayers, double heatfac, const double* play, const double* plev, const double* tlay,
                    const double* tlev, const double* h2ovmr, const double* o3vmr, const double* co2vmr,
                    const double* ch4vmr, const double* n2ovmr, const double* o2vmr, double asdir, double asdif,
@@ -66,7 +71,7 @@ void rrtmg_sw_core(int nlayers, double heatfac, const double* play, const double
                    const RrtmgSwTables& tables, int inflag = 2, int iceflag = 3, int liqflag = 1);
 
 // Single column execution
-CPPWRF_HD void rrtmg_sw_column(
+void rrtmg_sw_column(
     int num_levels, // model nz (e.g. 50)
     const RrtmgSwConfig& config,
     const RrtmgSwTables& tables,

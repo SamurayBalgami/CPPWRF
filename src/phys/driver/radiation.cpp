@@ -10,6 +10,10 @@
 #include "phys/ra_rrtmg_lw/rrtmg_lw_tables.hpp"
 #include "phys/ra_rrtmg_sw/rrtmg_sw.hpp"
 #include "phys/ra_rrtmg_sw/rrtmg_sw_tables.hpp"
+#if defined(CPPWRF_USE_CUDA)
+#include "phys/ra_rrtmg_lw/rrtmg_lw_batch.hpp"
+#include "phys/ra_rrtmg_sw/rrtmg_sw_batch.hpp"
+#endif
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -34,62 +38,79 @@ void radconst(double julian, double& declin, double& solcon) {
   solcon = 1370. * eccfac;
 }
 
-// calc_coszen for one column
-double calc_coszen(double julian, double xtime, double gmt, double declin, double xlon, double xlat) {
-  const double da = 6.2831853071795862 * (julian - 1) / 365.;
-  const double eot = (0.000075 + 0.001868 * std::cos(da) - 0.032077 * std::sin(da) - 0.014615 * std::cos(2 * da) -
-                      0.04089 * std::sin(2 * da)) * (229.18);
-  const double xt24 = std::fmod(xtime, 1440.) + eot;
-  const double tloctm = gmt + xt24 / 60. + xlon / 15.;
-  const double hrang = 15. * (tloctm - 12.) * degrad;
-  const double xxlat = xlat * degrad;
-  double c = std::sin(xxlat) * std::sin(declin) + std::cos(xxlat) * std::cos(declin) * std::cos(hrang);
-  return std::min(std::max(c, -1.0), 1.0);
-}
 
-}  // namespace
-
-// cal_cldfra1 (Randall 1994 / Hong-Pan 1998) for one column, mp_physics != FER_MP_HIRES; qi/qs may be
-// nullptr (F_QI / F_QS false). F_QC and not F_QI but F_QS needs F_ICE_PHY (not ported).
-void cal_cldfra1(int nz, const double* qv, const double* qc, const double* qi, const double* qs, const double* t,
-                 const double* p, double* cldfra) {
-  constexpr double ALPHA0 = 100., GAMMA = 0.49, QCLDMIN = 1.E-12, PEXP = 0.25, RHGRID = 1.0;
-  constexpr double SVP1 = 0.61078, SVP2 = 17.2693882, SVPI2 = 21.8745584, SVP3 = 35.86, SVPI3 = 7.66,
-                   SVPT0 = 273.15, r_d = 287., r_v = 461.6, ep_2 = r_d / r_v;
-  for (int k = 0; k < nz; ++k) {
-    const double tc = t[k] - SVPT0;
-    const double esw = 1000.0 * SVP1 * std::exp(SVP2 * tc / (t[k] - SVP3));
-    const double esi = 1000.0 * SVP1 * std::exp(SVPI2 * tc / (t[k] - SVPI3));
-    const double QVSW = ep_2 * esw / (p[k] - esw);
-    const double QVSI = ep_2 * esi / (p[k] - esi);
-    double QCLD = 0, weight = 0;
-    if (qi && qs) {
-      QCLD = qi[k] + qc[k] + qs[k];
-      weight = QCLD < QCLDMIN ? 0. : (qi[k] + qs[k]) / QCLD;
-    } else if (qi) {
-      QCLD = qi[k] + qc[k];
-      weight = QCLD < QCLDMIN ? 0. : qi[k] / QCLD;
-    } else {  // F_QC only
-      QCLD = qc[k];
-      if (QCLD < QCLDMIN) weight = 0.;
-      else weight = t[k] > 273.15 ? 0. : 1.;
-    }
-    const double QVS_WEIGHT = (1 - weight) * QVSW + weight * QVSI;
-    double RHUM = qv[k] / QVS_WEIGHT;
-    if (QCLD < QCLDMIN) {
-      cldfra[k] = 0.;
-    } else if (RHUM >= RHGRID) {
-      cldfra[k] = 1.;
+#if defined(CPPWRF_USE_CUDA)
+// device path: model fields -> double arrays with the column index fastest (col = i + nx*j)
+struct KStage3 {
+  View3<const real> f;
+  double* d;
+  int nx, ncol;
+  CPPWRF_HD void operator()(int i, int j, int k) const { d[std::size_t(k) * ncol + i + nx * j] = double(f(i, j, k)); }
+};
+struct KStage2 {
+  View2<const real> f;
+  double* d;
+  int nx;
+  CPPWRF_HD void operator()(int i, int j, int) const { d[i + nx * j] = double(f(i, j)); }
+};
+// per column: calc_coszen at xtime + radt/2, CAM ozone (ozn_time_int, ozn_p_int), cal_cldfra1
+struct KRadColumn {
+  int nx, nz, ncol;
+  double julian, xtime_mid, gmt, declin;
+  const double *xlat, *xlong;
+  int o3input;
+  const double *ozmixm, *pin;
+  int nm, np;
+  double f1, f2;
+  bool clouds;
+  const double *p, *t, *qv, *qc, *qi, *qs;
+  double *o3, *cf, *cz;
+  bool has_cldfra;
+  View3<real> cldfra_out;
+  View2<real> coszen_out;
+  CPPWRF_HD void operator()(int i, int j) const {
+    const int col = i + nx * j;
+    const double c = calc_coszen(julian, xtime_mid, gmt, declin, xlong[col], xlat[col]);
+    cz[col] = c;
+    coszen_out(i, j) = real(c);
+    constexpr int per = CamOzone::nmon * CamOzone::levsiz;
+    auto v = [&](const double* a) { return SD{const_cast<double*>(a) + col, ncol}; };
+    if (o3input == 2)
+      ozone_column(&ozmixm[std::size_t(col) * per + nm * CamOzone::levsiz],
+                   &ozmixm[std::size_t(col) * per + np * CamOzone::levsiz], f1, f2, pin, nz, v(p), v(o3));
+    if (clouds) {
+      cal_cldfra1(nz, v(qv), v(qc), qi ? v(qi) : SD{nullptr, 0}, qs ? v(qs) : SD{nullptr, 0}, v(t), v(p), v(cf));
     } else {
-      const double SUBSAT = std::max(1.E-10, RHGRID * QVS_WEIGHT - qv[k]);
-      const double DENOM = std::pow(SUBSAT, GAMMA);
-      const double ARG = std::max(-6.9, -ALPHA0 * QCLD / DENOM);
-      RHUM = std::max(1.E-10, RHUM);
-      cldfra[k] = std::pow(RHUM / RHGRID, PEXP) * (1. - std::exp(ARG));
-      if (cldfra[k] < .01) cldfra[k] = 0.;
+      for (int k = 0; k < nz; ++k) cf[std::size_t(k) * ncol + col] = 0.0;
+    }
+    if (has_cldfra)
+      for (int k = 0; k < nz; ++k) cldfra_out(i, j, k) = real(cf[std::size_t(k) * ncol + col]);
+  }
+};
+// RTHRATEN = LW (+ SW in daytime), GLW, GSW, SWDOWN = GSW/(1 - ALBEDO)
+struct KRadOut {
+  int nx, ncol;
+  const double *rlw, *rsw, *glw, *gsw, *cz;
+  View3<real> rth;
+  View2<real> glw_out, gsw_out, swdown_out;
+  View2<const real> alb;
+  CPPWRF_HD void operator()(int i, int j, int k) const {
+    const int col = i + nx * j;
+    const std::size_t q = std::size_t(k) * ncol + col;
+    double r = rlw[q];
+    if (cz[col] > 0.0) r = r + rsw[q];
+    rth(i, j, k) = real(r);
+    if (k == 0) {
+      glw_out(i, j) = real(glw[col]);
+      const real gs = real(cz[col] > 0.0 ? gsw[col] : 0.0);
+      gsw_out(i, j) = gs;
+      swdown_out(i, j) = real(double(gs) / (1. - double(alb(i, j))));
     }
   }
-}
+};
+#endif
+
+}  // namespace
 
 struct RadiationDriver::Impl {
   std::unique_ptr<RrtmgLwTables> lw;
@@ -97,6 +118,24 @@ struct RadiationDriver::Impl {
   CamGases gases;
   CamOzone ozone;
   std::vector<double> xlat, xlong, ozmixm;  // ozmixm: [col][month][level] (oznini)
+#if defined(CPPWRF_USE_CUDA)
+  std::unique_ptr<RrtmgLwBatch> lwb;
+  std::unique_ptr<RrtmgSwBatch> swb;
+  std::vector<void*> bufs;
+  double* dev(std::size_t n) {
+    void* q = dev_alloc(n * sizeof(double));
+    bufs.push_back(q);
+    return static_cast<double*>(q);
+  }
+  double *xlat_d = nullptr, *xlong_d = nullptr, *oz_d = nullptr, *pin_d = nullptr;
+  // staged inputs, outputs (column fastest)
+  double *p8w, *t8w, *p3d, *pi3d, *t3d, *qv, *qc, *qi, *qs, *rec, *rei, *res, *cf, *o3;
+  double *tsk, *emiss, *xland, *xice, *snow, *albedo, *cz;
+  double *rlw, *rsw, *glw, *gsw;
+  ~Impl() {
+    for (void* q : bufs) dev_free(q);
+  }
+#endif
 };
 
 RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const std::vector<double>& xlat,
@@ -122,6 +161,30 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
     p_->ozmixm.resize(nc * per);
     for (std::size_t c = 0; c < nc; ++c) p_->ozone.column(xlat[c], &p_->ozmixm[c * per]);
   }
+#if defined(CPPWRF_USE_CUDA)
+  {
+    Impl& q = *p_;
+    const std::size_t nc = std::size_t(g.nx) * g.ny, n3 = nc * g.nz, n3w = nc * (g.nz + 1);
+    auto up = [&](const std::vector<double>& h) {
+      double* d = q.dev(std::max<std::size_t>(h.size(), 1));
+      if (!h.empty()) copy_to_dev(d, h.data(), h.size() * sizeof(double));
+      return d;
+    };
+    q.xlat_d = up(xlat);
+    q.xlong_d = up(xlong);
+    q.oz_d = up(q.ozmixm);
+    q.pin_d = up(q.ozone.pin);
+    q.p8w = q.dev(n3w); q.t8w = q.dev(n3w);
+    for (double** a : {&q.p3d, &q.pi3d, &q.t3d, &q.qv, &q.qc, &q.qi, &q.qs, &q.rec, &q.rei, &q.res, &q.cf, &q.o3,
+                       &q.rlw, &q.rsw})
+      *a = q.dev(n3);
+    for (double** a : {&q.tsk, &q.emiss, &q.xland, &q.xice, &q.snow, &q.albedo, &q.cz, &q.glw, &q.gsw}) *a = q.dev(nc);
+    RrtmgLwConfig lc;
+    lc.p_top = o.p_top;
+    q.lwb = std::make_unique<RrtmgLwBatch>(*q.lw, rrtmg_lw_call_config(g.nz, lc, false, false, false).nlayers, 2048);
+    q.swb = std::make_unique<RrtmgSwBatch>(*q.sw, g.nz + 1, 2048);
+  }
+#endif
 }
 
 RadiationDriver::~RadiationDriver() = default;
@@ -132,6 +195,75 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
   const bool run_param = itimestep == 1 || o_.radt == 0. || stepra_ == 1 ||
                          int(itimestep % stepra_) == 1 + o_.ra_call_offset;
   if (!run_param) return false;
+  double declin, solcon;
+  radconst(julian, declin, solcon);  // Solar_step (radconst before calc_coszen)
+  RrtmgLwConfig lc;
+  lc.icloud = o_.icloud; lc.cldovrlp = o_.cldovrlp; lc.idcor = o_.idcor; lc.p_top = o_.p_top;
+  lc.yr = o_.julyr; lc.julian = julian; lc.o3input = o_.o3input;
+  if (o_.ghg_input == 1) p_->gases.interpolate(o_.julyr, julian, lc.co2, lc.n2o, lc.ch4, lc.cfc11, lc.cfc12);
+  else rrtmg_default_gases(lc);
+  RrtmgSwConfig sc;
+  sc.icloud = o_.icloud; sc.cldovrlp = o_.cldovrlp; sc.idcor = o_.idcor; sc.p_top = o_.p_top; sc.yr = o_.julyr;
+  sc.julian = julian; sc.solcon = solcon; sc.o3input = o_.o3input; sc.co2 = lc.co2; sc.n2o = lc.n2o; sc.ch4 = lc.ch4;
+  int nm = 0, np = 0;
+  double f1 = 0, f2 = 0;
+  if (o_.o3input == 2) ozone_time_weights(julian, nm, np, f1, f2);
+  const std::size_t per = std::size_t(CamOzone::nmon) * CamOzone::levsiz;
+#if defined(CPPWRF_USE_CUDA)
+  {
+    (void)per;
+    Impl& q = *p_;
+    const int nx = g_.nx, ny = g_.ny, nz = g_.nz, ncol = nx * ny;
+    if (o_.icloud != 0 && o_.icloud != 1) throw std::runtime_error("radiation: only icloud = 0 or 1 are ported");
+    if (in.qc && !in.qi && in.qs) throw std::runtime_error("radiation: F_QC, F_QS without F_QI is not ported");
+    const bool clouds = o_.icloud != 0 && in.qc != nullptr;
+    auto st3 = [&](const Field3* f, double* d, int nlev) {
+      parallel_for(Range3D{0, nx, 0, ny, 0, nlev}, KStage3{f->cview(), d, nx, ncol});
+    };
+    auto st2 = [&](const Field2* f, double* d) { parallel_for(Range3D{0, nx, 0, ny, 0, 1}, KStage2{f->cview(), d, nx}); };
+    st3(in.p_hyd_w, q.p8w, nz + 1); st3(in.t8w, q.t8w, nz + 1); st3(in.p_hyd, q.p3d, nz); st3(in.pi_phy, q.pi3d, nz);
+    st3(in.t_phy, q.t3d, nz); st3(in.qv, q.qv, nz);
+    if (in.qc) st3(in.qc, q.qc, nz);
+    if (in.qi) st3(in.qi, q.qi, nz);
+    if (in.qs) st3(in.qs, q.qs, nz);
+    if (in.re_cloud) st3(in.re_cloud, q.rec, nz);
+    if (in.re_ice) st3(in.re_ice, q.rei, nz);
+    if (in.re_snow) st3(in.re_snow, q.res, nz);
+    st2(in.tsk, q.tsk); st2(in.emiss, q.emiss); st2(in.xland, q.xland); st2(in.xice, q.xice); st2(in.snow, q.snow);
+    st2(in.albedo, q.albedo);
+    KRadColumn kc{};
+    kc.nx = nx; kc.nz = nz; kc.ncol = ncol;
+    kc.julian = julian; kc.xtime_mid = xtime + o_.radt * 0.5; kc.gmt = o_.gmt; kc.declin = declin;
+    kc.xlat = q.xlat_d; kc.xlong = q.xlong_d;
+    kc.o3input = o_.o3input; kc.ozmixm = q.oz_d; kc.pin = q.pin_d; kc.nm = nm; kc.np = np; kc.f1 = f1; kc.f2 = f2;
+    kc.clouds = clouds;
+    kc.p = q.p3d; kc.t = q.t3d; kc.qv = q.qv; kc.qc = in.qc ? q.qc : nullptr; kc.qi = in.qi ? q.qi : nullptr;
+    kc.qs = in.qs ? q.qs : nullptr;
+    kc.o3 = q.o3; kc.cf = q.cf; kc.cz = q.cz;
+    kc.has_cldfra = out.cldfra != nullptr;
+    if (out.cldfra) kc.cldfra_out = out.cldfra->view();
+    kc.coszen_out = out.coszen->view();
+    column_for(Range2D{0, nx, 0, ny}, kc);
+    LwBatchInput li{};
+    li.ncol = ncol; li.tsk = q.tsk; li.emiss = q.emiss; li.xland = q.xland; li.xice = q.xice; li.snow = q.snow;
+    li.p8w = q.p8w; li.t8w = q.t8w; li.p3d = q.p3d; li.pi3d = q.pi3d; li.t3d = q.t3d; li.qv = q.qv; li.cldfra = q.cf;
+    li.o3 = q.o3;
+    li.qc = in.qc ? q.qc : nullptr; li.qi = in.qi ? q.qi : nullptr; li.qs = in.qs ? q.qs : nullptr;
+    li.re_cloud = in.re_cloud ? q.rec : nullptr; li.re_ice = in.re_ice ? q.rei : nullptr;
+    li.re_snow = in.re_snow ? q.res : nullptr;
+    q.lwb->run(rrtmg_lw_call_config(nz, lc, in.re_cloud, in.re_ice, in.re_snow), li, LwBatchOutput{q.rlw, q.glw, nullptr});
+    SwBatchInput si{};
+    si.ncol = ncol; si.coszen = q.cz; si.albedo = q.albedo; si.xland = q.xland; si.xice = q.xice; si.snow = q.snow;
+    si.p8w = q.p8w; si.t8w = q.t8w; si.p3d = q.p3d; si.pi3d = q.pi3d; si.t3d = q.t3d; si.qv = q.qv; si.cldfra = q.cf;
+    si.o3 = q.o3; si.qc = li.qc; si.qi = li.qi; si.qs = li.qs;
+    si.re_cloud = li.re_cloud; si.re_ice = li.re_ice; si.re_snow = li.re_snow;
+    q.swb->run(rrtmg_sw_call_config(nz, sc), si, SwBatchOutput{q.rsw, q.gsw});
+    KRadOut ko{nx, ncol, q.rlw, q.rsw, q.glw, q.gsw, q.cz, out.rthraten->view(), out.glw->view(), out.gsw->view(),
+               out.swdown->view(), in.albedo->cview()};
+    parallel_for(Range3D{0, nx, 0, ny, 0, nz}, ko);
+    return true;
+  }
+#else
   const int nx = g_.nx, ny = g_.ny, nz = g_.nz;
   // inputs to the host
   std::vector<real> t, p, pw, pi, rho, dz, tw, qv, qc, qi, qs, rec, rei, res, tsk, alb, ems, xland, xice, snow;
@@ -156,20 +288,6 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
       coszen(out.coszen->layout().total, real(0)), cldfra(out.cldfra ? out.cldfra->layout().total : 0, real(0));
   const Layout &Lo3 = out.rthraten->layout(), &Lo2 = out.glw->layout();
 
-  double declin, solcon;
-  radconst(julian, declin, solcon);  // Solar_step (radconst before calc_coszen)
-  RrtmgLwConfig lc;
-  lc.icloud = o_.icloud; lc.cldovrlp = o_.cldovrlp; lc.idcor = o_.idcor; lc.p_top = o_.p_top;
-  lc.yr = o_.julyr; lc.julian = julian; lc.o3input = o_.o3input;
-  if (o_.ghg_input == 1) p_->gases.interpolate(o_.julyr, julian, lc.co2, lc.n2o, lc.ch4, lc.cfc11, lc.cfc12);
-  else rrtmg_default_gases(lc);
-  RrtmgSwConfig sc;
-  sc.icloud = o_.icloud; sc.cldovrlp = o_.cldovrlp; sc.idcor = o_.idcor; sc.p_top = o_.p_top; sc.yr = o_.julyr;
-  sc.julian = julian; sc.solcon = solcon; sc.o3input = o_.o3input; sc.co2 = lc.co2; sc.n2o = lc.n2o; sc.ch4 = lc.ch4;
-  int nm = 0, np = 0;
-  double f1 = 0, f2 = 0;
-  if (o_.o3input == 2) ozone_time_weights(julian, nm, np, f1, f2);
-  const std::size_t per = std::size_t(CamOzone::nmon) * CamOzone::levsiz;
 
 #pragma omp parallel
   {
@@ -194,8 +312,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
         if (!res.empty()) cres[k] = res[q];
       }
       if (clouds)
-        cal_cldfra1(nz, cqv.data(), cqc.data(), qi.empty() ? nullptr : cqi.data(), qs.empty() ? nullptr : cqs.data(),
-                    ct.data(), cp.data(), ccf.data());
+        cal_cldfra1(nz, sd(cqv.data()), sd(cqc.data()), SD{qi.empty() ? nullptr : cqi.data(), 1},
+                    SD{qs.empty() ? nullptr : cqs.data(), 1}, sd(ct.data()), sd(cp.data()), sd(ccf.data()));
       if (out.cldfra)
         for (int k = 0; k < nz; ++k) cldfra[out.cldfra->layout().index(i, j, k)] = real(ccf[k]);
       const double* prc = rec.empty() ? nullptr : crec.data();
@@ -206,7 +324,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
       coszen[o2i] = real(cz);
       if (o_.o3input == 2)
         ozone_column(&p_->ozmixm[c * per + nm * CamOzone::levsiz], &p_->ozmixm[c * per + np * CamOzone::levsiz], f1, f2,
-                     p_->ozone.pin.data(), nz, cp.data(), co3.data());
+                     p_->ozone.pin.data(), nz, sd(cp.data()), sd(co3.data()));
       double g_lw, olr, lwcf, a1, a2, a3, a4, a5, a6, a7, a8;
       rrtmg_lw_column(nz, lc, *p_->lw, tsk[q2], ems[q2], xland[q2], xice[q2], snow[q2], p_->xlat[c], cp8w.data(),
                       ct8w.data(), cp.data(), cpi.data(), cdz.data(), ct.data(), crho.data(), cqv.data(), cqc.data(),
@@ -240,6 +358,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
   if (out.cldfra)
     copy_to_dev(out.cldfra->data() - out.cldfra->layout().offset, cldfra.data(), cldfra.size() * sizeof(real));
   return true;
+#endif
 }
 
 }  // namespace cppwrf::phys::driver
