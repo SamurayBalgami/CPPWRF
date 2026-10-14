@@ -251,3 +251,30 @@ later steps and FP32 are statistical comparisons.
 **Note on the 1-ULP shallow-convection trigger threshold at `t = 360 s` (step 6):**
 In `KF_eta_PARA` (`module_cu_kfeta.F:929-1022`), whenever a 2-layer updraft source layer (`KPBL = LC + 1`) is saturated (`q0 = qes`, so `TLCL = min(TLCL, TMIX) = TMIX`) and has `WKL < 1e-4` (`DTLCL = 0`, `DTRH = 0`), the parcel LCL height is `ZLCL = ZMIX = (dp_0 z_0 + dp_1 z_1)/(dp_0 + dp_1)`, `DLP = (ZLCL - z_0)/(z_1 - z_0) = dp_1/(dp_0 + dp_1)`, and `TENV = T_0 + (T_1 - T_0)*DLP = TMIX = TLCL`. Thus `TLCL + DTLCL + DTRH - TENV == 0` **identically in exact arithmetic**, and the buoyancy test `IF (TLCL + DTLCL + DTRH .LT. TENV) CYCLE usl` tests `0 < 0` up to 1 ULP (`5.68e-14 K`) of floating-point rounding. At step 6 (`t = 300 -> 360 s`), column `(j=77, i=8)` at `lc = 8` satisfies this exact degeneracy (`0.0` vs `-5.68e-14 K`), flipping shallow convection at `lc = 8` for that single step while CPU FP64 and CUDA FP64 agree to `1e-13` and the rest of the domain matches WRF to `<= 2.9e-13` at `t = 600 s`.
 
+
+## 8. Radiation (P3 = P1 + RRTMG LW/SW)
+
+`src/phys/driver/radiation.{hpp,cpp}` ports radiation_driver for ra_lw_physics = ra_sw_physics = 4
+with o3input = 2 (CAM ozone: `src/phys/ra_rrtmg_common/cam_ozone.*` = oznini, ozn_time_int,
+ozn_p_int), ghg_input = 1 (`cam_gases.*` = read_CAMgases), aer_opt = 0, swint_opt = 0: radconst,
+calc_coszen at xtime + radt/2, RTHRATEN = LW (+ SW in daytime), GSW, GLW, SWDOWN = GSW/(1-ALBEDO);
+P_PHY = p_hyd, P8W = p_hyd_w as in first_rk_step_part1. The RRTMG ports were checked
+column by column against dumps of a debug build of WRF (`~/cppwrf_scratch/wrf_dbg_src`: the
+RRTMG_LWRAD/RRTMG_SWRAD arguments and the rrtmg_lw/rrtmg_sw core arguments, 10591 columns, the SW
+at 09 UTC of a 9 h run): **LW and SW are bit-identical to WRF** in both the cores and the wrappers
+after these corrections:
+- LW band 16 upper atmosphere: WRF's nspb(16) = 0, so absb(1..2, ig) is used for every layer;
+- gfortran evaluates `p**4` as `(p*p)*(p*p)` (36 places in taumol); the SW band-24 sum order
+  (ozone before the continuum); inatm `amttl = amttl + coldry + wkl` order;
+- NLAYERS = kme + nint(p_top/400 Pa) - 1 with kme = nz + 1 (one layer was missing);
+- o3input = 2 ozone and ghg_input = 1 gases (the port had the climatology / fixed gases only);
+- SW core as WRF's rrtmg_sw: zepzen 1e-10, band albedos, adjflux = adjes*scon/rrsw_scon, the
+  heating rate in the core with heatfac/pdp and the top layer set to 0, RTHRATENSW =
+  (swhr/86400)/pi3d.
+CAM ozone is bit-identical on all columns; COSZEN differs by 1 ulp (the WRF binary's vectorised
+sin/cos, libmvec). Tables: `~/wrf_real/rrtmg_tables` (rrtmg_lw/sw_tables.bin dumped from WRF's
+rrtmg_lw/swinit with the _DBL data, ozone*.formatted, CAMtr_volume_mixing_ratio; config key
+phys.rrtmg_tables). The columns run on the host with OpenMP for now (GPU port pending).
+Not yet: clouds (cal_cldfra1, effective radii from the microphysics: P4), aer_opt, swint_opt.
+Acceptance (wrf_suite.py): real_p3_r8_fp64_cpu steps 1-3 U 2.2e-14, THM 1.8e-16; P3 1 h CPU FP64
+interior U 7e-12; real_p3_fp32_1h U 1.9e-4, THM 7.3e-7.

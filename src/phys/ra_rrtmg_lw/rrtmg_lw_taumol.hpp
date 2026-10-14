@@ -279,7 +279,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb03(
   indm = indminor[lay];
   if (specparm  <  0.125) {
   p = fs - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -291,7 +291,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb03(
   fac210 = fk2*fac10[lay];
   } else if (specparm  >  0.875) {
   p = -fs;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -309,7 +309,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb03(
   }
   if (specparm1  <  0.125) {
   p = fs1 - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -321,7 +321,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb03(
   fac211 = fk2*fac11[lay];
   } else if (specparm1  >  0.875) {
   p = -fs1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -505,7 +505,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb04(
   indf = indfor[lay];
   if (specparm  <  0.125) {
   p = fs - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -517,7 +517,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb04(
   fac210 = fk2*fac10[lay];
   } else if (specparm  >  0.875) {
   p = -fs;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -535,7 +535,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb04(
   }
   if (specparm1  <  0.125) {
   p = fs1 - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -547,7 +547,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb04(
   fac211 = fk2*fac11[lay];
   } else if (specparm1  >  0.875) {
   p = -fs1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -723,7 +723,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb05(
   indm = indminor[lay];
   if (specparm  <  0.125) {
   p = fs - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -735,7 +735,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb05(
   fac210 = fk2*fac10[lay];
   } else if (specparm  >  0.875) {
   p = -fs;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -753,7 +753,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb05(
   }
   if (specparm1  <  0.125) {
   p = fs1 - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -765,7 +765,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb05(
   fac211 = fk2*fac11[lay];
   } else if (specparm1  >  0.875) {
   p = -fs1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1027,7 +1027,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb07(
   indm = indminor[lay];
   if (specparm  <  0.125) {
   p = fs - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1039,7 +1039,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb07(
   fac210 = fk2*fac10[lay];
   } else if (specparm  >  0.875) {
   p = -fs;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1057,7 +1057,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb07(
   }
   if (specparm1  <  0.125) {
   p = fs1 - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1069,7 +1069,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb07(
   fac211 = fk2*fac11[lay];
   } else if (specparm1  >  0.875) {
   p = -fs1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1336,7 +1336,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb09(
   indm = indminor[lay];
   if (specparm  <  0.125) {
   p = fs - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1348,7 +1348,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb09(
   fac210 = fk2*fac10[lay];
   } else if (specparm  >  0.875) {
   p = -fs;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1366,7 +1366,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb09(
   }
   if (specparm1  <  0.125) {
   p = fs1 - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1378,7 +1378,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb09(
   fac211 = fk2*fac11[lay];
   } else if (specparm1  >  0.875) {
   p = -fs1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1680,7 +1680,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb12(
   indf = indfor[lay];
   if (specparm  <  0.125) {
   p = fs - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1692,7 +1692,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb12(
   fac210 = fk2*fac10[lay];
   } else if (specparm  >  0.875) {
   p = -fs;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1710,7 +1710,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb12(
   }
   if (specparm1  <  0.125) {
   p = fs1 - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1722,7 +1722,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb12(
   fac211 = fk2*fac11[lay];
   } else if (specparm1  >  0.875) {
   p = -fs1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1880,7 +1880,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb13(
   indm = indminor[lay];
   if (specparm  <  0.125) {
   p = fs - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1892,7 +1892,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb13(
   fac210 = fk2*fac10[lay];
   } else if (specparm  >  0.875) {
   p = -fs;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1910,7 +1910,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb13(
   }
   if (specparm1  <  0.125) {
   p = fs1 - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -1922,7 +1922,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb13(
   fac211 = fk2*fac11[lay];
   } else if (specparm1  >  0.875) {
   p = -fs1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -2144,7 +2144,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb15(
   scalen2 = colbrd[lay]*scaleminor[lay];
   if (specparm  <  0.125) {
   p = fs - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -2156,7 +2156,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb15(
   fac210 = fk2*fac10[lay];
   } else if (specparm  >  0.875) {
   p = -fs;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -2174,7 +2174,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb15(
   }
   if (specparm1  <  0.125) {
   p = fs1 - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -2186,7 +2186,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb15(
   fac211 = fk2*fac11[lay];
   } else if (specparm1  >  0.875) {
   p = -fs1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -2320,7 +2320,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb16(
   indf = indfor[lay];
   if (specparm  <  0.125) {
   p = fs - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -2332,7 +2332,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb16(
   fac210 = fk2*fac10[lay];
   } else if (specparm  >  0.875) {
   p = -fs;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -2350,7 +2350,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb16(
   }
   if (specparm1  <  0.125) {
   p = fs1 - 1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;
@@ -2362,7 +2362,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb16(
   fac211 = fk2*fac11[lay];
   } else if (specparm1  >  0.875) {
   p = -fs1;
-  p4 = (p * p * p * p);
+  p4 = ((p * p) * (p * p));  // gfortran p**4
   fk0 = p4;
   fk1 = 1 - p - 2.0*p4;
   fk2 = p + p4;

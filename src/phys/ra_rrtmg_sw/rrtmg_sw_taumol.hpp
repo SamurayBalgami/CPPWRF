@@ -617,12 +617,12 @@ CPPWRF_HD inline void taumol_sw(
             fac101 * b.ka[(ig - 1) * 585 + (ind1 + 1 - 1)] +
             fac011 * b.ka[(ig - 1) * 585 + (ind1 + 9 - 1)] +
             fac111 * b.ka[(ig - 1) * 585 + (ind1 + 10 - 1)]) +
+            colo3[lay] * b.abso3a[ig - 1] +  // WRF order: ozone before the water vapour continuum
             colh2o[lay] * (
             selffac[lay] * (b.selfref[(ig - 1) * 10 + (inds - 1)] +
             selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds + 1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)])) +
             forfac[lay] * (b.forref[(ig - 1) * 3 + (indf - 1)] +
-            forfrac[lay] * (b.forref[(ig - 1) * 3 + (indf + 1 - 1)] - b.forref[(ig - 1) * 3 + (indf - 1)]))) +
-            colo3[lay] * b.abso3a[ig - 1];
+            forfrac[lay] * (b.forref[(ig - 1) * 3 + (indf + 1 - 1)] - b.forref[(ig - 1) * 3 + (indf - 1)])));
         if (lay == laysolfr) {
           sfluxzen[offset + ig - 1] = b.sfluxref[(js - 1) * 8 + (ig - 1)] +
               fs * (b.sfluxref[js * 8 + (ig - 1)] - b.sfluxref[(js - 1) * 8 + (ig - 1)]);

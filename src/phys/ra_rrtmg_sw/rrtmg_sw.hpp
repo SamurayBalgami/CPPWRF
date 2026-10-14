@@ -53,7 +53,17 @@ struct RrtmgSwConfig {
   double cp{1004.5};
   int o3input{0};                     // 2: o33d on model levels
   double co2{0}, n2o{0}, ch4{0};      // trace gases (vmr), as for RrtmgLwConfig
+  double heatfac{8.4349451468392243};  // rrsw_con heatfac (rrtmg_sw_ini), checked against WRF
 };
+
+void rrtmg_sw_core(int nlayers, double heatfac, const double* play, const double* plev, const double* tlay,
+                   const double* tlev, const double* h2ovmr, const double* o3vmr, const double* co2vmr,
+                   const double* ch4vmr, const double* n2ovmr, const double* o2vmr, double asdir, double asdif,
+                   double aldir, double aldif, double coszen, double adjes, double scon, const double* reicmcl,
+                   const double* relqmcl, const double* resnmcl, double* swuflx, double* swdflx, double* swhr,
+                   double* swuflxc, double* swdflxc, double* swhrc, double* swdkdir, double* swdkdif,
+                   double* sibvisdir, double* sibvisdif, double* sibnirdir, double* sibnirdif, RrtmgSwWorkspace& ws,
+                   const RrtmgSwTables& tables);
 
 // Single column execution
 CPPWRF_HD void rrtmg_sw_column(

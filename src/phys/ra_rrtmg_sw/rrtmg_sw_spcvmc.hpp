@@ -1,3 +1,4 @@
+#include <cstdio>
 #pragma once
 
 #include "core/backend.hpp"
@@ -9,6 +10,8 @@
 #include <cmath>
 
 namespace cppwrf::phys {
+
+inline std::FILE* g_rrtmg_sw_dbg = nullptr;  // DEBUG (not for main)
 
 CPPWRF_HD inline void spcvmc_sw(
     int nlayers,
@@ -83,6 +86,13 @@ CPPWRF_HD inline void spcvmc_sw(
       selffac, selffrac, indself, forfac, forfrac, indfor,
       ztaug, ztaur, zsflxzen, tables
   );
+  if (g_rrtmg_sw_dbg) {  // DEBUG: Fortran order
+    int kl = nlayers; std::fwrite(&kl, 4, 1, g_rrtmg_sw_dbg);
+    for (int g = 0; g < 112; ++g) std::fwrite(&zsflxzen[g], 8, 1, g_rrtmg_sw_dbg);
+    for (int g = 0; g < 112; ++g) for (int k = 0; k < nlayers; ++k) std::fwrite(&ztaug[k][g], 8, 1, g_rrtmg_sw_dbg);
+    for (int g = 0; g < 112; ++g) for (int k = 0; k < nlayers; ++k) std::fwrite(&ztaur[k][g], 8, 1, g_rrtmg_sw_dbg);
+    std::fclose(g_rrtmg_sw_dbg); g_rrtmg_sw_dbg = nullptr;
+  }
 
   for (int i = 0; i <= klev; ++i) {
     pbbfd[i] = 0.0; pbbfu[i] = 0.0;

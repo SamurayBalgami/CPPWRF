@@ -11,7 +11,165 @@
 
 namespace cppwrf::phys {
 
-CPPWRF_HD void rrtmg_sw_column(
+CPPWRF_HD // WRF rrtmg_sw (cldprmc_sw, inatm_sw, setcoef_sw, spcvmc_sw, fluxes, heating rates) for one column whose
+// McICA subcolumn arrays are in ws. Level arrays: nlayers + 1 (0 = surface); heating rates K/day.
+void rrtmg_sw_core(int nlayers, double heatfac, const double* play, const double* plev, const double* tlay,
+                   const double* tlev, const double* h2ovmr, const double* o3vmr, const double* co2vmr,
+                   const double* ch4vmr, const double* n2ovmr, const double* o2vmr, double asdir, double asdif,
+                   double aldir, double aldif, double coszen, double adjes, double scon, const double* reicmcl,
+                   const double* relqmcl, const double* resnmcl, double* swuflx, double* swdflx, double* swhr,
+                   double* swuflxc, double* swdflxc, double* swhrc, double* swdkdir, double* swdkdif,
+                   double* sibvisdir, double* sibvisdif, double* sibnirdir, double* sibnirdif, RrtmgSwWorkspace& ws,
+                   const RrtmgSwTables& tables) {
+  cldprmc_sw(nlayers, /*inflag=*/2, /*iceflag=*/3, /*liqflag=*/1, ws.cldfmc, ws.ciwpmc, ws.clwpmc, ws.cswpmc,
+             reicmcl, relqmcl, resnmcl, ws.fsfcmc, ws.taormc, ws.taucmc, ws.ssacmc, ws.asmcmc, tables);
+  // 7. Atmospheric preparation (inatm)
+  constexpr double amd = 28.9660;
+  constexpr double amw = 18.0160;
+  constexpr double avogad = 6.02214199e23;
+  constexpr double grav = 9.8066;
+
+  double pavel[RRTMG_SW_MAX_LAYERS];
+  double tavel[RRTMG_SW_MAX_LAYERS];
+  double pz[RRTMG_SW_MAX_LAYERS + 1];
+  double tz[RRTMG_SW_MAX_LAYERS + 1];
+  double coldry[RRTMG_SW_MAX_LAYERS];
+
+  pz[0] = plev[0];
+  tz[0] = tlev[0];
+  ws.init_pointers();
+
+  double pdp[RRTMG_SW_MAX_LAYERS];
+  for (int l = 0; l < nlayers; ++l) {
+    pavel[l] = play[l];
+    tavel[l] = tlay[l];
+    pz[l + 1] = plev[l + 1];
+    tz[l + 1] = tlev[l + 1];
+    pdp[l] = pz[l] - pz[l + 1];
+
+    ws.wkl[0][l] = h2ovmr[l];
+    ws.wkl[1][l] = co2vmr[l];
+    ws.wkl[2][l] = o3vmr[l];
+    ws.wkl[3][l] = n2ovmr[l];
+    ws.wkl[4][l] = 0.0;
+    ws.wkl[5][l] = ch4vmr[l];
+    ws.wkl[6][l] = o2vmr[l];
+
+    double amm = (1.0 - ws.wkl[0][l]) * amd + ws.wkl[0][l] * amw;
+    coldry[l] = (pz[l] - pz[l + 1]) * 1.0e3 * avogad / (1.0e2 * grav * amm * (1.0 + ws.wkl[0][l]));
+    for (int imol = 0; imol < 7; ++imol) {
+      ws.wkl[imol][l] *= coldry[l];
+    }
+  }
+
+  // 8. Molecular absorption coefficients interpolation (setcoef)
+  int laytrop, layswtch, laylow;
+  int jp[RRTMG_SW_MAX_LAYERS];
+  int jt[RRTMG_SW_MAX_LAYERS];
+  int jt1[RRTMG_SW_MAX_LAYERS];
+  double colh2o[RRTMG_SW_MAX_LAYERS];
+  double colco2[RRTMG_SW_MAX_LAYERS];
+  double colo3[RRTMG_SW_MAX_LAYERS];
+  double coln2o[RRTMG_SW_MAX_LAYERS];
+  double colch4[RRTMG_SW_MAX_LAYERS];
+  double colo2[RRTMG_SW_MAX_LAYERS];
+  double colmol[RRTMG_SW_MAX_LAYERS];
+  double co2mult[RRTMG_SW_MAX_LAYERS];
+  int indself[RRTMG_SW_MAX_LAYERS];
+  int indfor[RRTMG_SW_MAX_LAYERS];
+  double selffac[RRTMG_SW_MAX_LAYERS];
+  double selffrac[RRTMG_SW_MAX_LAYERS];
+  double forfac[RRTMG_SW_MAX_LAYERS];
+  double forfrac[RRTMG_SW_MAX_LAYERS];
+  double fac00[RRTMG_SW_MAX_LAYERS];
+  double fac01[RRTMG_SW_MAX_LAYERS];
+  double fac10[RRTMG_SW_MAX_LAYERS];
+  double fac11[RRTMG_SW_MAX_LAYERS];
+
+  setcoef_sw(
+      nlayers, pavel, tavel, coldry, ws.wkl_ptrs,
+      laytrop, layswtch, laylow, jp, jt, jt1,
+      colh2o, colco2, colo3, coln2o, colch4, colo2, colmol, co2mult,
+      indself, indfor, selffac, selffrac, forfac, forfrac,
+      fac00, fac01, fac10, fac11, tables
+  );
+
+  // 9. Surface albedo per spectral band: WRF bands 1-9 and 14 near-IR (al*), 10-13 UV/vis (as*)
+  double albdir[14];
+  double albdif[14];
+  for (int ib = 0; ib < 9; ++ib) { albdir[ib] = aldir; albdif[ib] = aldif; }
+  albdir[13] = aldir;
+  albdif[13] = aldif;
+  for (int ib = 9; ib < 13; ++ib) { albdir[ib] = asdir; albdif[ib] = asdif; }
+
+  // 10. Solar flux scaling (inatm_sw: adjflux = adjflx * solvar, dyofyr = 0 -> adjflx = adjes)
+  double adjflux[30];
+  constexpr double rrsw_scon = 1.36822e+03;
+  for (int ib = 0; ib < 30; ++ib) adjflux[ib] = adjes * (scon / rrsw_scon);
+  double prmu0 = coszen;
+  if (prmu0 <= 1.e-10) prmu0 = 1.e-10;  // zepzen
+
+  // Zero aerosols
+  double taua[RRTMG_SW_MAX_LAYERS * 14] = {0.0};
+  double asma[RRTMG_SW_MAX_LAYERS * 14] = {0.0};
+  double ssaa[RRTMG_SW_MAX_LAYERS * 14];
+  for (int i = 0; i < nlayers * 14; ++i) ssaa[i] = 1.0;
+
+  // 11. Call 2-stream spectral radiative transfer solver (spcvmc_sw)
+  double pbbfd[RRTMG_SW_MAX_LAYERS + 1];
+  double pbbfu[RRTMG_SW_MAX_LAYERS + 1];
+  double pbbcd[RRTMG_SW_MAX_LAYERS + 1];
+  double pbbcu[RRTMG_SW_MAX_LAYERS + 1];
+  double puvfd[RRTMG_SW_MAX_LAYERS + 1];
+  double puvcd[RRTMG_SW_MAX_LAYERS + 1];
+  double pnifd[RRTMG_SW_MAX_LAYERS + 1];
+  double pnicd[RRTMG_SW_MAX_LAYERS + 1];
+  double pbbfddir[RRTMG_SW_MAX_LAYERS + 1];
+  double pbbcddir[RRTMG_SW_MAX_LAYERS + 1];
+  double puvfddir[RRTMG_SW_MAX_LAYERS + 1];
+  double puvcddir[RRTMG_SW_MAX_LAYERS + 1];
+  double pnifddir[RRTMG_SW_MAX_LAYERS + 1];
+  double pnicddir[RRTMG_SW_MAX_LAYERS + 1];
+
+  spcvmc_sw(
+      nlayers,
+      /*icpr=*/1,
+      albdif, albdir,
+      ws.cldfmc, ws.taucmc, ws.asmcmc, ws.ssacmc, ws.taormc,
+      taua, asma, ssaa,
+      prmu0, adjflux,
+      laytrop, layswtch, laylow, jp, jt, jt1,
+      colh2o, colco2, colch4, colo2, colo3, colmol,
+      fac00, fac01, fac10, fac11,
+      selffac, selffrac, indself, forfac, forfrac, indfor,
+      pbbfd, pbbfu, pbbcd, pbbcu,
+      puvfd, puvcd, pnifd, pnicd,
+      pbbfddir, pbbcddir, puvfddir, puvcddir, pnifddir, pnicddir,
+      tables
+  );
+
+  for (int i = 0; i <= nlayers; ++i) {
+    swuflxc[i] = pbbcu[i];
+    swdflxc[i] = pbbcd[i];
+    swuflx[i] = pbbfu[i];
+    swdflx[i] = pbbfd[i];
+    swdkdir[i] = pbbfddir[i];
+    swdkdif[i] = swdflx[i] - pbbfddir[i];
+    sibvisdir[i] = puvfddir[i];
+    sibvisdif[i] = puvfd[i] - puvfddir[i];
+    sibnirdir[i] = pnifddir[i];
+    sibnirdif[i] = pnifd[i] - pnifddir[i];
+  }
+  for (int i = 0; i < nlayers; ++i) {
+    const double zdpgcp = heatfac / pdp[i];
+    swhrc[i] = ((swdflxc[i + 1] - swuflxc[i + 1]) - (swdflxc[i] - swuflxc[i])) * zdpgcp;
+    swhr[i] = ((swdflx[i + 1] - swuflx[i + 1]) - (swdflx[i] - swuflx[i])) * zdpgcp;
+  }
+  swhrc[nlayers - 1] = 0.;
+  swhr[nlayers - 1] = 0.;
+}
+
+void rrtmg_sw_column(
     int num_levels,
     const RrtmgSwConfig& config,
     const RrtmgSwTables& tables,
@@ -247,188 +405,34 @@ CPPWRF_HD void rrtmg_sw_column(
     }
   }
 
-  // 6. Cloud optical properties
-  cldprmc_sw(
-      nlayers,
-      /*inflag=*/2,
-      /*iceflag=*/3,
-      /*liqflag=*/1,
-      ws.cldfmc,
-      ws.ciwpmc,
-      ws.clwpmc,
-      ws.cswpmc,
-      reicmcl,
-      relqmcl,
-      resnmcl,
-      ws.fsfcmc,
-      ws.taormc,
-      ws.taucmc,
-      ws.ssacmc,
-      ws.asmcmc,
-      tables
-  );
+  // 6-11. rrtmg_sw core (cldprmc_sw, inatm_sw, setcoef_sw, spcvmc_sw), WRF dyofyr = 0, adjes = 1
+  double swuflx[RRTMG_SW_MAX_LAYERS + 1], swdflx[RRTMG_SW_MAX_LAYERS + 1], swhr[RRTMG_SW_MAX_LAYERS];
+  double swuflxc[RRTMG_SW_MAX_LAYERS + 1], swdflxc[RRTMG_SW_MAX_LAYERS + 1], swhrc[RRTMG_SW_MAX_LAYERS];
+  double swdkdir[RRTMG_SW_MAX_LAYERS + 1], swdkdif[RRTMG_SW_MAX_LAYERS + 1];
+  double uvdir[RRTMG_SW_MAX_LAYERS + 1], uvdif[RRTMG_SW_MAX_LAYERS + 1], nidir[RRTMG_SW_MAX_LAYERS + 1],
+      nidif[RRTMG_SW_MAX_LAYERS + 1];
+  rrtmg_sw_core(nlayers, config.heatfac, play, plev, tlay, tlev, h2ovmr, o3vmr, co2vmr, ch4vmr, n2ovmr, o2vmr,
+                albedo, albedo, albedo, albedo, coszen, 1.0, config.solcon, reicmcl, relqmcl, resnmcl, swuflx, swdflx,
+                swhr, swuflxc, swdflxc, swhrc, swdkdir, swdkdif, uvdir, uvdif, nidir, nidif, ws, tables);
 
-  // 7. Atmospheric preparation (inatm)
-  constexpr double amd = 28.9660;
-  constexpr double amw = 18.0160;
-  constexpr double avogad = 6.02214199e23;
-  constexpr double grav = 9.8066;
-
-  double pavel[RRTMG_SW_MAX_LAYERS];
-  double tavel[RRTMG_SW_MAX_LAYERS];
-  double pz[RRTMG_SW_MAX_LAYERS + 1];
-  double tz[RRTMG_SW_MAX_LAYERS + 1];
-  double coldry[RRTMG_SW_MAX_LAYERS];
-
-  pz[0] = plev[0];
-  tz[0] = tlev[0];
-  ws.init_pointers();
-
-  for (int l = 0; l < nlayers; ++l) {
-    pavel[l] = play[l];
-    tavel[l] = tlay[l];
-    pz[l + 1] = plev[l + 1];
-    tz[l + 1] = tlev[l + 1];
-
-    ws.wkl[0][l] = h2ovmr[l];
-    ws.wkl[1][l] = co2vmr[l];
-    ws.wkl[2][l] = o3vmr[l];
-    ws.wkl[3][l] = n2ovmr[l];
-    ws.wkl[4][l] = 0.0;
-    ws.wkl[5][l] = ch4vmr[l];
-    ws.wkl[6][l] = o2vmr[l];
-
-    double amm = (1.0 - ws.wkl[0][l]) * amd + ws.wkl[0][l] * amw;
-    coldry[l] = (pz[l] - pz[l + 1]) * 1.0e3 * avogad / (1.0e2 * grav * amm * (1.0 + ws.wkl[0][l]));
-    for (int imol = 0; imol < 7; ++imol) {
-      ws.wkl[imol][l] *= coldry[l];
-    }
-  }
-
-  // 8. Molecular absorption coefficients interpolation (setcoef)
-  int laytrop, layswtch, laylow;
-  int jp[RRTMG_SW_MAX_LAYERS];
-  int jt[RRTMG_SW_MAX_LAYERS];
-  int jt1[RRTMG_SW_MAX_LAYERS];
-  double colh2o[RRTMG_SW_MAX_LAYERS];
-  double colco2[RRTMG_SW_MAX_LAYERS];
-  double colo3[RRTMG_SW_MAX_LAYERS];
-  double coln2o[RRTMG_SW_MAX_LAYERS];
-  double colch4[RRTMG_SW_MAX_LAYERS];
-  double colo2[RRTMG_SW_MAX_LAYERS];
-  double colmol[RRTMG_SW_MAX_LAYERS];
-  double co2mult[RRTMG_SW_MAX_LAYERS];
-  int indself[RRTMG_SW_MAX_LAYERS];
-  int indfor[RRTMG_SW_MAX_LAYERS];
-  double selffac[RRTMG_SW_MAX_LAYERS];
-  double selffrac[RRTMG_SW_MAX_LAYERS];
-  double forfac[RRTMG_SW_MAX_LAYERS];
-  double forfrac[RRTMG_SW_MAX_LAYERS];
-  double fac00[RRTMG_SW_MAX_LAYERS];
-  double fac01[RRTMG_SW_MAX_LAYERS];
-  double fac10[RRTMG_SW_MAX_LAYERS];
-  double fac11[RRTMG_SW_MAX_LAYERS];
-
-  setcoef_sw(
-      nlayers, pavel, tavel, coldry, ws.wkl_ptrs,
-      laytrop, layswtch, laylow, jp, jt, jt1,
-      colh2o, colco2, colo3, coln2o, colch4, colo2, colmol, co2mult,
-      indself, indfor, selffac, selffrac, forfac, forfrac,
-      fac00, fac01, fac10, fac11, tables
-  );
-
-  // 9. Surface albedo per spectral band
-  double albdir[14];
-  double albdif[14];
-  for (int ib = 0; ib < 9; ++ib) {
-    albdir[ib] = albedo;
-    albdif[ib] = albedo;
-  }
-  albdir[13] = albedo;
-  albdif[13] = albedo;
-  for (int ib = 9; ib < 13; ++ib) {
-    albdir[ib] = albedo;
-    albdif[ib] = albedo;
-  }
-
-  // 10. Solar flux scaling
-  double adjflux[30];
-  constexpr double rrsw_scon = 1368.22;
-  double solscale = config.solcon / rrsw_scon;
-  for (int ib = 0; ib < 30; ++ib) {
-    adjflux[ib] = solscale;
-  }
-
-  double prmu0 = std::max(coszen, 1.0e-4);
-
-  // Zero aerosols
-  double taua[RRTMG_SW_MAX_LAYERS * 14] = {0.0};
-  double asma[RRTMG_SW_MAX_LAYERS * 14] = {0.0};
-  double ssaa[RRTMG_SW_MAX_LAYERS * 14];
-  for (int i = 0; i < nlayers * 14; ++i) ssaa[i] = 1.0;
-
-  // 11. Call 2-stream spectral radiative transfer solver (spcvmc_sw)
-  double pbbfd[RRTMG_SW_MAX_LAYERS + 1];
-  double pbbfu[RRTMG_SW_MAX_LAYERS + 1];
-  double pbbcd[RRTMG_SW_MAX_LAYERS + 1];
-  double pbbcu[RRTMG_SW_MAX_LAYERS + 1];
-  double puvfd[RRTMG_SW_MAX_LAYERS + 1];
-  double puvcd[RRTMG_SW_MAX_LAYERS + 1];
-  double pnifd[RRTMG_SW_MAX_LAYERS + 1];
-  double pnicd[RRTMG_SW_MAX_LAYERS + 1];
-  double pbbfddir[RRTMG_SW_MAX_LAYERS + 1];
-  double pbbcddir[RRTMG_SW_MAX_LAYERS + 1];
-  double puvfddir[RRTMG_SW_MAX_LAYERS + 1];
-  double puvcddir[RRTMG_SW_MAX_LAYERS + 1];
-  double pnifddir[RRTMG_SW_MAX_LAYERS + 1];
-  double pnicddir[RRTMG_SW_MAX_LAYERS + 1];
-
-  spcvmc_sw(
-      nlayers,
-      /*icpr=*/1,
-      albdif, albdir,
-      ws.cldfmc, ws.taucmc, ws.asmcmc, ws.ssacmc, ws.taormc,
-      taua, asma, ssaa,
-      prmu0, adjflux,
-      laytrop, layswtch, laylow, jp, jt, jt1,
-      colh2o, colco2, colch4, colo2, colo3, colmol,
-      fac00, fac01, fac10, fac11,
-      selffac, selffrac, indself, forfac, forfrac, indfor,
-      pbbfd, pbbfu, pbbcd, pbbcu,
-      puvfd, puvcd, pnifd, pnicd,
-      pbbfddir, pbbcddir, puvfddir, puvcddir, pnifddir, pnicddir,
-      tables
-  );
-
-  // 12. Output fluxes and heating rates
-  swupb = pbbfu[0];
-  swupbc = pbbcu[0];
-  swdnb = pbbfd[0];
-  swdnbc = pbbcd[0];
-  gsw = swdnb - swupb;
-
-  swupt = pbbfu[nlayers];
-  swuptc = pbbcu[nlayers];
-  swdnt = pbbfd[nlayers];
-  swdntc = pbbcd[nlayers];
-  swcf = (swdnt - swupt) - (swdntc - swuptc);
-
-  swvisdir = puvfddir[0];
-  swvisdif = puvfd[0] - puvfddir[0];
-  swnirdir = pnifddir[0];
-  swnirdif = pnifd[0] - pnifddir[0];
-
-  double heatfac = grav * 86400.0 / (config.cp * 100.0);
+  // RRTMG_SWRAD outputs (level index 0 = surface, nlayers = top)
+  gsw = swdflx[0] - swuflx[0];
+  swcf = (swdflx[nlayers] - swuflx[nlayers]) - (swdflxc[nlayers] - swuflxc[nlayers]);
+  swupt = swuflx[nlayers];
+  swuptc = swuflxc[nlayers];
+  swdnt = swdflx[nlayers];
+  swdntc = swdflxc[nlayers];
+  swupb = swuflx[0];
+  swupbc = swuflxc[0];
+  swdnb = swdflx[0];
+  swdnbc = swdflxc[0];
+  swvisdir = uvdir[0];
+  swvisdif = uvdif[0];
+  swnirdir = nidir[0];
+  swnirdif = nidif[0];
   for (int k = 0; k < num_levels; ++k) {
-    double swnflx_top = pbbfd[k + 1] - pbbfu[k + 1];
-    double swnflx_bot = pbbfd[k] - pbbfu[k];
-    double swhr = (swnflx_top - swnflx_bot) * (heatfac / pdel[k]);
-    rthratensw[k] = swhr / (86400.0 * pi3d[k]);
-
-    double swnflxc_top = pbbcd[k + 1] - pbbcu[k + 1];
-    double swnflxc_bot = pbbcd[k] - pbbcu[k];
-    double swhrc = (swnflxc_top - swnflxc_bot) * (heatfac / pdel[k]);
-    rthratenswc[k] = swhrc / (86400.0 * pi3d[k]);
+    rthratensw[k] = (swhr[k] / 86400.) / pi3d[k];
+    rthratenswc[k] = (swhrc[k] / 86400.) / pi3d[k];
   }
 }
 

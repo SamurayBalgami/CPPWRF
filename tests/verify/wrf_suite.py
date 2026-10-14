@@ -55,6 +55,12 @@ CASES = [
     ("real_p2_fp32_1h", "cuda", "configs/real_p2_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P2", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P2/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-3, "W": 8e-2, "THM": 3e-5, "QV": 8e-4}),
+    # P3 = P1 + RRTMG LW/SW every step (radt 1, o3input 2, ghg_input 1); tables in ~/wrf_real/rrtmg_tables
+    ("real_p3_r8_fp64_cpu", "cpu_dp", "configs/real_p3_r8.ini", [], f"{WR}/run_P3_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {"U": 1e-13, "W": 1e-10, "PH": 1e-14, "THM": 1e-14, "QV": 1e-14, "MU": 1e-14}),
+    ("real_p3_fp32_1h", "cuda", "configs/real_p3_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P3", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_P3/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-4, "W": 1e-2, "THM": 2e-6, "QV": 1e-4}),
     ("wdamp_w1_fp64", "cpu_dp", "configs/real_r3.ini",
      ["real.dir=" + f"{WR}/run_W1_r8", "time.dt=450", "run.run_time=4500", "output.out_interval=1",
       "output.diag_interval=1"], f"{WR}/run_W1_r8/wrfout_d01_2026-10-12_00:00:00", 4500,
