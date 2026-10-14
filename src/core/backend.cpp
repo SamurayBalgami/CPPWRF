@@ -1,14 +1,18 @@
 #include "core/backend.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
+#include <map>
 #include <string>
+#include <vector>
 
 #if defined(CPPWRF_USE_CUDA)
 #include <cuda_runtime.h>
+#include <cxxabi.h>
 #endif
 
 namespace cppwrf {
@@ -17,6 +21,47 @@ namespace cppwrf {
 static void ck(cudaError_t e, const char* what) {
   if (e != cudaSuccess) throw std::runtime_error(std::string("CUDA error in ") + what + ": " + cudaGetErrorString(e));
 }
+namespace ktime {
+namespace {
+struct Table {
+  std::map<std::string, std::pair<double, long>> t;  // kernel type -> (seconds, launches)
+  std::chrono::steady_clock::time_point t0;
+  ~Table() {
+    if (t.empty()) return;
+    std::vector<std::pair<std::string, std::pair<double, long>>> v(t.begin(), t.end());
+    std::sort(v.begin(), v.end(), [](const auto& a, const auto& b) { return a.second.first > b.second.first; });
+    double tot = 0;
+    for (auto& e : v) tot += e.second.first;
+    std::fprintf(stderr, "cppwrf ktime: %.3f s in kernels\n", tot);
+    for (auto& e : v) {
+      int st = 0;
+      char* dm = abi::__cxa_demangle(e.first.c_str(), nullptr, nullptr, &st);
+      std::string name = (st == 0 && dm) ? dm : e.first;
+      std::free(dm);
+      if (name.size() > 110) name = name.substr(0, 110);
+      std::fprintf(stderr, "%6.2f%% %9.2f ms %7ld  %s\n", 100 * e.second.first / tot, 1e3 * e.second.first,
+                   e.second.second, name.c_str());
+    }
+  }
+};
+Table& table() { static Table tb; return tb; }
+}  // namespace
+bool on() {
+  static const bool enabled = [] { const char* e = std::getenv("CPPWRF_KTIME"); return e && *e && *e != '0'; }();
+  return enabled;
+}
+void begin() {
+  ck(cudaDeviceSynchronize(), "ktime");
+  table().t0 = std::chrono::steady_clock::now();
+}
+void end(const char* kernel_type) {
+  ck(cudaDeviceSynchronize(), "ktime");
+  auto& e = table().t[kernel_type];
+  e.first += std::chrono::duration<double>(std::chrono::steady_clock::now() - table().t0).count();
+  e.second += 1;
+}
+}  // namespace ktime
+
 void cuda_check_launch(const char* where) {
   ck(cudaGetLastError(), where);
 #ifdef CPPWRF_CUDA_SYNC_CHECK

@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
+#include <typeinfo>
 #include <vector>
 
 #if defined(__CUDACC__)
@@ -66,6 +67,13 @@ const char* backend_name();
 
 #if defined(CPPWRF_USE_CUDA)
 void cuda_check_launch(const char* where);
+// Developer kernel timer: CPPWRF_KTIME=1 synchronises around every parallel_for/column_for and
+// prints the time per kernel type at exit (no performance counters needed). Off: one branch.
+namespace ktime {
+bool on();
+void begin();
+void end(const char* kernel_type);
+}  // namespace ktime
 #if defined(__CUDACC__)
 namespace detail {
 template <class K> __global__ void k3d(K k, Range3D r) {
@@ -108,8 +116,11 @@ template <class K> void parallel_for(const Range3D& r, const K& k) {
   if (r.i1 <= r.i0 || r.j1 <= r.j0 || r.k1 <= r.k0) return;
   dim3 b(64, 2, 1);
   dim3 g((r.i1 - r.i0 + 63) / 64, (r.j1 - r.j0 + 1) / 2, r.k1 - r.k0);
+  const bool kt = ktime::on();
+  if (kt) ktime::begin();
   detail::k3d<<<g, b>>>(k, r);
   cuda_check_launch("parallel_for");
+  if (kt) ktime::end(typeid(K).name());
 }
 template <class K> void column_for(const Range2D& r, const K& k) {
   static_assert(__nv_is_extended_host_device_lambda_closure_type(K) || std::is_trivially_copyable_v<K>,
@@ -117,8 +128,11 @@ template <class K> void column_for(const Range2D& r, const K& k) {
   if (r.i1 <= r.i0 || r.j1 <= r.j0) return;
   dim3 b(64, 2, 1);
   dim3 g((r.i1 - r.i0 + 63) / 64, (r.j1 - r.j0 + 1) / 2, 1);
+  const bool kt = ktime::on();
+  if (kt) ktime::begin();
   detail::k2d<<<g, b>>>(k, r);
   cuda_check_launch("column_for");
+  if (kt) ktime::end(typeid(K).name());
 }
 #endif  // __CUDACC__
 #else   // ---- CPU / OpenMP ----
