@@ -80,6 +80,22 @@ def straka(binary, out):
     return ("FAIL" not in r.stdout and r.returncode == 0), r.stdout.strip().splitlines()[-1] if r.stdout else r.stderr
 
 
+def restart_p1(binary, out):
+    """Physics restart: 3 steps straight vs restarted after step 1 must be bit-identical
+    (dycore, surface/soil state, R*BLTEN, lagged t_1)."""
+    if not os.path.exists(f"{WR}/run_P1_r8/steps/wrfinput_d01"):
+        return None, "input missing"
+    a, b = os.path.join(out, "straight"), os.path.join(out, "restarted")
+    rc, log = run(binary, "configs/real_p1_r8.ini", ["restart.interval=60"], a)
+    if rc != 0:
+        return False, log[-300:]
+    rc, log = run(binary, "configs/real_p1_r8.ini", [f"run.restart_file={a}/restart_000001.nc"], b)
+    if rc != 0:
+        return False, log[-300:]
+    same = open(f"{a}/snap_000003.bin", "rb").read() == open(f"{b}/snap_000003.bin", "rb").read()
+    return same, "step 3 bit-identical" if same else "step 3 differs after restart"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cpu-dp")
@@ -115,6 +131,13 @@ def main():
             print(f"SKIP  straka_wrf             ({msg})")
         else:
             print(f"{'PASS' if good else 'FAIL'}  straka_wrf             {msg}")
+            ok &= good
+    if (not a.only or "restart" in a.only) and a.cpu_dp and os.path.exists(a.cpu_dp):
+        good, msg = restart_p1(a.cpu_dp, os.path.join(a.out, "restart_p1"))
+        if good is None:
+            print(f"SKIP  restart_p1_fp64        ({msg})")
+        else:
+            print(f"{'PASS' if good else 'FAIL'}  restart_p1_fp64        {msg}")
             ok &= good
     sys.exit(0 if ok else 1)
 

@@ -97,6 +97,18 @@ void DomainRunner::save_restart_file(const std::string& path, long step, double 
     }
   }
 
+  if (m_.suite) {  // column physics state (soil, surface, PBL, lagged t_1)
+    for (auto& [name, f] : m_.suite->carried2()) add_field2(name, *f);
+    for (auto& [name, f] : m_.suite->carried3()) add_field3(name, *f);
+    for (auto& [name, f] : m_.suite->carried_int()) {  // integers stored as reals (exact)
+      std::vector<int> hi;
+      f->download(hi);
+      bufs.emplace_back(hi.begin(), hi.end());
+      const Layout& L = f->layout();
+      vars.emplace_back(name, 'M', L.nx, L.ny, 1, bufs.back().data() + L.offset, dt, L.sj, 0);
+    }
+  }
+
   io_netcdf::write_restart(path, meta, vars);
 }
 
@@ -162,6 +174,22 @@ void DomainRunner::load_restart_file(const std::string& path) {
     }
   }
 
+  struct TargetI { phys::driver::IntField2* f; size_t buf_idx; };
+  std::vector<TargetI> targets_i;
+  if (m_.suite) {
+    for (auto& [name, f] : m_.suite->carried2()) reg_field2(name, *f);
+    for (auto& [name, f] : m_.suite->carried3()) reg_field3(name, *f);
+    for (auto& [name, f] : m_.suite->carried_int()) {
+      std::vector<int> hi;
+      f->download(hi);
+      size_t idx = bufs.size();
+      bufs.emplace_back(hi.begin(), hi.end());
+      const Layout& L = f->layout();
+      vars.emplace_back(name, 'M', L.nx, L.ny, 1, bufs.back().data() + L.offset, dt, L.sj, 0);
+      targets_i.push_back({f, idx});
+    }
+  }
+
   io_netcdf::read_restart(path, meta, vars);
 
   if (meta.nx != g.nx || meta.ny != g.ny || meta.nz != g.nz) {
@@ -185,6 +213,12 @@ void DomainRunner::load_restart_file(const std::string& path) {
     copy_to_dev(t.f->data() - t.f->layout().offset, bufs[t.buf_idx].data(), t.f->bytes());
     fill_halo(*t.f, g);
   }
+  for (const auto& t : targets_i) {
+    std::vector<int> hi(bufs[t.buf_idx].size());
+    for (size_t k = 0; k < hi.size(); ++k) hi[k] = int(std::lround(bufs[t.buf_idx][k]));
+    t.f->upload(hi);
+  }
+  if (m_.suite) m_.suite->restarted(start_step);
 }
 #endif
 

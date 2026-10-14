@@ -13,6 +13,7 @@
 // psim, psih, gz1oz0, chklowq, QGH, CHS, CHS2, CQS2, CPM, u_phytmp) are scratch members.
 // The initial surface state (what wrfinput + phy_init provide) is filled by the caller.
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core/backend.hpp"
@@ -115,6 +116,13 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   bool t1_lag_set_ = false;
 
   const SuiteOptions& options() const { return o_; }
+
+  // State WRF carries between steps (written to and read from restart files): the persistent
+  // grid% fields above, R*BLTEN/RTHRATEN, EXCH_H/M, the soil state and the lagged t_1.
+  std::vector<std::pair<std::string, Field2*>> carried2();
+  std::vector<std::pair<std::string, Field3*>> carried3();
+  std::vector<std::pair<std::string, IntField2*>> carried_int();
+  void restarted(long step) { itimestep = step; t1_lag_set_ = true; }
 
  private:
   Grid g_, gs_;

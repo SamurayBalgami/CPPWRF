@@ -598,6 +598,31 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
 
 PhysicsSuite::~PhysicsSuite() { dev_free(d_sfclay_tables_); }
 
+std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
+  std::vector<std::pair<std::string, Field2*>> v;
+  for (Field2* f : {&tsk, &xland, &xice, &lakemask, &water_depth, &mavail, &tmn, &vegfra, &shdmin, &shdmax, &snoalb,
+                    &albbck, &albedo, &emiss, &embck, &znt, &z0, &ust, &ustm, &mol, &rmol, &pblh, &hfx, &qfx, &lh,
+                    &grdflx, &qsfc, &flhc, &flqc, &wspd, &br, &fm, &fh, &zol, &regime, &u10, &v10, &t2, &th2, &q2,
+                    &psfc, &ch, &snow, &snowh, &snowc, &canwat, &lai, &snotime, &qz0, &rainbl, &raincv, &rainncv,
+                    &rainshv, &sr, &glw, &swdown, &gsw, &smstav, &smstot, &sfcrunoff, &udrunoff, &acsnom, &acsnow,
+                    &snopcx, &potevp, &noahres, &sfcevp, &sfcexc, &achfx, &aclhf, &acgrdflx, &dx2d, &uoce, &voce,
+                    &ctopo, &ctopo2, &ck, &cka, &cd, &cda, &wstar, &delta, &hol})
+    v.emplace_back("sfc_" + f->name(), f);
+  return v;
+}
+
+std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
+  std::vector<std::pair<std::string, Field3*>> v;
+  for (Field3* f : {&tslb, &smois, &sh2o, &smcrel, &exch_h, &exch_m, &pt.rthraten, &pt.rublten, &pt.rvblten,
+                    &pt.rthblten, &pt.rqvblten, &pt.rqcblten, &pt.rqiblten, &t1_lag_})
+    v.emplace_back("sfc_" + f->name(), f);
+  return v;
+}
+
+std::vector<std::pair<std::string, IntField2*>> PhysicsSuite::carried_int() {
+  return {{"sfc_ivgtyp", &ivgtyp}, {"sfc_isltyp", &isltyp}, {"sfc_kpbl", &kpbl}};
+}
+
 void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies&) {
   ++itimestep;  // solve_em: grid%itimestep = grid%itimestep + 1
   run_phy_prep(s, b, prep, PhyPrepParams{o_.use_theta_m});

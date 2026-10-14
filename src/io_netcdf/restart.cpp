@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <map>
 #include <stdexcept>
 #include <vector>
 
@@ -13,12 +14,21 @@ namespace {
 void get_var_dims(int nx, int ny, int nz, const RestartMeta& meta,
                   int dim_time, int dim_bt, int dim_bt_stag,
                   int dim_sn, int dim_sn_stag, int dim_we, int dim_we_stag,
-                  std::vector<int>& dimids) {
+                  std::map<int, int>& other_levels, int ncid, std::vector<int>& dimids) {
   dimids.clear();
   dimids.push_back(dim_time);
   if (nz > 1) {
-    if (nz > meta.nz) dimids.push_back(dim_bt_stag);
-    else dimids.push_back(dim_bt);
+    if (nz == meta.nz) dimids.push_back(dim_bt);
+    else if (nz == meta.nz + 1) dimids.push_back(dim_bt_stag);
+    else {  // e.g. soil layers: one dimension per level count
+      auto it = other_levels.find(nz);
+      if (it == other_levels.end()) {
+        int d = -1;
+        NC_CHECK(nc_def_dim(ncid, ("levels_" + std::to_string(nz)).c_str(), nz, &d));
+        it = other_levels.emplace(nz, d).first;
+      }
+      dimids.push_back(it->second);
+    }
   }
   if (ny > meta.ny) dimids.push_back(dim_sn_stag);
   else dimids.push_back(dim_sn);
@@ -75,11 +85,12 @@ void write_restart(const std::string& path, const RestartMeta& meta,
 
   // Variable definitions
   std::vector<int> varids(vars.size(), -1);
+  std::map<int, int> other_levels;
   for (size_t i = 0; i < vars.size(); ++i) {
     const auto& v = vars[i];
     std::vector<int> dimids;
     get_var_dims(v.nx, v.ny, v.nz, meta, dim_time, dim_bt, dim_bt_stag,
-                 dim_sn, dim_sn_stag, dim_we, dim_we_stag, dimids);
+                 dim_sn, dim_sn_stag, dim_we, dim_we_stag, other_levels, ncid, dimids);
     nc_type xtype = (v.dtype == DType::F64) ? NC_DOUBLE : NC_FLOAT;
     NC_CHECK(nc_def_var(ncid, v.name.c_str(), xtype, int(dimids.size()), dimids.data(), &varids[i]));
     char stag_str[2] = {v.stagger ? v.stagger : '\0', '\0'};
@@ -167,23 +178,12 @@ void read_restart(const std::string& path, RestartMeta& meta,
     nc_get_att_text(ncid, NC_GLOBAL, "CURRENT_DATE", meta.date_str.data());
   }
 
-  auto is_required_prog = [](const std::string& n) {
-    return n == "u_1" || n == "u_2" || n == "v_1" || n == "v_2" ||
-           n == "w_1" || n == "w_2" || n == "t_1" || n == "t_2" ||
-           n == "ph_1" || n == "ph_2" || n == "mu_1" || n == "mu_2" ||
-           n == "p" || n == "al";
-  };
-
   // Read each requested variable if present in the restart file
   for (auto& v : vars) {
     int varid = -1;
     int rc = nc_inq_varid(ncid, v.name.c_str(), &varid);
-    if (rc == NC_ENOTVAR) {
-      if (is_required_prog(v.name)) {
-        throw std::runtime_error("read_restart: missing required variable '" + v.name + "' in restart file '" + path + "'");
-      }
-      continue;
-    }
+    if (rc == NC_ENOTVAR)  // every field the run carries must come back, or the restart is not exact
+      throw std::runtime_error("read_restart: missing variable '" + v.name + "' in restart file '" + path + "'");
     NC_CHECK(rc);
 
     const int nx = v.nx > 0 ? v.nx : 1;
