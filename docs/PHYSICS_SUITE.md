@@ -329,6 +329,11 @@ Verification:
   same size as P2's.
 - Restart (P4, CPU FP64): step 3 straight vs restarted after step 1 bit-identical (CLDFRA,
   RE_* carried).
+- Cloudy RRTMG column by column: debug-WRF dumps of RRTMG_LWRAD / RRTMG_SWRAD at 09 UTC of a 9 h
+  P4 run (~/cppwrf_scratch/wrf_p4day; 5431 cloudy columns, WSM6 radii, snow): LW and SW wrappers
+  **bit-identical to WRF on 10591/10591 columns**, and cal_cldfra1 equals WRF's CLDFRA exactly.
+  GPU batch path on the same dumps: LW 8884, SW 10490 columns bit-identical, the rest at roundoff
+  (GLW 1e-16, RTHRATENLW 6e-15, GSW 3e-16, RTHRATENSW 3e-14).
 
 
 ## 10. RRTMG on the GPU
