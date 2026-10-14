@@ -105,9 +105,19 @@ endfunction()
 
 if(CPPWRF_ENABLE_CUDA)
   cppwrf_device_sources(${CPPWRF_SOURCES})
+  # RRTMG radiation runs on the host for now (host tables, OpenMP): compile it as C++
+  set_source_files_properties(
+    ${CMAKE_SOURCE_DIR}/src/phys/driver/radiation.cpp
+    ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_lw/rrtmg_lw.cpp ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_lw/rrtmg_lw_tables.cpp
+    ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_sw/rrtmg_sw.cpp ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_sw/rrtmg_sw_tables.cpp
+    ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/cam_gases.cpp ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/cam_ozone.cpp
+    PROPERTIES LANGUAGE CXX)
   target_compile_definitions(cppwrf_core PUBLIC CPPWRF_USE_CUDA)
   target_compile_options(cppwrf_core PUBLIC $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --extended-lambda>)
   target_link_libraries(cppwrf_core PUBLIC CUDA::cudart)
+  # host OpenMP for the radiation columns (C++ sources only)
+  find_package(OpenMP REQUIRED COMPONENTS CXX)
+  target_link_libraries(cppwrf_core PUBLIC OpenMP::OpenMP_CXX)
 else()
   target_link_libraries(cppwrf_core PUBLIC OpenMP::OpenMP_CXX)
 endif()
