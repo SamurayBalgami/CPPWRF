@@ -70,6 +70,18 @@ CASES = [
     ("real_p4_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p4_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P4_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 6e-4, "W": 1e-2, "THM": 8e-6, "QV": 5e-4}),
+    # P6 = P5 with Thompson (mp_physics = 8; WRF r8 built with -fdefault-double-8, see PHYSICS_SUITE.md
+    # section 11): steps 1-3 and 10 min (rain, ice, snow, ni, nr active) at roundoff, then amplification.
+    ("real_p6_r8_fp64_cpu", "cpu_dp", "configs/real_p6_r8.ini", [], f"{WR}/run_P6_r8/steps/wrfout_d01_2026-10-12_00:00:00",
+     180, {"U": 1e-13, "W": 1e-10, "THM": 1e-14, "QV": 1e-14, "QCLOUD": 1e-10}),
+    ("real_p6_r8_fp64_cpu_10min", "cpu_dp", "configs/real_p6_r8.ini",
+     ["run.run_time=600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_P6_r8/wrfout_d01_2026-10-12_00:00:00", 600,
+     {"U": 1e-12, "THM": 1e-14, "QV": 1e-13, "QCLOUD": 1e-11, "QRAIN": 1e-11, "QICE": 1e-11, "QNICE": 1e-11,
+      "QNRAIN": 1e-11}),
+    ("real_p6_fp32_1h", "cuda", "configs/real_p6_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_P6/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 5e-4, "W": 1e-2, "THM": 1e-5, "QV": 5e-4}),
     # Nesting: one-way (N1) and two-way (N2, feedback changes d01 by 5e-3) vs WRF r8
     ("real_n1_r8_fp64_cpu", "cpu_dp", "configs/real_n1_steps.ini", [],
      {d: f"{WR}/run_N1_r8/steps/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 180,

@@ -1,4 +1,7 @@
 #include "phys/mp_thompson/thompson_tables.hpp"
+#include <initializer_list>
+#include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -114,6 +117,39 @@ inline double gammp(double a, double x) {
         gcf(gammcf, a, x, gln);
         return 1.0 - gammcf;
     }
+}
+
+// WRF's table files (module_mp_thompson.F qr_acr_qg / qr_acr_qs / freezeH2O write them on the first
+// run and read them afterwards): Fortran unformatted sequential records of doubles, either byte
+// order (detected from the first record marker). Returns false if a file is missing or malformed.
+template <typename Real>
+bool read_wrf_dat(const std::string& path, std::initializer_list<std::vector<Real>*> arrays) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+    bool swap = false, first = true;
+    for (std::vector<Real>* a : arrays) {
+        uint32_t m;
+        if (!f.read(reinterpret_cast<char*>(&m), 4)) return false;
+        const uint64_t want = uint64_t(a->size()) * 8;
+        if (first) {
+            if (m != want) {
+                if (__builtin_bswap32(m) != want) return false;
+                swap = true;
+            }
+            first = false;
+        }
+        if ((swap ? __builtin_bswap32(m) : m) != want) return false;
+        std::vector<uint64_t> buf(a->size());
+        if (!f.read(reinterpret_cast<char*>(buf.data()), std::streamsize(want))) return false;
+        for (size_t i = 0; i < buf.size(); ++i) {
+            uint64_t u = swap ? __builtin_bswap64(buf[i]) : buf[i];
+            double x;
+            std::memcpy(&x, &u, 8);
+            (*a)[i] = Real(x);
+        }
+        f.read(reinterpret_cast<char*>(&m), 4);
+    }
+    return bool(f);
 }
 
 } // namespace
@@ -506,7 +542,12 @@ bool load_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& p
 }
 
 template <typename Real>
-void init_thompson_tables(ThompsonHostTables<Real>& tables) {
+void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& wrf_dat_dir) {
+    // WRF's own table files when present (bit-identical to the WRF run), else computed below
+    const std::string dd = wrf_dat_dir.empty() ? std::string(".") : wrf_dat_dir;
+    const bool have_qg = !wrf_dat_dir.empty() && read_wrf_dat<Real>(dd + "/qr_acr_qg_V4.dat", {&tables.tcg_racg, &tables.tmr_racg, &tables.tcr_gacr, &tables.tnr_racg, &tables.tnr_gacr});
+    const bool have_qs = !wrf_dat_dir.empty() && read_wrf_dat<Real>(dd + "/qr_acr_qsV2.dat", {&tables.tcs_racs1, &tables.tmr_racs1, &tables.tcs_racs2, &tables.tmr_racs2, &tables.tcr_sacr1, &tables.tms_sacr1, &tables.tcr_sacr2, &tables.tms_sacr2, &tables.tnr_racs1, &tables.tnr_racs2, &tables.tnr_sacr1, &tables.tnr_sacr2});
+    const bool have_fz = !wrf_dat_dir.empty() && read_wrf_dat<Real>(dd + "/freezeH2O.dat", {&tables.tpi_qrfz, &tables.tni_qrfz, &tables.tpg_qrfz, &tables.tnr_qrfz, &tables.tpi_qcfz, &tables.tni_qcfz});
     // Physical constants matching module_mp_thompson.F
     constexpr double PI = 3.1415926536;
     constexpr double rho_w = 1000.0;
@@ -987,7 +1028,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables) {
         }
     }
 
-    par_for_host(ntb_r * ntb_r1, [&](int km) {
+    if (!have_qg) par_for_host(ntb_r * ntb_r1, [&](int km) {
         int m = km / ntb_r1;
         int k = km % ntb_r1;
 
@@ -1091,7 +1132,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables) {
         }
     }
 
-    par_for_host(ntb_r * ntb_r1, [&](int km) {
+    if (!have_qs) par_for_host(ntb_r * ntb_r1, [&](int km) {
         int m = km / ntb_r1;
         int k = km % ntb_r1;
 
@@ -1164,7 +1205,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables) {
     double massc_all[nbc];
     for (int n = 0; n < nbc; ++n) massc_all[n] = am_r * std::pow(Dc[n], bm_r);
 
-    par_for_host(ntb_IN * ntb_freeze_temp, [&](int km) {
+    if (!have_fz) par_for_host(ntb_IN * ntb_freeze_temp, [&](int km) {
         int m = km / ntb_freeze_temp;
         int k = km % ntb_freeze_temp; // 0..44 -> 1..45 in Fortran (temp = -1 to -45 C)
         int k_f = k + 1;
@@ -1256,8 +1297,8 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables) {
 
 template void init_thompson_constants<double>(ThompsonHostTables<double>& tables);
 template void init_thompson_constants<float>(ThompsonHostTables<float>& tables);
-template void init_thompson_tables<double>(ThompsonHostTables<double>& tables);
-template void init_thompson_tables<float>(ThompsonHostTables<float>& tables);
+template void init_thompson_tables<double>(ThompsonHostTables<double>& tables, const std::string&);
+template void init_thompson_tables<float>(ThompsonHostTables<float>& tables, const std::string&);
 template bool load_thompson_tables<double>(ThompsonHostTables<double>& tables, const std::string& path);
 template bool load_thompson_tables<float>(ThompsonHostTables<float>& tables, const std::string& path);
 

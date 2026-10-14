@@ -577,7 +577,7 @@ template <typename Real>
 void init_thompson_constants(ThompsonHostTables<Real>& tables);
 
 template <typename Real>
-void init_thompson_tables(ThompsonHostTables<Real>& tables);
+void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& wrf_dat_dir = "");
 
 template <typename Real>
 bool load_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& path = "tables_fortran.bin");
@@ -585,8 +585,8 @@ bool load_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& p
 // Explicit instantiations declared
 extern template void init_thompson_constants<double>(ThompsonHostTables<double>& tables);
 extern template void init_thompson_constants<float>(ThompsonHostTables<float>& tables);
-extern template void init_thompson_tables<double>(ThompsonHostTables<double>& tables);
-extern template void init_thompson_tables<float>(ThompsonHostTables<float>& tables);
+extern template void init_thompson_tables<double>(ThompsonHostTables<double>& tables, const std::string&);
+extern template void init_thompson_tables<float>(ThompsonHostTables<float>& tables, const std::string&);
 extern template bool load_thompson_tables<double>(ThompsonHostTables<double>& tables, const std::string& path);
 extern template bool load_thompson_tables<float>(ThompsonHostTables<float>& tables, const std::string& path);
 

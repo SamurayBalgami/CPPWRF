@@ -368,3 +368,31 @@ Speed (RTX 2060 mobile, FP64, 119 x 89 x 44, one call for all 10591 columns): LW
 (band 40 %, layer 33 %, prep 25 %), SW 0.37 s in daytime (g-point 83 %); the host path took
 3.4 s (LW) single-threaded. Model, radt = 1 (radiation every step): P3 CUDA FP64 3200 ->
 510 ns/cell/step, P4 1 h 3234 -> 650 ns/cell/step.
+
+## 11. Thompson microphysics (mp_physics = 8)
+
+Port: `src/phys/mp_thompson/` (column scheme `thompson.hpp`, tables `thompson_tables.*`), coupled in
+`src/dyn/physics_coupling.cpp` with the scalars qni, qnr (`[moist] species = ...,qni,qnr`); column
+differential test against WRF's Fortran: tests/phys/mp_thompson (<= 1e-12).
+
+**WRF reference build.** The stock real*8 WRF (`configure -r8`: PROMOTION = -fdefault-real-8 only)
+promotes DOUBLE PRECISION to 16-byte quad in gfortran. Thompson declares its tables and many locals
+DOUBLE PRECISION, so that build computes them in software quad: qr_acr_qg alone did not finish in
+8 h. The Thompson references are therefore made with `~/wrf_real/WRF-4.6.1-r8d8` = the same source
+with `-fdefault-real-8 -fdefault-double-8` (DOUBLE PRECISION stays 8 bytes, as the author intends
+and as in the single-precision WRF; qr_acr_qg takes 280 s). The schemes verified before (WSM6, KF,
+YSU, Noah, sfclayrev, RRTMG, Kessler) have no DOUBLE PRECISION in their used code paths.
+
+**Tables.** WRF writes qr_acr_qg_V4.dat, qr_acr_qsV2.dat and freezeH2O.dat on its first run and reads
+them afterwards. CPPWRF reads them from `phys.table_dir` (default real.dir; either byte order) and
+then uses WRF's values bit for bit; without them it computes the tables (OpenMP, ~2.4 min on 3
+threads), which agree with WRF's to 1e-15 (a few ulp, 0 for the sacr1 tables).
+
+**Acceptance** (P6 = P5 with mp_physics = 8: P1 column physics + Thompson + diff_opt 1 / km_opt 4 on
+the P4 inputs; ~/wrf_real/run_P6_r8 (steps/ every minute; 1 h every 10 min), FP32: run_P6):
+- CPU FP64, steps 1-3: U 2.2e-14, THM 2.0e-16, QV 1.2e-15, QCLOUD 2.0e-12.
+- CPU FP64 at 10 min with rain, ice, snow, ni and nr active: U 3.1e-14, QRAIN 8.0e-13, QICE 1.0e-13,
+  QNICE 1.8e-13, QNRAIN 9.2e-13 (rel L2).
+- 1 h: amplification as for WSM6 (QICE ~7e-2 for both CPU FP64 and CUDA FP64 vs WRF; U 8e-5).
+- CUDA FP32 vs single-precision WRF, 1 h: U 2.3e-4, THM 5.8e-6, QV 2.8e-4 (77 ns/cell/step).
+wrf_suite: real_p6_r8_fp64_cpu, real_p6_r8_fp64_cpu_10min, real_p6_fp32_1h.
