@@ -51,6 +51,8 @@ struct RrtmgSwConfig {
   double g{9.81};
   double r_d{287.0};
   double cp{1004.5};
+  int o3input{0};                     // 2: o33d on model levels
+  double co2{0}, n2o{0}, ch4{0};      // trace gases (vmr), as for RrtmgLwConfig
 };
 
 // Single column execution
@@ -80,6 +82,7 @@ CPPWRF_HD void rrtmg_sw_column(
     const double* qs3d,  // [nz] kg/kg
     const double* qg3d,  // [nz] kg/kg
     const double* cldfra3d, // [nz]
+    const double* o33d,     // [nz] ozone vmr (o3input = 2), else unused
     // 2D outputs
     double& gsw,
     double& swcf,

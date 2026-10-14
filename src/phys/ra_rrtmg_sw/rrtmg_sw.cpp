@@ -35,6 +35,7 @@ CPPWRF_HD void rrtmg_sw_column(
     const double* qs3d,
     const double* qg3d,
     const double* cldfra3d,
+    const double* o33d,
     double& gsw,
     double& swcf,
     double& swupt,
@@ -108,9 +109,9 @@ CPPWRF_HD void rrtmg_sw_column(
   constexpr double amdw = 1.607793;
   constexpr double amdo = 0.603461;
   constexpr double o2_const = 0.209488;
-  constexpr double ch4_const = 1774.0e-9;
-  constexpr double n2o_const = 319.0e-9;
-  double co2_const = (280.0 + 90.0 * std::exp(0.02 * (config.yr - 2000.0))) * 1.0e-6;
+  const double ch4_const = config.ch4;  // ghg_input = 1: read_CAMgases, else the WRF defaults
+  const double n2o_const = config.n2o;
+  const double co2_const = config.co2;
 
   plev[0] = p8w[0] / 100.0; // Pa -> mb
   tlev[0] = t8w[0];
@@ -153,6 +154,14 @@ CPPWRF_HD void rrtmg_sw_column(
   rrtmg_inirad(o3mmr, plev, 0, num_levels);
   for (int k = 0; k < nlayers; ++k) {
     o3vmr[k] = o3mmr[k] * amdo;
+    if (config.o3input == 2) {  // CAM ozone on model levels, the climatology shifted to it above
+      if (k < num_levels) {
+        o3vmr[k] = o33d[k];
+      } else {
+        o3vmr[k] = o33d[num_levels - 1] - o3mmr[num_levels - 1] * amdo + o3mmr[k] * amdo;
+        if (o3vmr[k] <= 0.) o3vmr[k] = o3mmr[k] * amdo;
+      }
+    }
   }
 
   // 4. Cloud physical properties (EM_CORE: iceflgsw=3, inflgsw=2)
@@ -516,7 +525,7 @@ void rrtmg_swrad(
           nz, config, tables,
           coszen[col], albedo[col], xland[col], xice[col], snow[col], xlat[col],
           col_p8w, col_t8w, col_p3d, col_pi3d, col_dz8w, col_t3d, col_rho3d,
-          col_qv3d, col_qc3d, col_qr3d, col_qi3d, col_qs3d, col_qg3d, col_cldfra3d,
+          col_qv3d, col_qc3d, col_qr3d, col_qi3d, col_qs3d, col_qg3d, col_cldfra3d, nullptr,
           gsw[col], swcf[col], swupt[col], swuptc[col], swdnt[col], swdntc[col],
           swupb[col], swupbc[col], swdnb[col], swdnbc[col],
           swvisdir[col], swvisdif[col], swnirdir[col], swnirdif[col],
