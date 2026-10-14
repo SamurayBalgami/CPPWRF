@@ -335,6 +335,7 @@ struct KTendT {
   V3 out; real rdx, rdy; int nz; bool do_y, use_tendf; real hup, vup;
   C3 hd; C2 mut; bool use_hd;  // rk_addtend_dry: + (c1h*mut + c2h) * h_diabatic
   B2 msftx, msfty; kern::Spec sp;
+  V3 thf; bool want_thf;  // set_tend(RTHFTEN, t_tend, msfty): advection only; spec zone 0 (not advected)
   CPPWRF_HD real fx(int i, int j, int k) const {
     real vel = ru(i, j, k);
     const int o = kern::ord_face(i, sp.nx, sp.x);
@@ -360,6 +361,20 @@ struct KTendT {
     real r = -(msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
     if (do_y) r -= (msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
     r -= c.rdnw(k) * (fz(i, j, k + 1) - fz(i, j, k));
+    if (want_thf) {
+      // WRF advect_scalar on a specified boundary: the x flux divergence is skipped in the outer
+      // columns, the y one in the outer rows (degrade_xs/xe, ys/ye); the vertical term is everywhere
+      const bool ocol = sp.x && (i == 0 || i == sp.nx - 1), orow = sp.y && (j == 0 || j == sp.ny - 1);
+      if (!ocol && !orow) {
+        thf(i, j, k) = r * msfty(i, j);
+      } else {
+        real q = real(0);
+        if (!ocol) q = -(msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
+        if (do_y && !orow) q -= (msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+        q -= c.rdnw(k) * (fz(i, j, k + 1) - fz(i, j, k));
+        thf(i, j, k) = q * msfty(i, j);
+      }
+    }
     if (use_tendf) r += tendf(i, j, k) / msfty(i, j);  // rk_addtend_dry
     if (use_hd) r += (c.c1h(k) * mut(i, j) + c.c2h(k)) * hd(i, j, k) / msfty(i, j);  // "divide by my to couple heating"
     out(i, j, k) = r;
@@ -590,6 +605,9 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
   }
   if (bc_ && rk_step == 1) bc_->relax_dry(s, t, b);  // relax_bdy_dry -> *_save -> *_tendf (rk_addtend_dry)
   const bool tendf = diff || bc_ != nullptr || cp_ != nullptr || dd_ != nullptr;
+  Field3* thf_field = cp_ ? cp_->th_forcing() : nullptr;
+  const bool thf_on = thf_field != nullptr;
+  const V3 thf = thf_on ? thf_field->view() : V3{};
   parallel_for(ur, KTendU{s.u_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), s.ph_2.cview(),
                           s.alt.cview(), s.al.cview(), s.php.cview(), t.ru_tendf.cview(), s.mu_2.cview(),
                           s.muu.cview(), b.pb.view(), c, moist_coef(s), t.ru_tend.view(), rdx, rdy, nz, do_y, p_.top_lid, tendf, hup, vup,
@@ -605,7 +623,7 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
                           p_.w_damping == 1 ? real(g_.dt) : real(0), p_.w_crit_cfl});
   parallel_for(mr, KTendT{s.t_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), t.t_tendf.cview(), c,
                           t.t_tend.view(), rdx, rdy, nz, do_y, tendf, hup, vup, s.h_diabatic.cview(), s.mut.cview(),
-                          s.n_moist > 0, b.msftx.view(), b.msfty.view(), sp});
+                          s.n_moist > 0, b.msftx.view(), b.msfty.view(), sp, thf, thf_on});
   parallel_for(wr, KTendPh{s.u_2.cview(), s.v_2.cview(), s.w_2.cview(), s.ww.cview(), s.ph_2.cview(), s.mut.cview(),
                            s.muu.cview(), s.muv.cview(), b.phb.view(), c, t.ph_tend.view(), rdx, rdy, nz, do_y,
                            b.msfty.view(), b.msfux.view(), b.msfvy.view(), sp, t.ph_tendf.cview(), bc_ != nullptr});

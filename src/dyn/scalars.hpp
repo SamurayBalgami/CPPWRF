@@ -29,12 +29,15 @@ class ScalarTransport {
   const ScalarParams& params() const { return p_; }
   void set_lateral_bc(const LateralBC* bc) { bc_ = bc; }
   void set_diffusion(const DiffusionDriver* d) { dd_ = d; }
+  // RQVFTEN = qv advection tendency * msfty (set_tend in rk_scalar_tend); nullptr: off
+  void set_qv_forcing(Field3* f) { qvf_ = f; }
 
  private:
   Grid g_;
   ScalarParams p_;
   const LateralBC* bc_ = nullptr;
   const DiffusionDriver* dd_ = nullptr;
+  Field3* qvf_ = nullptr;
   Field3 q_new_, scale_;
   Field3 dhx_, lox_, dhy_, loy_, dhz_, loz_;  // advect_scalar_pd face fluxes (high - low, low)
 };

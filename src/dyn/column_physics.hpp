@@ -20,6 +20,11 @@ class ColumnPhysics {
   virtual void part1(const State& s, const BaseState& b, Tendencies& t) = 0;
   virtual void part2(const State& s, const BaseState& b, Tendencies& t) = 0;
   virtual void after_rk(const State& s, const BaseState& b) = 0;
+  // Advective forcing for cumulus schemes that need it (WRF RTHFTEN / RQVFTEN, set_tend in
+  // rk_tendency and rk_scalar_tend: theta / qv advection tendency * msfty, every RK stage).
+  // nullptr: not wanted.
+  virtual Field3* th_forcing() { return nullptr; }
+  virtual Field3* qv_forcing() { return nullptr; }
 };
 
 }  // namespace cppwrf::dyn

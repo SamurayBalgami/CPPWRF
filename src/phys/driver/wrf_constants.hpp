@@ -19,6 +19,7 @@ inline constexpr real xlv1 = real(2370.);
 inline constexpr real xls0 = real(2.905e6);
 inline constexpr real xls1 = real(259.532);
 inline constexpr real xlf = real(3.50e5);
+inline constexpr real xls = real(2.85e6);
 inline constexpr real rhowater = real(1000.);
 inline constexpr real svp1 = real(0.6112), svp2 = real(17.67), svp3 = real(29.65), svpt0 = real(273.15);
 inline constexpr real ep_1 = r_v / r_d - real(1.);

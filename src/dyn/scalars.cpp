@@ -71,6 +71,15 @@ struct Fluxes {
   CPPWRF_HD bool spec_cell(int i, int j) const {
     return (sp.x && (i == 0 || i == sp.nx - 1)) || (sp.y && (j == 0 || j == sp.ny - 1));
   }
+  // advect_scalar's tendency in a spec-zone cell (set_tend only): the x flux divergence is skipped
+  // in the outer columns, the y one in the outer rows, the vertical term is kept
+  CPPWRF_HD real adv_spec(int i, int j, int k) const {
+    const bool ocol = sp.x && (i == 0 || i == sp.nx - 1), orow = sp.y && (j == 0 || j == sp.ny - 1);
+    real r = real(0);
+    if (!ocol) r = -(msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
+    if (do_y && !orow) r -= (msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+    return r - c.rdnw(k) * (fz(i, j, k + 1) - fz(i, j, k));
+  }
   CPPWRF_HD real adv(int i, int j, int k) const {  // advect_scalar: horizontal terms times msftx
     if (spec_cell(i, j)) return 0;
     real r = -(msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
@@ -84,8 +93,10 @@ CPPWRF_HD inline real m_full(const VCoef& c, int k, real mub, real mu) { return 
 // rk_update_scalar (non-PD stages / options): q_new = (m_old q_1 + dt (adv + tendf)) / m_new
 struct KUpdate {
   Fluxes f; C3 q1, tendf; C2 mu1, mu2; B2 mub; V3 qn; real dt_rk; bool add_tendf;
+  V3 ften; bool want_ften;  // set_tend: advect_tend * msfty
   CPPWRF_HD void operator()(int i, int j, int k) const {
     real tend = f.adv(i, j, k) * f.msfty(i, j);  // rk_update_scalar: advect_tend * msfty + sc_tend
+    if (want_ften) ften(i, j, k) = f.spec_cell(i, j) ? f.adv_spec(i, j, k) * f.msfty(i, j) : tend;
     if (add_tendf) tend += tendf(i, j, k);
     qn(i, j, k) = (m_full(f.c, k, mub(i, j), mu1(i, j)) * q1(i, j, k) + dt_rk * tend) /
                   m_full(f.c, k, mub(i, j), mu2(i, j));
@@ -179,14 +190,24 @@ struct KUpdatePD {
     const real d = a.dhz(i, j, k);
     return d * (d > 0 ? scale(i, j, k) : (d < 0 ? scale(i, j, k - 1) : real(1)));
   }
+  V3 ften; bool want_ften;  // set_tend: advect_tend * msfty
   CPPWRF_HD void operator()(int i, int j, int k) const {  // WRF advect_scalar_pd final tendency
     if (f.spec_cell(i, j)) {
+      if (want_ften) {  // WRF still forms the tendency here: x term off in outer columns, y off in outer rows
+        const bool ocol = f.sp.x && (i == 0 || i == f.sp.nx - 1), orow = f.sp.y && (j == 0 || j == f.sp.ny - 1);
+        real tend = -f.c.rdnw(k) * (dz(i, j, k + 1) - dz(i, j, k) + a.loz(i, j, k + 1) - a.loz(i, j, k));
+        if (!ocol) tend -= f.msftx(i, j) * (f.rdx * (dx(i + 1, j, k) - dx(i, j, k) + a.lox(i + 1, j, k) - a.lox(i, j, k)));
+        if (f.do_y && !orow)
+          tend -= f.msftx(i, j) * (f.rdy * (dy(i, j + 1, k) - dy(i, j, k) + a.loy(i, j + 1, k) - a.loy(i, j, k)));
+        ften(i, j, k) = tend * f.msfty(i, j);
+      }
       qn(i, j, k) = m_full(f.c, k, mub(i, j), mu1(i, j)) * q1(i, j, k) / m_full(f.c, k, mub(i, j), mu2(i, j));
       return;
     }
     real tend = -f.c.rdnw(k) * (dz(i, j, k + 1) - dz(i, j, k) + a.loz(i, j, k + 1) - a.loz(i, j, k));
     tend -= f.msftx(i, j) * (f.rdx * (dx(i + 1, j, k) - dx(i, j, k) + a.lox(i + 1, j, k) - a.lox(i, j, k)));
     if (f.do_y) tend -= f.msftx(i, j) * (f.rdy * (dy(i, j + 1, k) - dy(i, j, k) + a.loy(i, j + 1, k) - a.loy(i, j, k)));
+    if (want_ften) ften(i, j, k) = tend * f.msfty(i, j);
     qn(i, j, k) = (m_full(f.c, k, mub(i, j), mu1(i, j)) * q1(i, j, k) + dt_rk * (tend * f.msfty(i, j))) /
                   m_full(f.c, k, mub(i, j), mu2(i, j));
   }
@@ -214,6 +235,8 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
     Field3 &q1 = s.q_1[n], &q2 = s.q_2[n], &tf = t.q_tendf[n];
     const bool moist = n < s.n_moist;
     const bool pd = rk == 3 && (moist ? p_.moist_adv_opt : p_.scalar_adv_opt) == 1;
+    const bool want_ften = qvf_ != nullptr && n == s.P_QV;
+    const V3 ften = want_ften ? qvf_->view() : V3{};
     if (rk == 1) {  // rk_scalar_tend, rk_step == 1: diffusion into the held tendency (diff_opt = 1)
       // q_tendf was zeroed by zero_tendf and holds the physics tendencies (update_phy_ten)
       if (diff) {
@@ -231,7 +254,7 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
               kern::Spec{g.bc_x == BC::Specified, g.bc_y == BC::Specified, g.nx, g.ny}};
     if (!pd) {
       parallel_for(mr, KUpdate{fl, q1.cview(), tf.cview(), s.mu_1.cview(), s.mu_2.cview(), b.mub.view(),
-                               q_new_.view(), dt_rk, true});
+                               q_new_.view(), dt_rk, true, ften, want_ften});
     } else {
       parallel_for(mr, KPreUpdatePD{q1.view(), tf.cview(), s.mu_1.cview(), b.mub.view(), c, dt_rk});
       fill_halo(q1, g);
@@ -242,7 +265,7 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
       parallel_for(mr, KScalePD{fl, fa, s.mu_1.cview(), b.mub.view(), scale_.view()});
       fill_halo(scale_, g);
       parallel_for(mr, KUpdatePD{fl, fa, scale_.cview(), q1.cview(), s.mu_1.cview(), s.mu_2.cview(), b.mub.view(),
-                                 q_new_.view(), dt_rk});
+                                 q_new_.view(), dt_rk, ften, want_ften});
     }
     swap(q2, q_new_);
     if (bc_ && !bc_->has_scalar(n)) bc_->flow_dep(q2, s);  // no boundary data (have_bcs_moist/scalar = .false.)

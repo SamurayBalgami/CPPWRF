@@ -1,9 +1,12 @@
 #include "phys/driver/suite.hpp"
 
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <stdexcept>
 
 #include "phys/bl_ysu/ysu.hpp"
+#include "phys/cu_ntiedtke/ntiedtke.hpp"
 #include "phys/driver/noah_ice.hpp"
 #include "phys/driver/wrf_constants.hpp"
 #include "phys/lsm_noah/noah.hpp"
@@ -527,6 +530,87 @@ struct KPblPrep {
   }
 };
 
+// ---------------------------------------------------------------- New Tiedtke
+// module_cumulus_driver.F (G3/NTIEDTKE forcing: RTHFTEN = (RTHFTEN + RTHRATEN + RTHBLTEN)*pi,
+// RQVFTEN += RQVBLTEN) and module_cu_ntiedtke.F cu_ntiedtke_driver (pre_run, cu_ntiedtke_run,
+// post_run) for one column. C++ k = WRF k - 1; the scheme's arrays run top (1) to bottom (nz).
+struct KNTiedtke {
+  cu_ntiedtke::NtConst<real> c;
+  int nz; long itimestep; int stepcu; real dt;
+  C3 u, v, w, t, pi, rho, dz8w, pcps, p8w, qv, qc, qi;
+  C2 xland, dx2d, hfx, qfx;
+  C3 rthraten, rthblten, rqvblten;
+  V3 rthften, rqvften;
+  V2 raincv, pratec;
+  V3 rthcuten, rqvcuten, rqccuten, rqicuten, rucuten, rvcuten;
+  bool flag_qc, flag_qi;
+  void* dump;  // debug (CPU, one thread): FILE* receiving inputs and outputs of cu_ntiedtke_run
+  CPPWRF_HD void operator()(int i, int j) const {
+    using cu_ntiedtke::KM;
+    using namespace wrfc;
+    for (int k = 0; k < nz; ++k) {
+      rthften(i, j, k) = (rthften(i, j, k) + rthraten(i, j, k) + rthblten(i, j, k)) * pi(i, j, k);
+      rqvften(i, j, k) = rqvften(i, j, k) + rqvblten(i, j, k);
+    }
+    // cu_ntiedtke_pre_run
+    const real delt = dt * real(stepcu);
+    const int slimsk = int(std::fabs(xland(i, j) - real(2.)));
+    real zi[KM], zl[KM], dot[KM];
+    zi[0] = real(0.);
+    for (int k = 0; k < nz; ++k) zi[k + 1] = zi[k] + dz8w(i, j, k);
+    for (int k = 0; k < nz; ++k) {
+      zl[k] = real(0.5) * (zi[k] + zi[k + 1]);
+      dot[k] = -real(0.5) * g * rho(i, j, k) * (w(i, j, k) + w(i, j, k + 1));
+    }
+    real ghti[KM], prsi[KM], ghtl[KM], omg[KM], prsl[KM];
+    real tf[KM], qvf[KM], qcf[KM], qif[KM], uf[KM], vf[KM], qvftenz[KM], thftenz[KM];
+    for (int k = 0; k <= nz; ++k) {
+      ghti[nz + 1 - k] = zi[k];
+      prsi[nz + 1 - k] = p8w(i, j, k);
+    }
+    for (int k = 0; k < nz; ++k) {
+      const int zz = nz - k;
+      ghtl[zz] = zl[k]; omg[zz] = dot[k]; prsl[zz] = pcps(i, j, k);
+      tf[zz] = t(i, j, k); qvf[zz] = qv(i, j, k); qcf[zz] = qc(i, j, k); qif[zz] = qi(i, j, k);
+      uf[zz] = u(i, j, k); vf[zz] = v(i, j, k);
+      qvftenz[zz] = itimestep == 1 ? real(0.) : rqvften(i, j, k);
+      thftenz[zz] = itimestep == 1 ? real(0.) : rthften(i, j, k);
+    }
+    real rn = real(0.);
+#if !defined(__CUDA_ARCH__)
+    auto wr = [&](const real* a, int n) { std::fwrite(a + 1, sizeof(real), n, static_cast<std::FILE*>(dump)); };
+    if (dump) {
+      const double sc[6] = {double(qfx(i, j)), double(hfx(i, j)), double(slimsk), double(delt), double(dx2d(i, j)),
+                            double(nz)};
+      std::fwrite(sc, sizeof(double), 6, static_cast<std::FILE*>(dump));
+      for (const real* a : {uf, vf, tf, qvf, qcf, qif, qvftenz, thftenz, ghtl, omg, prsl}) wr(a, nz);
+      wr(ghti, nz + 1); wr(prsi, nz + 1);
+    }
+#endif
+    cu_ntiedtke::cu_ntiedtke_run<real>(c, nz, uf, vf, tf, qvf, qcf, qif, qvftenz, thftenz, ghtl, ghti, omg, prsl,
+                                       prsi, qfx(i, j), hfx(i, j), rn, slimsk, delt, dx2d(i, j));
+#if !defined(__CUDA_ARCH__)
+    if (dump) {
+      for (const real* a : {uf, vf, tf, qvf, qcf, qif}) wr(a, nz);
+      std::fwrite(&rn, sizeof(real), 1, static_cast<std::FILE*>(dump));
+    }
+#endif
+    // cu_ntiedtke_post_run
+    const real rdelt = real(1.) / delt;
+    raincv(i, j) = rn / real(stepcu);
+    pratec(i, j) = rn / (real(stepcu) * dt);
+    for (int k = 0; k < nz; ++k) {
+      const int zz = nz - k;
+      rthcuten(i, j, k) = (tf[zz] - t(i, j, k)) / pi(i, j, k) * rdelt;
+      rqvcuten(i, j, k) = (qvf[zz] - qv(i, j, k)) * rdelt;
+      if (flag_qc) rqccuten(i, j, k) = (qcf[zz] - qc(i, j, k)) * rdelt;
+      if (flag_qi) rqicuten(i, j, k) = (qif[zz] - qi(i, j, k)) * rdelt;
+      rucuten(i, j, k) = (uf[zz] - u(i, j, k)) * rdelt;
+      rvcuten(i, j, k) = (vf[zz] - v(i, j, k)) * rdelt;
+    }
+  }
+};
+
 // ---------------------------------------------------------------- advance_ppt
 // phys/module_physics_addtendc.F advance_ppt (CASE KFETASCHEME)
 struct KAdvancePpt {
@@ -535,12 +619,13 @@ struct KAdvancePpt {
   C2 cutop, cubot;
   real dt;
   int nz, kde;
-  bool flag_qi, flag_qs;
+  bool flag_qi, flag_qs, kfeta;  // kfeta: CASE (KFETASCHEME); otherwise CASE DEFAULT (accumulation only)
   CPPWRF_HD static int nint_f(real x) { return int(x + (x >= real(0.) ? real(0.5) : real(-0.5))); }
   CPPWRF_HD void operator()(int i, int j) const {
     rainc(i, j) = rainc(i, j) + pratec(i, j) * dt;
     rainsh(i, j) = rainsh(i, j) + pratesh(i, j) * dt;
     cuppt(i, j) = cuppt(i, j) + (pratec(i, j) + pratesh(i, j)) * dt / real(1000.);
+    if (!kfeta) return;
     const int ncutop = nint_f(cutop(i, j));
     const int ncubot = nint_f(cubot(i, j));
     if (ncutop > 1 && ncutop < kde) {
@@ -604,8 +689,10 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       u_phytmp(g, Stagger::M, "u_phytmp"), v_phytmp(g, Stagger::M, "v_phytmp"), t1_lag_(g, Stagger::M, "t1_lag"), coszen(g, Stagger::M, "coszen"), g_(g), gs_(g), o_(o) {
   if (o.sf_sfclay_physics != 1 || o.sf_surface_physics != 2 || o.bl_pbl_physics != 1)
     throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1, sf_surface_physics=2, bl_pbl_physics=1");
-  if (o.cu_physics != 0 && o.cu_physics != 1)
-    throw std::runtime_error("PhysicsSuite: only cu_physics=0 or cu_physics=1 (Kain-Fritsch)");
+  if (o.cu_physics != 0 && o.cu_physics != 1 && o.cu_physics != 16)
+    throw std::runtime_error("PhysicsSuite: only cu_physics=0, 1 (Kain-Fritsch) or 16 (New Tiedtke)");
+  if (o.cu_physics == 16 && g.nz > cu_ntiedtke::kMaxLevels)
+    throw std::runtime_error("PhysicsSuite: nz exceeds the New Tiedtke column limit");
   if (o.cu_physics == 1 && o.kfeta_trigger != 1 && o.kfeta_trigger != 3)
     throw std::runtime_error("PhysicsSuite: kfeta_trigger=2 is not supported");
   if (o.fractional_seaice != 0) throw std::runtime_error("PhysicsSuite: fractional_seaice=1 is not ported");
@@ -688,6 +775,10 @@ std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
                     &pt.rqicuten, &pt.rqscuten})
     v.emplace_back("sfc_" + f->name(), f);
   if (rad_) v.emplace_back("sfc_cldfra", &cldfra);
+  if (o_.cu_physics == 16) {
+    v.emplace_back("sfc_rthften", &pt.rthften);
+    v.emplace_back("sfc_rqvften", &pt.rqvften);
+  }
   for (Field3* f : {re_cloud_, re_ice_, re_snow_})
     if (f) v.emplace_back("sfc_" + f->name(), f);
   return v;
@@ -716,7 +807,7 @@ void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
 }
 
 void PhysicsSuite::part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) {
-  const CouplingFlags f{radiation_on(), true, o_.cu_physics};
+  const CouplingFlags f{radiation_on(), true, o_.cu_physics, o_.use_theta_m == 1};
   calculate_phy_tend(pt, s, b, g_, f);
   update_phy_ten(t, pt, s, g_, f);
   if (o_.use_theta_m == 1) {
@@ -733,7 +824,7 @@ void PhysicsSuite::part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
 
 void PhysicsSuite::after_rk(const dyn::State& s, const dyn::BaseState& b) {
   advance_ppt(s);
-  phy_prep_part2(pt, s, b, g_, CouplingFlags{radiation_on(), true, o_.cu_physics});
+  phy_prep_part2(pt, s, b, g_, CouplingFlags{radiation_on(), true, o_.cu_physics, o_.use_theta_m == 1});
 }
 
 // module_surface_driver.F surface_driver for SFCLAYREVSCHEME + LSMSCHEME
@@ -935,6 +1026,37 @@ void PhysicsSuite::cumulus_driver(const dyn::State& s) {
   const bool run_param = itimestep == 1 || o_.cudt == 0 || stepcu == 1 || itimestep % stepcu == 0;
   if (!run_param) return;
   using namespace wrfc;
+  if (o_.cu_physics == 16) {
+    KNTiedtke k{};
+    k.c = cu_ntiedtke::make_ntconst<real>(cp, r_d, r_v, xlv, xls, xlf, g);
+    k.nz = g_.nz; k.itimestep = itimestep; k.stepcu = stepcu; k.dt = real(g_.dt);
+    k.u = prep.u_phy.cview(); k.v = prep.v_phy.cview(); k.w = s.w_2.cview(); k.t = prep.t_phy.cview();
+    k.pi = prep.pi_phy.cview(); k.rho = prep.rho.cview(); k.dz8w = prep.dz8w.cview(); k.pcps = prep.p_hyd.cview();
+    k.p8w = prep.p_hyd_w.cview();
+    k.qv = s.q_2[s.P_QV].cview();
+    k.qc = s.P_QC >= 0 ? s.q_2[s.P_QC].cview() : zero3_.cview();
+    k.qi = s.P_QI >= 0 ? s.q_2[s.P_QI].cview() : zero3_.cview();
+    k.xland = xland.cview(); k.dx2d = dx2d.cview(); k.hfx = hfx.cview(); k.qfx = qfx.cview();
+    k.rthraten = pt.rthraten.cview(); k.rthblten = pt.rthblten.cview(); k.rqvblten = pt.rqvblten.cview();
+    k.rthften = pt.rthften.view(); k.rqvften = pt.rqvften.view();
+    k.raincv = raincv.view(); k.pratec = pratec.view();
+    k.rthcuten = pt.rthcuten.view(); k.rqvcuten = pt.rqvcuten.view(); k.rqccuten = pt.rqccuten.view();
+    k.rqicuten = pt.rqicuten.view(); k.rucuten = pt.rucuten.view(); k.rvcuten = pt.rvcuten.view();
+    k.flag_qc = s.P_QC >= 0; k.flag_qi = s.P_QI >= 0;
+    k.dump = nullptr;
+#if !defined(CPPWRF_USE_CUDA)
+    // debug: CPPWRF_NTIEDTKE_DUMP=file CPPWRF_NTIEDTKE_DUMP_STEP=n (OMP_NUM_THREADS=1) writes the scheme's
+    // column inputs and outputs of step n (tests/phys/cu_ntiedtke/harness.f90 replays them through WRF)
+    const char* d = std::getenv("CPPWRF_NTIEDTKE_DUMP");
+    const char* ds = std::getenv("CPPWRF_NTIEDTKE_DUMP_STEP");
+    if (d && ds && itimestep == std::atol(ds)) k.dump = std::fopen(d, "wb");
+#endif
+    column_for(g_.columns(), k);
+#if !defined(CPPWRF_USE_CUDA)
+    if (k.dump) std::fclose(static_cast<std::FILE*>(k.dump));
+#endif
+    return;
+  }
   cu_kf::KFKernel<real> kf{};
   kf.nx = g_.nx; kf.ny = g_.ny; kf.nz = g_.nz;
   kf.dt = real(g_.dt); kf.dx = real(g_.dx); kf.cudt = real(o_.cudt);
@@ -967,7 +1089,7 @@ void PhysicsSuite::advance_ppt(const dyn::State& s) {
                                        pt.rqicuten.view(), pt.rqscuten.view(), rainc.view(), rainsh.view(),
                                        pratec.view(), pratesh.view(), nca.view(), htop.view(), hbot.view(),
                                        cuppt.view(), cutop.cview(), cubot.cview(), real(g_.dt), g_.nz, g_.nz + 1,
-                                       s.P_QI >= 0, s.P_QS >= 0});
+                                       s.P_QI >= 0, s.P_QS >= 0, o_.cu_physics == 1});
 }
 
 }  // namespace cppwrf::phys::driver

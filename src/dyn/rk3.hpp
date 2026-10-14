@@ -45,7 +45,11 @@ class RK3 {
   // Specified lateral boundaries (real data); the RK3 driver does not own the data.
   void set_lateral_bc(LateralBC* bc);
   // Column physics of first_rk_step_part1/2 (radiation, surface, PBL, cumulus); not owned.
-  void set_column_physics(ColumnPhysics* cp) { cp_ = cp; large_.set_column_physics(cp); }
+  void set_column_physics(ColumnPhysics* cp) {
+    cp_ = cp;
+    large_.set_column_physics(cp);
+    scalars_.set_qv_forcing(cp ? cp->qv_forcing() : nullptr);
+  }
   // WRF diffusion (diff_opt 1, km_opt 1/4, sixth order) in RK stage 1; not owned.
   void set_diffusion(DiffusionDriver* d) { dd_ = d; large_.set_diffusion(d); scalars_.set_diffusion(d); }
   LateralBC* lateral_bc() const { return bc_; }

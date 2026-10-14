@@ -56,6 +56,18 @@ struct KConvTMoist {
   }
 };
 
+// phy_prep_part2, use_theta_m = 1: RTHFTEN of theta_m -> RTHFTEN of dry theta
+struct KDryThetaForcing {
+  V3 rthften;
+  C3 rqvften, t_new, qv;
+  CPPWRF_HD void operator()(int i, int j, int k) const {
+    using namespace wrfc;
+    const real th_phy = (t_new(i, j, k) + t0) / (real(1.) + (r_v / r_d) * qv(i, j, k));
+    rthften(i, j, k) =
+        th_phy / (t_new(i, j, k) + t0) * (rthften(i, j, k) - (r_v / r_d) * th_phy * rqvften(i, j, k));
+  }
+};
+
 // add_a2a / add_a2c_u / add_a2c_v loop bounds (config_flags%specified: outer row excluded;
 // periodic_x: full rows). C++ k = WRF k - 1; ktf = kde-1 -> nz-1.
 Range3D a2a_range(const Grid& g) {
@@ -78,7 +90,8 @@ PhysicsTendencies::PhysicsTendencies(const Grid& g)
       rthblten(g, Stagger::M, "rthblten"), rqvblten(g, Stagger::M, "rqvblten"), rqcblten(g, Stagger::M, "rqcblten"),
       rqiblten(g, Stagger::M, "rqiblten"), rucuten(g, Stagger::M, "rucuten"), rvcuten(g, Stagger::M, "rvcuten"),
       rthcuten(g, Stagger::M, "rthcuten"), rqvcuten(g, Stagger::M, "rqvcuten"), rqccuten(g, Stagger::M, "rqccuten"),
-      rqrcuten(g, Stagger::M, "rqrcuten"), rqicuten(g, Stagger::M, "rqicuten"), rqscuten(g, Stagger::M, "rqscuten") {}
+      rqrcuten(g, Stagger::M, "rqrcuten"), rqicuten(g, Stagger::M, "rqicuten"), rqscuten(g, Stagger::M, "rqscuten"),
+      rthften(g, Stagger::M, "rthften"), rqvften(g, Stagger::M, "rqvften") {}
 
 void calculate_phy_tend(PhysicsTendencies& pt, const dyn::State& s, const dyn::BaseState& b, const Grid& g,
                         const CouplingFlags& f) {
@@ -126,6 +139,15 @@ void update_phy_ten(dyn::Tendencies& t, PhysicsTendencies& pt, const dyn::State&
     if (s.P_QI >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QI].view(), pt.rqicuten.cview()});
     if (s.P_QS >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QS].view(), pt.rqscuten.cview()});
   }
+  if (f.cu_physics == 16) {  // phy_cu_ten, NTIEDTKESCHEME
+    if (!g.specified()) fill_halos({&pt.rucuten, &pt.rvcuten}, g);
+    parallel_for(a2c_u_range(g), KAddA2CU{t.ru_tendf.view(), pt.rucuten.cview()});
+    parallel_for(a2c_v_range(g), KAddA2CV{t.rv_tendf.view(), pt.rvcuten.cview()});
+    parallel_for(ar, KAddA2A{t.t_tendf.view(), pt.rthcuten.cview()});
+    if (s.P_QV >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QV].view(), pt.rqvcuten.cview()});
+    if (s.P_QC >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QC].view(), pt.rqccuten.cview()});
+    if (s.P_QI >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QI].view(), pt.rqicuten.cview()});
+  }
 }
 
 void conv_t_tendf_to_moist(dyn::Tendencies& t, const Field3& t_1, const dyn::State& s, const Grid& g) {
@@ -157,6 +179,12 @@ void phy_prep_part2(PhysicsTendencies& pt, const dyn::State& s, const dyn::BaseS
     if (s.P_QV >= 0) decouple(pt.rqvblten);
     if (s.P_QC >= 0) decouple(pt.rqcblten);
     if (s.P_QI >= 0) decouple(pt.rqiblten);
+  }
+  if (f.cu_physics == 16) {  // advective forcing of the cumulus scheme
+    if (s.P_QV >= 0) decouple(pt.rqvften);
+    decouple(pt.rthften);
+    if (f.theta_m)
+      parallel_for(mr, KDryThetaForcing{pt.rthften.view(), pt.rqvften.cview(), s.t_2.cview(), s.q_2[s.P_QV].cview()});
   }
 }
 

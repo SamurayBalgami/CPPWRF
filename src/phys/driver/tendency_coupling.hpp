@@ -19,12 +19,17 @@ struct PhysicsTendencies {
   Field3 rthraten;                                                 // radiation [K/s]
   Field3 rublten, rvblten, rthblten, rqvblten, rqcblten, rqiblten;  // PBL, mass points
   Field3 rucuten, rvcuten, rthcuten, rqvcuten, rqccuten, rqrcuten, rqicuten, rqscuten;  // cumulus, mass points
+  // advective forcing of New Tiedtke (WRF RTHFTEN, RQVFTEN): set_tend in rk_tendency / rk_scalar_tend
+  // (advection * msfty, last RK stage), decoupled in phy_prep_part2
+  Field3 rthften, rqvften;
 };
 
 struct CouplingFlags {
   bool radiation = false;  // ra_lw_physics > 0 .or. ra_sw_physics > 0
   bool pbl = false;        // bl_pbl_physics > 0 (YSU: phy_bl_ten adds th, u, v, qv, qc, qi)
-  int cu_physics = 0;      // cu_physics (1 = KFETASCHEME: phy_cu_ten adds th, qv, qc, qr, qi, qs)
+  int cu_physics = 0;      // cu_physics (1 = KFETASCHEME: phy_cu_ten adds th, qv, qc, qr, qi, qs;
+                           // 16 = NTIEDTKESCHEME: u, v, th, qv, qc, qi)
+  bool theta_m = false;    // use_theta_m = 1 (phy_prep_part2: dry-theta RTHFTEN)
 };
 
 void calculate_phy_tend(PhysicsTendencies& pt, const dyn::State& s, const dyn::BaseState& b, const Grid& g,

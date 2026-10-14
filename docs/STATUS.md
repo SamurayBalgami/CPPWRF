@@ -1,4 +1,4 @@
-# CPPWRF status, 2026-10-13
+# CPPWRF status, 2026-10-15
 
 ## Current state
 Identical to WRF 4.6.1 (CPU and CUDA, FP32 and FP64; `tests/verify/wrf_suite.py`, all PASS):
@@ -10,11 +10,11 @@ Identical to WRF 4.6.1 (CPU and CUDA, FP32 and FP64; `tests/verify/wrf_suite.py`
   sensitivity, equal to CPPWRF CPU-vs-GPU FP64).
 - Diffusion: diff_opt 1 with km_opt 1/4 and 6th order wired (kernels differential-tested
   against WRF); real-data check vs WRF R4/R5 pending.
-In progress (agents): physics suite (sfclayrev, Noah, YSU, KF, RRTMG) behind the
-ColumnPhysics hook, Thompson, Tiedtke, MYJ, TKE (km_opt 2) and damp_opt 1/2, diff_opt 2,
-wrfout content fixes, real.exe in C++ (src/init_real), nesting (docs/NESTING.md: LateralBC
-nested mode done; interpolation kernels, driver next), namelist translator (done) and the
-operational chain.
+- Column physics (docs/PHYSICS_SUITE.md): sfclayrev, Noah, YSU, Kain-Fritsch (cu 1), New Tiedtke
+  (cu 16, with the RTHFTEN/RQVFTEN advective forcing), RRTMG LW/SW on CPU and GPU (cloudy, with WSM6
+  effective radii), WSM6, Thompson (mp 8, against the r8d8 WRF build); one- and two-way nesting.
+Next: MYJ, Grell-Freitas (shares the forcing), sf_sfclay 91, TKE (km_opt 2), damp_opt 1/2,
+diff_opt 2, real.exe in C++ (src/init_real), the operational chain.
 Speed (RTX 2060, 119x89x44 real, 1 h): dry FP32 ~32 ns/cell/step (WRF 4 threads ~10x slower);
 with WSM6 ~52 ns/cell/step.
 

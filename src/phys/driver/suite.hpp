@@ -61,7 +61,7 @@ struct SuiteOptions {
   int sf_sfclay_physics = 1;     // SFCLAYREVSCHEME
   int sf_surface_physics = 2;    // LSMSCHEME (Noah)
   int bl_pbl_physics = 1;        // YSUSCHEME
-  int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME
+  int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME, 16 = NTIEDTKESCHEME
   int num_soil_layers = 4;
   double bldt = 0;               // minutes; 0 = every step
   double cudt = 0;               // minutes; 0 = every step
@@ -96,6 +96,8 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   void part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) override;
   void part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) override;
   void after_rk(const dyn::State& s, const dyn::BaseState& b) override;
+  Field3* th_forcing() override { return o_.cu_physics == 16 ? &pt.rthften : nullptr; }
+  Field3* qv_forcing() override { return o_.cu_physics == 16 ? &pt.rqvften : nullptr; }
 
   long itimestep = 0;  // WRF grid%itimestep (incremented in part1, as solve_em does per step)
   int stepbl = 1;      // WRF grid%stepbl (set_physics_rconfigs: nint(bldt*60/dt), >= 1)

@@ -233,7 +233,7 @@ Every option supported by the CPPWRF runtime is cataloged below, along with its 
 | `[phys]` | `sf_sfclay_physics` | integer | `1` | Surface layer formulation (0 = off, 1 = Revised MM5 / sfclayrev) | `sf_sfclay_physics` | |
 | `[phys]` | `sf_surface_physics` | integer | `2` | Land surface model (0 = off, 2 = Unified Noah LSM 4-layer) | `sf_surface_physics` | |
 | `[phys]` | `bl_pbl_physics` | integer | `1` | Planetary boundary layer scheme (0 = off, 1 = YSU) | `bl_pbl_physics` | |
-| `[phys]` | `cu_physics` | integer | `0` | Cumulus parameterization (0 = off, 1 = Kain-Fritsch) | `cu_physics` | |
+| `[phys]` | `cu_physics` | integer | `0` | Cumulus parameterization (0 = off, 1 = Kain-Fritsch, 16 = New Tiedtke) | `cu_physics` | |
 | `[phys]` | `ra_lw_physics` | integer | `0` | Longwave radiation scheme (0 = off, 4 = RRTMG LW) | `ra_lw_physics` | |
 | `[phys]` | `ra_sw_physics` | integer | `0` | Shortwave radiation scheme (0 = off, 4 = RRTMG SW) | `ra_sw_physics` | |
 | `[phys]` | `radt` | double | `0.0` | Radiation physics call interval (minutes; 0 = every step) | `radt` | |

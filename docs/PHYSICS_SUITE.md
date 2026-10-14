@@ -396,3 +396,44 @@ the P4 inputs; ~/wrf_real/run_P6_r8 (steps/ every minute; 1 h every 10 min), FP3
 - 1 h: amplification as for WSM6 (QICE ~7e-2 for both CPU FP64 and CUDA FP64 vs WRF; U 8e-5).
 - CUDA FP32 vs single-precision WRF, 1 h: U 2.3e-4, THM 5.8e-6, QV 2.8e-4 (77 ns/cell/step).
 wrf_suite: real_p6_r8_fp64_cpu, real_p6_r8_fp64_cpu_10min, real_p6_fp32_1h.
+
+## 12. New Tiedtke cumulus (cu_physics = 16)
+
+Port: `src/phys/cu_ntiedtke/ntiedtke.hpp` = WRF 4.6.1 `phys/physics_mmm/cu_ntiedtke.F90` for one column
+(cumastrn and the routines it calls, statement for statement; integer powers as products, cutypen's
+INTEGER `zcbase`, cuflxn's `ktopm2 = 2`). The flags WRF computes over a row of columns (llo3, the
+early exits) do not depend on the other columns: a whole row (lq = 119) through WRF's object gives
+the same result as one column at a time. Driver glue (`src/phys/driver/suite.cpp`, `KNTiedtke`) =
+`module_cu_ntiedtke.F` cu_ntiedtke_driver: pre_run (zi from dz8w, omega = -0.5 g rho (w(k)+w(k+1)),
+arrays flipped top to bottom, the forcing zeroed at itimestep 1), cu_ntiedtke_run, post_run
+(R*CUTEN = (new - old) / (stepcu dt), RTHCUTEN divided by pi, RAINCV = rn / stepcu, PRATEC).
+
+**Advective forcing (RTHFTEN, RQVFTEN).** WRF hands the scheme the large-scale tendencies:
+- `rk_tendency`, `set_tend(RTHFTEN, t_tend, msfty)`: the theta_m advection only, every RK stage, so the
+  last stage counts (`LargeStep` `KTendT`, hook `ColumnPhysics::th_forcing`);
+- `rk_scalar_tend`, `set_tend(RQVFTEN, advect_tend, msfty)` for qv (`ScalarTransport`, hook
+  `qv_forcing`; the positive-definite tendency in the last stage with moist_adv_opt = 1);
+- on a specified boundary the advection routines still form a tendency in the spec zone: no x flux
+  divergence in the outer columns, no y divergence in the outer rows, the vertical term everywhere.
+  The C++ forms exactly that for the forcing (the dycore's own spec-zone values are untouched); the
+  outer column feeds RUCUTEN at i = 1 through add_a2c_u;
+- `phy_prep_part2`: both divided by (c1 muts + c2); with use_theta_m = 1 RTHFTEN becomes a dry-theta
+  tendency, th/(t+t0) (RTHFTEN - rv/rd th RQVFTEN);
+- `cumulus_driver`: RTHFTEN = (RTHFTEN + RTHRATEN + RTHBLTEN) pi, RQVFTEN += RQVBLTEN.
+Coupling: `phy_cu_ten` adds RTHCUTEN, RQVCUTEN, RQCCUTEN, RQICUTEN (add_a2a) and RUCUTEN / RVCUTEN
+(add_a2c_u / add_a2c_v); `advance_ppt` only accumulates RAINC (CASE DEFAULT). RTHFTEN and RQVFTEN are
+restart fields (restart_p7_fp64: bit-identical).
+
+**Column check** (tests/phys/cu_ntiedtke): the scheme's inputs and outputs dumped from CPPWRF at steps 2
+and 4 of P7, replayed through WRF's compiled cu_ntiedtke_run (r8d8): 10591/10591 columns agree.
+
+**Acceptance** (P7 = P2 with cu_physics = 16, reference `~/wrf_real/run_P7_r8` from the r8d8 build,
+steps/ every minute; FP32: `run_P7`):
+- CPU FP64 steps 1-3: U 2.2e-14, THM 1.8e-16, QV 1.3e-15; RTHCUTEN 2.1e-12, RTHFTEN 1.2e-12,
+  RQVFTEN 5.9e-13, RAINC 2e-13 (rel L2).
+- Step 4: one column (i = 95, j = 12) differs at one level by 2.5e-6 K/s. Its inputs agree with WRF to
+  roundoff; 1e-15 random noise on them moves that level by 1.3e-4 K in WRF's own code (a threshold
+  in the scheme). From there the difference grows to U 2e-8 (10 min) and 6e-7 (1 h), below KF's.
+- 1 h: CUDA FP64 U 4.2e-7, W 1.4e-5, THM 1.1e-8, QV 1.8e-6 (CPU FP64 the same size); CUDA FP32 vs
+  single-precision WRF U 6.8e-4, W 1.6e-2, THM 8.1e-6, QV 3.2e-4.
+wrf_suite: real_p7_r8_fp64_cpu, real_p7_r8_fp64_cuda_1h, real_p7_fp32_1h, restart_p7_fp64.
