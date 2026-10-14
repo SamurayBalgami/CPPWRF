@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <stdexcept>
 
 #include "phys/ra_rrtmg_common/cam_gases.hpp"
@@ -148,10 +149,20 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
   stepra_ = o.radt == 0 ? 1 : std::max(1, int(std::lround(o.radt * 60. / g.dt)));
   p_->lw = std::make_unique<RrtmgLwTables>();
   p_->sw = std::make_unique<RrtmgSwTables>();
-  if (!load_rrtmg_lw_tables(o.table_dir + "/rrtmg_lw_tables.bin", *p_->lw))
-    throw std::runtime_error("radiation: cannot read " + o.table_dir + "/rrtmg_lw_tables.bin");
-  if (!load_rrtmg_sw_tables(o.table_dir + "/rrtmg_sw_tables.bin", *p_->sw))
-    throw std::runtime_error("radiation: cannot read " + o.table_dir + "/rrtmg_sw_tables.bin");
+  // RRTMG tables: phys.rrtmg_tables, then the copy in the source tree (data/rrtmg, CPPWRF_DATA_DIR)
+  auto table_file = [&](const std::string& name) {
+    const std::string a = o.table_dir + "/" + name;
+    if (std::ifstream(a).good()) return a;
+#ifdef CPPWRF_DATA_DIR
+    const std::string b = std::string(CPPWRF_DATA_DIR) + "/rrtmg/" + name;
+    if (std::ifstream(b).good()) return b;
+#endif
+    throw std::runtime_error("radiation: cannot find " + name + " in " + o.table_dir + " or the data directory");
+  };
+  if (!load_rrtmg_lw_tables(table_file("rrtmg_lw_tables.bin"), *p_->lw))
+    throw std::runtime_error("radiation: cannot read rrtmg_lw_tables.bin");
+  if (!load_rrtmg_sw_tables(table_file("rrtmg_sw_tables.bin"), *p_->sw))
+    throw std::runtime_error("radiation: cannot read rrtmg_sw_tables.bin");
   if (o.ghg_input == 1) p_->gases.load(o.table_dir + "/CAMtr_volume_mixing_ratio");
   p_->xlat = xlat;
   p_->xlong = xlong;

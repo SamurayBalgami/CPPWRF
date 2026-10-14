@@ -98,7 +98,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.isurban = int(in.att_num("ISURBAN", o.isurban));
   o.table_dir = cfg.get_string("phys.table_dir", dir);
   const bool rdmaxalb = cfg.get_bool("phys.rdmaxalb", true);
-  {  // radiation (radiation_driver; RRTMG tables dumped from WRF's rrtmg_lw/swinit in phys.rrtmg_tables)
+  {  // radiation (radiation_driver; RRTMG tables in phys.rrtmg_tables or data/rrtmg, ozone and CAMtr from phys.rrtmg_tables)
     auto& r = o.rad;
     r.ra_lw_physics = int(cfg.get_int("phys.ra_lw_physics", 0));
     r.ra_sw_physics = int(cfg.get_int("phys.ra_sw_physics", 0));

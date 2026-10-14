@@ -69,6 +69,8 @@ list(APPEND CPPWRF_SOURCES
   ${CMAKE_SOURCE_DIR}/src/phys/cu_kf/kf_tables.cpp)
 
 add_library(cppwrf_core STATIC ${CPPWRF_SOURCES})
+# tables shipped with the sources (data/rrtmg)
+target_compile_definitions(cppwrf_core PRIVATE CPPWRF_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
 target_include_directories(cppwrf_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cppwrf_core PUBLIC cppwrf_io)
 if(EXISTS ${CMAKE_SOURCE_DIR}/src/dyn/small_step.cpp)
