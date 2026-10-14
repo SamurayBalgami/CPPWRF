@@ -8,7 +8,7 @@ namespace cppwrf::phys {
 
 #pragma pack(push, 1)
 
-struct Band16Tables {
+struct SwBand16Tables {
   double ka[9 * 5 * 13 * 6];       // (9,5,13,6)
   double kb[5 * 47 * 6];           // (5,13:59,6)
   double selfref[10 * 6];          // (10,6)
@@ -197,7 +197,7 @@ struct RrtmgSwTables {
   double rsrasya[14 * 6];
 
   // 6. 14 shortwave absorption bands
-  Band16Tables b16;
+  SwBand16Tables b16;
   Band17Tables b17;
   Band18Tables b18;
   Band19Tables b19;

@@ -601,7 +601,7 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       psim(g, Stagger::M, "psim"), psih(g, Stagger::M, "psih"), gz1oz0(g, Stagger::M, "gz1oz0"),
       chklowq(g, Stagger::M, "chklowq"), qgh(g, Stagger::M, "qgh"), chs(g, Stagger::M, "chs"),
       chs2(g, Stagger::M, "chs2"), cqs2(g, Stagger::M, "cqs2"), cpm(g, Stagger::M, "cpm"),
-      u_phytmp(g, Stagger::M, "u_phytmp"), v_phytmp(g, Stagger::M, "v_phytmp"), t1_lag_(g, Stagger::M, "t1_lag"), g_(g), gs_(g), o_(o) {
+      u_phytmp(g, Stagger::M, "u_phytmp"), v_phytmp(g, Stagger::M, "v_phytmp"), t1_lag_(g, Stagger::M, "t1_lag"), coszen(g, Stagger::M, "coszen"), g_(g), gs_(g), o_(o) {
   if (o.sf_sfclay_physics != 1 || o.sf_surface_physics != 2 || o.bl_pbl_physics != 1)
     throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1, sf_surface_physics=2, bl_pbl_physics=1");
   if (o.cu_physics != 0 && o.cu_physics != 1)
@@ -656,6 +656,11 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   if (stepcu < 1) stepcu = 1;
 }
 
+void PhysicsSuite::init_radiation(const std::vector<double>& xlat, const std::vector<double>& xlong) {
+  if (!radiation_on()) return;
+  rad_ = std::make_unique<RadiationDriver>(g_, o_.rad, xlat, xlong);
+}
+
 PhysicsSuite::~PhysicsSuite() {
   dev_free(d_sfclay_tables_);
   if (d_kf_tables_) dev_free(d_kf_tables_);
@@ -670,7 +675,7 @@ std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
                     &rainshv, &sr, &glw, &swdown, &gsw, &smstav, &smstot, &sfcrunoff, &udrunoff, &acsnom, &acsnow,
                     &snopcx, &potevp, &noahres, &sfcevp, &sfcexc, &achfx, &aclhf, &acgrdflx, &dx2d, &uoce, &voce,
                     &ctopo, &ctopo2, &ck, &cka, &cd, &cda, &wstar, &delta, &hol, &rainc, &rainsh, &pratec, &pratesh, &nca, &htop, &hbot,
-                    &cutop, &cubot, &cuppt})
+                    &cutop, &cubot, &cuppt, &coszen})
     v.emplace_back("sfc_" + f->name(), f);
   return v;
 }
@@ -692,13 +697,21 @@ std::vector<std::pair<std::string, IntField2*>> PhysicsSuite::carried_int() {
 void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies&) {
   ++itimestep;  // solve_em: grid%itimestep = grid%itimestep + 1
   run_phy_prep(s, b, prep, PhyPrepParams{o_.use_theta_m});
+  if (rad_) {  // radiation_driver: xtime (minutes) and julian of the step start
+    const double xtime = double(itimestep - 1) * g_.dt / 60.;
+    const double julian = double(o_.rad.julday - 1) + (o_.rad.gmt * 3600. + xtime * 60.) / 86400.;
+    rad_->run(itimestep, xtime, julian,
+              RadiationInputs{&prep.t_phy, &prep.p_hyd, &prep.p_hyd_w, &prep.pi_phy, &prep.rho, &prep.dz8w,
+                              &prep.t8w, &s.q_2[s.P_QV], nullptr, &tsk, &albedo, &emiss, &xland, &xice, &snow},
+              RadiationOutputs{&pt.rthraten, &glw, &gsw, &swdown, &coszen});
+  }
   surface_driver(s);
   pbl_driver(s);
   cumulus_driver(s);
 }
 
 void PhysicsSuite::part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) {
-  const CouplingFlags f{false, true, o_.cu_physics};
+  const CouplingFlags f{radiation_on(), true, o_.cu_physics};
   calculate_phy_tend(pt, s, b, g_, f);
   update_phy_ten(t, pt, s, g_, f);
   if (o_.use_theta_m == 1) {
@@ -715,7 +728,7 @@ void PhysicsSuite::part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
 
 void PhysicsSuite::after_rk(const dyn::State& s, const dyn::BaseState& b) {
   advance_ppt(s);
-  phy_prep_part2(pt, s, b, g_, CouplingFlags{false, true, o_.cu_physics});
+  phy_prep_part2(pt, s, b, g_, CouplingFlags{radiation_on(), true, o_.cu_physics});
 }
 
 // module_surface_driver.F surface_driver for SFCLAYREVSCHEME + LSMSCHEME

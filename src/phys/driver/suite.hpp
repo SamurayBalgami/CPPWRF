@@ -12,6 +12,7 @@
 // WRF keeps as locals of solve_em / surface_driver (th_phy, pi_phy, p_phy, dz8w, p8w, t8w,
 // psim, psih, gz1oz0, chklowq, QGH, CHS, CHS2, CQS2, CPM, u_phytmp) are scratch members.
 // The initial surface state (what wrfinput + phy_init provide) is filled by the caller.
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,6 +25,7 @@
 #include "phys/cu_kf/kf.hpp"
 #include "phys/cu_kf/kf_tables.hpp"
 #include "phys/driver/phy_prep.hpp"
+#include "phys/driver/radiation.hpp"
 #include "phys/driver/tendency_coupling.hpp"
 #include "phys/lsm_noah/noah_tables.hpp"
 #include "phys/sf_sfclayrev/sfclayrev.hpp"
@@ -65,6 +67,7 @@ struct SuiteOptions {
   double cudt = 0;               // minutes; 0 = every step
   int kfeta_trigger = 1;         // 1 = default KF trigger, 3 = RH perturbation
   bool warm_rain = false;        // mp_init: true for mp_physics == 1 (Kessler)
+  RadiationOptions rad;          // rad.ra_lw_physics/ra_sw_physics = 0: no radiation
   int isfflx = 1;
   int ifsnow = 1;
   int fractional_seaice = 0;
@@ -121,6 +124,11 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   Field2 psim, psih, gz1oz0, chklowq, qgh, chs, chs2, cqs2, cpm;
   Field3 u_phytmp, v_phytmp;
   Field3 t1_lag_;  // WRF grid%t_1 as seen by first_rk_step_part2 (wrf_t1_lag)
+  Field2 coszen;   // radiation: cosine of the solar zenith angle (middle of the radiation interval)
+  std::unique_ptr<RadiationDriver> rad_;
+  // radiation needs latitude/longitude (wrfinput XLAT/XLONG, i + nx*j); call before the first step
+  void init_radiation(const std::vector<double>& xlat, const std::vector<double>& xlong);
+  bool radiation_on() const { return o_.rad.ra_lw_physics != 0 || o_.rad.ra_sw_physics != 0; }
   bool t1_lag_set_ = false;
 
   const SuiteOptions& options() const { return o_; }

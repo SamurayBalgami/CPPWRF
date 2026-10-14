@@ -98,6 +98,23 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.isurban = int(in.att_num("ISURBAN", o.isurban));
   o.table_dir = cfg.get_string("phys.table_dir", dir);
   const bool rdmaxalb = cfg.get_bool("phys.rdmaxalb", true);
+  {  // radiation (radiation_driver; RRTMG tables dumped from WRF's rrtmg_lw/swinit in phys.rrtmg_tables)
+    auto& r = o.rad;
+    r.ra_lw_physics = int(cfg.get_int("phys.ra_lw_physics", 0));
+    r.ra_sw_physics = int(cfg.get_int("phys.ra_sw_physics", 0));
+    r.radt = cfg.get_double("phys.radt", 0.0);
+    r.icloud = int(cfg.get_int("phys.icloud", 1));
+    r.cldovrlp = int(cfg.get_int("phys.cldovrlp", 2));
+    r.idcor = int(cfg.get_int("phys.idcor", 0));
+    r.o3input = int(cfg.get_int("phys.o3input", 2));
+    r.ghg_input = int(cfg.get_int("phys.ghg_input", 1));
+    r.aer_opt = int(cfg.get_int("phys.aer_opt", 0));
+    r.julday = int(in.att_num("JULDAY", 1));
+    r.julyr = int(in.att_num("JULYR", 0));
+    r.gmt = in.att_num("GMT", 0.0);
+    r.p_top = g.p_top;
+    r.table_dir = cfg.get_string("phys.rrtmg_tables", o.table_dir);
+  }
   m.suite = std::make_unique<PhysicsSuite>(g, o);
   PhysicsSuite& su = *m.suite;
 
@@ -221,6 +238,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
     put2(su.snowh, snow);
   }
   // CANWAT = 0 (lsminit), the accumulations and fluxes stay zero
+  su.init_radiation(m.xlat, m.xlong);
   m.rk->set_column_physics(m.suite.get());
 }
 #endif
