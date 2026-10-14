@@ -70,6 +70,19 @@ CASES = [
     ("real_p4_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p4_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P4_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 6e-4, "W": 1e-2, "THM": 8e-6, "QV": 5e-4}),
+    # Nesting: one-way (N1) and two-way (N2, feedback changes d01 by 5e-3) vs WRF r8
+    ("real_n1_r8_fp64_cpu", "cpu_dp", "configs/real_n1_steps.ini", [],
+     {d: f"{WR}/run_N1_r8/steps/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 180,
+     {"d01.U": 1e-13, "d01.THM": 1e-14, "d02.U": 1e-12, "d02.THM": 1e-14, "d02.QV": 1e-13}),
+    ("real_n2_r8_fp64_cpu", "cpu_dp", "configs/real_n2_steps.ini", [],
+     {d: f"{WR}/run_N2_r8/steps/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 180,
+     {"d01.U": 1e-13, "d01.THM": 1e-14, "d02.U": 1e-12, "d02.THM": 1e-14, "d02.QV": 1e-13}),
+    ("real_n2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_n2.ini", ["real.dir=" + f"{WR}/run_N2_r8"],
+     {d: f"{WR}/run_N2_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600,
+     {"d01.U": 1e-11, "d01.THM": 1e-13, "d02.U": 1e-11, "d02.THM": 1e-13}),
+    ("real_n2_fp32_1h", "cuda", "configs/real_n2.ini", [],
+     {d: f"{WR}/run_N2/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600,
+     {"d01.U": 5e-4, "d01.THM": 3e-6, "d02.U": 6e-4, "d02.THM": 3e-6}),
     ("wdamp_w1_fp64", "cpu_dp", "configs/real_r3.ini",
      ["real.dir=" + f"{WR}/run_W1_r8", "time.dt=450", "run.run_time=4500", "output.out_interval=1",
       "output.diag_interval=1"], f"{WR}/run_W1_r8/wrfout_d01_2026-10-12_00:00:00", 4500,
@@ -140,7 +153,8 @@ def main():
         if a.only and a.only not in name:
             continue
         b = bins.get(key)
-        if not b or not os.path.exists(b) or not os.path.exists(wo):
+        refs = wo if isinstance(wo, dict) else {"": wo}  # nested runs: {domain: wrfout}
+        if not b or not os.path.exists(b) or not all(os.path.exists(w) for w in refs.values()):
             print(f"SKIP  {name:22s} (binary or reference missing)")
             continue
         out = os.path.join(a.out, name)
@@ -149,7 +163,10 @@ def main():
             print(f"FAIL  {name:22s} run failed: {log[-200:]}")
             ok = False
             continue
-        res = compare(wo, out, t)
+        res = {}
+        for dom, w in refs.items():  # nested: out/<domain>, tolerance keys "<domain>.<var>"
+            for v, x in compare(w, os.path.join(out, dom) if dom else out, t).items():
+                res[f"{dom}.{v}" if dom else v] = x
         bad = [f"{v} {res.get(v, float('nan')):.2e}>{tl:.0e}" for v, tl in tol.items()
                if not (res.get(v, float("inf")) <= tl)]
         txt = " ".join(f"{v}={res.get(v, float('nan')):.1e}" for v in tol)
