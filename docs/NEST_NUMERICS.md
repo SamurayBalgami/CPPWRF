@@ -66,7 +66,13 @@ Matches `share/interp_fcn.F:1397-2258`:
    - **Staggered points** (`xstag` or `ystag`) use the centered $(2\lfloor r/2 \rfloor + 1)$ cell window with weights $\frac{1}{\text{npts}}$ accumulated term-by-term in the exact Fortran loop order (`dj` outer, `di` inner).
    - **Unstaggered points** (for both odd and even ratios $r_x, r_y$) average over the $r_y \times r_x$ nest cells starting at $n_{j,\text{base}} = (j_c - j_p)\,r_y + 1$, $n_{i,\text{base}} = (i_c - i_p)\,r_x + 1$ with term-by-term multiplication `sum += inv_pts * nfld(...)`.
 
-2. **Parent Smoothers (`sm121` and `smdsm`):**
+2. **Point-Sampling Map-Scale & Coriolis Feedback (`copy_fcnm`):**
+   - In `inc/nest_feedbackup_interp.inc` (included by `share/mediation_feedback_domain.F`), WRF also feeds back the 11 static 2D map-scale and Coriolis fields (`msftx, msfty, msfux, msfuy, msfvx, msfvx_inv, msfvy, f, e, sina, cosa`) using `copy_fcnm` (`share/interp_fcn.F:1747`) with `.FALSE.` (no post-smoothing).
+   - Unlike cell-averaging `copy_fcn`, `copy_fcnm` samples the fine nest grid at the exact center of the coarse cell (`ioff = (nri - 1) / 2`, `joff = (nrj - 1) / 2` for unstaggered; `ioff = 0` for X-staggered; `joff = 0` for Y-staggered):
+     $$c(i_c, j_c) = n\big((i_c - i_p)\,r_x + 1 + i_{\text{off}},\, (j_c - j_p)\,r_y + 1 + j_{\text{off}}\big)$$
+   - Because `wrfinput_d01` and `wrfinput_d02` store map factors in FP32 (`~1e-7` precision), omitting `copy_fcnm` leaves a `2.4e-7` discrepancy in `d01`'s `msfuy`/`msfvx` inside the feedback window after `t = 0`, which changes `d01`'s `W` diagnostic by `2.6e-8` at `t = 0`. Including `feedback_field2_fcnm` (`KCopyFcnmView2D`) eliminates this discrepancy completely (`0.000e+00` bit difference on `U, V, W` at `t = 0` on `d01`).
+
+3. **Parent Smoothers (`sm121` and `smdsm`):**
    - Applied over $i \in [i_p + 3, i_{\text{end}} - 3]$, $j \in [j_p + 3, j_{\text{end}} - 3]$.
    - `sm121` (`smooth_option = 1`): `npasses = (parent_grid_ratio + 1) / 2` passes of a 2D separable 1-2-1 filter ($Y$-pass into scratch, then $X$-pass, with odd passes sweeping forward in $i$ and even passes sweeping backward in $i$).
    - `smdsm` (`smooth_option = 2`): Two-pass smoother-desmoother with coefficients $x_{\nu} = \{0.50, -0.52\}$ and `npasses = parent_grid_ratio - 1` pairs ($Y$-pass then $X$-pass per $\nu$).
@@ -100,14 +106,17 @@ Matches `dyn_em/couple_or_uncouple_em.F` bit-for-bit:
 
 ---
 
-## 6. Nest Initialization (`input_from_file = true`): `nest_init.hpp`
+## 6. Nest Initialization (`input_from_file = true`): `nest_init.hpp` & `nest_driver.cpp`
 
 Matches `share/mediation_integrate.F:509` (`med_nest_initial`) and `dyn_em/nest_init_utils.F`:
 
-1. `med_interp_domain`: Interpolates parent coupled fields to nest scratch arrays (`ht_fine`, `t_save`, `qv_save`, etc.) via `interp_fcn_sint`.
-2. `blend_terrain`: Blends `ht_fine` (parent-interpolated) into fine `ht` (from `wrfinput_d02`) in the outer `spec_bdy_width` zone (setting the outermost 2 rows/cols equal to `ht_fine`, and linear blending weights $\frac{5 - b}{3}$ for $b \in \{2, 3, 4\}$).
-3. `copy_3d_field`: Copies parent-interpolated `t_save` and `qv_save` into the outer `spec_bdy_width` zone of `t_2` and `qv`, leaving the interior fine `wrfinput_d02` values untouched.
-4. `adjust_tempqv`: Hydrostatically adjusts interior nest potential temperature `t_2` using the height difference $\Delta z = \text{ht}_{\text{fine}} - \text{ht}$ and lapse rate $-0.0065\,\text{K/m}$, converting between moist potential temperature $\theta_m = (\theta + T_0)(1 + 1.61\,q_v) - T_0$ and dry $\theta$ when `use_theta_m == 1`.
+1. `med_interp_domain`: Interpolates parent `ht`, `mub`, `phb`, `t_2`, and `qv` onto nest scratch arrays (`ht_int`, `mub_int`, `phb_int`, `t_int`, `qv_int`) via `interp_fcn_sint`.
+2. `blend_terrain`: Blends `ht_int`, `mub_int`, and `phb_int` into the nest's `ht`, `mub`, and `phb` (loaded from `wrfinput_d02`) in the outer `spec_bdy_width` zone (setting the outermost 2 rows/cols equal to the parent-interpolated field, and linear blending weights $\frac{5 - b}{3}$ for $b \in \{2, 3, 4\}$).
+3. `copy_3d_field`: Copies parent-interpolated `t_int` and `qv_int` into the outer `spec_bdy_width` zone of `t_2` and `qv`, leaving the interior fine `wrfinput_d02` values untouched, and saves the pre-blended `wrfinput_d02` terrain height in `ht_fine`.
+4. **Optional Two-Way Feedback (`feedback == 1`):** Calls `med_feedback_domain(parent, child)`, which couples parent and child in-place, copies interior nest prognostic fields (`u_2, v_2, w, ph_2, t_2, mu_2, moist`), base fields (`phb, mub, alb, pb, ht`), and point-sampled map/Coriolis factors (`msftx..cosa`) onto the parent, smooths `u_2, v_2, w, ph_2, t_2, mu_2, mub, phb, ht` if `smooth_option > 0`, uncouples both grids, recomputes parent reference profiles (`p_hyd`, `pb`, `alb`, `t_init`, `al`, `p`) inside the feedback window via `recompute_parent_feedback_ref`, and updates parent kinematic `W` via `init_em_recompute_w`.
+5. `adjust_tempqv`: Hydrostatically adjusts interior nest potential temperature `t_2` using the height difference $\Delta z = \text{ht}_{\text{fine}} - \text{ht}$ and lapse rate $-0.0065\,\text{K/m}$, converting between moist potential temperature $\theta_m = (\theta + T_0)(1 + 1.61\,q_v) - T_0$ and dry $\theta$ when `use_theta_m == 1`.
+6. `init_domain_constants_em` (`recompute_nest_after_blend`): Recomputes the nest's hydrostatic base state (`phb`, `pb`, `alb`, `t_init`), perturbation `ph_2`, dry air density `alt`/`al`, perturbation pressure `p`, hydrostatic pressure `p_hyd`/`p_hyd_w`, geopotential `z`, and surface diagnostics `p_top`, `psfc`, `mu0` from the blended `ht` and `mub`, followed by `init_em_recompute_w` on the nest.
+7. `med_nest_force` (`ncall = 1` at $t = 0$): Couples parent and child in-place, fills the child's lateral boundary value slabs (`*B`, with `*BT = 0`) via `bdy_interp1`, and uncouples both parent and child in-place.
 
 ---
 
@@ -138,3 +147,42 @@ tools/heavy.sh bash tests/nest/run_test.sh
 | 3. `KCopyFcn` (`(F,F), (T,F), (F,T)`) | `<= 3.802e-16` | PASS |
 | 4. `couple_or_uncouple_state` (`couple` & `uncouple` all fields) | `0.000000e+00` (Bit-exact) | PASS |
 | 5. `nest_init` (`blend_terrain`, `copy_3d_field`, `adjust_tempqv`) | `0.000000e+00` (Bit-exact) | PASS |
+
+---
+
+## 8. Nest Driver (`src/cases/nest_driver.{hpp,cpp}`) & End-to-End Acceptance
+
+### 8.1 Recursive Time-Stepping Order (`frame/module_integrate.F:integrate`)
+ implemented in [`src/cases/nest_driver.cpp`](../src/cases/nest_driver.cpp) (`cases::run_nested`) against `cases::Model` and `cases::DomainRunner`:
+1. Construct root (`d01`) and child (`d02..d0N`) `DomainRunner` instances in `<out_dir>/d01`, `<out_dir>/d02`, etc.
+2. At $t = 0$ on `d01`: write `d01`'s initial output ONLY if `feedback == 0`; otherwise defer `d01`'s initial output until after `med_nest_initial(d01, d02)` has fed back `d02`'s $t = 0$ fields onto `d01` (`share/mediation_integrate.F:med_Before_Solve_io`).
+3. For each parent step $s_p = 0, \dots, N_{\text{steps},p}-1$:
+   - Advance parent by one time step $\Delta t_p$ (`parent.step_one()`), deferring parent output when child nests are present (`has_children = true`).
+   - For each child nest:
+     - Call `med_nest_force(parent, child)` (`ncall = 2` at $t_p + \Delta t_p$) to compute lateral boundary tendencies `*BT = (F(t_p + \Delta t_p) - *B) / (r_t \Delta t_c)` while leaving `*B` at $t_p$.
+     - Advance child by $r_t = \text{parent\_time\_step\_ratio}$ sub-steps (`integrate_domain(child)`), writing child output at its configured `out_interval`.
+     - Call `med_nest_feedback(parent, child)` (if `feedback == 1`), updating parent fields, reference profiles, and kinematic `W` in-place.
+     - Refresh child's start-of-window lateral boundary values `*B` at $t_p + \Delta t_p$ (`med_nest_force` with `ncall = 1` at the start of the next parent step).
+   - Write parent output (`parent.write_if_due()`) after all child sub-steps and two-way feedback complete.
+
+### 8.2 Acceptance Summary vs WRF 4.6.1 (`run_N1_r8`, `run_N2_r8`, `run_N1`, `run_N2`)
+
+| Case | Mode | Precision / Backend | Domain | Window | Max `relL2` (`U, V`) | Max `relL2` (`W`) | Max `relL2` (`PH, MU, THM`) | Max `relL2` (`P, QV`) | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| `run_N1_r8/steps` | One-way (`feedback=0`) | FP64 CPU | `d01` | 3 steps (`0..180 s`) | `2.42e-14` | `4.59e-12` | `4.43e-16` | `7.05e-15` | PASS (`<= 1e-10`) |
+| `run_N1_r8/steps` | One-way (`feedback=0`) | FP64 CPU | `d02` | 9 steps (`0..180 s`) | `7.83e-14` | `8.06e-12` | `7.00e-16` | `9.60e-15` | PASS (`<= 1e-10`) |
+| `run_N2_r8/steps` | Two-way (`feedback=1`) | FP64 CPU | `d01` | 3 steps (`0..180 s`) | `2.44e-14` | `4.48e-12` | `4.29e-16` | `7.09e-15` | PASS (`<= 1e-10`) |
+| `run_N2_r8/steps` | Two-way (`feedback=1`) | FP64 CPU | `d02` | 9 steps (`0..180 s`) | `7.70e-14` | `8.05e-12` | `7.07e-16` | `9.71e-15` | PASS (`<= 1e-10`) |
+| `run_N1_r8/steps` | One-way (`feedback=0`) | FP64 CUDA | `d01` | 3 steps (`0..180 s`) | `1.80e-13` | `6.30e-12` | `5.95e-16` | `1.50e-14` | PASS (`<= 1e-10`) |
+| `run_N1_r8/steps` | One-way (`feedback=0`) | FP64 CUDA | `d02` | 9 steps (`0..180 s`) | `2.09e-13` | `1.04e-11` | `8.14e-16` | `1.62e-14` | PASS (`<= 1e-10`) |
+| `run_N2_r8/steps` | Two-way (`feedback=1`) | FP64 CUDA | `d01` | 3 steps (`0..180 s`) | `1.79e-13` | `6.11e-12` | `5.75e-16` | `1.49e-14` | PASS (`<= 1e-10`) |
+| `run_N2_r8/steps` | Two-way (`feedback=1`) | FP64 CUDA | `d02` | 9 steps (`0..180 s`) | `1.99e-13` | `1.04e-11` | `8.11e-16` | `1.62e-14` | PASS (`<= 1e-10`) |
+| `run_N1_r8` (1 h) | One-way (`feedback=0`) | FP64 CUDA | `d01` | 60 steps (`3600 s`) | `4.77e-13` | `7.10e-12` | `1.02e-15` | `4.06e-14` | PASS (`<= 1e-10`) |
+| `run_N1_r8` (1 h) | One-way (`feedback=0`) | FP64 CUDA | `d02` | 180 steps (`3600 s`) | `2.23e-13` | `1.01e-11` | `9.26e-16` | `2.49e-14` | PASS (`<= 1e-10`) |
+| `run_N2_r8` (1 h) | Two-way (`feedback=1`) | FP64 CUDA | `d01` | 60 steps (`3600 s`) | `4.78e-13` | `6.78e-12` | `9.75e-16` | `4.03e-14` | PASS (`<= 1e-10`) |
+| `run_N2_r8` (1 h) | Two-way (`feedback=1`) | FP64 CUDA | `d02` | 180 steps (`3600 s`) | `2.40e-13` | `1.01e-11` | `9.33e-16` | `2.45e-14` | PASS (`<= 1e-10`) |
+| `run_N1` (1 h) | One-way (`feedback=0`) | FP32 CUDA | `d01` | 60 steps (`3600 s`) | `1.91e-04` (`in: 5.09e-5`) | `3.62e-03` | `6.48e-07` | `2.00e-05` | PASS (FP32) |
+| `run_N1` (1 h) | One-way (`feedback=0`) | FP32 CUDA | `d02` | 180 steps (`3600 s`) | `2.82e-04` (`in: 9.46e-5`) | `4.72e-03` | `9.67e-07` | `3.14e-05` | PASS (FP32) |
+| `run_N2` (1 h) | Two-way (`feedback=1`) | FP32 CUDA | `d01` | 60 steps (`3600 s`) | `1.92e-04` (`in: 5.78e-5`) | `3.46e-03` | `6.36e-07` | `1.96e-05` | PASS (FP32) |
+| `run_N2` (1 h) | Two-way (`feedback=1`) | FP32 CUDA | `d02` | 180 steps (`3600 s`) | `2.83e-04` (`in: 9.82e-5`) | `4.76e-03` | `1.01e-06` | `3.20e-05` | PASS (FP32) |
+

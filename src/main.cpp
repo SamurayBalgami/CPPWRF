@@ -6,6 +6,7 @@
 
 #include "cases/domain_runner.hpp"
 #include "cases/model.hpp"
+#include "cases/nest_driver.hpp"
 #include "core/backend.hpp"
 #include "io/config.hpp"
 
@@ -26,6 +27,10 @@ static int run(int argc, char** argv) {
   io::Config cfg = io::Config::load(argv[1], ov);
   const std::string cname = cfg.get_string("run.case");
   const std::string out_dir = cfg.get_string("output.dir", "out/" + cname);
+
+  if (cases::has_nests(cfg)) {
+    return cases::run_nested(cfg, out_dir);
+  }
 
   cases::Model m = cases::Model::build(cfg);
   cases::DomainRunner r(cfg, m, out_dir, "d01");
