@@ -45,6 +45,16 @@ CASES = [
     ("real_p5_r8_fp64_cpu", "cpu_dp", "configs/real_p5_r8.ini", ["run.run_time=60"],
      f"{WR}/run_P5_r8/wrfout_d01_2026-10-12_00:00:00", 60,
      {"U": 1e-13, "W": 1e-10, "THM": 1e-14, "QV": 1e-14, "MU": 1e-14, "QCLOUD": 1e-10, "QICE": 1e-10}),
+    # P2 (+Kain-Fritsch cu_physics=1): 3 steps at roundoff in FP64; at step 6 (t=360s) a 2-layer
+    # saturated USL at (j=77,i=8) with WKL<1e-4 has TLCL-TENV == 0 algebraically (1-ULP trigger flip).
+    ("real_p2_r8_fp64_cpu", "cpu_dp", "configs/real_p2_r8.ini", [], f"{WR}/run_P2_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {"U": 1e-13, "W": 1e-10, "PH": 1e-14, "THM": 1e-14, "QV": 1e-14, "MU": 1e-14}),
+    ("real_p2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p2_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P2_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_P2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-4, "W": 5e-3, "THM": 3e-6, "QV": 1e-4}),
+    ("real_p2_fp32_1h", "cuda", "configs/real_p2_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P2", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_P2/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-3, "W": 8e-2, "THM": 3e-5, "QV": 8e-4}),
     ("wdamp_w1_fp64", "cpu_dp", "configs/real_r3.ini",
      ["real.dir=" + f"{WR}/run_W1_r8", "time.dt=450", "run.run_time=4500", "output.out_interval=1",
       "output.diag_interval=1"], f"{WR}/run_W1_r8/wrfout_d01_2026-10-12_00:00:00", 4500,

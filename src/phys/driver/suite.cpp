@@ -527,6 +527,44 @@ struct KPblPrep {
   }
 };
 
+// ---------------------------------------------------------------- advance_ppt
+// phys/module_physics_addtendc.F advance_ppt (CASE KFETASCHEME)
+struct KAdvancePpt {
+  V3 rthcuten, rqvcuten, rqccuten, rqrcuten, rqicuten, rqscuten;
+  V2 rainc, rainsh, pratec, pratesh, nca, htop, hbot, cuppt;
+  C2 cutop, cubot;
+  real dt;
+  int nz, kde;
+  bool flag_qi, flag_qs;
+  CPPWRF_HD static int nint_f(real x) { return int(x + (x >= real(0.) ? real(0.5) : real(-0.5))); }
+  CPPWRF_HD void operator()(int i, int j) const {
+    rainc(i, j) = rainc(i, j) + pratec(i, j) * dt;
+    rainsh(i, j) = rainsh(i, j) + pratesh(i, j) * dt;
+    cuppt(i, j) = cuppt(i, j) + (pratec(i, j) + pratesh(i, j)) * dt / real(1000.);
+    const int ncutop = nint_f(cutop(i, j));
+    const int ncubot = nint_f(cubot(i, j));
+    if (ncutop > 1 && ncutop < kde) {
+      if (cutop(i, j) > htop(i, j)) htop(i, j) = cutop(i, j);
+    }
+    if (ncubot > 0 && ncubot < kde) {
+      if (cubot(i, j) < hbot(i, j)) hbot(i, j) = cubot(i, j);
+    }
+    if (nca(i, j) > real(0.)) {
+      if (nint_f(nca(i, j) / dt) <= 1) {
+        for (int k = 0; k < nz; ++k) {
+          rthcuten(i, j, k) = real(0.);
+          rqvcuten(i, j, k) = real(0.);
+          rqccuten(i, j, k) = real(0.);
+          rqrcuten(i, j, k) = real(0.);
+          if (flag_qi) rqicuten(i, j, k) = real(0.);
+          if (flag_qs) rqscuten(i, j, k) = real(0.);
+        }
+      }
+      nca(i, j) = nca(i, j) - dt;
+    }
+  }
+};
+
 }  // namespace
 
 // ------------------------------------------------------------------ PhysicsSuite
@@ -546,7 +584,10 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       snowh(g, Stagger::M, "snowh"), snowc(g, Stagger::M, "snowc"), canwat(g, Stagger::M, "canwat"),
       lai(g, Stagger::M, "lai"), snotime(g, Stagger::M, "snotime"), qz0(g, Stagger::M, "qz0"),
       rainbl(g, Stagger::M, "rainbl"), raincv(g, Stagger::M, "raincv"), rainncv(g, Stagger::M, "rainncv"),
-      rainshv(g, Stagger::M, "rainshv"), sr(g, Stagger::M, "sr"), glw(g, Stagger::M, "glw"),
+      rainshv(g, Stagger::M, "rainshv"), rainc(g, Stagger::M, "rainc"), rainsh(g, Stagger::M, "rainsh"),
+      pratec(g, Stagger::M, "pratec"), pratesh(g, Stagger::M, "pratesh"), nca(g, Stagger::M, "nca"),
+      htop(g, Stagger::M, "htop"), hbot(g, Stagger::M, "hbot"), cutop(g, Stagger::M, "cutop"),
+      cubot(g, Stagger::M, "cubot"), cuppt(g, Stagger::M, "cuppt"), sr(g, Stagger::M, "sr"), glw(g, Stagger::M, "glw"),
       swdown(g, Stagger::M, "swdown"), gsw(g, Stagger::M, "gsw"), smstav(g, Stagger::M, "smstav"),
       smstot(g, Stagger::M, "smstot"), sfcrunoff(g, Stagger::M, "sfcrunoff"), udrunoff(g, Stagger::M, "udrunoff"),
       acsnom(g, Stagger::M, "acsnom"), acsnow(g, Stagger::M, "acsnow"), snopcx(g, Stagger::M, "snopcx"),
@@ -563,15 +604,23 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       u_phytmp(g, Stagger::M, "u_phytmp"), v_phytmp(g, Stagger::M, "v_phytmp"), t1_lag_(g, Stagger::M, "t1_lag"), g_(g), gs_(g), o_(o) {
   if (o.sf_sfclay_physics != 1 || o.sf_surface_physics != 2 || o.bl_pbl_physics != 1)
     throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1, sf_surface_physics=2, bl_pbl_physics=1");
+  if (o.cu_physics != 0 && o.cu_physics != 1)
+    throw std::runtime_error("PhysicsSuite: only cu_physics=0 or cu_physics=1 (Kain-Fritsch)");
+  if (o.cu_physics == 1 && o.kfeta_trigger != 1 && o.kfeta_trigger != 3)
+    throw std::runtime_error("PhysicsSuite: kfeta_trigger=2 is not supported");
   if (o.fractional_seaice != 0) throw std::runtime_error("PhysicsSuite: fractional_seaice=1 is not ported");
   if (o.seaice_thickness_opt != 0 || o.seaice_snowdepth_opt != 0)
     throw std::runtime_error("PhysicsSuite: seaice_thickness_opt/seaice_snowdepth_opt 1 need ICEDEPTH/SNOWSI input");
   if (o.num_soil_layers > noah::kMaxSoilLevels) throw std::runtime_error("PhysicsSuite: too many soil layers");
   if (g.nz > ysu::kMaxLevels) throw std::runtime_error("PhysicsSuite: nz exceeds the YSU column limit");
+  if (o.cu_physics == 1 && g.nz > cu_kf::kMaxLevels)
+    throw std::runtime_error("PhysicsSuite: nz exceeds the KF column limit");
   gs_.nz = o.num_soil_layers;
   auto mk3 = [&](Field3& f, const Grid& gg, const char* n) { f = Field3(gg, Stagger::M, n); };
   mk3(tslb, gs_, "tslb"); mk3(smois, gs_, "smois"); mk3(sh2o, gs_, "sh2o"); mk3(smcrel, gs_, "smcrel");
   mk3(exch_h, g, "exch_h"); mk3(exch_m, g, "exch_m");
+  mk3(w0avg, g, "w0avg"); mk3(cldfra_dp, g, "cldfra_dp"); mk3(cldfra_sh, g, "cldfra_sh");
+  mk3(qc_cu, g, "qc_cu"); mk3(qi_cu, g, "qi_cu");
   mk3(n_stc, gs_, "n_stc"); mk3(n_smc, gs_, "n_smc"); mk3(n_swc, gs_, "n_swc"); mk3(n_et, gs_, "n_et");
   mk3(n_smav, gs_, "n_smav"); mk3(zero3_, g, "zero3");
   for (Field2* f : {&n_lwdn, &n_soldn, &n_solnet, &n_sfcprs, &n_prcp, &n_sfctmp, &n_th2, &n_q2, &n_q2sat, &n_dqsdt2,
@@ -591,12 +640,26 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   sfclayrev::init_sfclayrev_tables(h);
   d_sfclay_tables_ = static_cast<sfclayrev::SFClayRevTables<real>*>(dev_alloc(sizeof(h)));
   copy_to_dev(d_sfclay_tables_, &h, sizeof(h));
+  if (o.cu_physics == 1) {
+    using namespace wrfc;
+    cu_kf::KFTables<real> h_kf{};
+    cu_kf::init_kf_tables(h_kf, svp1, svp2, svp3, svpt0);
+    d_kf_tables_ = static_cast<cu_kf::KFTables<real>*>(dev_alloc(sizeof(h_kf)));
+    copy_to_dev(d_kf_tables_, &h_kf, sizeof(h_kf));
+    nca.fill_host([](int, int, int) { return -100.0; });  // kf_eta_init default for non-restart
+  }
   // bldt = 0: every step; otherwise WRF stepbl = nint(bldt*60/dt), at least 1
   stepbl = o.bldt == 0 ? 1 : int(std::lround(o.bldt * 60. / g.dt));
   if (stepbl < 1) stepbl = 1;
+  // cu_init (module_physics_init.F:4025-4026): STEPCU = max(nint(CUDT*60./DT), 1)
+  stepcu = int(std::lround(o.cudt * 60. / g.dt));
+  if (stepcu < 1) stepcu = 1;
 }
 
-PhysicsSuite::~PhysicsSuite() { dev_free(d_sfclay_tables_); }
+PhysicsSuite::~PhysicsSuite() {
+  dev_free(d_sfclay_tables_);
+  if (d_kf_tables_) dev_free(d_kf_tables_);
+}
 
 std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
   std::vector<std::pair<std::string, Field2*>> v;
@@ -606,7 +669,8 @@ std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
                     &psfc, &ch, &snow, &snowh, &snowc, &canwat, &lai, &snotime, &qz0, &rainbl, &raincv, &rainncv,
                     &rainshv, &sr, &glw, &swdown, &gsw, &smstav, &smstot, &sfcrunoff, &udrunoff, &acsnom, &acsnow,
                     &snopcx, &potevp, &noahres, &sfcevp, &sfcexc, &achfx, &aclhf, &acgrdflx, &dx2d, &uoce, &voce,
-                    &ctopo, &ctopo2, &ck, &cka, &cd, &cda, &wstar, &delta, &hol})
+                    &ctopo, &ctopo2, &ck, &cka, &cd, &cda, &wstar, &delta, &hol, &rainc, &rainsh, &pratec, &pratesh, &nca, &htop, &hbot,
+                    &cutop, &cubot, &cuppt})
     v.emplace_back("sfc_" + f->name(), f);
   return v;
 }
@@ -614,7 +678,9 @@ std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
 std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
   std::vector<std::pair<std::string, Field3*>> v;
   for (Field3* f : {&tslb, &smois, &sh2o, &smcrel, &exch_h, &exch_m, &pt.rthraten, &pt.rublten, &pt.rvblten,
-                    &pt.rthblten, &pt.rqvblten, &pt.rqcblten, &pt.rqiblten, &t1_lag_})
+                    &pt.rthblten, &pt.rqvblten, &pt.rqcblten, &pt.rqiblten, &t1_lag_, &w0avg, &cldfra_dp, &cldfra_sh,
+                    &qc_cu, &qi_cu, &pt.rucuten, &pt.rvcuten, &pt.rthcuten, &pt.rqvcuten, &pt.rqccuten, &pt.rqrcuten,
+                    &pt.rqicuten, &pt.rqscuten})
     v.emplace_back("sfc_" + f->name(), f);
   return v;
 }
@@ -628,10 +694,11 @@ void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
   run_phy_prep(s, b, prep, PhyPrepParams{o_.use_theta_m});
   surface_driver(s);
   pbl_driver(s);
+  cumulus_driver(s);
 }
 
 void PhysicsSuite::part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) {
-  const CouplingFlags f{false, true};
+  const CouplingFlags f{false, true, o_.cu_physics};
   calculate_phy_tend(pt, s, b, g_, f);
   update_phy_ten(t, pt, s, g_, f);
   if (o_.use_theta_m == 1) {
@@ -647,7 +714,8 @@ void PhysicsSuite::part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
 }
 
 void PhysicsSuite::after_rk(const dyn::State& s, const dyn::BaseState& b) {
-  phy_prep_part2(pt, s, b, g_, CouplingFlags{false, true});
+  advance_ppt(s);
+  phy_prep_part2(pt, s, b, g_, CouplingFlags{false, true, o_.cu_physics});
 }
 
 // module_surface_driver.F surface_driver for SFCLAYREVSCHEME + LSMSCHEME
@@ -841,6 +909,47 @@ void PhysicsSuite::pbl_driver(const dyn::State& s) {
                hol.view(), hol.view(), dtbl, cols, g_.nz, flag_qc, flag_qi, o_.ysu_topdown_pblmix == 1,
                /*have_ctopo=*/true, /*have_surface_diag=*/false, cp, g, rcp, r_d, rovg, ep_1, ep_2, karman,
                xlv, r_v);
+}
+
+// module_cumulus_driver.F cumulus_driver for KFETASCHEME (cu_physics = 1)
+void PhysicsSuite::cumulus_driver(const dyn::State& s) {
+  if (o_.cu_physics == 0) return;
+  const bool run_param = itimestep == 1 || o_.cudt == 0 || stepcu == 1 || itimestep % stepcu == 0;
+  if (!run_param) return;
+  using namespace wrfc;
+  cu_kf::KFKernel<real> kf{};
+  kf.nx = g_.nx; kf.ny = g_.ny; kf.nz = g_.nz;
+  kf.dt = real(g_.dt); kf.dx = real(g_.dx); kf.cudt = real(o_.cudt);
+  kf.stepcu = stepcu; kf.ktau = int(itimestep); kf.trigger = o_.kfeta_trigger;
+  kf.warm_rain = o_.warm_rain;
+  kf.flag_qi = s.P_QI >= 0; kf.flag_qs = s.P_QS >= 0; kf.flag_qr = s.P_QR >= 0;
+  kf.xlv0 = xlv0; kf.xlv1 = xlv1; kf.xls0 = xls0; kf.xls1 = xls1;
+  kf.cp = cp; kf.r = r_d; kf.g = g; kf.ep1 = ep_1; kf.ep2 = ep_2;
+  kf.svp1 = svp1; kf.svp2 = svp2; kf.svp3 = svp3; kf.svpt0 = svpt0;
+  kf.tables = d_kf_tables_;
+  kf.u = prep.u_phy.cview(); kf.v = prep.v_phy.cview(); kf.w = s.w_2.cview();
+  kf.th = prep.th_phy.cview(); kf.t = prep.t_phy.cview(); kf.qv = s.q_2[s.P_QV].cview();
+  kf.dz8w = prep.dz8w.cview(); kf.pcps = prep.p_hyd.cview();  // P=grid%p_hyd in first_rk_step_part1
+  kf.rho = prep.rho.cview(); kf.pi = prep.pi_phy.cview();
+  kf.w0avg = w0avg.view();
+  kf.raincv = raincv.view(); kf.pratec = pratec.view(); kf.nca = nca.view();
+  kf.cutop = cutop.view(); kf.cubot = cubot.view();
+  kf.rthcuten = pt.rthcuten.view(); kf.rqvcuten = pt.rqvcuten.view();
+  kf.rqccuten = pt.rqccuten.view(); kf.rqrcuten = pt.rqrcuten.view();
+  kf.rqicuten = pt.rqicuten.view(); kf.rqscuten = pt.rqscuten.view();
+  kf.cldfra_dp_kf = cldfra_dp.view(); kf.cldfra_sh_kf = cldfra_sh.view();
+  kf.qc_kf = qc_cu.view(); kf.qi_kf = qi_cu.view();
+  cu_kf::run_kf(kf, g_.columns());
+}
+
+// module_physics_addtendc.F advance_ppt (called in solve_em before phy_prep_part2)
+void PhysicsSuite::advance_ppt(const dyn::State& s) {
+  if (o_.cu_physics == 0) return;
+  column_for(g_.columns(), KAdvancePpt{pt.rthcuten.view(), pt.rqvcuten.view(), pt.rqccuten.view(), pt.rqrcuten.view(),
+                                       pt.rqicuten.view(), pt.rqscuten.view(), rainc.view(), rainsh.view(),
+                                       pratec.view(), pratesh.view(), nca.view(), htop.view(), hbot.view(),
+                                       cuppt.view(), cutop.cview(), cubot.cview(), real(g_.dt), g_.nz, g_.nz + 1,
+                                       s.P_QI >= 0, s.P_QS >= 0});
 }
 
 }  // namespace cppwrf::phys::driver

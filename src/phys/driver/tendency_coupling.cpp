@@ -76,13 +76,25 @@ Range3D a2c_v_range(const Grid& g) {  // WRF loops k = kts..kte here; level kde 
 PhysicsTendencies::PhysicsTendencies(const Grid& g)
     : rthraten(g, Stagger::M, "rthraten"), rublten(g, Stagger::M, "rublten"), rvblten(g, Stagger::M, "rvblten"),
       rthblten(g, Stagger::M, "rthblten"), rqvblten(g, Stagger::M, "rqvblten"), rqcblten(g, Stagger::M, "rqcblten"),
-      rqiblten(g, Stagger::M, "rqiblten") {}
+      rqiblten(g, Stagger::M, "rqiblten"), rucuten(g, Stagger::M, "rucuten"), rvcuten(g, Stagger::M, "rvcuten"),
+      rthcuten(g, Stagger::M, "rthcuten"), rqvcuten(g, Stagger::M, "rqvcuten"), rqccuten(g, Stagger::M, "rqccuten"),
+      rqrcuten(g, Stagger::M, "rqrcuten"), rqicuten(g, Stagger::M, "rqicuten"), rqscuten(g, Stagger::M, "rqscuten") {}
 
 void calculate_phy_tend(PhysicsTendencies& pt, const dyn::State& s, const dyn::BaseState& b, const Grid& g,
                         const CouplingFlags& f) {
   const Range3D mr = g.mass_cells();
   auto couple = [&](Field3& x) { parallel_for(mr, KCouple{x.view(), s.mut.cview(), b.c1h.view(), b.c2h.view()}); };
   if (f.radiation) couple(pt.rthraten);
+  if (f.cu_physics > 0) {
+    couple(pt.rucuten);
+    couple(pt.rvcuten);
+    couple(pt.rthcuten);
+    couple(pt.rqvcuten);
+    if (s.P_QC >= 0) couple(pt.rqccuten);
+    if (s.P_QR >= 0) couple(pt.rqrcuten);
+    if (s.P_QI >= 0) couple(pt.rqicuten);
+    if (s.P_QS >= 0) couple(pt.rqscuten);
+  }
   if (f.pbl) {
     couple(pt.rublten);
     couple(pt.rvblten);
@@ -106,6 +118,14 @@ void update_phy_ten(dyn::Tendencies& t, PhysicsTendencies& pt, const dyn::State&
     if (s.P_QC >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QC].view(), pt.rqcblten.cview()});
     if (s.P_QI >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QI].view(), pt.rqiblten.cview()});
   }
+  if (f.cu_physics == 1) {  // phy_cu_ten, KFETASCHEME
+    parallel_for(ar, KAddA2A{t.t_tendf.view(), pt.rthcuten.cview()});
+    if (s.P_QV >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QV].view(), pt.rqvcuten.cview()});
+    if (s.P_QC >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QC].view(), pt.rqccuten.cview()});
+    if (s.P_QR >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QR].view(), pt.rqrcuten.cview()});
+    if (s.P_QI >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QI].view(), pt.rqicuten.cview()});
+    if (s.P_QS >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QS].view(), pt.rqscuten.cview()});
+  }
 }
 
 void conv_t_tendf_to_moist(dyn::Tendencies& t, const Field3& t_1, const dyn::State& s, const Grid& g) {
@@ -120,6 +140,16 @@ void phy_prep_part2(PhysicsTendencies& pt, const dyn::State& s, const dyn::BaseS
     parallel_for(mr, KDecouple{x.view(), s.muts.cview(), b.c1h.view(), b.c2h.view()});
   };
   if (f.radiation) decouple(pt.rthraten);
+  if (f.cu_physics > 0) {
+    decouple(pt.rucuten);
+    decouple(pt.rvcuten);
+    decouple(pt.rthcuten);
+    if (s.P_QV >= 0) decouple(pt.rqvcuten);
+    if (s.P_QC >= 0) decouple(pt.rqccuten);
+    if (s.P_QR >= 0) decouple(pt.rqrcuten);
+    if (s.P_QI >= 0) decouple(pt.rqicuten);
+    if (s.P_QS >= 0) decouple(pt.rqscuten);
+  }
   if (f.pbl) {
     decouple(pt.rublten);
     decouple(pt.rvblten);

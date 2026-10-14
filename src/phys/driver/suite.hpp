@@ -21,6 +21,8 @@
 #include "core/grid.hpp"
 #include "dyn/column_physics.hpp"
 #include "dyn/state.hpp"
+#include "phys/cu_kf/kf.hpp"
+#include "phys/cu_kf/kf_tables.hpp"
 #include "phys/driver/phy_prep.hpp"
 #include "phys/driver/tendency_coupling.hpp"
 #include "phys/lsm_noah/noah_tables.hpp"
@@ -52,13 +54,17 @@ class IntField2 {
   int* buf_ = nullptr;
 };
 
-// Namelist options of the P1 suite (WRF Registry defaults unless noted).
+// Namelist options of the P1/P2 suite (WRF Registry defaults unless noted).
 struct SuiteOptions {
   int sf_sfclay_physics = 1;     // SFCLAYREVSCHEME
   int sf_surface_physics = 2;    // LSMSCHEME (Noah)
   int bl_pbl_physics = 1;        // YSUSCHEME
+  int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME
   int num_soil_layers = 4;
   double bldt = 0;               // minutes; 0 = every step
+  double cudt = 0;               // minutes; 0 = every step
+  int kfeta_trigger = 1;         // 1 = default KF trigger, 3 = RH perturbation
+  bool warm_rain = false;        // mp_init: true for mp_physics == 1 (Kessler)
   int isfflx = 1;
   int ifsnow = 1;
   int fractional_seaice = 0;
@@ -90,23 +96,25 @@ class PhysicsSuite : public dyn::ColumnPhysics {
 
   long itimestep = 0;  // WRF grid%itimestep (incremented in part1, as solve_em does per step)
   int stepbl = 1;      // WRF grid%stepbl (set_physics_rconfigs: nint(bldt*60/dt), >= 1)
+  int stepcu = 1;      // WRF grid%stepcu (cu_init: max(nint(cudt*60/dt), 1))
   // true (model): keep WRF's grid%t_1 for conv_t_tendf_to_moist, i.e. theta_m at the start of the
   // previous step (the dycore's s.t_1 is the current step start); false: s.t_1 already holds it
   // (the differential test passes WRF's t_1).
   bool wrf_t1_lag = true;
 
-  // ---- persistent 2D surface state (WRF grid% names) ----
+  // ---- persistent 2D surface and cumulus state (WRF grid% names) ----
   Field2 tsk, xland, xice, lakemask, water_depth, mavail, tmn, vegfra, shdmin, shdmax, snoalb, albbck, albedo,
       emiss, embck, znt, z0, ust, ustm, mol, rmol, pblh, hfx, qfx, lh, grdflx, qsfc, flhc, flqc, wspd, br, fm, fh,
       zol, regime, u10, v10, t2, th2, q2, psfc, ch, snow, snowh, snowc, canwat, lai, snotime, qz0, rainbl, raincv,
-      rainncv, rainshv, sr, glw, swdown, gsw, smstav, smstot, sfcrunoff, udrunoff, acsnom, acsnow, snopcx, potevp,
-      noahres, sfcevp, sfcexc, achfx, aclhf, acgrdflx, dx2d, uoce, voce, ctopo, ctopo2, ck, cka, cd, cda, wstar,
-      delta, hol;
+      rainncv, rainshv, rainc, rainsh, pratec, pratesh, nca, htop, hbot, cutop, cubot, cuppt, sr, glw, swdown, gsw,
+      smstav, smstot, sfcrunoff, udrunoff, acsnom, acsnow, snopcx, potevp, noahres, sfcevp, sfcexc, achfx, aclhf,
+      acgrdflx, dx2d, uoce, voce, ctopo, ctopo2, ck, cka, cd, cda, wstar, delta, hol;
   IntField2 ivgtyp, isltyp, kpbl;
   Field3 tslb, smois, sh2o, smcrel;  // (i, j, soil layer)
   std::vector<double> dzs;            // soil layer thicknesses (m)
   Field3 exch_h, exch_m;              // M (WRF kme-sized; levels 0..nz-1 used)
-  PhysicsTendencies pt;               // R*BLTEN (and RTHRATEN) at mass points
+  Field3 w0avg, cldfra_dp, cldfra_sh, qc_cu, qi_cu;  // cumulus 3D state and diagnostics
+  PhysicsTendencies pt;               // R*BLTEN, R*CUTEN, RTHRATEN at mass points
   PhyPrepFields prep;                 // phy_prep diagnostics (incl. t_phy, rho, u_phy, ...)
 
   // ---- locals of solve_em / surface_driver (scratch) ----
@@ -129,6 +137,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   SuiteOptions o_;
   noah::NoahTables noah_tables_;
   sfclayrev::SFClayRevTables<real>* d_sfclay_tables_ = nullptr;  // device copy, uploaded once
+  cu_kf::KFTables<real>* d_kf_tables_ = nullptr;                 // device copy, uploaded once
   // Noah driver scratch (inputs/outputs of SFLX per point)
   Field2 n_lwdn, n_soldn, n_solnet, n_sfcprs, n_prcp, n_sfctmp, n_th2, n_q2, n_q2sat, n_dqsdt2, n_ffrozp,
       n_shdfac, n_shmin, n_shmax, n_albbrd, n_snoalb1, n_tbot, n_z0brd, n_emissi, n_embrd, n_cmc, n_t1,
@@ -141,6 +150,8 @@ class PhysicsSuite : public dyn::ColumnPhysics {
 
   void surface_driver(const dyn::State& s);
   void pbl_driver(const dyn::State& s);
+  void cumulus_driver(const dyn::State& s);
+  void advance_ppt(const dyn::State& s);
 };
 
 }  // namespace cppwrf::phys::driver

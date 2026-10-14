@@ -208,3 +208,46 @@ and CPPWRF's WSM6 bit for bit from CPPWRF's inputs. WSM6 amplifies the input rou
 (ice processes at thresholds once ice exists): CPPWRF CPU FP64 vs CUDA FP64 differ by the same
 7e-5 at step 2. Microphysics runs can therefore only be checked at roundoff for the first step;
 later steps and FP32 are statistical comparisons.
+
+
+## 7. Stage 2 (P2): Kain-Fritsch cumulus (`cu_physics = 1`)
+
+### What WRF executes for `cu_physics = 1` (`KFETASCHEME`)
+
+1. **`cu_init` / `kf_eta_init`** (`phys/module_physics_init.F:1945`, `phys/module_cu_kfeta.F:3084`):
+   - `stepcu = max(nint(cudt * 60. / dt), 1)`
+   - `NCA = -100.`, `W0AVG = 0.`, `RTHCUTEN = RQVCUTEN = RQCCUTEN = RQRCUTEN = RQICUTEN = RQSCUTEN = 0.`
+   - `kf_lutab(SVP1, SVP2, SVP3, SVPT0)`: builds lookup tables `TTAB(250,220)`, `QSTAB(250,220)`, `THE0K(220)`, `ALU(200)`, `RDPR`, `RDTHK`, `PLUTOP` (`src/phys/cu_kf/kf_tables.cpp`, uploaded once to `d_kf_tables_`).
+2. **`first_rk_step_part1` -> `cumulus_driver`** (`dyn_em/module_first_rk_step_part1.F:1376`, `phys/module_cumulus_driver.F:1015`):
+   - Run decision (`module_cumulus_driver.F:830-864`): `itimestep == 1 || cudt == 0 || stepcu == 1 || itimestep % stepcu == 0`.
+   - Passes `P = grid%p_hyd`, `PI = pi_phy`, `T = t_phy`, `TH = th_phy`, `U = u_phy`, `V = v_phy`, `W = grid%w_2`, `RHO = grid%rho`, `DZ8W = dz8w`, `HTOP = grid%cutop`, `HBOT = grid%cubot`, `WARM_RAIN = grid%warm_rain` (`mp_physics == 1`).
+   - Inside `KF_eta_CPS` (`phys/module_cu_kfeta.F:29`):
+     - Updates running-mean vertical velocity every cumulus step: `W0 = 0.5*(w(k) + w(k+1))`, `W0AVG = (W0AVG * (2*STEPCU - 1) + W0) / (2*STEPCU)`.
+     - Checks `NCA(i,j) >= 0.5*DT`: if active from a prior deep-convection event, returns early keeping existing `R*CUTEN`, `RAINCV`, `PRATEC`.
+     - Otherwise zeroes `R*CUTEN`, `RAINCV`, `PRATEC`, `CLDFRA_DP/SH`, `QC_CU/QI_CU`, sets `CUTOP = 1`, `CUBOT = KTE + 1`, and runs `KF_eta_PARA` (`src/phys/cu_kf/kf.hpp`).
+     - Note on `mp_physics = 0`: `RQCCUTEN` is passed unconditionally in `cumulus_driver`, so `PRESENT(rqccuten)` is true in `KF_eta_CPS` and `RQCCUTEN = DQRDT + DQCDT` (since `f_qr = .false.`), while `calculate_phy_tend`, `update_phy_ten`, and `phy_prep_part2` guard `RQCCUTEN` with `P_QC >= PARAM_FIRST_SCALAR` (`s.P_QC >= 0`).
+3. **`first_rk_step_part2`** (`src/phys/driver/tendency_coupling.cpp`):
+   - `calculate_phy_tend` (`dyn_em/module_em.F:2208-2261`): multiplies `RUCUTEN, RVCUTEN, RTHCUTEN, RQVCUTEN` (and `RQCCUTEN, RQRCUTEN, RQICUTEN, RQSCUTEN` when the corresponding `P_Q* >= 0`) by `mu = c1h(k)*mut + c2h(k)`.
+   - `update_phy_ten` / `phy_cu_ten` (`phys/module_physics_addtendc.F:1185-1225`): adds `RTHCUTEN` to `t_tendf`, `RQVCUTEN` to `moist_tend(P_QV)` (and `RQCCUTEN, RQRCUTEN, RQICUTEN, RQSCUTEN` when `P_Q* >= 0`) before `conv_t_tendf_to_moist`.
+4. **After the RK loop (`solve_em.F:3560`, before `phy_prep_part2`)**:
+   - `advance_ppt` (`phys/module_physics_addtendc.F:2059-2235`, `PhysicsSuite::advance_ppt` / `KAdvancePpt` in `src/phys/driver/suite.cpp`):
+     - `RAINCV = DT * PRATEC`, `RAINSHV = DT * PRATESH`
+     - `RAINC += DT * PRATEC`, `RAINSH += DT * PRATESH`, `CUPPT += DT * PRATEC / 1000`
+     - Updates `HTOP = max(CUTOP, HTOP)` and `HBOT = min(CUBOT, HBOT)` where `RAINCV > 0`
+     - For `KFETASCHEME`: if `NCA(i,j) > 0`, checks `nint(NCA(i,j)/DT) <= 1` (zeroing `RTHCUTEN, RQVCUTEN, RQCCUTEN, RQRCUTEN, RQICUTEN, RQSCUTEN` when convection expires) and decrements `NCA(i,j) -= DT`.
+   - `phy_prep_part2` (`dyn_em/module_big_step_utilities_em.F:5105-5167`): decouples `R*CUTEN /= (c1h(k)*muts + c2h(k))`.
+   - On the following step, `surface_driver` (`KSfcAlways`) adds the previous step's `RAINCV` into `RAINBL` before `cumulus_driver` runs.
+
+### Real-data acceptance against WRF v4.6.1 (`run_P2_r8` and `run_P2`)
+
+| run | U | W | THM | QV | surface & cumulus (`RAINC`, `RAINCV`, `NCA`, `W0AVG`, `R*CUTEN`, `HFX`, `UST`, `PBLH`, `TSK`) |
+|---|---|---|---|---|---|
+| CPU FP64, 3 steps (`t = 60, 120, 180 s`) | 2.20e-14 | 4.60e-12 | 1.77e-16 | 1.01e-15 | `NCA` bit-exact (`0.0`); `RAINC` 1.2e-13, `RAINCV` 3.5e-13, `W0AVG` 1.5e-12, `RTHCUTEN` 8.5e-13, `RQVCUTEN` 7.4e-13, `RQCCUTEN` 2.5e-12 (max rel) |
+| CUDA FP64, 3 steps (`t = 60, 120, 180 s`) | 1.79e-13 | 6.29e-12 | 2.30e-16 | 4.75e-15 | matches CPU FP64 to `1e-13` |
+| CUDA FP64, 10 min (`t = 600 s`, outside `(j=77,i=8)` box) | 2.87e-13 | 6.81e-12 | 4.79e-16 | 1.43e-14 | `NCA` bit-exact across all 10,591 columns (`193` deep, `413` shallow); `RAINC` max diff `7.9e-13` |
+| CUDA FP64, 1 h (`t = 3600 s`, whole domain) | 8.29e-05 | 1.74e-03 | 1.35e-06 | 5.16e-05 | `RAINC` relL2 `1.0e-4` (max rel `2.5e-4`), `TSK` relL2 `8.8e-6`, `HFX` relL2 `1.6e-4` |
+| CUDA FP32 vs WRF FP32 (`run_P2`), 1 h | 7.86e-04 | 4.19e-02 | 1.09e-05 | 3.65e-04 | `TSK` relL2 `2.4e-5`, `HFX` relL2 `8.0e-4`, `UST` relL2 `8.6e-4` |
+
+**Note on the 1-ULP shallow-convection trigger threshold at `t = 360 s` (step 6):**
+In `KF_eta_PARA` (`module_cu_kfeta.F:929-1022`), whenever a 2-layer updraft source layer (`KPBL = LC + 1`) is saturated (`q0 = qes`, so `TLCL = min(TLCL, TMIX) = TMIX`) and has `WKL < 1e-4` (`DTLCL = 0`, `DTRH = 0`), the parcel LCL height is `ZLCL = ZMIX = (dp_0 z_0 + dp_1 z_1)/(dp_0 + dp_1)`, `DLP = (ZLCL - z_0)/(z_1 - z_0) = dp_1/(dp_0 + dp_1)`, and `TENV = T_0 + (T_1 - T_0)*DLP = TMIX = TLCL`. Thus `TLCL + DTLCL + DTRH - TENV == 0` **identically in exact arithmetic**, and the buoyancy test `IF (TLCL + DTLCL + DTRH .LT. TENV) CYCLE usl` tests `0 < 0` up to 1 ULP (`5.68e-14 K`) of floating-point rounding. At step 6 (`t = 300 -> 360 s`), column `(j=77, i=8)` at `lc = 8` satisfies this exact degeneracy (`0.0` vs `-5.68e-14 K`), flipping shallow convection at `lc = 8` for that single step while CPU FP64 and CUDA FP64 agree to `1e-13` and the rest of the domain matches WRF to `<= 2.9e-13` at `t = 600 s`.
+

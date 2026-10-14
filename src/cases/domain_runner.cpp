@@ -361,16 +361,19 @@ bool DomainRunner::start() {
       extra_2d_.push_back(&m_.rk->physics()->sr);
     }
   }
-  if (m_.suite) {  // column physics surface fields (WRF names in lower case)
+  if (m_.suite) {  // column physics surface and cumulus fields (WRF names in lower case)
     const phys::driver::PhysicsSuite& su = *m_.suite;
     for (const Field2* f : {&su.hfx, &su.qfx, &su.lh, &su.ust, &su.znt, &su.pblh, &su.tsk, &su.grdflx, &su.qsfc,
                             &su.flhc, &su.flqc, &su.t2, &su.th2, &su.q2, &su.u10, &su.v10, &su.psfc, &su.albedo,
                             &su.albbck, &su.emiss, &su.canwat, &su.snow, &su.snowh, &su.snowc, &su.noahres,
                             &su.acgrdflx, &su.achfx, &su.aclhf, &su.sfcevp, &su.potevp, &su.mol, &su.rmol, &su.br,
-                            &su.wspd, &su.fm, &su.fh, &su.zol, &su.regime, &su.sfcexc, &su.lai, &su.xland})
+                            &su.wspd, &su.fm, &su.fh, &su.zol, &su.regime, &su.sfcexc, &su.lai, &su.xland,
+                            &su.rainc, &su.raincv, &su.nca, &su.pratec, &su.cutop, &su.cubot, &su.htop, &su.hbot})
       extra_2d_.push_back(f);
     extra_3d_.insert(extra_3d_.end(), {&su.tslb, &su.smois, &su.sh2o, &su.pt.rublten, &su.pt.rvblten, &su.pt.rthblten,
                                        &su.pt.rqvblten, &su.exch_h});
+    if (su.options().cu_physics != 0)
+      extra_3d_.insert(extra_3d_.end(), {&su.w0avg, &su.pt.rthcuten, &su.pt.rqvcuten, &su.pt.rqccuten});
     if (m_.st->P_QC >= 0) extra_3d_.push_back(&su.pt.rqcblten);
     if (m_.st->P_QI >= 0) extra_3d_.push_back(&su.pt.rqiblten);
   }
@@ -397,6 +400,7 @@ bool DomainRunner::start() {
       wm.sf_sfclay_physics = so.sf_sfclay_physics;
       wm.sf_surface_physics = so.sf_surface_physics;
       wm.bl_pbl_physics = so.bl_pbl_physics;
+      wm.cu_physics = so.cu_physics;
     }
     wm.map_proj = m_.map_proj;
     wm.cen_lat = m_.cen_lat; wm.cen_lon = m_.cen_lon;

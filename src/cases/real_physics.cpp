@@ -27,7 +27,7 @@ namespace cppwrf::cases {
 
 bool wants_column_physics(const io::Config& cfg) {
   return cfg.get_int("phys.sf_sfclay_physics", 0) != 0 || cfg.get_int("phys.sf_surface_physics", 0) != 0 ||
-         cfg.get_int("phys.bl_pbl_physics", 0) != 0;
+         cfg.get_int("phys.bl_pbl_physics", 0) != 0 || cfg.get_int("phys.cu_physics", 0) != 0;
 }
 
 #ifndef CPPWRF_HAVE_NETCDF
@@ -84,8 +84,12 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.sf_sfclay_physics = int(cfg.get_int("phys.sf_sfclay_physics", 0));
   o.sf_surface_physics = int(cfg.get_int("phys.sf_surface_physics", 0));
   o.bl_pbl_physics = int(cfg.get_int("phys.bl_pbl_physics", 0));
+  o.cu_physics = int(cfg.get_int("phys.cu_physics", 0));
   o.num_soil_layers = int(cfg.get_int("phys.num_soil_layers", 4));
   o.bldt = cfg.get_double("phys.bldt", 0.0);
+  o.cudt = cfg.get_double("phys.cudt", 0.0);
+  o.kfeta_trigger = int(cfg.get_int("phys.kfeta_trigger", 1));
+  o.warm_rain = cfg.get_int("phys.mp_physics", 0) == 1;  // mp_init: true only for KESSLERSCHEME
   o.isfflx = int(cfg.get_int("phys.isfflx", 1));
   o.ysu_topdown_pblmix = int(cfg.get_int("phys.ysu_topdown_pblmix", 1));
   o.mminlu = in.att_str("MMINLU", o.mminlu);

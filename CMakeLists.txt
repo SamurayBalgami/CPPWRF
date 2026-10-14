@@ -46,7 +46,7 @@ file(GLOB CPPWRF_SOURCES CONFIGURE_DEPENDS
   ${CMAKE_SOURCE_DIR}/src/core/*.cpp
   ${CMAKE_SOURCE_DIR}/src/dyn/*.cpp
   ${CMAKE_SOURCE_DIR}/src/cases/*.cpp)
-# Column physics used by the dycore (P1 suite: sfclayrev + Noah + YSU and its driver glue)
+# Column physics used by the dycore (P1/P2 suite: sfclayrev + Noah + YSU + KF and its driver glue)
 list(APPEND CPPWRF_SOURCES
   ${CMAKE_SOURCE_DIR}/src/phys/driver/suite.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/driver/phy_prep.cpp
@@ -55,7 +55,9 @@ list(APPEND CPPWRF_SOURCES
   ${CMAKE_SOURCE_DIR}/src/phys/sf_sfclayrev/sfclayrev.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/bl_ysu/ysu.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/lsm_noah/noah.cpp
-  ${CMAKE_SOURCE_DIR}/src/phys/lsm_noah/noah_tables.cpp)
+  ${CMAKE_SOURCE_DIR}/src/phys/lsm_noah/noah_tables.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/cu_kf/kf.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/cu_kf/kf_tables.cpp)
 
 add_library(cppwrf_core STATIC ${CPPWRF_SOURCES})
 target_include_directories(cppwrf_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
