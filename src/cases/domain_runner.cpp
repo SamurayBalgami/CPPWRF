@@ -596,6 +596,23 @@ void DomainRunner::do_snap(long n) {
       nc_vars.emplace_back(ename, 'M', nx, ny, 1, extra_bufs[e].data(), f32, nx, 0);
     }
 
+    std::vector<std::vector<float>> extra3_bufs(extra_3d_.size());
+    for (size_t e = 0; e < extra_3d_.size(); ++e) {  // mass-point 3D extras (own level count)
+      const Field3* f = extra_3d_[e];
+      if (f->name() == "exch_h") continue;  // WRF's EXCH_H lives on w levels; ours on mass levels
+      std::vector<real> he;
+      f->download(he);
+      const Layout& Le = f->layout();
+      const int nk = Le.nz;
+      extra3_bufs[e].resize(size_t(nx) * ny * nk);
+      for (int k = 0; k < nk; ++k)
+        for (int j = 0; j < ny; ++j)
+          for (int i = 0; i < nx; ++i) extra3_bufs[e][(size_t(k) * ny + j) * nx + i] = float(at(he, Le, i, j, k));
+      std::string ename = f->name();
+      for (char& c : ename) c = std::toupper(c);
+      nc_vars.emplace_back(ename, 'M', nx, ny, nk, extra3_bufs[e].data(), f32, nx, (std::ptrdiff_t)nx * ny);
+    }
+
     std::string target_file = out_dir_ + "/wrfout_" + domain_tag_ + "_" + start_date_;
     wrfout_->write_frame(n, n * g.dt, nc_vars, target_file);
   }

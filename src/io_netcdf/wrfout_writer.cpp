@@ -7,6 +7,7 @@
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include <set>
 #include <stdexcept>
 
 namespace cppwrf::io_netcdf {
@@ -212,6 +213,7 @@ class WrfoutWriter::Impl {
       ncid_.close();
       current_file_ = file_path;
       defs_.clear();
+      generic_.clear();
       time_idx_ = 0;
 
       bool file_exists = std::filesystem::exists(file_path);
@@ -314,6 +316,23 @@ class WrfoutWriter::Impl {
         defs_["P_TOP"] = {"P_TOP", {dim_time}, "0  ", "", "PRESSURE TOP OF THE MODEL", "Pa", ""};
         defs_["XTIME"] = {"XTIME", {dim_time}, "0  ", "", "minutes since simulation start", "minutes", ""};
 
+        // Any other mass-point field of the frame (physics diagnostics, R*BLTEN, soil state):
+        // 2D -> (Time, south_north, west_east), nz levels -> bottom_top, other level counts ->
+        // soil_layers_stag (WRF's soil dimension).
+        int dim_soil = -1;
+        for (const VarView& v : vars) {
+          if (v.stagger != 'M' || defs_.count(v.name) || v.nx != meta_.nx || v.ny != meta_.ny) continue;
+          if (v.nz == 1) {
+            defs_[v.name] = {v.name, {dim_time, dim_sn, dim_we}, "XY ", "", v.name, "", "XLONG XLAT XTIME"};
+          } else if (v.nz == meta_.nz) {
+            defs_[v.name] = {v.name, {dim_time, dim_bt, dim_sn, dim_we}, "XYZ", "", v.name, "", "XLONG XLAT XTIME"};
+          } else {
+            if (dim_soil < 0) NC_CHECK(nc_def_dim(ncid_.get(), "soil_layers_stag", v.nz, &dim_soil));
+            defs_[v.name] = {v.name, {dim_time, dim_soil, dim_sn, dim_we}, "XYZ", "Z", v.name, "", "XLONG XLAT XTIME"};
+          }
+          generic_.insert(v.name);
+        }
+
         for (auto& [name, d] : defs_) {
           nc_type xtype = (name == "Times") ? NC_CHAR : NC_FLOAT;
           NC_CHECK(nc_def_var(ncid_.get(), name.c_str(), xtype, int(d.dimids.size()), d.dimids.data(), &d.varid));
@@ -349,6 +368,8 @@ class WrfoutWriter::Impl {
           NC_CHECK(nc_inq_varname(ncid_.get(), i, vname));
           defs_[vname] = VarDef{vname, {}, "", "", "", "", "", i};
         }
+        for (const VarView& v : vars)  // restart append: the extra fields already in the file
+          if (v.stagger == 'M' && defs_.count(v.name) && v.nx == meta_.nx && v.ny == meta_.ny) generic_.insert(v.name);
       }
       is_initialized_ = true;
     }
@@ -582,6 +603,11 @@ class WrfoutWriter::Impl {
     if (defs.count("SR")) {
       write_2d("SR", nx, ny);
     }
+    for (const VarView& v : vars) {  // the extra mass-point fields (see the definitions)
+      if (!generic_.count(v.name) || !defs.count(v.name)) continue;
+      if (v.nz == 1) write_2d(v.name, nx, ny);
+      else write_3d(v.name, nx, ny, v.nz);
+    }
     write_2d("XLAT", nx, ny);
     write_2d("XLONG", nx, ny);
     write_2d("HGT", nx, ny);
@@ -632,6 +658,7 @@ class WrfoutWriter::Impl {
   std::string current_file_;
   size_t time_idx_ = 0;
   std::map<std::string, VarDef> defs_;
+  std::set<std::string> generic_;  // extra mass-point fields defined from the frame
   bool is_initialized_ = false;
 };
 
