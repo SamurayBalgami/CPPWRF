@@ -437,6 +437,12 @@ bool DomainRunner::start() {
 }
 
 void DomainRunner::before_step(long n) {
+  if (pending_ >= 0) {  // deferred frame of the previous step (set_defer_output)
+    const long p = pending_;
+    pending_ = -1;
+    if (p % diag_iv_ == 0) do_diag(p);
+    if (p % out_iv_ == 0) do_snap(p);
+  }
   step_start_ = std::chrono::steady_clock::now();
   if (m_.before_step) m_.before_step(n);
 }
@@ -444,10 +450,12 @@ void DomainRunner::before_step(long n) {
 bool DomainRunner::after_step(long n) {
   step_time += std::chrono::duration<double>(std::chrono::steady_clock::now() - step_start_).count();
   bool last = (n == m_.nsteps);
-  if (n % diag_iv_ == 0 || last) {
+  if (defer_output_ && !last && (n % diag_iv_ == 0 || n % out_iv_ == 0)) {
+    pending_ = n;
+  } else if (n % diag_iv_ == 0 || last) {
     if (!do_diag(n)) return false;
   }
-  if (n % out_iv_ == 0 || last) {
+  if ((n % out_iv_ == 0 || last) && pending_ != n) {
     do_snap(n);
   }
 #ifdef CPPWRF_HAVE_NETCDF

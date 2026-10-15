@@ -88,6 +88,25 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
     large_.tendencies(s, t, b, rk);  // part2 (diffusion, update_phy_ten) + rk_tendency
     vmdump::on() = false;
     { const char* e = std::getenv("CPPWRF_VM_DUMP_STEP"); vmdump::on() = vm_step_ == (e ? std::atol(e) - 1 : 0); }
+    if (rk == 1 && bc_ && vmdump::on()) {  // debug: boundary slabs (values, tendencies) of T and U, all sides
+      if (std::FILE* f = vmdump::open("vm_bdy", 0)) {
+        auto* bc = const_cast<LateralBC*>(bc_);
+        for (LateralBC::Var v : {LateralBC::T, LateralBC::U})
+          for (int sd = 0; sd < 4; ++sd)
+            for (bool tend : {false, true}) {
+              const auto side = LateralBC::Side(sd);
+              const int hdr[3] = {bc->slab_npos(v, side), bc->slab_nk(v), bc->width()};
+              std::fwrite(hdr, sizeof(int), 3, f);
+              const std::size_t n = std::size_t(hdr[0]) * hdr[1] * hdr[2];
+              std::vector<real> h(n);
+              copy_to_host(h.data(), bc->slab(v, side, tend), n * sizeof(real));
+              for (real x : h) { const double d = double(x); std::fwrite(&d, sizeof(double), 1, f); }
+            }
+        const double dt = bc_->dtbc;
+        std::fwrite(&dt, sizeof(double), 1, f);
+        std::fclose(f);
+      }
+    }
     vmdump::dump("vm_tend_rk", rk, {&t.ru_tend, &t.rv_tend, &t.rw_tend, &t.ph_tend, &t.t_tend, &s.ru, &s.rv, &s.php, &s.alt, &s.ww}, {&s.muu, &s.mut});
     small_->ss.run_stage(s, t, b, real(dt_rk), real(dts_rk), ns, rk);
     scalars_.run_stage(s, t, b, rk, real(dt_rk));

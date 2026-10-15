@@ -402,7 +402,8 @@ void med_nest_initial(const io::Config& parent_cfg, Model& parent,
   child.base->pb.fill_host_halo(m3(d.pb, nz));
   child.base->alb.fill_host_halo(m3(d.alb, nz));
 
-  child.st->p.fill_host([&](int i, int j, int k) { return d.p[(std::size_t(k) * ny + j) * nx + i]; });
+  // p: kept from the child's own start (WRF: med_initialdata_input runs start_domain(nest) after reading
+  // wrfinput, which recomputes p from theta_m and al before adjust_tempqv)
   child.st->w_2.fill_host([](int, int, int) { return 0.0; });
   child.st->w_1.fill_host([](int, int, int) { return 0.0; });
 
@@ -447,10 +448,10 @@ void med_nest_force(Model& parent, Model& child, const NestDomainSpec& child_spe
   // 1. Couple parent in-place
   nest::couple_or_uncouple_state(pg, *parent.st, *parent.base, true);
   fill_halos({&parent.st->u_2, &parent.st->v_2, &parent.st->w_2, &parent.st->ph_2, &parent.st->t_2}, pg);
-  fill_halo(parent.st->mu_2, pg);
   for (int s = 0; s < parent.st->n_scalars(); ++s) {
     fill_halo(parent.st->q_2[s], pg);
   }
+  // mu_2's halo is left as the dycore's halo schedule had it (WRF's uncouple reads it at ids/jds)
 
   // 2. Couple child in-place
   nest::couple_or_uncouple_state(cg, *child.st, *child.base, true);
@@ -535,12 +536,8 @@ void med_nest_feedback(Model& parent, const Model& child, const NestDomainSpec& 
     nest::feedback_field2_fcnm(parent.base->cosa, child.base->cosa, n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
   }
 
-  // update_after_feedback_em: refresh parent halos
-  fill_halos({&parent.st->u_2, &parent.st->v_2, &parent.st->w_2, &parent.st->ph_2, &parent.st->t_2}, pg);
-  fill_halo(parent.st->mu_2, pg);
-  for (int s = 0; s < parent.st->n_scalars(); ++s) {
-    fill_halo(parent.st->q_2[s], pg);
-  }
+  // update_after_feedback_em: only a DM halo exchange in WRF (no-op on one task): the parent's halos
+  // keep their values (the dycore refreshes them on WRF's schedule)
 }
 
 int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
@@ -578,6 +575,7 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
   for (int i = 0; i < max_dom; ++i) {
     std::string dom_out = out_dir + "/" + doms[i].spec.tag;
     doms[i].runner = std::make_unique<DomainRunner>(doms[i].spec.cfg, doms[i].model, dom_out, doms[i].spec.tag);
+    if (doms[i].spec.parent_id > 0) doms[i].runner->set_defer_output(true);
   }
 
   // 3. Root domain (d01) writes its t=0 initial frame before its first step

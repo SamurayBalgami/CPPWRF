@@ -331,7 +331,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
       const double* pri = rei.empty() ? nullptr : crei.data();
       const double* prs = res.empty() ? nullptr : cres.data();
       const std::size_t q2 = L2.index(i, j, 0), o2i = Lo2.index(i, j, 0);
-      const double cz = calc_coszen(julian, xtime + o_.radt * 0.5, o_.gmt, declin, p_->xlong[c], p_->xlat[c]);
+      const double cz = calc_coszen(julian, xtime + o_.radt * 0.5, o_.gmt, declin, p_->xlong[c], p_->xlat[c], i, nx);
       coszen[o2i] = real(cz);
       if (o_.o3input == 2)
         ozone_column(&p_->ozmixm[c * per + nm * CamOzone::levsiz], &p_->ozmixm[c * per + np * CamOzone::levsiz], f1, f2,

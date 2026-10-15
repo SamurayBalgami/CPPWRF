@@ -42,8 +42,10 @@ struct RadiationOutputs {
 };
 
 // calc_coszen (module_radiation_driver.F) for one column; xtime in minutes, angles in degrees
+// li, ln: lane li of WRF's n = ln-trip i loop (its..ite = 0..nx-1), which gfortran vectorises: sin(xxlat),
+// cos(xxlat) and cos(hrang) through libmvec's 2-lane functions (cppwrf::vm); ln = 1: scalar libm
 CPPWRF_HD inline double calc_coszen(double julian, double xtime, double gmt, double declin, double xlon,
-                                    double xlat) {
+                                    double xlat, int li = 0, int ln = 1) {
   constexpr double piconst = 3.1415926535897932384626433;
   constexpr double degrad = piconst / 180.;
   const double da = 6.2831853071795862 * (julian - 1) / 365.;
@@ -53,7 +55,7 @@ CPPWRF_HD inline double calc_coszen(double julian, double xtime, double gmt, dou
   const double tloctm = gmt + xt24 / 60. + xlon / 15.;
   const double hrang = 15. * (tloctm - 12.) * degrad;
   const double xxlat = xlat * degrad;
-  double c = std::sin(xxlat) * std::sin(declin) + std::cos(xxlat) * std::cos(declin) * std::cos(hrang);
+  double c = vm::sin(xxlat, li, ln) * std::sin(declin) + vm::cos(xxlat, li, ln) * std::cos(declin) * vm::cos(hrang, li, ln);
   return std::min(std::max(c, -1.0), 1.0);
 }
 

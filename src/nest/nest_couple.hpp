@@ -242,7 +242,7 @@ struct KCoupleU {
       const real denom = (c1h(k) * mub(nx - 1, j) + c2h(k)) + (c1h(k) * mu_2(nx - 1, j));
       muut = couple ? (denom / msfuy(nx, j)) : (msfuy(nx, j) / denom);
     } else {
-      const int im1 = (i == 0) ? 0 : (i - 1);
+      const int im1 = i - 1;  // WRF reads the halo column at i = ids (mu as left by its halo schedule)
       const real denom = (c1h(k) * mub(i, j) + c2h(k)) + (c1h(k) * mub(im1, j) + c2h(k)) +
                          (c1h(k) * mu_2(i, j)) + (c1h(k) * mu_2(im1, j));
       muut = couple ? (real(0.5) * denom / msfuy(i, j)) : (real(2) * msfuy(i, j) / denom);
@@ -265,7 +265,7 @@ struct KCoupleV {
       const real denom = (c1h(k) * mub(i, ny - 1) + c2h(k)) + (c1h(k) * mu_2(i, ny - 1));
       muvt = couple ? (denom / msfvx(i, ny)) : (msfvx(i, ny) / denom);
     } else {
-      const int jm1 = (j == 0) ? 0 : (j - 1);
+      const int jm1 = j - 1;  // WRF reads the halo row at j = jds
       const real denom = (c1h(k) * mub(i, j) + c2h(k)) + (c1h(k) * mub(i, jm1) + c2h(k)) +
                          (c1h(k) * mu_2(i, j)) + (c1h(k) * mu_2(i, jm1));
       muvt = couple ? (real(0.5) * denom / msfvx(i, j)) : (real(2) * msfvx(i, j) / denom);

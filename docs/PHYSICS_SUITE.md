@@ -468,3 +468,30 @@ minute for 10 min; FP32 `run_P8`):
 - CUDA FP32 vs single-precision WRF, 1 h: U 5.9e-4, W 2.2e-2, RAINC 8e-2 (WRF r8 vs WRF FP32 differ by
   U 9e-4, RAINC 0.12).
 wrf_suite: real_p8_r8_fp64_cpu_10min, real_p8_r8_fp64_cuda_1h, real_p8_fp32_1h, restart_p8_fp64.
+
+## 14. Bit-identical P4-P6 and nesting (2026-10-15): what had to match WRF
+
+Found with WRF checkpoint dumps (tests/verify/wrf_dycore_dumps) and column replays through WRF's own
+r8d8 objects (WSM6: mp_wsm6; Thompson: mp_gt_driver; Noah: SFLX with SOIL_VEG_GEN_PARM for MODIS).
+
+- Diffusion (diff_opt 1, km_opt 4): WRF's left-to-right products in cal_deform_and_div (defor12
+  `dhat*0.25*tmpz*(sum rdzw)` with each term's own rdzw order, defor13/23 `(u-u_base-u(k-1)+u_base(k-1))
+  *0.5*(rdz+rdz)`), smag2d mlen_h `((dx/msftx)*dy)/msfty`, horizontal_diffusion_3dmp
+  `f(i+1)-f(i)-b(i+1)+b(i)`.
+- Microphysics coupling: moist_physics_prep_em and the post-microphysics calc_p_rho_phi run on the tile
+  without the spec zone, so the libmvec pow lanes of pii start at i = 1.
+- The LSM gets the microphysics' RAINNCV and SR (they were never passed before); SNOPAC's SNCOVR = 0 is
+  written back; WDFCND `(500*SICEMAX)**3.` is a libm pow.
+- Kain-Fritsch: no clipping of PPTFLX, PRATEC, RAINCV at 0 (WRF has none; a -2e-18 RAINCV reaches the
+  LSM).
+- Thompson: libmvec pairs in the rain lambda loops (reversed k) and the SLP-paired
+  `(lamr+fv_r)**(-cre)`; table bins `xDx(2)` folded at compile time (correctly rounded) and `xDx(3:)`
+  through vector exp; `10.**nn` and `Dc**nu_c` with integer exponents are libgcc's __powidf2
+  (cppwrf::powi); the rain-graupel tables (dimNRHG = 1 when not hail-aware) are indexed with
+  idx_bg = 5 as WRF does, i.e. 4 steps along idx_r1 (an out-of-bounds read of WRF's, clamped at the end);
+  operation orders of the autoconversion, tcond and the number-tendency limits.
+- Radiation: calc_coszen's sin/cos are libmvec lanes of the 0..nx-1 loop.
+- Nesting: med_initialdata_input runs start_domain(nest) after reading wrfinput, so adjust_tempqv sees
+  the recomputed p; lbc_fcx_gcx `0.1/dt*(n)/(relax_zone-1)` left to right; couple_or_uncouple_em reads
+  mu's halo at ids/jds; no halo refresh after feedback (update_after_feedback_em is a DM exchange only);
+  history of a nest is written in med_before_solve_io, i.e. after the parent's next med_nest_force.

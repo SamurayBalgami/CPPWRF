@@ -2,17 +2,18 @@
 
 ## Current state
 Identical to WRF 4.6.1 (CPU and CUDA, FP32 and FP64; `tests/verify/wrf_suite.py`, all PASS):
-- Real-data dycore on the CPU in FP64: **bit-identical** to WRF real*8 (R1: every field, every step;
-  tests/verify/wrf_dycore_dumps describes how the last ulp differences were found). CUDA FP64 stays at
-  roundoff (the device libm is not glibc's).
+- CPU FP64: **bit-identical** to WRF real*8 (every checked field, tolerance 0) for the real-data
+  dycore (R1), every physics suite P1-P8 for 1 h (sfclayrev, Noah, YSU, KF, New Tiedtke, Grell-Freitas,
+  RRTMG LW/SW, WSM6, Thompson, diff_opt 1 / km_opt 4) and one- and two-way nesting (N1, N2; N2 for 1 h,
+  both domains). The methods (WRF checkpoint dumps, column replays through WRF's own objects, glibc
+  libmvec lanes, WRF's operation orders and halo schedule) are in tests/verify/wrf_dycore_dumps and
+  docs/PHYSICS_SUITE.md. CUDA FP64 stays at roundoff (the device libm is not glibc's).
 - Real-data dycore: specified lateral boundaries, hybrid_opt 0/2, map factors, Coriolis,
   curvature, terrain, damp_opt 3, w_damping (active damping verified), moist (qv) PD advection.
   FP64 vs WRF real*8: U 2.6e-14, THM 3.7e-16, QV 1.8e-15 rel L2 (CPU and CUDA).
 - Ideal: Straka (diff_opt 1, km_opt 1) theta' 7.4e-6 K at 900 s; em_hill2d_x.
-- Microphysics: Kessler, WSM6 (step 1 to roundoff; later steps show WSM6's own roundoff
-  sensitivity, equal to CPPWRF CPU-vs-GPU FP64).
-- Diffusion: diff_opt 1 with km_opt 1/4 and 6th order wired (kernels differential-tested
-  against WRF); real-data check vs WRF R4/R5 pending.
+- Microphysics: Kessler, WSM6, Thompson (bit-identical on the CPU, see above).
+- Diffusion: diff_opt 1 with km_opt 1/4 and 6th order; real-data diff_opt 1 / km_opt 4 bit-identical (P4-P6).
 - Column physics (docs/PHYSICS_SUITE.md): sfclayrev, Noah, YSU, Kain-Fritsch (cu 1), Grell-Freitas (cu 3), New Tiedtke
   (cu 16, with the RTHFTEN/RQVFTEN advective forcing), RRTMG LW/SW on CPU and GPU (cloudy, with WSM6
   effective radii), WSM6, Thompson (mp 8, against the r8d8 WRF build); one- and two-way nesting.

@@ -189,9 +189,10 @@ LateralBC::LateralBC(const Grid& g, double dt, int width, int spec_zone, int rel
   fcx_h_.assign(width, 0.0);
   gcx_h_.assign(width, 0.0);
   for (int loop = spec_zone + 1; loop <= spec_zone + relax_zone; ++loop) {  // Fortran index
-    const double fac = double(spec_zone + relax_zone - loop) / double(relax_zone - 1);
-    fcx_h_[loop - 1] = 0.1 / dt * fac;
-    gcx_h_[loop - 1] = 1.0 / dt / 50.0 * fac;
+    // WRF: 0.1 / dt * (spec_zone + relax_zone - loop) / (relax_zone - 1), left to right
+    const double num = double(spec_zone + relax_zone - loop), den = double(relax_zone - 1);
+    fcx_h_[loop - 1] = 0.1 / dt * num / den;
+    gcx_h_[loop - 1] = 1.0 / dt / 50.0 * num / den;
   }
   std::vector<real> h(2 * std::size_t(width));
   for (int b = 0; b < width; ++b) { h[b] = real(fcx_h_[b]); h[width + b] = real(gcx_h_[b]); }
