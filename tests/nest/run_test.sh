@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# CPPWRF Automated Differential & CUDA Test Runner for Nest Numerics
+# CPPWRF: differential (CPU) and CUDA test runner for the nest numerics
 # Tests all nesting interpolation, boundary forcing, feedback, and init kernels
 # against unmodified WRF 4.6.1 Fortran (-fdefault-real-8)
 # ==============================================================================
@@ -8,14 +8,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-OUT_DIR="${HOME}/cppwrf_scratch/nest_test"
+OUT_DIR="${CPPWRF_SCRATCH:-${HOME}/cppwrf_scratch}/nest_test"
 
 export TMPDIR="${OUT_DIR}/tmp"
 mkdir -p "${TMPDIR}"
 mkdir -p "${OUT_DIR}"
 
 echo "=================================================================="
-echo "CPPWRF Nest Numerics Verification Test Suite"
+echo "CPPWRF nest numerics verification"
 echo "=================================================================="
 
 # 1. Dataset Extraction

@@ -15,8 +15,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-WR = os.path.expanduser("~/wrf_real")
-WREF = os.path.expanduser("~/wrf_ref")
+# WRF reference runs (wrfinput/wrfbdy and wrfout of each case); the configs read them as ${CPPWRF_WRF_RUNS}
+WR = os.environ.setdefault("CPPWRF_WRF_RUNS", os.path.expanduser("~/wrf_real"))
+os.environ.setdefault("CPPWRF_WRF_REF", os.path.expanduser("~/wrf_ref"))
+WREF = os.environ["CPPWRF_WRF_REF"]
 
 # name, binary key, config, extra --set, WRF wrfout, time [s], {var: max rel L2 (whole domain)}
 CASES = [
@@ -71,7 +73,7 @@ CASES = [
     ("real_p2_fp32_1h", "cuda", "configs/real_p2_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P2", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P2/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-3, "W": 8e-2, "THM": 3e-5, "QV": 8e-4}),
-    # P3 = P1 + RRTMG LW/SW every step (radt 1, o3input 2, ghg_input 1); tables in ~/wrf_real/rrtmg_tables
+    # P3 = P1 + RRTMG LW/SW every step (radt 1, o3input 2, ghg_input 1); tables in ${CPPWRF_WRF_RUNS}/rrtmg_tables
     ("real_p3_r8_fp64_cpu", "cpu_dp", "configs/real_p3_r8.ini", [], f"{WR}/run_P3_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
      {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
     ("real_p3_fp32_1h", "cuda", "configs/real_p3_r8.ini",

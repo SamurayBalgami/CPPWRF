@@ -793,13 +793,13 @@ void run_cuda_initialisation_tests(const CoarseDataset& ds) {
 }
 
 int main(int argc, char** argv) {
-  std::string dataset_path = "/home/ostriquetrum/cppwrf_scratch/nest_test/coarse_fields.bin";
+  std::string dataset_path = "coarse_fields.bin";  // run_test.sh passes the path
   if (argc > 1) {
     dataset_path = argv[1];
   }
 
   std::cout << "======================================================\n";
-  std::cout << "CPPWRF Nesting Numerics CUDA FP64 Test\n";
+  std::cout << "CPPWRF nesting numerics: CUDA FP64 test\n";
   std::cout << "======================================================\n";
   std::cout << "Loading coarse dataset from " << dataset_path << "...\n";
 

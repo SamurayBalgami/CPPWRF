@@ -8,7 +8,6 @@ Tests:
 4. Error detection on unsupported physics/dynamics options.
 5. 2-step model execution under tools/heavy.sh.
 
-
 """
 
 import os

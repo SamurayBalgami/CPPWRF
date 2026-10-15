@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """CPPWRF independent verification.
 
-Black box: reads only the files the model writes:
-run.json, diag.csv, snap_<step>.bin/.json. Deliberately does not import scripts/ or any CPPWRF code, so a bug in those cannot hide a bug in the model.
+Black box: reads only the files the model writes (the output format in docs/USER_GUIDE.md):
+run.json, diag.csv, snap_<step>.bin/.json. Deliberately does not import scripts/
+or any CPPWRF code, so a bug in those cannot hide a bug in the model.
 
 Usage:
   verify.py check <case> <out_dir>          # case: rest_state | straka | warm_bubble | igw | squall2d

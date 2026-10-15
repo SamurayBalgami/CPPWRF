@@ -1,12 +1,12 @@
 # CPPWRF Nesting Numerics (`src/nest/`)
 
-This document specifies the exact mathematical formulations, index conventions, staggering rules, coupling/uncoupling reciprocals, and differential test results for the CPPWRF static nesting numerics module (`src/nest/`), verified against WRF 4.6.1 double-precision Fortran object code (`~/wrf_real/WRF-4.6.1-r8`).
+This document specifies the exact mathematical formulations, index conventions, staggering rules, coupling/uncoupling reciprocals, and differential test results for the CPPWRF static nesting numerics module (`src/nest/`), verified against WRF 4.6.1 double-precision (real*8) Fortran object code.
 
 ---
 
 ## 1. Architecture & Files (`src/nest/`)
 
-All kernels are implemented in single-source C++17 / CUDA (`KOKKOS_FUNCTION`) in `src/nest/`:
+All kernels are single-source C++20 / CUDA (`CPPWRF_HD` functions and kernel structs) in `src/nest/`:
 
 - [`nest_types.hpp`](../src/nest/nest_types.hpp): `NestParams` (`i_parent_start`, `j_parent_start`, `parent_grid_ratio`, `parent_time_step_ratio`, `spec_bdy_width`, `smooth_option`, coarse/nest `ids..jde`, `kds..kde`) and `BdySide` (`XS=0`, `XE=1`, `YS=2`, `YE=3`).
 - [`nest_interp.hpp`](../src/nest/nest_interp.hpp): 2D 4-point Smolarkiewicz (`sint` / `sintb` / `interp_fcn_sint`) horizontal interpolation (`share/sint.F`, `share/interp_fcn.F:42`).
@@ -88,9 +88,9 @@ Matches `dyn_em/couple_or_uncouple_em.F` bit-for-bit:
      $$\text{denom}_f(i,k,j) = (c_{1f}(k)\,\text{MUB}(i,j) + c_{2f}(k)) + (c_{1f}(k)\,\text{MU\_2}(i,j))$$
    - **Half levels (`T_2`, `QV`, `QC`, `QR`, `QI`, `QS`, `QG`):**
      $$\text{denom}_h(i,k,j) = (c_{1h}(k)\,\text{MUB}(i,j) + c_{2h}(k)) + (c_{1h}(k)\,\text{MU\_2}(i,j))$$
-   - **U-staggered half levels (`U_2`, with west halo clamped $i_{-1} = \max(i-1, 0)$ via `set_physical_bc2d`):**
+   - **U-staggered half levels (`U_2`; at $i$ = ids WRF reads the halo column of MUB and MU\_2):**
      $$\text{denom}_u(i,k,j) = \Big(\big((c_{1h}(k)\,\text{MUB}(i,j) + c_{2h}(k)) + (c_{1h}(k)\,\text{MUB}(i_{-1},j) + c_{2h}(k))\big) + (c_{1h}(k)\,\text{MU\_2}(i,j))\Big) + (c_{1h}(k)\,\text{MU\_2}(i_{-1},j))$$
-   - **V-staggered half levels (`V_2`, with south halo clamped $j_{-1} = \max(j-1, 0)$ via `set_physical_bc2d`):**
+   - **V-staggered half levels (`V_2`; at $j$ = jds WRF reads the halo row):**
      $$\text{denom}_v(i,k,j) = \Big(\big((c_{1h}(k)\,\text{MUB}(i,j) + c_{2h}(k)) + (c_{1h}(k)\,\text{MUB}(i,j_{-1}) + c_{2h}(k))\big) + (c_{1h}(k)\,\text{MU\_2}(i,j))\Big) + (c_{1h}(k)\,\text{MU\_2}(i,j_{-1}))$$
 
 2. **Coupling vs. Uncoupling Reciprocal Multiplication:**
@@ -102,32 +102,39 @@ Matches `dyn_em/couple_or_uncouple_em.F` bit-for-bit:
    - **Horizontal velocities (`U_2`, `V_2`):**
      $$\text{factor}_{u,\text{couple}} = \frac{0.5 \cdot \text{denom}_u}{\text{msfuy}}, \qquad \text{factor}_{u,\text{uncouple}} = \frac{2.0 \cdot \text{msfuy}}{\text{denom}_u}$$
      $$\text{factor}_{v,\text{couple}} = \frac{0.5 \cdot \text{denom}_v}{\text{msfvx}}, \qquad \text{factor}_{v,\text{uncouple}} = \frac{2.0 \cdot \text{msfvx}}{\text{denom}_v}$$
-   Because $(x \cdot \text{factor}_{\text{couple}}) \cdot \text{factor}_{\text{uncouple}}$ incurs up to 1 ULP IEEE-754 rounding drift on both parent and nest every time `med_nest_force` or `med_nest_feedback` runs, performing the exact couple/uncouple round-trip in place is mandatory for bit-reproducibility. Verified against `~/wrf_real/run_N1_r8/steps/wrfout_d02_2026-10-12_00:00:00` frame 0 (written after `med_nest_force`): **0 bit mismatches across all 475,200 `U` grid points**.
+   Because $(x \cdot \text{factor}_{\text{couple}}) \cdot \text{factor}_{\text{uncouple}}$ incurs up to 1 ULP IEEE-754 rounding drift on both parent and nest every time `med_nest_force` or `med_nest_feedback` runs, performing the exact couple/uncouple round-trip in place is mandatory for bit-reproducibility. At the east and north edges (i = ide, j = jde) WRF uses the single adjacent mass point. The halo values are whatever the dycore's halo schedule left there; CPPWRF does not refresh them before coupling.
 
 ---
 
 ## 6. Nest Initialization (`input_from_file = true`): `nest_init.hpp` & `nest_driver.cpp`
 
-Matches `share/mediation_integrate.F:509` (`med_nest_initial`) and `dyn_em/nest_init_utils.F`:
+Matches `med_nest_initial` (`share/mediation_integrate.F`) and `dyn_em/nest_init_utils.F`, in WRF's order:
 
-1. `med_interp_domain`: Interpolates parent `ht`, `mub`, `phb`, `t_2`, and `qv` onto nest scratch arrays (`ht_int`, `mub_int`, `phb_int`, `t_int`, `qv_int`) via `interp_fcn_sint`.
-2. `blend_terrain`: Blends `ht_int`, `mub_int`, and `phb_int` into the nest's `ht`, `mub`, and `phb` (loaded from `wrfinput_d02`) in the outer `spec_bdy_width` zone (setting the outermost 2 rows/cols equal to the parent-interpolated field, and linear blending weights $\frac{5 - b}{3}$ for $b \in \{2, 3, 4\}$).
-3. `copy_3d_field`: Copies parent-interpolated `t_int` and `qv_int` into the outer `spec_bdy_width` zone of `t_2` and `qv`, leaving the interior fine `wrfinput_d02` values untouched, and saves the pre-blended `wrfinput_d02` terrain height in `ht_fine`.
-4. **Optional Two-Way Feedback (`feedback == 1`):** Calls `med_feedback_domain(parent, child)`, which couples parent and child in-place, copies interior nest prognostic fields (`u_2, v_2, w, ph_2, t_2, mu_2, moist`), base fields (`phb, mub, alb, pb, ht`), and point-sampled map/Coriolis factors (`msftx..cosa`) onto the parent, smooths `u_2, v_2, w, ph_2, t_2, mu_2, mub, phb, ht` if `smooth_option > 0`, uncouples both grids, recomputes parent reference profiles (`p_hyd`, `pb`, `alb`, `t_init`, `al`, `p`) inside the feedback window via `recompute_parent_feedback_ref`, and updates parent kinematic `W` via `init_em_recompute_w`.
-5. `adjust_tempqv`: Hydrostatically adjusts interior nest potential temperature `t_2` using the height difference $\Delta z = \text{ht}_{\text{fine}} - \text{ht}$ and lapse rate $-0.0065\,\text{K/m}$, converting between moist potential temperature $\theta_m = (\theta + T_0)(1 + 1.61\,q_v) - T_0$ and dry $\theta$ when `use_theta_m == 1`.
-6. `init_domain_constants_em` (`recompute_nest_after_blend`): Recomputes the nest's hydrostatic base state (`phb`, `pb`, `alb`, `t_init`), perturbation `ph_2`, dry air density `alt`/`al`, perturbation pressure `p`, hydrostatic pressure `p_hyd`/`p_hyd_w`, geopotential `z`, and surface diagnostics `p_top`, `psfc`, `mu0` from the blended `ht` and `mub`, followed by `init_em_recompute_w` on the nest.
-7. `med_nest_force` (`ncall = 1` at $t = 0$): Couples parent and child in-place, fills the child's lateral boundary value slabs (`*B`, with `*BT = 0`) via `bdy_interp1`, and uncouples both parent and child in-place.
+1. `med_interp_domain`: the parent's `ht`, `mub`, `phb` are interpolated onto the nest with
+   `interp_fcn_sint` (kept as `ht_int`, `mub_fine`, `phb_fine`).
+2. `med_initialdata_input`: the nest's `wrfinput_d0N` is read and `start_domain(nest)` runs once
+   (press_adj = false), which recomputes `p` and `al` from theta_m and the geopotential. CPPWRF builds
+   the nest model from its wrfinput with the same start computation and keeps that `p`.
+3. `ht_fine` and `mub_save` keep the nest's own (wrfinput) terrain and base-state column mass.
+4. `blend_terrain` (when `save_topo_from_real = 1`): over the `blend_width` rows inside the specified
+   zone, `ht`, `mub` and `phb` are blended from the parent-interpolated to the nest's own values.
+5. `adjust_tempqv`: with `p_old` from `mub_save` and `p_new` from the blended `mub`, theta is changed
+   by `dth = -191.86e-3 (theta + dth1/2) (p_new - p_old) / (p_new + p_old)` (a two-stage estimate) and
+   qv is recomputed so that the relative humidity is unchanged (theta_m converted with `use_theta_m`).
+   Where the base state did not change (`p_new = p_old`) only the rounding of the RH round trip remains.
+6. `med_nest_feedback(parent, nest)` when `feedback = 1` (the parent is changed at t = 0).
+7. `start_domain(nest)` with press_adj = true, then `start_domain(parent)`.
 
 ---
 
 ## 7. Differential Test Results vs WRF 4.6.1 Fortran (`tests/nest/`)
 
-Command:
+Command (needs a WRF v4.6.1 real*8 build; outputs under `$CPPWRF_SCRATCH/nest_test`):
 ```bash
-tools/heavy.sh bash tests/nest/run_test.sh
+tests/nest/run_test.sh
 ```
 
-### 7.1 CPU Differential Tests (`test_nest_differential` vs `~/wrf_real/WRF-4.6.1-r8` Fortran `.o`)
+### 7.1 CPU Differential Tests (`test_nest_differential` vs the WRF Fortran objects)
 
 | Test Group | Sub-tests | Max Rel Error | Max Abs Error | Status |
 |---|---|---|---|---|
@@ -152,37 +159,27 @@ tools/heavy.sh bash tests/nest/run_test.sh
 
 ## 8. Nest Driver (`src/cases/nest_driver.{hpp,cpp}`) & End-to-End Acceptance
 
-### 8.1 Recursive Time-Stepping Order (`frame/module_integrate.F:integrate`)
- implemented in [`src/cases/nest_driver.cpp`](../src/cases/nest_driver.cpp) (`cases::run_nested`) against `cases::Model` and `cases::DomainRunner`:
-1. Construct root (`d01`) and child (`d02..d0N`) `DomainRunner` instances in `<out_dir>/d01`, `<out_dir>/d02`, etc.
-2. At $t = 0$ on `d01`: write `d01`'s initial output ONLY if `feedback == 0`; otherwise defer `d01`'s initial output until after `med_nest_initial(d01, d02)` has fed back `d02`'s $t = 0$ fields onto `d01` (`share/mediation_integrate.F:med_Before_Solve_io`).
-3. For each parent step $s_p = 0, \dots, N_{\text{steps},p}-1$:
-   - Advance parent by one time step $\Delta t_p$ (`parent.step_one()`), deferring parent output when child nests are present (`has_children = true`).
-   - For each child nest:
-     - Call `med_nest_force(parent, child)` (`ncall = 2` at $t_p + \Delta t_p$) to compute lateral boundary tendencies `*BT = (F(t_p + \Delta t_p) - *B) / (r_t \Delta t_c)` while leaving `*B` at $t_p$.
-     - Advance child by $r_t = \text{parent\_time\_step\_ratio}$ sub-steps (`integrate_domain(child)`), writing child output at its configured `out_interval`.
-     - Call `med_nest_feedback(parent, child)` (if `feedback == 1`), updating parent fields, reference profiles, and kinematic `W` in-place.
-     - Refresh child's start-of-window lateral boundary values `*B` at $t_p + \Delta t_p$ (`med_nest_force` with `ncall = 1` at the start of the next parent step).
-   - Write parent output (`parent.write_if_due()`) after all child sub-steps and two-way feedback complete.
+### 8.1 Time-stepping order (`frame/module_integrate.F` integrate)
 
-### 8.2 Acceptance Summary vs WRF 4.6.1 (`run_N1_r8`, `run_N2_r8`, `run_N1`, `run_N2`)
+`cases::run_nested` follows WRF's recursive integrate:
 
-| Case | Mode | Precision / Backend | Domain | Window | Max `relL2` (`U, V`) | Max `relL2` (`W`) | Max `relL2` (`PH, MU, THM`) | Max `relL2` (`P, QV`) | Status |
-|---|---|---|---|---|---|---|---|---|---|
-| `run_N1_r8/steps` | One-way (`feedback=0`) | FP64 CPU | `d01` | 3 steps (`0..180 s`) | `2.42e-14` | `4.59e-12` | `4.43e-16` | `7.05e-15` | PASS (`<= 1e-10`) |
-| `run_N1_r8/steps` | One-way (`feedback=0`) | FP64 CPU | `d02` | 9 steps (`0..180 s`) | `7.83e-14` | `8.06e-12` | `7.00e-16` | `9.60e-15` | PASS (`<= 1e-10`) |
-| `run_N2_r8/steps` | Two-way (`feedback=1`) | FP64 CPU | `d01` | 3 steps (`0..180 s`) | `2.44e-14` | `4.48e-12` | `4.29e-16` | `7.09e-15` | PASS (`<= 1e-10`) |
-| `run_N2_r8/steps` | Two-way (`feedback=1`) | FP64 CPU | `d02` | 9 steps (`0..180 s`) | `7.70e-14` | `8.05e-12` | `7.07e-16` | `9.71e-15` | PASS (`<= 1e-10`) |
-| `run_N1_r8/steps` | One-way (`feedback=0`) | FP64 CUDA | `d01` | 3 steps (`0..180 s`) | `1.80e-13` | `6.30e-12` | `5.95e-16` | `1.50e-14` | PASS (`<= 1e-10`) |
-| `run_N1_r8/steps` | One-way (`feedback=0`) | FP64 CUDA | `d02` | 9 steps (`0..180 s`) | `2.09e-13` | `1.04e-11` | `8.14e-16` | `1.62e-14` | PASS (`<= 1e-10`) |
-| `run_N2_r8/steps` | Two-way (`feedback=1`) | FP64 CUDA | `d01` | 3 steps (`0..180 s`) | `1.79e-13` | `6.11e-12` | `5.75e-16` | `1.49e-14` | PASS (`<= 1e-10`) |
-| `run_N2_r8/steps` | Two-way (`feedback=1`) | FP64 CUDA | `d02` | 9 steps (`0..180 s`) | `1.99e-13` | `1.04e-11` | `8.11e-16` | `1.62e-14` | PASS (`<= 1e-10`) |
-| `run_N1_r8` (1 h) | One-way (`feedback=0`) | FP64 CUDA | `d01` | 60 steps (`3600 s`) | `4.77e-13` | `7.10e-12` | `1.02e-15` | `4.06e-14` | PASS (`<= 1e-10`) |
-| `run_N1_r8` (1 h) | One-way (`feedback=0`) | FP64 CUDA | `d02` | 180 steps (`3600 s`) | `2.23e-13` | `1.01e-11` | `9.26e-16` | `2.49e-14` | PASS (`<= 1e-10`) |
-| `run_N2_r8` (1 h) | Two-way (`feedback=1`) | FP64 CUDA | `d01` | 60 steps (`3600 s`) | `4.78e-13` | `6.78e-12` | `9.75e-16` | `4.03e-14` | PASS (`<= 1e-10`) |
-| `run_N2_r8` (1 h) | Two-way (`feedback=1`) | FP64 CUDA | `d02` | 180 steps (`3600 s`) | `2.40e-13` | `1.01e-11` | `9.33e-16` | `2.45e-14` | PASS (`<= 1e-10`) |
-| `run_N1` (1 h) | One-way (`feedback=0`) | FP32 CUDA | `d01` | 60 steps (`3600 s`) | `1.91e-04` (`in: 5.09e-5`) | `3.62e-03` | `6.48e-07` | `2.00e-05` | PASS (FP32) |
-| `run_N1` (1 h) | One-way (`feedback=0`) | FP32 CUDA | `d02` | 180 steps (`3600 s`) | `2.82e-04` (`in: 9.46e-5`) | `4.72e-03` | `9.67e-07` | `3.14e-05` | PASS (FP32) |
-| `run_N2` (1 h) | Two-way (`feedback=1`) | FP32 CUDA | `d01` | 60 steps (`3600 s`) | `1.92e-04` (`in: 5.78e-5`) | `3.46e-03` | `6.36e-07` | `1.96e-05` | PASS (FP32) |
-| `run_N2` (1 h) | Two-way (`feedback=1`) | FP32 CUDA | `d02` | 180 steps (`3600 s`) | `2.83e-04` (`in: 9.82e-5`) | `4.76e-03` | `1.01e-06` | `3.20e-05` | PASS (FP32) |
+1. All domains are built from their wrfinput files and `med_nest_initial` runs for every parent-child
+   pair (section 6).
+2. For each parent step: the parent advances one step; for each child, `med_nest_force` couples
+   parent and child, interpolates the parent fields into the child's boundary slabs (value and
+   tendency over the parent step, `dtbc` reset to 0) and uncouples both in place; the child advances
+   `parent_time_step_ratio` steps (recursively forcing its own children); with `feedback = 1`,
+   `med_nest_feedback` copies the child interior onto the parent (no halo refresh afterwards, as in a
+   single-task WRF run).
+3. History output follows `med_before_solve_io`: a nest's frame for time t is written at the start of
+   its next step, i.e. after the parent's next `med_nest_force`; the last frame after the last step.
 
+### 8.2 Acceptance vs WRF 4.6.1 (`tests/verify/wrf_suite.py`)
+
+| Case | Mode | Build | Window | Result |
+|---|---|---|---|---|
+| N1 (`run_N1_r8/steps`) | one-way | CPU FP64 | 3 parent steps, both domains | bit-identical |
+| N2 (`run_N2_r8/steps`) | two-way | CPU FP64 | 3 parent steps, both domains | bit-identical |
+| N2 (`run_N2_r8`) | two-way | CPU FP64 | 1 h, both domains | bit-identical |
+| N2 (`run_N2_r8`) | two-way | CUDA FP64 | 1 h | U 4.8e-13 (d01), 2.3e-13 (d02) relative L2 |
+| N2 (`run_N2`) | two-way | CUDA FP32 vs WRF FP32 | 1 h | U 1.9e-4 (d01), 2.8e-4 (d02) relative L2 |

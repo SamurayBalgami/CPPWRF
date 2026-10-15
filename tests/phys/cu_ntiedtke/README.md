@@ -13,7 +13,7 @@ The port (`src/phys/cu_ntiedtke/ntiedtke.hpp`) is checked against WRF's own obje
 
 2. Replay the inputs through WRF's `cu_ntiedtke_run` (r8d8 build, see docs/PHYSICS_SUITE.md):
 
-       W=~/wrf_real/WRF-4.6.1-r8d8
+       W=$WRF_DIR
        gfortran -O2 -fdefault-real-8 -fdefault-double-8 -I$W/phys -o harness harness.f90 \
          $W/phys/physics_mmm/cu_ntiedtke.o $W/phys/ccpp_kind_types.o
        ./harness nt.bin                 # columns whose outputs differ by more than 1e-12 (relative)

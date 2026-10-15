@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared-machine job slots for all agents (12 cores, 15 GB RAM, 1 GPU).
+# Job slots for heavy work on a shared workstation (sized for 12 cores, 15 GB RAM, 1 GPU).
 #   tools/heavy.sh <command...>              run a heavy job (build, long run, WRF, tests) in one
 #                                            of 4 slots; waits while all slots are busy
 #   tools/heavy.sh --light <command...>      quick job (python check, ncdump, one small compile,
@@ -9,7 +9,6 @@
 #                                            never holds some slots while waiting; for its first
 #                                            2 minutes of waiting new heavy jobs hold back.
 # Defaults OMP_NUM_THREADS=3 (light: 2) and OMP_WAIT_POLICY=passive unless already set.
-# Wrap builds, model runs and test suites with this.
 set -uo pipefail
 LOCKDIR=/tmp/cppwrf_slots
 NSLOTS=4

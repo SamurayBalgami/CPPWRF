@@ -2,6 +2,7 @@
 #include "io/output.hpp"
 
 #include <charconv>
+#include <cstdlib>
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -106,6 +107,33 @@ std::vector<double> parse_double_list_strict(const std::string& key, const std::
   return list;
 }
 
+// ${NAME} and ${NAME:-default} in a value are replaced by the environment variable NAME (configs
+// refer to data directories as ${CPPWRF_WRF_RUNS}/..., see docs/USER_GUIDE.md).
+std::string expand_env(const std::string& where, const std::string& val) {
+  std::string out;
+  for (std::size_t i = 0; i < val.size();) {
+    if (val[i] == '$' && i + 1 < val.size() && val[i + 1] == '{') {
+      const std::size_t close = val.find('}', i + 2);
+      if (close == std::string::npos) throw ConfigError(where + ": unclosed '${' in '" + val + "'");
+      std::string name = val.substr(i + 2, close - i - 2), def;
+      bool has_def = false;
+      if (const std::size_t d = name.find(":-"); d != std::string::npos) {
+        def = name.substr(d + 2);
+        name = name.substr(0, d);
+        has_def = true;
+      }
+      const char* env = std::getenv(name.c_str());
+      if (env && *env) out += env;
+      else if (has_def) out += def;
+      else throw ConfigError(where + ": environment variable " + name + " is not set (used in '" + val + "')");
+      i = close + 1;
+    } else {
+      out += val[i++];
+    }
+  }
+  return out;
+}
+
 } // namespace
 
 Config Config::parse(const std::string& text, const std::string& source_name, const std::vector<std::string>& overrides) {
@@ -157,7 +185,7 @@ Config Config::parse(const std::string& text, const std::string& source_name, co
         throw ConfigError(source_name + ":" + std::to_string(lineno) + ": duplicate key '" + full_key + "'");
       }
       std::string val_part = trim(trimmed.substr(eq_pos + 1));
-      cfg.data_[full_key] = val_part;
+      cfg.data_[full_key] = expand_env(source_name + ":" + std::to_string(lineno), val_part);
     }
   }
 
@@ -182,7 +210,7 @@ void Config::apply_overrides(const std::vector<std::string>& overrides) {
     if (!is_valid_ident(sec) || !is_valid_ident(key)) {
       throw ConfigError("Invalid override key '" + full_key + "' (invalid characters)");
     }
-    data_[full_key] = val;
+    data_[full_key] = expand_env("override " + full_key, val);
   }
 }
 

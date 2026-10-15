@@ -30,7 +30,7 @@ struct SlabSet {
   }
 };
 
-// Boundary ring (loop structure): sides in the order south, north, west, east;
+// Boundary ring: sides in the order south, north, west, east;
 // south/north rows cover b..ibe-b, west/east columns b+1..jbe-b-1 (no overlap).
 // Side index 0..3 here = S, N, W, E; slabs are stored xs, xe, ys, ye.
 CPPWRF_HD inline int slab_of_side(int side) { return side < 2 ? side + 2 : side - 2; }  // S,N,W,E -> ys,ye,xs,xe

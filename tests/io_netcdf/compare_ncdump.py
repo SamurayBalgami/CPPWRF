@@ -83,7 +83,7 @@ def compare_wrfout_headers(our_file, ref_file=None):
         print(f"Global attributes in ref but not in CPPWRF: {len(missing_globals)}")
         print(f"Global attributes in CPPWRF: {len(our_globals)}")
     else:
-        print("\nNote: Reference WRF wrfout file not yet generated in ~/wrf_ref or ~/wrf_real.")
+        print("\nNote: Reference WRF wrfout file not yet generated in $CPPWRF_WRF_REF or $CPPWRF_WRF_RUNS.")
         print("Schema verified against WRF Registry.EM_COMMON and output_wrf.F specifications.")
 
 if __name__ == "__main__":

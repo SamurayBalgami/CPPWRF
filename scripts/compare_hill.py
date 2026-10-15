@@ -174,8 +174,8 @@ def compare_simulation(cppwrf_dir: str, ref_npz_path: str):
 def main():
     parser = argparse.ArgumentParser(description="Compare CPPWRF hill2d run against WRF em_hill2d_x reference")
     parser.add_argument("--cppwrf-dir", default="out/hill2d_p0_dp", help="CPPWRF run output directory")
-    parser.add_argument("--ref", default="/home/ostriquetrum/wrf_ref/run_hill_p0/ref_fields.npz", help="Path to ref_fields.npz")
-    parser.add_argument("--wrfinput", default="/home/ostriquetrum/wrf_ref/run_hill_p0/wrfinput_d01", help="Path to wrfinput_d01")
+    parser.add_argument("--ref", default=os.path.expanduser("~/wrf_ref/") + "run_hill_p0/ref_fields.npz", help="Path to ref_fields.npz")
+    parser.add_argument("--wrfinput", default=os.path.expanduser("~/wrf_ref/") + "run_hill_p0/wrfinput_d01", help="Path to wrfinput_d01")
     args = parser.parse_args()
 
     compare_t0(args.cppwrf_dir, args.ref, args.wrfinput)

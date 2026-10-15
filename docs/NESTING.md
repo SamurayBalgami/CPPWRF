@@ -1,9 +1,9 @@
-# Nesting in CPPWRF
+# Nesting in CPPWRF: design
 
-Target: WRF 4.6.1 two-way (feedback = 1) and one-way (feedback = 0) static nests,
-parent_grid_ratio 3 (odd ratios), same vertical levels (no vertical refinement), nests read
-their own wrfinput_d0N (input_from_file = .true.), the real-data case. Ideal-case nests and
-moving nests later.
+Scope: WRF 4.6.1 two-way (feedback = 1) and one-way (feedback = 0) static nests with odd
+parent_grid_ratio, the same vertical levels in all domains (no vertical refinement), nests that read
+their own wrfinput_d0N (input_from_file = .true.), real-data cases. Not implemented: ideal-case nests,
+moving nests, vertical refinement.
 
 ## WRF call sequence (frame/module_integrate.F integrate, recursive per domain)
 ```
@@ -44,14 +44,14 @@ med_nest_feedback(parent, nest) right away (the parent changes at t = 0 under fe
 start_domain(nest), start_domain(parent) again. Details: docs/NEST_NUMERICS.md.
 
 ## CPPWRF design
-- A `Domain` is today's cases::Model (grid, base, state, tendencies, RK3, LateralBC,
+- A domain is a cases::Model (grid, base, state, tendencies, RK3, LateralBC,
   diffusion, physics). A `NestLink` holds parent*, child*, i/j_parent_start, ratio, time ratio,
   feedback, the intermediate coarse arrays and the interpolation kernels (src/nest).
-- The time loop becomes `advance(domain)`: rk->step(domain); for each child: force(link);
+- The time loop is `advance(domain)`: rk->step(domain); for each child: force(link);
   repeat ratio times advance(child); if feedback: feedback(link).
-- LateralBC gains (a) W as a boundary variable with the nested relax/spec/update/final path,
+- LateralBC has (a) W as a boundary variable with the nested relax/spec/update/final path,
   (b) any number of scalar species with boundary data (all moist species in nests), (c) the
   nested fcx/gcx, (d) `set_interval_from_device` so force() writes slabs on the device
   without host round trips, and dtbc reset per parent step.
-- Verification: T4.6 runs N1 (one-way) and N2 (two-way), r8: d02 step 1..9 and the
-  parent after feedback must match WRF to FP64 roundoff, as for the single domain.
+- Verification: WRF runs N1 (one-way) and N2 (two-way), real*8. CPPWRF on the CPU in FP64 is
+  bit-identical to WRF on both domains (N2 for 1 h); see docs/NEST_NUMERICS.md section 8.

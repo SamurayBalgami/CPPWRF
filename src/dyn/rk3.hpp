@@ -27,7 +27,7 @@ struct AcousticParams {
 void set_w_surface(Field3& w, Field3& u, Field3& v, const BaseState& b, const Grid& g, bool fill);
 
 class SmallStepHolder;
-class LateralBC;  // wraps SmallStep (src/dyn/small_step.hpp) when present
+class LateralBC;  // wraps the SmallStep (src/dyn/small_step.hpp) when present
 
 class RK3 {
  public:

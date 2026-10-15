@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="/home/ostriquetrum/CPPWRF"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/tests/phys/ra_rrtmg_sw/build"
 
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
 # Ensure data files are linked
-ln -sf /home/ostriquetrum/wrf_ref/WRF/run/RRTMG_SW_DATA_DBL "${BUILD_DIR}/RRTMG_SW_DATA"
-ln -sf /home/ostriquetrum/wrf_ref/WRF/run/RRTMG_LW_DATA_DBL "${BUILD_DIR}/RRTMG_LW_DATA"
+ln -sf ${CPPWRF_WRF_REF:-$HOME/wrf_ref}/WRF/run/RRTMG_SW_DATA_DBL "${BUILD_DIR}/RRTMG_SW_DATA"
+ln -sf ${CPPWRF_WRF_REF:-$HOME/wrf_ref}/WRF/run/RRTMG_LW_DATA_DBL "${BUILD_DIR}/RRTMG_LW_DATA"
 
 echo "=== 1. Compiling Fortran dependencies ==="
 gfortran -c -cpp -DEM_CORE=1 -DRWORDSIZE=8 -DIWORDSIZE=4 -ffree-form -fdefault-real-8 \

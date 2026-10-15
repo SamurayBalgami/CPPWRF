@@ -1,7 +1,6 @@
 #pragma once
 
 // Master header for WRF v4.6.1 Diffusion and Damping kernels in CPPWRF.
-//
 
 #include "dyn/diffusion/diffusion_params.hpp"
 #include "dyn/diffusion/diff_metrics.hpp"
@@ -13,7 +12,7 @@
 #include "dyn/diffusion/w_damp.hpp"
 
 // =============================================================================
-// Input Halo Requirements per Launcher
+// Input Halo Requirements per Launcher (wiring reference)
 // =============================================================================
 //
 // All halos refer to lateral (x, y) cells outside the logical tile domain:

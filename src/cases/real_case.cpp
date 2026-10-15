@@ -1,6 +1,6 @@
 // Real-data start (WRF dyn_em/start_em.F for a single domain, no restart, use_theta_m = 1):
 // grid, base state, map factors, Coriolis, terrain, initial state and lateral boundaries from
-// real.exe's wrfinput_d01 / wrfbdy_d01 (read by io_netcdf readers).
+// real.exe's wrfinput_d01 / wrfbdy_d01 (read by the io_netcdf readers).
 //   - 1D vertical arrays (znw, znu, dnw, dn, rdnw, rdn, fnm, fnp, c1..c4, cf1..cfn) as stored.
 //   - pb = c3h*mub + c4h + p_top; alb from t_init (start_em, max_dom = 1); phb, mub as stored.
 //   - prognostic theta: THM = (T + t0)(1 + Rv/Rd qv) - t0 (Registry dataname "thm" for t).

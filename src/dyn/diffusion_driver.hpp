@@ -1,6 +1,6 @@
 #pragma once
 // WRF diffusion in the time step (diff_opt = 1, km_opt = 1 or 4, diff_6th_opt), built from
-// kernels in src/dyn/diffusion/ (differential-tested against the WRF routines).
+// the kernels in src/dyn/diffusion/ (differential-tested against the WRF routines).
 // Call points (all in RK stage 1, into the held *_tendf, after update_phy_ten):
 //   prepare  = first_rk_step_part2: compute_diff_metrics, cal_deform_and_div, calculate_km_kh
 //   dynamics = rk_tendency (rk_step 1): horizontal_diffusion u, v, w, horizontal_diffusion_3dmp

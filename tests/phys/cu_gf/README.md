@@ -6,7 +6,7 @@
 
 2. Run WRF's own GFDRV (r8d8 objects) on them and compare RTHCUTEN, RQVCUTEN, RUCUTEN, RAINCV:
 
-       W=~/wrf_real/WRF-4.6.1-r8d8/phys
+       W=$WRF_DIR/phys
        gfortran -O2 -fdefault-real-8 -fdefault-double-8 -I$W -o harness harness.f90 $W/module_cu_gf_wrfdrv.o \
          $W/module_cu_gf_deep.o $W/module_cu_gf_sh.o $W/module_gfs_physcons.o $W/module_gfs_machine.o
        ulimit -s unlimited; ./harness gf.bin [ishallow=1] [ichoice=0] [dt=60] [dx=15000]

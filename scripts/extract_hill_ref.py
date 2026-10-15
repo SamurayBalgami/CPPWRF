@@ -80,7 +80,7 @@ def main():
     parser.add_argument("wrfout", help="Path to wrfout file")
     parser.add_argument(
         "--out",
-        default="/home/ostriquetrum/wrf_ref/run_hill/ref_fields.npz",
+        default=os.path.expanduser("~/wrf_ref/") + "run_hill/ref_fields.npz",
         help="Path to output .npz file",
     )
     args = parser.parse_args()

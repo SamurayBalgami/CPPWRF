@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
 HEAVY="${REPO_ROOT}/tools/heavy.sh"
-WRF_R8="/home/ostriquetrum/wrf_real/WRF-4.6.1-r8"
+WRF_R8="${WRF_DIR:-$HOME/wrf_real/WRF-4.6.1-r8}"
 
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"

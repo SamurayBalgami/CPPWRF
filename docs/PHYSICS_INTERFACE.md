@@ -1,7 +1,7 @@
 # Physics interface (how src/phys/ schemes plug into the dycore)
 
-(dycore side: src/dyn/physics_coupling.{hpp,cpp}). Physics ports
-target this interface. It follows WRF solve_em exactly.
+The dycore side is src/dyn/physics_coupling.{hpp,cpp} (microphysics) and src/dyn/column_physics.hpp
+(the interface of the column physics driver, src/phys/driver). Both follow WRF solve_em.
 
 ## Call order per time step
 1. RK3 loop (3 stages): large step, acoustic small steps, scalar transport, calc_p_rho_phi.
@@ -30,10 +30,11 @@ not changed twice.
   `rainnc`, `rainncv` (mm), plus scheme-specific fields.
 - To add a scheme: a new `mp_physics` value in `PhysicsParams`, the launch in
   `PhysicsCoupling::step`, and the species it needs in `moist.species` (e.g. WSM6: qv, qc, qr,
-  qi, qs, qg).
+  qi, qs, qg). A new scheme is wired in only after its column differential test against WRF passes.
 
 ## Tendency-type physics (PBL, radiation, cumulus)
-Not wired yet. As in WRF, they will run in RK stage 1 and add mass-coupled tendencies
-(`RTHBLTEN`-style, multiplied by `c1h*mut + c2h`) into `Tendencies::*_tendf` and `q_tendf`,
-which are held fixed for stages 2 and 3. Their kernels should return **uncoupled** tendencies
-(K/s, kg/kg/s, m/s^2) in their own arrays; the coupling does the mass multiplication.
+These run in RK stage 1 through `dyn::ColumnPhysics` (`part1` = first_rk_step_part1, `part2` =
+first_rk_step_part2, `after_rk` = phy_prep_part2), implemented by `phys::driver::PhysicsSuite`. As in
+WRF they produce uncoupled tendencies (RTHBLTEN, RUCUTEN, RTHRATEN, ...), which calculate_phy_tend
+multiplies by the column mass and update_phy_ten adds to `Tendencies::*_tendf` and `q_tendf`; those are
+held fixed for RK stages 2 and 3. The full call map is in docs/PHYSICS_SUITE.md.

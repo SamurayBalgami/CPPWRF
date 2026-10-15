@@ -1,4 +1,12 @@
-# P1 physics suite: WRF-identical driver glue (sfclayrev + Noah + YSU)
+# Physics: ports, driver glue and verification
+
+This document describes how the WRF v4.6.1 physics is reproduced in CPPWRF, scheme by scheme, and
+how each part is verified. Sections 1-5 cover the column-physics driver (surface layer, land surface,
+PBL); sections 6-13 add microphysics, cumulus and radiation; section 14 lists the WRF behaviours that
+had to be reproduced for bit-identical results. Case names (P1-P8) refer to the reference runs listed
+in docs/STATUS.md.
+
+## 0. The P1 driver (sfclayrev + Noah + YSU)
 
 `src/phys/driver/suite.{hpp,cpp}` (class `PhysicsSuite`, a `dyn::ColumnPhysics`) is a
 statement-by-statement port of the path WRF v4.6.1 executes for
@@ -184,33 +192,20 @@ dycore's current t_1 step 2 already differed by 1e-9 (U) from WRF. The different
 WRF's t_1 itself and sets `wrf_t1_lag = false`.
 
 Acceptance against WRF v4.6.1 real*8, run P1_r8 (`configs/real_p1_r8.ini`, tests/verify/wrf_suite.py):
-
-| run | U | W | THM | QV | surface (HFX, UST, PBLH, TSK, T2, TSLB, R*BLTEN, EXCH_H) |
-|---|---|---|---|---|---|
-| CPU FP64, 3 steps (history every step) | 2.2e-14 | 4.6e-12 | 1.8e-16 | 1.0e-15 | <= 8e-12 (max rel) |
-| CUDA FP64, 1 h | 6.0e-10 | 1.8e-08 | 1.2e-10 | 3.1e-09 | TSK 6e-5 max rel at 1 h |
-| CUDA FP32 vs WRF FP32 (P1), 1 h | 1.9e-04 | 3.9e-03 | 7.5e-07 | 4.9e-05 | |
-
-(relative L2 over the domain unless noted.) Over an hour the land surface amplifies roundoff:
-CPPWRF CPU FP64 vs CUDA FP64 differ by the same amount as either does from WRF (TSK 7.5e-5,
-TSLB 1e-4 max rel at 1 h, from 5e-13 at 10 min), so this is the sensitivity of the problem,
-not a port difference.
+CPU FP64 is bit-identical to WRF for 1 h (every compared field, including the surface state). CUDA FP64
+agrees to roundoff (U 1.5e-9, THM 1.4e-10 relative L2 at 1 h); the land surface amplifies the
+difference between the CUDA and glibc elementary functions over the hour. CUDA FP32 against
+single-precision WRF: U 1.9e-4, THM 7.5e-7.
 
 ## 6. Microphysics with the column physics (P5 = P1 + WSM6 + diff_opt 1, km_opt 4)
 
-Reference: WRF v4.6.1 real*8 run ~/wrf_real/run_P5_r8 (run_P4_r8 inputs with
-ra_lw/ra_sw/cu_physics = 0; history every step; `configs/real_p5_r8.ini`). Step 1 is at
-roundoff (U 7e-15, QCLOUD 3e-12, QICE 5e-13; wrf_suite.py real_p5_r8_fp64_cpu). From step 2,
-QICE differs by ~4e-5 (rel L2). Proven not to be a port difference: a debug build of WRF dumped
-its WSM6 inputs at step 2; they equal CPPWRF's to 5e-12 (th 2e-15, qi 2.5e-12, rho 6e-14), the
-scalar Fortran driver (tests/phys/mp_wsm6) reproduces WRF's QICE bit for bit from WRF's inputs
-and CPPWRF's WSM6 bit for bit from CPPWRF's inputs. WSM6 amplifies the input roundoff by ~1e8
-(ice processes at thresholds once ice exists): CPPWRF CPU FP64 vs CUDA FP64 differ by the same
-7e-5 at step 2. Microphysics runs can therefore only be checked at roundoff for the first step;
-later steps and FP32 are statistical comparisons.
+Reference: the WRF v4.6.1 real*8 run P5_r8 (the P4 inputs with ra_lw/ra_sw/cu_physics = 0; history
+every step; `configs/real_p5_r8.ini`). CPU FP64 is bit-identical to WRF for 1 h, including all water
+species. WSM6 amplifies roundoff strongly once ice is present (ice processes near saturation
+thresholds), so the CUDA builds differ from WRF by more than in the dry case. The column replay
+(tests/phys/mp_wsm6) runs CPPWRF's WSM6 inputs through WRF's compiled mp_wsm6: identical output.
 
-
-## 7. Stage 2 (P2): Kain-Fritsch cumulus (`cu_physics = 1`)
+## 7. Kain-Fritsch cumulus (P2, `cu_physics = 1`)
 
 ### What WRF executes for `cu_physics = 1` (`KFETASCHEME`)
 
@@ -240,17 +235,11 @@ later steps and FP32 are statistical comparisons.
 
 ### Real-data acceptance against WRF v4.6.1 (`run_P2_r8` and `run_P2`)
 
-| run | U | W | THM | QV | surface & cumulus (`RAINC`, `RAINCV`, `NCA`, `W0AVG`, `R*CUTEN`, `HFX`, `UST`, `PBLH`, `TSK`) |
-|---|---|---|---|---|---|
-| CPU FP64, 3 steps (`t = 60, 120, 180 s`) | 2.20e-14 | 4.60e-12 | 1.77e-16 | 1.01e-15 | `NCA` bit-exact (`0.0`); `RAINC` 1.2e-13, `RAINCV` 3.5e-13, `W0AVG` 1.5e-12, `RTHCUTEN` 8.5e-13, `RQVCUTEN` 7.4e-13, `RQCCUTEN` 2.5e-12 (max rel) |
-| CUDA FP64, 3 steps (`t = 60, 120, 180 s`) | 1.79e-13 | 6.29e-12 | 2.30e-16 | 4.75e-15 | matches CPU FP64 to `1e-13` |
-| CUDA FP64, 10 min (`t = 600 s`, outside `(j=77,i=8)` box) | 2.87e-13 | 6.81e-12 | 4.79e-16 | 1.43e-14 | `NCA` bit-exact across all 10,591 columns (`193` deep, `413` shallow); `RAINC` max diff `7.9e-13` |
-| CUDA FP64, 1 h (`t = 3600 s`, whole domain) | 8.29e-05 | 1.74e-03 | 1.35e-06 | 5.16e-05 | `RAINC` relL2 `1.0e-4` (max rel `2.5e-4`), `TSK` relL2 `8.8e-6`, `HFX` relL2 `1.6e-4` |
-| CUDA FP32 vs WRF FP32 (`run_P2`), 1 h | 7.86e-04 | 4.19e-02 | 1.09e-05 | 3.65e-04 | `TSK` relL2 `2.4e-5`, `HFX` relL2 `8.0e-4`, `UST` relL2 `8.6e-4` |
+CPU FP64 is bit-identical to WRF for 1 h (state, RAINC, RAINCV, NCA, W0AVG and the cumulus tendencies).
+CUDA FP64 at 1 h: U 5.2e-5, THM 9.4e-7 relative L2; CUDA FP32 against single-precision WRF: U 8.4e-4.
 
-**Note on the 1-ULP shallow-convection trigger threshold at `t = 360 s` (step 6):**
-In `KF_eta_PARA` (`module_cu_kfeta.F:929-1022`), whenever a 2-layer updraft source layer (`KPBL = LC + 1`) is saturated (`q0 = qes`, so `TLCL = min(TLCL, TMIX) = TMIX`) and has `WKL < 1e-4` (`DTLCL = 0`, `DTRH = 0`), the parcel LCL height is `ZLCL = ZMIX = (dp_0 z_0 + dp_1 z_1)/(dp_0 + dp_1)`, `DLP = (ZLCL - z_0)/(z_1 - z_0) = dp_1/(dp_0 + dp_1)`, and `TENV = T_0 + (T_1 - T_0)*DLP = TMIX = TLCL`. Thus `TLCL + DTLCL + DTRH - TENV == 0` **identically in exact arithmetic**, and the buoyancy test `IF (TLCL + DTLCL + DTRH .LT. TENV) CYCLE usl` tests `0 < 0` up to 1 ULP (`5.68e-14 K`) of floating-point rounding. At step 6 (`t = 300 -> 360 s`), column `(j=77, i=8)` at `lc = 8` satisfies this exact degeneracy (`0.0` vs `-5.68e-14 K`), flipping shallow convection at `lc = 8` for that single step while CPU FP64 and CUDA FP64 agree to `1e-13` and the rest of the domain matches WRF to `<= 2.9e-13` at `t = 600 s`.
-
+**Why the GPU results drift (a 1-ulp trigger):**
+In `KF_eta_PARA` (`module_cu_kfeta.F:929-1022`), whenever a 2-layer updraft source layer (`KPBL = LC + 1`) is saturated (`q0 = qes`, so `TLCL = min(TLCL, TMIX) = TMIX`) and has `WKL < 1e-4` (`DTLCL = 0`, `DTRH = 0`), the parcel LCL height is `ZLCL = ZMIX = (dp_0 z_0 + dp_1 z_1)/(dp_0 + dp_1)`, `DLP = (ZLCL - z_0)/(z_1 - z_0) = dp_1/(dp_0 + dp_1)`, and `TENV = T_0 + (T_1 - T_0)*DLP = TMIX = TLCL`. Thus `TLCL + DTLCL + DTRH - TENV == 0` **identically in exact arithmetic**, and the buoyancy test `IF (TLCL + DTLCL + DTRH .LT. TENV) CYCLE usl` tests `0 < 0` up to 1 ULP (`5.68e-14 K`) of floating-point rounding. At step 6 (`t = 300 -> 360 s`), column `(j=77, i=8)` at `lc = 8` satisfies this exact degeneracy (`0.0` vs `-5.68e-14 K`), so that any rounding difference in the inputs (as between the CUDA and glibc math libraries) can switch shallow convection on or off in that column. The CPU build reproduces WRF's arithmetic and makes the same decision.
 
 ## 8. Radiation (P3 = P1 + RRTMG LW/SW)
 
@@ -259,7 +248,7 @@ with o3input = 2 (CAM ozone: `src/phys/ra_rrtmg_common/cam_ozone.*` = oznini, oz
 ozn_p_int), ghg_input = 1 (`cam_gases.*` = read_CAMgases), aer_opt = 0, swint_opt = 0: radconst,
 calc_coszen at xtime + radt/2, RTHRATEN = LW (+ SW in daytime), GSW, GLW, SWDOWN = GSW/(1-ALBEDO);
 P_PHY = p_hyd, P8W = p_hyd_w as in first_rk_step_part1. The RRTMG ports were checked
-column by column against dumps of a debug build of WRF (`~/cppwrf_scratch/wrf_dbg_src`: the
+column by column against dumps of a debug build of WRF (the
 RRTMG_LWRAD/RRTMG_SWRAD arguments and the rrtmg_lw/rrtmg_sw core arguments, 10591 columns, the SW
 at 09 UTC of a 9 h run): **LW and SW are bit-identical to WRF** in both the cores and the wrappers
 after these corrections:
@@ -271,18 +260,17 @@ after these corrections:
 - SW core as WRF's rrtmg_sw: zepzen 1e-10, band albedos, adjflux = adjes*scon/rrsw_scon, the
   heating rate in the core with heatfac/pdp and the top layer set to 0, RTHRATENSW =
   (swhr/86400)/pi3d.
-CAM ozone is bit-identical on all columns; COSZEN differs by 1 ulp (the WRF binary's vectorised
-sin/cos, libmvec). Tables: `~/wrf_real/rrtmg_tables` (rrtmg_lw/sw_tables.bin dumped from WRF's
+CAM ozone is bit-identical on all columns, and so is COSZEN (calc_coszen's sin/cos are libmvec lanes,
+section 14). Tables: a directory with rrtmg_lw/sw_tables.bin (dumped from WRF's
 rrtmg_lw/swinit with the _DBL data, ozone*.formatted, CAMtr_volume_mixing_ratio; config key
 phys.rrtmg_tables). Execution: section 10.
 Clouds: section 9. Not yet: aer_opt, swint_opt.
-Acceptance (wrf_suite.py): real_p3_r8_fp64_cpu steps 1-3 U 2.2e-14, THM 1.8e-16; P3 1 h CPU FP64
-interior U 7e-12; real_p3_fp32_1h U 1.9e-4, THM 7.3e-7.
-
+Acceptance (wrf_suite.py): real_p3_r8_fp64_cpu bit-identical (steps 1-3); real_p3_fp32_1h U 1.9e-4,
+THM 7.4e-7.
 
 ## 9. Clouds in the radiation (P4 = P2 + WSM6 + RRTMG + diff_opt 1 / km_opt 4)
 
-Reference: WRF v4.6.1 real*8 run ~/wrf_real/run_P4_r8 (kf + WSM6 + RRTMG radt = 1,
+Reference: the WRF v4.6.1 real*8 run P4_r8 (kf + WSM6 + RRTMG radt = 1,
 icloud = 1, use_mp_re = 1 (default); steps/ = 3 minutes with history every step and RQRCUTEN,
 RQICUTEN, RQSCUTEN, RE_CLOUD, RE_ICE, RE_SNOW in the history; `configs/real_p4_r8.ini`).
 
@@ -313,28 +301,17 @@ What WRF executes (and the port):
   `(scatice*(gice - forwice))/(1 - forwice)`.
 
 Verification:
-- WSM6 on real data: `CPPWRF_WSM6_DUMP` debug dumps (not in main) of the first and second WSM6
-  calls of P4/P5 through WRF's Fortran WSM6 (tests/phys/fortran, WRF and scalar flags): C++ =
-  Fortran bit for bit, including rain/ice/snow sedimentation. RE_ICE/RE_SNOW after step 1 equal
-  WRF's to 2e-12 / exactly.
-- P4 step 1 (wrf_suite real_p4_r8_fp64_cpu): every physics tendency (RTHCUTEN, RQ*CUTEN, R*BLTEN,
-  RTHRATEN, GLW) and U at roundoff. Two columns differ in QRAIN/QCLOUD (1e-7): a debug-WRF dump of
-  WRF's WSM6 inputs equals CPPWRF's to roundoff, but at the cloud top of KF column (j=76, i=12) the
-  advected qr is a cancellation residue, +3.3e-25 in WRF and -1.1e-25 in CPPWRF, and WSM6 turns
-  that sign into a 12% QRAIN difference one level below (WRF's sign in CPPWRF's input reproduces
-  WRF's QRAIN bit for bit). Step 2 radiation: of 5341 cloudy columns only the 157 whose CLDFRA
-  differs (from that roundoff) differ in GLW (McICA subcolumns flip with cldf); the others agree
-  to < 1e-9.
-- P4 1 h CUDA FP64 vs WRF (real_p4_r8_fp64_cuda_1h): U 2.7e-4, THM 3.7e-6, QV 2.5e-4 (rel L2), the
-  same size as P2's.
+- P4 (wrf_suite real_p4_r8_fp64_cpu and real_p4_r8_fp64_cpu_1h): CPU FP64 bit-identical to WRF for
+  1 h, including every physics tendency, the water species, CLDFRA and the effective radii.
+- P4 1 h CUDA FP64 vs WRF (real_p4_r8_fp64_cuda_1h): U 2.2e-4, THM 2.7e-6, QV 2.1e-4 (rel L2), the
+  size of P2's (the cumulus trigger, section 7).
 - Restart (P4, CPU FP64): step 3 straight vs restarted after step 1 bit-identical (CLDFRA,
   RE_* carried).
 - Cloudy RRTMG column by column: debug-WRF dumps of RRTMG_LWRAD / RRTMG_SWRAD at 09 UTC of a 9 h
-  P4 run (~/cppwrf_scratch/wrf_p4day; 5431 cloudy columns, WSM6 radii, snow): LW and SW wrappers
+  P4 run (5431 cloudy columns, WSM6 radii, snow): LW and SW wrappers
   **bit-identical to WRF on 10591/10591 columns**, and cal_cldfra1 equals WRF's CLDFRA exactly.
   GPU batch path on the same dumps: LW 8884, SW 10490 columns bit-identical, the rest at roundoff
   (GLW 1e-16, RTHRATENLW 6e-15, GSW 3e-16, RTHRATENSW 3e-14).
-
 
 ## 10. RRTMG on the GPU
 
@@ -369,7 +346,7 @@ Speed (RTX 2060 mobile, FP64, 119 x 89 x 44, one call for all 10591 columns): LW
 3.4 s (LW) single-threaded. Model, radt = 1 (radiation every step): P3 CUDA FP64 3200 ->
 510 ns/cell/step, P4 1 h 3234 -> 650 ns/cell/step.
 
-## 11. Thompson microphysics (mp_physics = 8)
+## 11. Thompson microphysics (P6, mp_physics = 8)
 
 Port: `src/phys/mp_thompson/` (column scheme `thompson.hpp`, tables `thompson_tables.*`), coupled in
 `src/dyn/physics_coupling.cpp` with the scalars qni, qnr (`[moist] species = ...,qni,qnr`); column
@@ -378,7 +355,7 @@ differential test against WRF's Fortran: tests/phys/mp_thompson (<= 1e-12).
 **WRF reference build.** The stock real*8 WRF (`configure -r8`: PROMOTION = -fdefault-real-8 only)
 promotes DOUBLE PRECISION to 16-byte quad in gfortran. Thompson declares its tables and many locals
 DOUBLE PRECISION, so that build computes them in software quad: qr_acr_qg alone did not finish in
-8 h. The Thompson references are therefore made with `~/wrf_real/WRF-4.6.1-r8d8` = the same source
+8 h. The Thompson references are therefore made with a WRF build from the same source
 with `-fdefault-real-8 -fdefault-double-8` (DOUBLE PRECISION stays 8 bytes, as the author intends
 and as in the single-precision WRF; qr_acr_qg takes 280 s). The schemes verified before (WSM6, KF,
 YSU, Noah, sfclayrev, RRTMG, Kessler) have no DOUBLE PRECISION in their used code paths.
@@ -389,15 +366,12 @@ then uses WRF's values bit for bit; without them it computes the tables (OpenMP,
 threads), which agree with WRF's to 1e-15 (a few ulp, 0 for the sacr1 tables).
 
 **Acceptance** (P6 = P5 with mp_physics = 8: P1 column physics + Thompson + diff_opt 1 / km_opt 4 on
-the P4 inputs; ~/wrf_real/run_P6_r8 (steps/ every minute; 1 h every 10 min), FP32: run_P6):
-- CPU FP64, steps 1-3: U 2.2e-14, THM 2.0e-16, QV 1.2e-15, QCLOUD 2.0e-12.
-- CPU FP64 at 10 min with rain, ice, snow, ni and nr active: U 3.1e-14, QRAIN 8.0e-13, QICE 1.0e-13,
-  QNICE 1.8e-13, QNRAIN 9.2e-13 (rel L2).
-- 1 h: amplification as for WSM6 (QICE ~7e-2 for both CPU FP64 and CUDA FP64 vs WRF; U 8e-5).
-- CUDA FP32 vs single-precision WRF, 1 h: U 2.3e-4, THM 5.8e-6, QV 2.8e-4 (77 ns/cell/step).
-wrf_suite: real_p6_r8_fp64_cpu, real_p6_r8_fp64_cpu_10min, real_p6_fp32_1h.
+the P4 inputs; reference run P6_r8, FP32: P6): CPU FP64 bit-identical to WRF for 1 h, including
+QRAIN, QICE, QNICE and QNRAIN. CUDA FP32 against single-precision WRF, 1 h: U 2.2e-4, THM 2.2e-6.
+The column replay (CPPWRF's Thompson inputs through WRF's compiled mp_gt_driver) agrees bit for bit.
+wrf_suite: real_p6_r8_fp64_cpu, real_p6_r8_fp64_cpu_1h, real_p6_fp32_1h.
 
-## 12. New Tiedtke cumulus (cu_physics = 16)
+## 12. New Tiedtke cumulus (P7, cu_physics = 16)
 
 Port: `src/phys/cu_ntiedtke/ntiedtke.hpp` = WRF 4.6.1 `phys/physics_mmm/cu_ntiedtke.F90` for one column
 (cumastrn and the routines it calls, statement for statement; integer powers as products, cutypen's
@@ -427,18 +401,12 @@ restart fields (restart_p7_fp64: bit-identical).
 **Column check** (tests/phys/cu_ntiedtke): the scheme's inputs and outputs dumped from CPPWRF at steps 2
 and 4 of P7, replayed through WRF's compiled cu_ntiedtke_run (r8d8): 10591/10591 columns agree.
 
-**Acceptance** (P7 = P2 with cu_physics = 16, reference `~/wrf_real/run_P7_r8` from the r8d8 build,
-steps/ every minute; FP32: `run_P7`):
-- CPU FP64 steps 1-3: U 2.2e-14, THM 1.8e-16, QV 1.3e-15; RTHCUTEN 2.1e-12, RTHFTEN 1.2e-12,
-  RQVFTEN 5.9e-13, RAINC 2e-13 (rel L2).
-- Step 4: one column (i = 95, j = 12) differs at one level by 2.5e-6 K/s. Its inputs agree with WRF to
-  roundoff; 1e-15 random noise on them moves that level by 1.3e-4 K in WRF's own code (a threshold
-  in the scheme). From there the difference grows to U 2e-8 (10 min) and 6e-7 (1 h), below KF's.
-- 1 h: CUDA FP64 U 4.2e-7, W 1.4e-5, THM 1.1e-8, QV 1.8e-6 (CPU FP64 the same size); CUDA FP32 vs
-  single-precision WRF U 6.8e-4, W 1.6e-2, THM 8.1e-6, QV 3.2e-4.
-wrf_suite: real_p7_r8_fp64_cpu, real_p7_r8_fp64_cuda_1h, real_p7_fp32_1h, restart_p7_fp64.
+**Acceptance** (P7 = P2 with cu_physics = 16, reference run P7_r8, FP32: P7): CPU FP64 bit-identical to
+WRF for 1 h. CUDA FP64 at 1 h: U 4.7e-7, THM 6.0e-8; CUDA FP32 against single-precision WRF: U 4.9e-4.
+wrf_suite: real_p7_r8_fp64_cpu, real_p7_r8_fp64_cpu_1h, real_p7_r8_fp64_cuda_1h, real_p7_fp32_1h,
+restart_p7_fp64.
 
-## 13. Grell-Freitas cumulus (cu_physics = 3)
+## 13. Grell-Freitas cumulus (P8, cu_physics = 3)
 
 Port: `src/phys/cu_gf/` = WRF 4.6.1 `module_cu_gf_deep.F` (CUP_gf), `module_cu_gf_sh.F` (CUP_gf_sh,
 `ishallow = 1`) and `module_cu_gf_wrfdrv.F` (GFDRV) with WRF's settings (imid = 0, dicycle = 1,
@@ -461,15 +429,13 @@ Two WRF behaviours that are not "one column at a time":
 **Column replay** (tests/phys/cu_gf): GFDRV's inputs dumped from CPPWRF at P8 steps 1, 5 and 10 run
 through WRF's objects: every column bit-identical (deep only and shallow + deep).
 
-**Acceptance** (P8 = P2 with cu_physics = 3, ishallow = 1; `~/wrf_real/run_P8_r8` r8d8, steps/ every
-minute for 10 min; FP32 `run_P8`):
-- CPU FP64, 10 min: U 3.2e-14, THM 3.9e-16, QV 6.3e-15; RTHCUTEN 3e-11, RAINC 1e-11.
-- 1 h: CPU FP64 U 8.3e-10, RAINC 6.4e-11; CUDA FP64 U 3.3e-10, W 7.4e-9 (205 ns/cell/step).
-- CUDA FP32 vs single-precision WRF, 1 h: U 5.9e-4, W 2.2e-2, RAINC 8e-2 (WRF r8 vs WRF FP32 differ by
-  U 9e-4, RAINC 0.12).
-wrf_suite: real_p8_r8_fp64_cpu_10min, real_p8_r8_fp64_cuda_1h, real_p8_fp32_1h, restart_p8_fp64.
+**Acceptance** (P8 = P2 with cu_physics = 3, ishallow = 1; reference run P8_r8, FP32: P8): CPU FP64
+bit-identical to WRF for 1 h. CUDA FP64 at 1 h: U 3.7e-10, THM 9.8e-11; CUDA FP32 against
+single-precision WRF: U 8.5e-4.
+wrf_suite: real_p8_r8_fp64_cpu_10min, real_p8_r8_fp64_cpu_1h, real_p8_r8_fp64_cuda_1h, real_p8_fp32_1h,
+restart_p8_fp64.
 
-## 14. Bit-identical P4-P6 and nesting (2026-10-15): what had to match WRF
+## 14. WRF behaviours reproduced for bit identity (P4-P6, nesting)
 
 Found with WRF checkpoint dumps (tests/verify/wrf_dycore_dumps) and column replays through WRF's own
 r8d8 objects (WSM6: mp_wsm6; Thompson: mp_gt_driver; Noah: SFLX with SOIL_VEG_GEN_PARM for MODIS).

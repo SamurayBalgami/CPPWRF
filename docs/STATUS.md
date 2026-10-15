@@ -1,144 +1,99 @@
-# CPPWRF status, 2026-10-15
+# CPPWRF: status and verification
 
-## Current state
-Identical to WRF 4.6.1 (CPU and CUDA, FP32 and FP64; `tests/verify/wrf_suite.py`, all PASS):
-- CPU FP64: **bit-identical** to WRF real*8 (every checked field, tolerance 0) for the real-data
-  dycore (R1), every physics suite P1-P8 for 1 h (sfclayrev, Noah, YSU, KF, New Tiedtke, Grell-Freitas,
-  RRTMG LW/SW, WSM6, Thompson, diff_opt 1 / km_opt 4) and one- and two-way nesting (N1, N2; N2 for 1 h,
-  both domains). The methods (WRF checkpoint dumps, column replays through WRF's own objects, glibc
-  libmvec lanes, WRF's operation orders and halo schedule) are in tests/verify/wrf_dycore_dumps and
-  docs/PHYSICS_SUITE.md. CUDA FP64 stays at roundoff (the device libm is not glibc's).
-- Real-data dycore: specified lateral boundaries, hybrid_opt 0/2, map factors, Coriolis,
-  curvature, terrain, damp_opt 3, w_damping (active damping verified), moist (qv) PD advection.
-  FP64 vs WRF real*8: U 2.6e-14, THM 3.7e-16, QV 1.8e-15 rel L2 (CPU and CUDA).
-- Ideal: Straka (diff_opt 1, km_opt 1) theta' 7.4e-6 K at 900 s; em_hill2d_x.
-- Microphysics: Kessler, WSM6, Thompson (bit-identical on the CPU, see above).
-- Diffusion: diff_opt 1 with km_opt 1/4 and 6th order; real-data diff_opt 1 / km_opt 4 bit-identical (P4-P6).
-- Column physics (docs/PHYSICS_SUITE.md): sfclayrev, Noah, YSU, Kain-Fritsch (cu 1), Grell-Freitas (cu 3), New Tiedtke
-  (cu 16, with the RTHFTEN/RQVFTEN advective forcing), RRTMG LW/SW on CPU and GPU (cloudy, with WSM6
-  effective radii), WSM6, Thompson (mp 8, against the r8d8 WRF build); one- and two-way nesting.
-Next: MYJ, sf_sfclay 91, TKE (km_opt 2), damp_opt 1/2,
-diff_opt 2, real.exe in C++ (src/init_real), the operational chain.
-Speed (RTX 2060, 119x89x44 real, 1 h): dry FP32 ~32 ns/cell/step (WRF 4 threads ~10x slower);
-with WSM6 ~52 ns/cell/step.
+CPPWRF reproduces WRF-ARW v4.6.1 statement by statement. This page lists what is implemented, how it
+is verified against WRF, and the current results. All numbers come from `tests/verify/wrf_suite.py`
+(41 cases, all passing).
 
-## History
-### M3 real-data dycore done (2026-10-13)
+## Implemented
 
-## Built
-- M0: CMake/Ninja (CPU OpenMP + CUDA backends, FP32/FP64), single-source kernels, SoA fields,
-  halo fill, WRF-named State/Tendencies/BaseState, WRF-style dry ideal init, I/O contract.
-- M1: large step (rk_step_prep, 5th/3rd-order flux-form advection, PGF, pg_buoy_w, rhs_ph,
-  constant-K diffusion), RK3 driver (WRF substep schedule, passes rk_step), diagnostics,
-  acoustic small step. New WRF options: `dyn.h_adv_order` 5|6, `dyn.v_adv_order` 3|4.
-- Run everything: `tools/run_m1.sh`. Tests: `ctest` 5/5 in build-cpu and build-cpu-dp
-  (test_large_step adds diffusion-magnitude check: x 0.9992, z 0.9653 = 2nd-order FD factor).
-- Determinism: two FP32 igw runs -> `cmp` of snap_000500.bin identical; diag.csv identical in columns 1-10
-  (column 11, wall_s, is wall-clock time and differs by design).
-
-## Results (tools/run_m1.sh, CPU = 12 threads, all verifier checks PASS)
-| case | prec | backend | key metrics | stepping wall | ns/cell/step |
-|---|---|---|---|---|---|
-| rest_state 1 h (24x24x40) | FP32 | cpu | max w 8.24e-6 m/s, max th' 3.8e-6 K | 19.2 s | 2316 |
-| rest_state | FP64 | cpu | max w 1.88e-13 m/s, max th' 7.1e-15 K | 17.6 s | 2120 |
-| straka 100 m, 900 s | FP32 | cpu | min th' -9.456 K, front 15.346 km, sym 1.5e-5 | 39.7 s | 1347 |
-| straka | FP64 | cpu | min th' -9.456 K, front 15.346 km, sym 7e-14 | 44.0 s | 1493 |
-| warm_bubble 1000 s | FP32 | cpu | max w 15.018 m/s, sym 2.0e-4 | 28.5 s | 1427 |
-| warm_bubble | FP64 | cpu | max w 15.018 m/s, sym 2.5e-12 | 25.3 s | 1265 |
-| igw 3000 s | FP32 | cpu | th' [-0.00149, 0.00273] K, centroid err 769 m | 7.6 s | 5068* |
-| igw | FP64 | cpu | th' [-0.00146, 0.00277] K, centroid err 1212 m | 2.0 s | 1312 |
-(*) igw has 3000 cells: timing is overhead-dominated and noisy. No perf work done yet.
-CUDA: builds with nvcc 12.4, not runnable (driver not loaded) -> no GPU numbers, no CPU-vs-GPU diff.
-
-## M3: real-data dynamics identical to WRF (2026-10-13)
-Same wrfinput/wrfbdy as WRF v4.6.1 (119x89x44, 15 km Lambert over Turkey, GFS
-2026-10-12 00Z, dt 60 s, physics/diffusion/damping off, hybrid_opt 0, hypsometric_opt 2,
-specified boundaries, qv advected with PD). tests/verify/compare_real.py, relative L2:
-
-| run | precision | after | U | W | PH | THM | P |
-|---|---|---|---|---|---|---|---|
-| vs WRF real*8 (R1_r8) | CPU FP64 | 5 steps | 2.6e-14 | 5.8e-12 | 5.4e-16 | 3.7e-16 | 7.2e-15 |
-| vs WRF real*8 (R0_r8) | CUDA FP64 | 1 h | 5.2e-14 | 8.1e-12 | 8.1e-16 | 1.1e-15 | 8.2e-15 |
-| vs WRF FP32 (R0) | CUDA FP32 | 1 h | 2.8e-5 | 4.4e-3 | 4.5e-7 | 6.1e-7 | 4.5e-6 |
-| hybrid_opt 2 vs WRF FP32 (R2) | CUDA FP32 | 1 h | 3.9e-5 | 4.4e-3 | 5.1e-7 | 6.5e-7 | 7.2e-6 |
-| + w_damping 1, damp_opt 3 (R3) | CUDA FP32 | 1 h | 3.5e-5 | 3.4e-3 | 2.6e-7 | 4.6e-7 | 7.1e-6 |
-| w_damp active (W1_r8, dt 450 s, up to 2224 damped cells) | CPU FP64 | 10 steps | 3.0e-13 | 5.9e-12 | - | 2.9e-15 | - |
-
-Ideal cases vs WRF: Straka (diff_opt=1) theta' RMS 7.4e-6 K at 900 s; em_hill2d_x w RMS
-8e-5 m/s at 1 h. Wall time of the 1 h real run (WRF timed exclusive):
-CPPWRF RTX 2060 FP32 1.26 s vs WRF FP32 4 OpenMP threads 13.2 s (~10x); FP64 4.3 s vs
-WRF real*8 serial 37.9 s (~9x, consumer GPU at 1/32 FP64 rate). GPU dycore 3D FP32:
-24.3 ns/cell/step (200x200x50).
-
-Real data with WSM6 (mp_physics 6, run_mp6_r8): step 1 matches WRF real*8 to roundoff; from
-step 2 ~600 ice cells differ (qi 2e-7, THM 5e-5). CPPWRF's own CPU FP64 vs CUDA FP64 diverge
-the same way (qi 2.08e-7 in 604 cells, THM 5.0e-5 at step 2), and standalone WSM6 on WRF's
-state is bit-exact with the Fortran: roundoff amplified by WSM6 thresholds near ice
-saturation, not a coupling error. calc_cq is precomputed in WRF's summation order (KCq).
-
-## M2 done (2026-10-13)
-Items 1-2 were verified and committed (4f58fcc) and
-wrote items 3-4. Commands below were run with OMP_NUM_THREADS=4 (the machine is shared).
-- **1. Scalar transport** (scalars.*: advect_scalar / advect_scalar_pd with ru_m, rv_m, ww_m,
-  rk_update_scalar): tests in test_scalars (constant tracer stays 1, PD positivity, mass).
-- **2. Moist dynamics** (theta_m in t_2, calc_cq cqu/cqv/cqw in the PGF/advance_uv/advance_w/
-  calc_coef_w, moist calc_p_rho_phi, moist ideal init): test_moist.
-- **3. Physics coupling** (physics_coupling.*, docs/PHYSICS_INTERFACE.md): WRF
-  moist_physics_prep_em -> microphysics -> moist_physics_finish_em -> calc_p_rho_phi after the
-  RK loop; h_diabatic in rk_addtend_dry and removed in the last small_step_finish.
-  Config: `phys.mp_physics` (0, 1 = Kessler), `phys.mp_tend_lim`. rainnc/rainncv in snapshots.
-- **4. Moist case** `squall2d` (Weisman-Klemp 1982 sounding, 2 K bubble, Kessler):
-  configs/squall2d.ini (120x40, dx 1 km, 1 h, no wind -> must stay symmetric).
-- ctest 7/7 in CPU FP32, CPU FP64, CUDA FP32, CUDA FP64 (build-a0-*).
-
-| squall2d check | result |
+| Component | WRF options |
 |---|---|
-| deep convection | max w 31 m/s at 24 min, cold pool -10 K, upper warm anomaly +15 K |
-| symmetry, FP64 CPU | 7e-13 (10 min) -> 1.5e-10 (1 h) |
-| symmetry, FP32 CPU | 3e-4 (10 min) -> 0.08-0.15 (1 h): roundoff amplified by convection (FP64 shows the code is symmetric) |
-| GPU vs CPU, FP64 | rel L2 <= 1.6e-11 at 1 h (w, th', qr, rainnc) |
-| GPU vs CPU, FP32 | 1e-4 (10 min) -> 5e-2 (1 h): same chaotic growth |
-| positivity | qc, qr >= 0 everywhere, every snapshot (PD advection) |
-| water budget, no microphysics | total water constant to 1e-16 (transport is conservative) |
-| water budget, Kessler | (water + rainnc) - W0 = -2.7e-4 W0 at 1 h, 0.75% of the rain. WRF Kessler's sedimentation uses the mass-level spacing (rdzk), not the layer thickness, so it is not exactly conservative; our Kessler is bit-exact with WRF's |
-| timing (shared, loaded machine) | CUDA FP32 590 ns/cell/step vs CPU-4 FP32 ~9000: not a benchmark |
+| Dynamics | RK3 split-explicit, hybrid_opt 0/2, hypsometric_opt 1/2, map factors, Coriolis and curvature, terrain, specified lateral boundaries (spec_zone 1, relax_zone 4), w_damping, damp_opt 3, h_adv_order 5/6, v_adv_order 3/4, positive-definite moisture and scalar advection |
+| Diffusion | diff_opt 1 with km_opt 1 (constant K) and 4 (2-D Smagorinsky), 6th-order diffusion |
+| Microphysics | Kessler (1), WSM6 (6, with effective radii), Thompson (8) |
+| Cumulus | Kain-Fritsch (1), Grell-Freitas (3, deep and shallow), New Tiedtke (16) |
+| PBL, surface layer, land surface | YSU (1), revised MM5 surface layer (1), Noah LSM (2, including glacial and sea-ice points) |
+| Radiation | RRTMG LW and SW (4), CAM ozone and greenhouse gases, cal_cldfra1, McICA |
+| Nesting | static one-way and two-way nests (interp_fcn_sint, bdy_interp1, copy_fcn feedback, sm121/smdsm smoothers, blend_terrain, adjust_tempqv) |
+| I/O | reads wrfinput_d0N / wrfbdy_d01, writes wrfout_d0N (NetCDF) and restart files; native binary output |
+| Ideal cases | rest state, warm bubble, Straka density current, inertia-gravity wave, 2-D squall line, 2-D hill flow, quarter-circle supercell |
 
-## REVIEW item 1: Straka front ~2% short (investigation, FP64 CPU, front / min th')
-| variant | front km | min th' K |
+## Verification method
+
+1. **Column and kernel tests** (`tests/phys`, `tests/dyn`, `tests/nest`): each scheme and kernel is
+   driven with identical inputs in C++ and in the WRF Fortran (compiled with WRF's own flags) and the
+   outputs are compared. Most of these tests require bit-for-bit agreement.
+2. **Model runs against WRF** (`tests/verify/wrf_suite.py`): WRF v4.6.1 and CPPWRF are run from the same
+   wrfinput/wrfbdy files (119 x 89 x 44, 15 km, dt 60 s; nests 120 x 90 x 44 at 5 km) and the wrfout
+   files are compared field by field (relative L2 over the domain).
+3. **Checkpoint dumps** (`tests/verify/wrf_dycore_dumps`): a WRF build that writes intermediate arrays
+   inside solve_em and the physics drivers, used to locate the first differing operation.
+
+Bit identity on the CPU requires reproducing WRF's arithmetic exactly: the order of every sum and
+product, constant folding done by the Fortran compiler, the halo refresh schedule, and the vector math
+functions (glibc libmvec) that gfortran uses in vectorised loops. CPPWRF calls the same libmvec
+functions for the same loop iterations (`cppwrf::vm` in src/core/backend.hpp). The physics reference
+runs use WRF built with `-fdefault-real-8 -fdefault-double-8`, so that DOUBLE PRECISION variables
+(Thompson) are 8-byte as in CPPWRF.
+
+## Results
+
+CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
+
+| Case | Configuration | Duration |
 |---|---|---|
-| baseline (dt 1, n_sound 6, epssm .1, smdiv .1, emdiv .01, uniform_z) | 15.346 | -9.456 |
-| dt 0.5 / n_sound 12 / epssm 0.02 / smdiv=emdiv=0 | 15.345–15.347 | -9.454..-9.508 |
-| WRF linear eta levels | 15.316 | -9.461 |
-| h_adv_order 6 / v_adv_order 4 / both (no upwind dissipation) | 15.345 / 15.341 / 15.343 | -9.507 / -9.596 / -9.608 |
-| kvdif = 0 (khdif 75) | 15.618 | -12.85 |
-Findings: (a) perturbation is -15 K in T (theta' = dT/exner(pb); initial min th' -16.62 K). ✔
-(b) theta diffusion acts on theta - t_init (= theta - 300 here). ✔ (c) diffusion operator
-magnitude verified against analytic -mu K k^2 (unit test); WRF's vertical form equals
-mu K d2/dz2, i.e. Straka's constant-K Laplacian. ✔ (d) eta levels: -30 m.
-Time step, acoustic parameters and advection dissipation do not move the front (<6 m); the
-upwind dissipation explains ~0.15 K of the min th' gap. The front is controlled by vertical
-diffusion (75 -> 0 moves it +272 m). I found no bug. Remaining candidates (not tested): front
-measured at z = 50 m (lowest level) vs. Straka's surface value; WRF's first-stage-only
-(forward-in-time) diffusion; mass-weighted diffusion along eta vs. along z. Verdict: within
-the published model spread; no change made.
+| R1 | dynamics only | 5 steps |
+| W1 | active w_damping (dt 450 s) | 10 steps |
+| P1 | sfclayrev + Noah + YSU | 1 h |
+| P2 | P1 + Kain-Fritsch | 1 h |
+| P3 | P1 + RRTMG LW/SW (radt 1 min) | 3 steps |
+| P4 | P2 + WSM6 + RRTMG (cloudy, effective radii) + diff_opt 1 / km_opt 4 | 1 h |
+| P5 | P1 + WSM6 + diff_opt 1 / km_opt 4 | 1 h |
+| P6 | P5 with Thompson | 1 h |
+| P7 | P2 with New Tiedtke | 1 h |
+| P8 | P2 with Grell-Freitas (deep and shallow) | 1 h |
+| N1 | one-way nest (both domains) | 3 parent steps |
+| N2 | two-way nest (both domains) | 1 h |
 
-## Departures from WRF/TN
-- Vertical diffusion BCs: zero flux at bottom/top (u, v, theta), w = 0 at both ends (WRF
-  diff_opt=1: no vertical diffusion in the lowest layer). u diffusion has no u_base.
-- No Coriolis/curvature (all M1 cases f = 0; igw without rotation). Eta default uniform_z.
-- hypsometric_opt = 1 in base state/init/calc_p_rho_phi (WRF v4 default 2); keep until terrain.
+Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8).
 
-## Open issues
-- Root of the repo collects Fortran/test junk from the physics agents (*.mod, *.o, input_kf.bin,
-  output_*.bin, test_kind*): they must build in their own directories.
-- Machine oversubscription: every OpenMP process uses 12 threads by default. Set
-  OMP_NUM_THREADS (2-4) and OMP_WAIT_POLICY=passive for every agent's runs.
-- GPU untested (driver). CPU perf not optimised (M2, after GPU is measurable).
-- Run script lives in tools/run_m1.sh (scripts/ is 's).
+CUDA (relative L2 at 1 h unless noted):
 
-## Disagreements
-- None.
+| Case | Precision | U | W | THM | QV |
+|---|---|---|---|---|---|
+| R1 (5 steps) | FP64 | 2.6e-14 | 5.8e-12 | 3.7e-16 | 1.8e-15 |
+| P1 | FP64 | 1.5e-9 | 2.0e-8 | 1.4e-10 | 8.9e-9 |
+| P8 | FP64 | 3.7e-10 | 7.6e-9 | 9.8e-11 | 4.0e-9 |
+| P7 | FP64 | 4.7e-7 | 1.1e-5 | 6.0e-8 | 1.2e-5 |
+| P2 | FP64 | 5.2e-5 | 1.8e-3 | 9.4e-7 | 4.0e-5 |
+| P4 | FP64 | 2.2e-4 | 3.6e-3 | 2.7e-6 | 2.1e-4 |
+| N2 | FP64 | 4.8e-13 (d01), 2.3e-13 (d02) | | 9.8e-16 | |
+| R0 (dynamics) | FP32 vs WRF FP32 | 1.6e-4 | 4.9e-3 | 1.0e-6 | 2.0e-5 |
+| P1 | FP32 vs WRF FP32 | 1.9e-4 | 3.9e-3 | 7.5e-7 | 4.9e-5 |
+| P4 / P6 / P8 | FP32 vs WRF FP32 | 2.2e-4 to 8.5e-4 | up to 4.0e-2 | up to 1.5e-5 | up to 6.3e-4 |
 
-## Next steps (after review and GPU driver)
-- CUDA runs in FP32/FP64, CPU-vs-GPU differences, ns/cell/step per backend; then M2 perf
-  (profile first: halo fills, small-step scratch arrays, flux recomputation).
+On the GPU the elementary functions (exp, log, pow) come from the CUDA math library, which rounds
+differently from glibc, so CUDA FP64 agrees with WRF to roundoff rather than bit for bit. Schemes
+with thresholds (the Kain-Fritsch trigger, WSM6 and Thompson saturation adjustments) amplify that
+roundoff over an hour, which is why P2 and P4 show larger CUDA FP64 differences than P1. The CPU
+build is the reference for bit identity.
+
+Ideal cases: Straka density current against WRF em_grav2d_x, theta' RMS difference 7.4e-6 K at 900 s;
+2-D hill flow against em_hill2d_x, w RMS difference 8e-5 m/s at 1 h.
+
+## Performance
+
+NVIDIA RTX 2060 (6 GB), real-data domain 119 x 89 x 44, 1 h:
+
+| Run | CPPWRF | WRF v4.6.1 |
+|---|---|---|
+| Dry dynamics, FP32 | 1.26 s (GPU) | 13.2 s (4 OpenMP threads) |
+| Dry dynamics, FP64 | 4.3 s (GPU, 1/32-rate FP64) | 37.9 s (serial, real*8) |
+
+Dry dynamics run at about 32 ns per cell and step in FP32 on the GPU, about 52 ns with WSM6.
+RRTMG runs on the GPU as a batched pipeline (docs/PHYSICS_SUITE.md section 10).
+
+## Not yet implemented
+
+MYJ PBL and the eta surface layer, sf_sfclay_physics 91, TKE closures (km_opt 2/3), diff_opt 2,
+damp_opt 1/2, moving nests, a C++ real.exe (src/init_real is partial), and parallel (MPI) runs.

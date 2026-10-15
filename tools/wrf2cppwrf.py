@@ -6,7 +6,6 @@ Implements a pure Python (f90nml-free) Fortran namelist parser.
 Supports single-domain execution (maps domain 1, warns on multiple domains).
 Categorizes and warns/errors on unsupported or non-standard WRF options.
 
-
 """
 
 import argparse

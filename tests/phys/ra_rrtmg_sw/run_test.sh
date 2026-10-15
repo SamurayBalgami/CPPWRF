@@ -24,8 +24,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 HEAVY="${REPO_ROOT}/tools/heavy.sh"
 
 # Ensure data files are linked
-ln -sf /home/ostriquetrum/wrf_ref/WRF/run/RRTMG_SW_DATA_DBL "${RUN_DIR}/RRTMG_SW_DATA"
-ln -sf /home/ostriquetrum/wrf_ref/WRF/run/RRTMG_LW_DATA_DBL "${RUN_DIR}/RRTMG_LW_DATA"
+ln -sf ${CPPWRF_WRF_REF:-$HOME/wrf_ref}/WRF/run/RRTMG_SW_DATA_DBL "${RUN_DIR}/RRTMG_SW_DATA"
+ln -sf ${CPPWRF_WRF_REF:-$HOME/wrf_ref}/WRF/run/RRTMG_LW_DATA_DBL "${RUN_DIR}/RRTMG_LW_DATA"
 
 INPUT_BIN="${RUN_DIR}/input_rrtmg_sw.bin"
 FORT_OUT="${RUN_DIR}/output_fortran.bin"

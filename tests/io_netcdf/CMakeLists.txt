@@ -37,7 +37,7 @@ if(Python3_Interpreter_FOUND)
   set_tests_properties(test_wrfout_python PROPERTIES DEPENDS test_wrfout_writer)
 
   # real R0 (10 steps) written as wrfout, then compared field by field with WRF's wrfout
-  # (skips inside the script if ~/wrf_real/run_R0_r8 is absent)
+  # (skips inside the script if $CPPWRF_WRF_RUNS/run_R0_r8 is absent)
   set(_r0dir "${CMAKE_CURRENT_BINARY_DIR}/real_r0_wrfout")
   add_test(NAME test_real_r0_wrfout_run
     COMMAND $<TARGET_FILE:cppwrf> "${CMAKE_SOURCE_DIR}/configs/real_r0_ref.ini" --set "output.dir=${_r0dir}"

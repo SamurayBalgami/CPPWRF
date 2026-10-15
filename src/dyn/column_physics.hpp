@@ -1,7 +1,7 @@
 #pragma once
 // Interface between the dycore time step and the column physics suite of a real-data run
 // (radiation, surface layer, land surface, PBL, cumulus). The suite lives in src/phys/driver/
-//; the dycore only calls it at WRF's points of the time step (solve_em):
+// the dycore only calls it at WRF's points of the time step (solve_em):
 //   RK stage 1, after rk_step_prep and init_zero_tendency (LargeStep::zero_tendf):
 //     part1  = first_rk_step_part1: phy_prep, radiation_driver, surface_driver, pbl_driver,
 //              cumulus_driver (updates the surface state, fills the uncoupled R*TEN fields)

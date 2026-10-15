@@ -20,7 +20,6 @@ This guide provides instructions for building CPPWRF on CPU and GPU architecture
    - [Real-Data Simulations (WPS + real.exe)](#real-data-simulations-wps--realexe)
 4. [Configuration Reference (INI Keys)](#4-configuration-reference-ini-keys)
    - [Summary Table](#configuration-keys-table)
-   - [Section Details](#section-details)
 5. [Outputs & Data Formats](#5-outputs--data-formats)
    - [Native Format (`run.json`, `diag.csv`, `snap_*.bin`)](#native-format)
    - [WRF NetCDF Output (`wrfout_d01_*`)](#wrf-netcdf-output)
@@ -29,7 +28,7 @@ This guide provides instructions for building CPPWRF on CPU and GPU architecture
    - [Independent Verification Harness (`verify.py`)](#independent-verification-harness-verifypy)
    - [Real-Data WRF Output Comparison (`compare_real.py`)](#real-data-wrf-output-comparison-compare_realpy)
    - [Unit & Differential Physics Tests](#unit--differential-physics-tests)
-7. [Performance & Shared-Machine Operational Rules](#7-performance--shared-machine-operational-rules)
+7. [Performance](#7-performance)
 
 ---
 
@@ -48,7 +47,6 @@ CPPWRF is engineered to match WRF ARW (v4.6.1) numerics and equations discretely
 
 - **Strict IEEE Floating-Point:** Built with `-ffp-contract=off` (no fused multiply-add contraction) to maintain bitwise determinism and exact verification against Fortran reference models.
 
-
 ---
 
 ## 2. Building CPPWRF
@@ -60,41 +58,35 @@ CPPWRF is engineered to match WRF ARW (v4.6.1) numerics and equations discretely
 - NetCDF-C development headers (`libnetcdf-dev`)
 - *(Optional)* NVIDIA CUDA Toolkit >= 12.0 for GPU offload
 
-All builds and tests should be wrapped with `tools/heavy.sh` to respect machine slot limits on shared systems.
-
-
 ### CPU Build (OpenMP, FP32 / FP64)
 To build standard single-precision (float32) for CPU:
 ```bash
 cmake -B build-cpu -S . -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=OFF
-tools/heavy.sh cmake --build build-cpu -j4
+cmake --build build-cpu -j4
 ```
-
 
 To build double-precision (float64, `real = double`):
 ```bash
 cmake -B build-cpu-dp -S . -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_DOUBLE=ON
-tools/heavy.sh cmake --build build-cpu-dp -j4
+cmake --build build-cpu-dp -j4
 ```
-
 
 ### CUDA GPU Build
 To build the GPU-accelerated backend:
 ```bash
 cmake -B build-cuda -S . -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=native
-tools/heavy.sh cmake --build build-cuda -j4
+cmake --build build-cuda -j4
 ```
 
-
 ### Build Flags & CMake Options
-| CMake Option | Default | Description | Citation |
-|---|---|---|---|
-| `CMAKE_BUILD_TYPE` | `Release` | Compiler optimization level (`Release`, `Debug`, `RelWithDebInfo`) | |
-| `CPPWRF_DOUBLE` | `OFF` | Use double-precision floats (`real = double`) across dycore and physics | |
-| `CPPWRF_ENABLE_CUDA` | Auto | Enable CUDA compilation for NVIDIA GPUs | |
-| `CMAKE_CUDA_ARCHITECTURES` | `native` | Target GPU architecture (e.g. `80;90` for Ampere/Hopper) | |
-| `CPPWRF_NATIVE` | `ON` | Optimize for host CPU architecture (`-march=native -ffp-contract=off`) | |
-| `CPPWRF_DIFF_TESTS` | `OFF` | Register WRF Fortran differential test suites with `ctest` | |
+| CMake Option | Default | Description |
+|---|---|---|
+| `CMAKE_BUILD_TYPE` | `Release` | Compiler optimization level (`Release`, `Debug`, `RelWithDebInfo`) |
+| `CPPWRF_DOUBLE` | `OFF` | Use double-precision floats (`real = double`) across dycore and physics |
+| `CPPWRF_ENABLE_CUDA` | Auto | Enable CUDA compilation for NVIDIA GPUs |
+| `CMAKE_CUDA_ARCHITECTURES` | `native` | Target GPU architecture (e.g. `80;90` for Ampere/Hopper) |
+| `CPPWRF_NATIVE` | `ON` | Optimize for host CPU architecture (`-march=native -ffp-contract=off`) |
+| `CPPWRF_DIFF_TESTS` | `OFF` | Register WRF Fortran differential test suites with `ctest` |
 
 ---
 
@@ -103,19 +95,17 @@ tools/heavy.sh cmake --build build-cuda -j4
 ### Command-Line Invocation
 Simulations are launched by providing an INI configuration file to the executable:
 ```bash
-tools/heavy.sh ./build-cpu/cppwrf configs/real_r0.ini
+./build-cpu/cppwrf configs/real_r0.ini
 ```
-
 
 Individual configuration parameters can be overridden dynamically from the command line without modifying the `.ini` file:
 ```bash
 # Override total simulation time to 2 minutes (120 s)
-tools/heavy.sh ./build-cpu/cppwrf configs/real_r0.ini --set run.run_time=120
+./build-cpu/cppwrf configs/real_r0.ini --set run.run_time=120
 
 # Multiple overrides
-tools/heavy.sh ./build-cpu/cppwrf configs/real_p4.ini --set output.format=both --set output.out_interval=5
+./build-cpu/cppwrf configs/real_p4.ini --set output.format=both --set output.out_interval=5
 ```
-
 
 ### Translating WRF Namelists (`wrf2cppwrf.py`)
 CPPWRF includes a standalone translator that converts WRF `namelist.input` files into valid CPPWRF `.ini` configurations:
@@ -124,9 +114,8 @@ CPPWRF includes a standalone translator that converts WRF `namelist.input` files
 python3 tools/wrf2cppwrf.py /path/to/wrf/namelist.input -o run.ini
 
 # Real-data conversion with specified directory and NetCDF wrfout format
-python3 tools/wrf2cppwrf.py ~/wrf_real/run_R0_r8/namelist.input -o run_r0.ini --format wrfout
+python3 tools/wrf2cppwrf.py /path/to/wrf/run/namelist.input -o run.ini --format wrfout
 ```
-
 
 Key translator features:
 - **f90nml-Free Parser:** Pure Python tokenizer supporting standard Fortran namelist syntax, repetition counts (`3*0`), exponents (`1.0d-4`), and inline comments.
@@ -145,7 +134,7 @@ CPPWRF supports standard ARW idealized benchmarks:
 
 Run an idealized case:
 ```bash
-tools/heavy.sh ./build-cpu/cppwrf configs/straka_wrf.ini
+./build-cpu/cppwrf configs/straka_wrf.ini
 ```
 
 ### Real-Data Simulations (WPS + real.exe)
@@ -172,7 +161,7 @@ Real-data simulations use initial conditions (`wrfinput_d01`) and lateral bounda
    out_interval = 10
    ```
 
-4. Execute with `tools/heavy.sh ./build-cpu/cppwrf my_real_run.ini`.
+4. Run `./build-cpu/cppwrf my_real_run.ini`.
 
 ---
 
@@ -181,69 +170,69 @@ Real-data simulations use initial conditions (`wrfinput_d01`) and lateral bounda
 ### Configuration Keys Table
 Every option supported by the CPPWRF runtime is cataloged below, along with its type, default, WRF equivalent, and code source.
 
-| Section | Key | Type | Default | Description | WRF Equivalent | Citation |
-|---|---|---|---|---|---|---|
-| `[run]` | `case` | string | *required* | Simulation case (`real`, `hill2d`, `quarter_ss`, `straka`, `squall2d`, `warm_bubble`, `rest_state`, `igw`) | `ideal_case` | |
-| `[run]` | `run_time` | double | `0.0` | Total simulation duration in seconds | `run_days/hours/minutes/seconds` | |
-| `[run]` | `restart_file` | string | `""` | Path to NetCDF restart file (`restart_*.nc`) to resume execution | `restart` / restart filename | |
-| `[run]` | `start_date` | string | `"2000-01-01_00:00:00"` | UTC start timestamp string | `start_year/month/day/hour/etc` | |
-| `[real]` | `dir` | string | *required (real)* | Directory containing `wrfinput_d01` and `wrfbdy_d01` | WRF run directory | |
-| `[real]` | `wrfinput` | string | `"wrfinput_d01"` | Name of initial condition NetCDF file | `wrfinput_d01` | |
-| `[real]` | `wrfbdy` | string | `"wrfbdy_d01"` | Name of boundary condition NetCDF file | `wrfbdy_d01` | |
-| `[real]` | `bdy_interval` | double | `0.0` (auto) | Boundary condition update interval in seconds (0 = auto-detected from file) | `interval_seconds` | |
-| `[domain]` | `nx`, `ny`, `nz` | integer | *required (ideal)* | Grid dimensions in mass-point coordinates | `e_we - 1`, `e_sn - 1`, `e_vert - 1` | |
-| `[domain]` | `dx`, `dy` | double | *required (ideal)* | Horizontal grid spacing in meters | `dx`, `dy` | |
-| `[domain]` | `ztop` | double | *required (ideal)* | Model top elevation in meters | `ztop` | |
-| `[domain]` | `p_top` | double | Sounding $p(z_{top})$ | Pressure at top boundary in Pa | `p_top_requested` | |
-| `[domain]` | `bc_x`, `bc_y` | string | `"periodic"` | Lateral boundary condition (`periodic`, `symmetric`, `specified`) | `periodic_x`, `symmetric_xs`, etc. | |
-| `[domain]` | `eta` | string | `"uniform_z"` | Vertical coordinate distribution (`uniform_z`, `uniform_eta`, `list`) | `eta_levels` | |
-| `[domain]` | `eta_levels` | float list | `[]` | Explicit comma-separated list of full $\eta$ levels | `eta_levels` | |
-| `[domain]` | `map_factor` | double | `1.0` | Constant horizontal map projection scale factor | Map scale factor ($m$) | |
-| `[domain]` | `f0`, `e0` | double | `0.0` | Coriolis parameters $f$ and $e$ in $s^{-1}$ ($f$-plane) | Coriolis parameters | |
-| `[case]` | `sounding_file` | string | `""` | Path to WRF format sounding file | `input_sounding` | |
-| `[case]` | `hm` | double | `100.0` | Mountain height in meters (for `hill2d`) | Hill height | |
-| `[case]` | `xa` | double | `5.0` | Mountain half-width in km (for `hill2d`) | Hill half-width | |
-| `[case]` | `u0` | double | `10.0` | Uniform inflow wind speed in m/s | Mean wind | |
-| `[case]` | `delt` | double | `3.0` | Thermal perturbation magnitude in K (for `quarter_ss`) | Bubble perturbation | |
-| `[time]` | `dt` | double | *required* | Large time step in seconds ($\Delta t$) | `time_step` | |
-| `[time]` | `time_step_sound` | integer | `0` (auto) | Acoustic small steps per RK stage (0 = auto-computed CFL rule) | `time_step_sound` | |
-| `[dyn]` | `khdif`, `kvdif` | double | `0.0` | Constant horizontal/vertical eddy diffusion in $m^2/s$ | `khdif`, `kvdif` | |
-| `[dyn]` | `diff_opt` | integer | `0` | Diffusion option (0 = off, 1 = coordinate/slope diffusion) | `diff_opt` | |
-| `[dyn]` | `km_opt` | integer | `1` | Eddy viscosity closure (1 = constant, 4 = 2D Smagorinsky) | `km_opt` | |
-| `[dyn]` | `c_s` | double | `0.25` | Smagorinsky diffusion constant | `c_s` | |
-| `[dyn]` | `diff_6th_opt` | integer | `0` | 6th-order spatial diffusion (0 = off, 1 = standard, 2 = monotonic) | `diff_6th_opt` | |
-| `[dyn]` | `diff_6th_factor` | double | `0.12` | 6th-order numerical diffusion coefficient | `diff_6th_factor` | |
-| `[dyn]` | `pr_inv` | double | `3.0` | Inverse turbulent Prandtl number ($Pr^{-1} = K_\theta / K_m$) | $1 / \text{prandtl}$ | |
-| `[dyn]` | `top_lid` | boolean | `false` | Rigid lid at top boundary (extrapolates $p'$) | `top_lid` | |
-| `[dyn]` | `h_adv_order` | integer | `5` | Horizontal advection order (5 = upwind, 6 = centered) | `h_mom_adv_order` | |
-| `[dyn]` | `v_adv_order` | integer | `3` | Vertical advection order (3 = upwind, 4 = centered) | `v_mom_adv_order` | |
-| `[dyn]` | `w_damping` | integer | `0` | Vertical velocity damping where $w$-CFL > 1 (0 = off, 1 = on) | `w_damping` | |
-| `[dyn]` | `w_crit_cfl` | double | `1.0` | Critical Courant number threshold for $w$-damping | `w_crit_cfl` | |
-| `[dyn]` | `damp_opt` | integer | `0` | Upper damping layer (0 = off, 3 = implicit Rayleigh damping of $w$) | `damp_opt` | |
-| `[dyn]` | `zdamp` | double | `5000.0` | Depth of upper Rayleigh damping sponge layer in meters | `zdamp` | |
-| `[dyn]` | `dampcoef` | double | `0.2` | Rayleigh damping coefficient ($s^{-1}$) | `dampcoef` | |
-| `[dyn]` | `moist_adv_opt` | integer | `1` | Moisture advection scheme (0 = standard, 1 = positive-definite) | `moist_adv_opt` | |
-| `[dyn]` | `scalar_adv_opt` | integer | `1` | Passive tracer advection (0 = standard, 1 = positive-definite) | `scalar_adv_opt` | |
-| `[dyn]` | `epssm` | double | `0.1` | Acoustic small-step forward-centering factor | `epssm` | |
-| `[dyn]` | `smdiv`, `emdiv` | double | `0.1`, `0.01` | Acoustic divergence and external mode filters | `smdiv`, `emdiv` | |
-| `[moist]` | `species` | string list | `""` | Comma-separated list of active water species (`qv,qc,qr,qi,qs,qg`) | WRF moisture array | |
-| `[phys]` | `mp_physics` | integer | `0` | Microphysics scheme (0 = off, 1 = Kessler, 6 = WSM6) | `mp_physics` | |
-| `[phys]` | `hail_opt` | integer | `0` | WSM6 6th class density (0 = graupel, 1 = hail) | `hail_opt` | |
-| `[phys]` | `mp_tend_lim` | double | `10.0` | Heating rate limiter for microphysics ($K/s$) | `mp_tend_lim` | |
-| `[phys]` | `sf_sfclay_physics` | integer | `1` | Surface layer formulation (0 = off, 1 = Revised MM5 / sfclayrev) | `sf_sfclay_physics` | |
-| `[phys]` | `sf_surface_physics` | integer | `2` | Land surface model (0 = off, 2 = Unified Noah LSM 4-layer) | `sf_surface_physics` | |
-| `[phys]` | `bl_pbl_physics` | integer | `1` | Planetary boundary layer scheme (0 = off, 1 = YSU) | `bl_pbl_physics` | |
-| `[phys]` | `cu_physics` | integer | `0` | Cumulus parameterization (0 = off, 1 = Kain-Fritsch, 3 = Grell-Freitas, 16 = New Tiedtke); GF also reads `ishallow` and `clos_choice` | `cu_physics` | |
-| `[phys]` | `ra_lw_physics` | integer | `0` | Longwave radiation scheme (0 = off, 4 = RRTMG LW) | `ra_lw_physics` | |
-| `[phys]` | `ra_sw_physics` | integer | `0` | Shortwave radiation scheme (0 = off, 4 = RRTMG SW) | `ra_sw_physics` | |
-| `[phys]` | `radt` | double | `0.0` | Radiation physics call interval (minutes; 0 = every step) | `radt` | |
-| `[phys]` | `table_dir` | string | `"."` | Path to directory containing physics tables (`LANDUSE.TBL`, etc.) | WRF run directory | |
-| `[output]` | `dir` | string | `"out/<case>"` | Directory for simulation output files | Output path | |
-| `[output]` | `format` | string | `"native"` | Output data format (`native`, `wrfout`, `both`) | `io_form_history` | |
-| `[output]` | `diag_interval` | integer | `10` | Frequency (in steps) for writing rows to `diag.csv` | Diagnostic interval | |
-| `[output]` | `out_interval` | integer | `nsteps` | Frequency (in steps) for writing field snapshots | `history_interval` | |
-| `[restart]` | `interval` | double | `0.0` | Restart snapshot write frequency in seconds (0 = disabled) | `restart_interval` | |
-| `[tracers]` | `names` | string list | `""` | Comma-separated names of passive scalar tracers | Tracer variables | |
+| Section | Key | Type | Default | Description | WRF Equivalent |
+|---|---|---|---|---|---|
+| `[run]` | `case` | string | *required* | Simulation case (`real`, `hill2d`, `quarter_ss`, `straka`, `squall2d`, `warm_bubble`, `rest_state`, `igw`) | `ideal_case` |
+| `[run]` | `run_time` | double | `0.0` | Total simulation duration in seconds | `run_days/hours/minutes/seconds` |
+| `[run]` | `restart_file` | string | `""` | Path to NetCDF restart file (`restart_*.nc`) to resume execution | `restart` / restart filename |
+| `[run]` | `start_date` | string | `"2000-01-01_00:00:00"` | UTC start timestamp string | `start_year/month/day/hour/etc` |
+| `[real]` | `dir` | string | *required (real)* | Directory containing `wrfinput_d01` and `wrfbdy_d01` | WRF run directory |
+| `[real]` | `wrfinput` | string | `"wrfinput_d01"` | Name of initial condition NetCDF file | `wrfinput_d01` |
+| `[real]` | `wrfbdy` | string | `"wrfbdy_d01"` | Name of boundary condition NetCDF file | `wrfbdy_d01` |
+| `[real]` | `bdy_interval` | double | `0.0` (auto) | Boundary condition update interval in seconds (0 = auto-detected from file) | `interval_seconds` |
+| `[domain]` | `nx`, `ny`, `nz` | integer | *required (ideal)* | Grid dimensions in mass-point coordinates | `e_we - 1`, `e_sn - 1`, `e_vert - 1` |
+| `[domain]` | `dx`, `dy` | double | *required (ideal)* | Horizontal grid spacing in meters | `dx`, `dy` |
+| `[domain]` | `ztop` | double | *required (ideal)* | Model top elevation in meters | `ztop` |
+| `[domain]` | `p_top` | double | Sounding $p(z_{top})$ | Pressure at top boundary in Pa | `p_top_requested` |
+| `[domain]` | `bc_x`, `bc_y` | string | `"periodic"` | Lateral boundary condition (`periodic`, `symmetric`, `specified`) | `periodic_x`, `symmetric_xs`, etc. |
+| `[domain]` | `eta` | string | `"uniform_z"` | Vertical coordinate distribution (`uniform_z`, `uniform_eta`, `list`) | `eta_levels` |
+| `[domain]` | `eta_levels` | float list | `[]` | Explicit comma-separated list of full $\eta$ levels | `eta_levels` |
+| `[domain]` | `map_factor` | double | `1.0` | Constant horizontal map projection scale factor | Map scale factor ($m$) |
+| `[domain]` | `f0`, `e0` | double | `0.0` | Coriolis parameters $f$ and $e$ in $s^{-1}$ ($f$-plane) | Coriolis parameters |
+| `[case]` | `sounding_file` | string | `""` | Path to WRF format sounding file | `input_sounding` |
+| `[case]` | `hm` | double | `100.0` | Mountain height in meters (for `hill2d`) | Hill height |
+| `[case]` | `xa` | double | `5.0` | Mountain half-width in km (for `hill2d`) | Hill half-width |
+| `[case]` | `u0` | double | `10.0` | Uniform inflow wind speed in m/s | Mean wind |
+| `[case]` | `delt` | double | `3.0` | Thermal perturbation magnitude in K (for `quarter_ss`) | Bubble perturbation |
+| `[time]` | `dt` | double | *required* | Large time step in seconds ($\Delta t$) | `time_step` |
+| `[time]` | `time_step_sound` | integer | `0` (auto) | Acoustic small steps per RK stage (0 = auto-computed CFL rule) | `time_step_sound` |
+| `[dyn]` | `khdif`, `kvdif` | double | `0.0` | Constant horizontal/vertical eddy diffusion in $m^2/s$ | `khdif`, `kvdif` |
+| `[dyn]` | `diff_opt` | integer | `0` | Diffusion option (0 = off, 1 = coordinate/slope diffusion) | `diff_opt` |
+| `[dyn]` | `km_opt` | integer | `1` | Eddy viscosity closure (1 = constant, 4 = 2D Smagorinsky) | `km_opt` |
+| `[dyn]` | `c_s` | double | `0.25` | Smagorinsky diffusion constant | `c_s` |
+| `[dyn]` | `diff_6th_opt` | integer | `0` | 6th-order spatial diffusion (0 = off, 1 = standard, 2 = monotonic) | `diff_6th_opt` |
+| `[dyn]` | `diff_6th_factor` | double | `0.12` | 6th-order numerical diffusion coefficient | `diff_6th_factor` |
+| `[dyn]` | `pr_inv` | double | `3.0` | Inverse turbulent Prandtl number ($Pr^{-1} = K_\theta / K_m$) | $1 / \text{prandtl}$ |
+| `[dyn]` | `top_lid` | boolean | `false` | Rigid lid at top boundary (extrapolates $p'$) | `top_lid` |
+| `[dyn]` | `h_adv_order` | integer | `5` | Horizontal advection order (5 = upwind, 6 = centered) | `h_mom_adv_order` |
+| `[dyn]` | `v_adv_order` | integer | `3` | Vertical advection order (3 = upwind, 4 = centered) | `v_mom_adv_order` |
+| `[dyn]` | `w_damping` | integer | `0` | Vertical velocity damping where $w$-CFL > 1 (0 = off, 1 = on) | `w_damping` |
+| `[dyn]` | `w_crit_cfl` | double | `1.0` | Critical Courant number threshold for $w$-damping | `w_crit_cfl` |
+| `[dyn]` | `damp_opt` | integer | `0` | Upper damping layer (0 = off, 3 = implicit Rayleigh damping of $w$) | `damp_opt` |
+| `[dyn]` | `zdamp` | double | `5000.0` | Depth of upper Rayleigh damping sponge layer in meters | `zdamp` |
+| `[dyn]` | `dampcoef` | double | `0.2` | Rayleigh damping coefficient ($s^{-1}$) | `dampcoef` |
+| `[dyn]` | `moist_adv_opt` | integer | `1` | Moisture advection scheme (0 = standard, 1 = positive-definite) | `moist_adv_opt` |
+| `[dyn]` | `scalar_adv_opt` | integer | `1` | Passive tracer advection (0 = standard, 1 = positive-definite) | `scalar_adv_opt` |
+| `[dyn]` | `epssm` | double | `0.1` | Acoustic small-step forward-centering factor | `epssm` |
+| `[dyn]` | `smdiv`, `emdiv` | double | `0.1`, `0.01` | Acoustic divergence and external mode filters | `smdiv`, `emdiv` |
+| `[moist]` | `species` | string list | `""` | Comma-separated list of active water species (`qv,qc,qr,qi,qs,qg`) | WRF moisture array |
+| `[phys]` | `mp_physics` | integer | `0` | Microphysics scheme (0 = off, 1 = Kessler, 6 = WSM6, 8 = Thompson) | `mp_physics` |
+| `[phys]` | `hail_opt` | integer | `0` | WSM6 6th class density (0 = graupel, 1 = hail) | `hail_opt` |
+| `[phys]` | `mp_tend_lim` | double | `10.0` | Heating rate limiter for microphysics ($K/s$) | `mp_tend_lim` |
+| `[phys]` | `sf_sfclay_physics` | integer | `1` | Surface layer formulation (0 = off, 1 = Revised MM5 / sfclayrev) | `sf_sfclay_physics` |
+| `[phys]` | `sf_surface_physics` | integer | `2` | Land surface model (0 = off, 2 = Unified Noah LSM 4-layer) | `sf_surface_physics` |
+| `[phys]` | `bl_pbl_physics` | integer | `1` | Planetary boundary layer scheme (0 = off, 1 = YSU) | `bl_pbl_physics` |
+| `[phys]` | `cu_physics` | integer | `0` | Cumulus parameterization (0 = off, 1 = Kain-Fritsch, 3 = Grell-Freitas, 16 = New Tiedtke); GF also reads `ishallow` and `clos_choice` | `cu_physics` |
+| `[phys]` | `ra_lw_physics` | integer | `0` | Longwave radiation scheme (0 = off, 4 = RRTMG LW) | `ra_lw_physics` |
+| `[phys]` | `ra_sw_physics` | integer | `0` | Shortwave radiation scheme (0 = off, 4 = RRTMG SW) | `ra_sw_physics` |
+| `[phys]` | `radt` | double | `0.0` | Radiation physics call interval (minutes; 0 = every step) | `radt` |
+| `[phys]` | `table_dir` | string | `"."` | Path to directory containing physics tables (`LANDUSE.TBL`, etc.) | WRF run directory |
+| `[output]` | `dir` | string | `"out/<case>"` | Directory for simulation output files | Output path |
+| `[output]` | `format` | string | `"native"` | Output data format (`native`, `wrfout`, `both`) | `io_form_history` |
+| `[output]` | `diag_interval` | integer | `10` | Frequency (in steps) for writing rows to `diag.csv` | Diagnostic interval |
+| `[output]` | `out_interval` | integer | `nsteps` | Frequency (in steps) for writing field snapshots | `history_interval` |
+| `[restart]` | `interval` | double | `0.0` | Restart snapshot write frequency in seconds (0 = disabled) | `restart_interval` |
+| `[tracers]` | `names` | string list | `""` | Comma-separated names of passive scalar tracers | Tracer variables |
 
 ---
 
@@ -273,13 +262,11 @@ When `output.format = wrfout` (or `both`), CPPWRF produces files named `wrfout_d
 ### Restart Files & Resuming Simulations
 NetCDF restart files (`restart_<step>.nc`) store the complete prognostic state at bitwise precision.
 
-
 To enable periodic restart snapshots:
 ```ini
 [restart]
 interval = 3600   # Write restart file every 3600 seconds (1 hour)
 ```
-
 
 To resume a simulation from a restart file:
 ```ini
@@ -291,13 +278,11 @@ restart_file = out/real/restart_000060.nc
 
 When resuming, pre-restart rows in `diag.csv` are preserved automatically.
 
-
 ---
 
 ## 6. Verification & Validation
 
 CPPWRF includes an independent, black-box verification suite located in `tests/verify/`.
-
 
 ### Independent Verification Harness (`verify.py`)
 Run standard verification commands:
@@ -317,7 +302,6 @@ python3 tests/verify/verify.py compare out/cpu out/cuda --rtol 1e-4
 python3 tests/verify/verify.py convergence out/dx100 out/dx50 out/dx25
 ```
 
-
 ### Real-Data WRF Output Comparison (`compare_real.py`)
 Compare CPPWRF real-data simulations directly against WRF reference runs:
 ```bash
@@ -330,24 +314,27 @@ Reports max absolute difference and relative $L_2$ errors across all 3D fields (
 Run the automated CTest unit and regression suites:
 ```bash
 # Core C++ unit tests
-tools/heavy.sh ctest --test-dir build-cpu --output-on-failure
+ctest --test-dir build-cpu --output-on-failure
 
 # Python translation tool tests
-tools/heavy.sh python3 tests/tools/test_wrf2cppwrf.py -v
+python3 tests/tools/test_wrf2cppwrf.py -v
 ```
-
 
 ---
 
-## 7. Performance & Shared-Machine Operational Rules
+## 7. Performance
 
-When developing and running on shared compute resources (12 cores, 15 GB RAM, 1 GPU), adherence to team operational rules is mandatory:
+Measured on a workstation with an NVIDIA RTX 2060 (6 GB) and a 12-core x86-64 CPU, for the real-data
+domain 119 x 89 x 44 (15 km, dt = 60 s, 1 h):
 
-- **Job Slots (`tools/heavy.sh`):** Wrap builds, model runs, and tests with `tools/heavy.sh <cmd>` (runs in one of 4 slots with `OMP_NUM_THREADS=3 OMP_WAIT_POLICY=passive`).
-- **Quick Jobs (`--light`):** For small compiles, ncdump, short Python checks, or quick 1-2 step test runs, use `tools/heavy.sh --light <cmd>` (runs immediately without waiting for a slot, `OMP_NUM_THREADS=2`, `nice -n 5`).
-- **Exclusive Profiling (`--exclusive`):** Formal performance benchmarks, GPU profiling, and timings must run under `tools/heavy.sh --exclusive <cmd>`. It waits until all 4 slots are simultaneously free and blocks new heavy jobs. Timings measured while other jobs run are invalid.
-- **Build Concurrency:** Restrict build concurrency to `-j4` at most.
-- **Measured Stepping Speeds:**
-  - Dry dycore on CPU (12-core x86-64, AVX2, OMP=3): ~30–50 ns/cell/step in FP32.
-  - Dry dycore on GPU (NVIDIA RTX 3050): ~3–8 ns/cell/step.
-  - Real-data simulations with active physics suite (sfclayrev + Noah LSM + YSU PBL + Kain-Fritsch + RRTMG + WSM6): ~4000–5000 ns/cell/step on CPU.
+| Configuration | Time per cell and step |
+|---|---|
+| Dry dynamics, CUDA FP32 | ~32 ns |
+| Dynamics + WSM6, CUDA FP32 | ~52 ns |
+
+The 1 h dry run takes 1.26 s on the GPU in FP32 (WRF v4.6.1 with 4 OpenMP threads: 13.2 s) and 4.3 s
+in FP64 (serial WRF real*8: 37.9 s). The memory-traffic budget of the large step is in docs/PERF.md.
+
+`tools/heavy.sh` is a small helper that serialises heavy jobs (builds, runs, test suites) on a shared
+workstation: `tools/heavy.sh <command>` runs in one of four job slots, `--light` runs at once with two
+OpenMP threads, and `--exclusive` waits for an idle machine (use it for timings).

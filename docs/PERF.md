@@ -3,7 +3,7 @@
 Model: each 3D field touched by a kernel is read (or written) once from DRAM per kernel,
 i.e. stencil neighbours are assumed to hit cache; 1D base-state arrays and 2D fields are
 negligible (O(1/nz)). Bytes per cell for FP32 (x2 for FP64). These are **counts from the
-code, not measurements**; measured ns/cell/step will be added once M1 runs.
+code, not measurements**; measured times are in docs/STATUS.md.
 
 ## Large step, per RK stage
 | Kernel | reads (3D) | writes (3D) | B/cell FP32 |
@@ -31,7 +31,7 @@ x-z: 3 x 176 + 40 + 36 ≈ **604 B/cell** (FP32); 3D: 3 x 220 + 40 + 48 ≈ **74
 At 336 GB/s this is a lower bound of ~1.8 ns/cell/step (x-z) for the large step alone on the
 RTX 2060; the acoustic substeps (n_sound/2 + n_sound + 1 substeps) come on top.
 
-## Known inefficiencies (to revisit after M1 is correct)
+## Known inefficiencies
 - KTendU/V/W/T recompute both face fluxes per cell (2x flux arithmetic, no scratch arrays).
 - Separate halo-fill launches per field (14 per stage x up to 2 launches).
 - `copy_dev` on CPU is a single-threaded memcpy.

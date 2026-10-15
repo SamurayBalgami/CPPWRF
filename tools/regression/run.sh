@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CPPWRF Regression Runner
+# CPPWRF regression runner
 # Usage: tools/regression/run.sh [--quick|--full] [--gpu]
 
 set -u
@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-# Rules for the shared machine:
+# Modest threading so that concurrent jobs on the machine are not starved
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
 export OMP_WAIT_POLICY="${OMP_WAIT_POLICY:-passive}"
 

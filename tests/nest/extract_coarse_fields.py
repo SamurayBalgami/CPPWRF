@@ -2,14 +2,15 @@
 """
 Extract realistic coarse fields from WRF run_R0_r8 wrfout for the nesting tests.
 """
+import os
 import sys
 import struct
 import numpy as np
 import netCDF4 as nc
 
 def main():
-    wrfout_path = "/home/ostriquetrum/wrf_real/run_R0_r8/wrfout_d01_2026-10-12_00:00:00"
-    out_bin_path = sys.argv[1] if len(sys.argv) > 1 else "/home/ostriquetrum/cppwrf_scratch/nest_test/coarse_fields.bin"
+    wrfout_path = os.path.expanduser("~/wrf_real/") + "run_R0_r8/wrfout_d01_2026-10-12_00:00:00"
+    out_bin_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.environ.get("CPPWRF_SCRATCH", os.path.expanduser("~/cppwrf_scratch")), "nest_test/coarse_fields.bin")
 
     print(f"Reading {wrfout_path}...")
     ds = nc.Dataset(wrfout_path, 'r')

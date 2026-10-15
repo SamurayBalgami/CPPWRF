@@ -20,11 +20,11 @@ echo "================================================================="
 if [ ! -f "${BUILD_DIR}/libwrfbdy_ref.a" ] || [ "${BUILD_DIR}/bdy_fortran_bridge.f90" -nt "${BUILD_DIR}/libwrfbdy_ref.a" ]; then
     echo "[1/3] Compiling Fortran reference objects and bridge..."
     tools/heavy.sh gfortran -c -fdefault-real-8 -fdefault-double-8 -O2 \
-        -I/home/ostriquetrum/wrf_real/WRF-4.6.1-r8/frame \
-        -I/home/ostriquetrum/wrf_real/WRF-4.6.1-r8/share \
-        -I/home/ostriquetrum/wrf_real/WRF-4.6.1-r8/dyn_em \
-        -I/home/ostriquetrum/wrf_real/WRF-4.6.1-r8/main \
-        -I/home/ostriquetrum/wrf_real/WRF-4.6.1-r8/inc \
+        -I${WRF_DIR:-$HOME/wrf_real/WRF-4.6.1-r8}/frame \
+        -I${WRF_DIR:-$HOME/wrf_real/WRF-4.6.1-r8}/share \
+        -I${WRF_DIR:-$HOME/wrf_real/WRF-4.6.1-r8}/dyn_em \
+        -I${WRF_DIR:-$HOME/wrf_real/WRF-4.6.1-r8}/main \
+        -I${WRF_DIR:-$HOME/wrf_real/WRF-4.6.1-r8}/inc \
         -I"${BUILD_DIR}" "${BUILD_DIR}/bdy_fortran_bridge.f90" \
         -o "${BUILD_DIR}/bdy_fortran_bridge.o" -J"${BUILD_DIR}"
 
