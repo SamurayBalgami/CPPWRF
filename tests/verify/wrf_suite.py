@@ -54,15 +54,17 @@ CASES = [
     ("real_p1_fp32_1h", "cuda", "configs/real_p1_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P1", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P1/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-4, "W": 1e-2, "THM": 2e-6, "QV": 1e-4}),
-    # P1 + WSM6 + diff_opt 1/km_opt 4 (run P5_r8): step 1 at roundoff. From step 2 on
-    # WSM6 amplifies input roundoff ~1e8 (CPU vs CUDA FP64 QICE 7e-5): only step 1 is checked.
-    ("real_p5_r8_fp64_cpu", "cpu_dp", "configs/real_p5_r8.ini", ["run.run_time=60"],
-     f"{WR}/run_P5_r8/wrfout_d01_2026-10-12_00:00:00", 60,
-     {"U": 1e-13, "W": 1e-10, "THM": 1e-14, "QV": 1e-14, "MU": 1e-14, "QCLOUD": 1e-10, "QICE": 1e-10}),
-    # P2 (+Kain-Fritsch cu_physics=1): 3 steps at roundoff in FP64; at step 6 (t=360s) a 2-layer
-    # saturated USL at (j=77,i=8) with WKL<1e-4 has TLCL-TENV == 0 algebraically (1-ULP trigger flip).
+    # P5 = P1 + WSM6 + diff_opt 1/km_opt 4: bit-identical for 3 steps and 1 h
+    ("real_p5_r8_fp64_cpu", "cpu_dp", "configs/real_p5_r8.ini", [],
+     f"{WR}/run_P5_r8/wrfout_d01_2026-10-12_00:00:00", 180,
+     {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0, "QCLOUD": 0.0, "QICE": 0.0}),
+    ("real_p5_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p5_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P5_r8_1h", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_P5_r8_1h/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0, "QSNOW": 0.0}),
+    # P2 (+Kain-Fritsch cu_physics=1): bit-identical (3 steps here, 1 h above)
     ("real_p2_r8_fp64_cpu", "cpu_dp", "configs/real_p2_r8.ini", [], f"{WR}/run_P2_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
-     {"U": 1e-13, "W": 1e-10, "PH": 1e-14, "THM": 1e-14, "QV": 1e-14, "MU": 1e-14}),
+     {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
     ("real_p2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p2_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P2_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-4, "W": 5e-3, "THM": 3e-6, "QV": 2e-4}),
@@ -75,24 +77,27 @@ CASES = [
     ("real_p3_fp32_1h", "cuda", "configs/real_p3_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P3", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P3/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-4, "W": 1e-2, "THM": 2e-6, "QV": 1e-4}),
-    # P4 (KF + WSM6 + RRTMG with clouds, effective radii): step 1 at roundoff except one KF column where
-    # a cancelling 1e-25 qr at cloud top has the opposite sign of WRF's and WSM6 turns it into a 1e-7
-    # QRAIN difference (docs/PHYSICS_SUITE.md section 9); cloudy RRTMG is checked column by column.
-    ("real_p4_r8_fp64_cpu", "cpu_dp", "configs/real_p4_r8.ini", ["run.run_time=60"],
-     f"{WR}/run_P4_r8/steps/wrfout_d01_2026-10-12_00:00:00", 60,
-     {"U": 1e-13, "W": 1e-10, "PH": 1e-14, "THM": 1e-9, "QV": 1e-7, "MU": 1e-14}),
+    # P4 (KF + WSM6 + RRTMG with clouds, effective radii + diffusion): bit-identical for 3 steps and 1 h
+    # (only the COSZEN diagnostic differs: radiation_driver's vector cos/sin)
+    ("real_p4_r8_fp64_cpu", "cpu_dp", "configs/real_p4_r8.ini", [],
+     f"{WR}/run_P4_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
+    ("real_p4_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p4_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_P4_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0}),
     ("real_p4_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p4_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P4_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 6e-4, "W": 1e-2, "THM": 8e-6, "QV": 5e-4}),
     # P6 = P5 with Thompson (mp_physics = 8; WRF r8 built with -fdefault-double-8, see PHYSICS_SUITE.md
-    # section 11): steps 1-3 and 10 min (rain, ice, snow, ni, nr active) at roundoff, then amplification.
+    # section 11): bit-identical for 3 steps and 1 h
     ("real_p6_r8_fp64_cpu", "cpu_dp", "configs/real_p6_r8.ini", [], f"{WR}/run_P6_r8/steps/wrfout_d01_2026-10-12_00:00:00",
-     180, {"U": 1e-13, "W": 1e-10, "THM": 1e-14, "QV": 1e-14, "QCLOUD": 1e-10}),
-    ("real_p6_r8_fp64_cpu_10min", "cpu_dp", "configs/real_p6_r8.ini",
-     ["run.run_time=600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_P6_r8/wrfout_d01_2026-10-12_00:00:00", 600,
-     {"U": 1e-12, "THM": 1e-14, "QV": 1e-13, "QCLOUD": 1e-11, "QRAIN": 1e-11, "QICE": 1e-11, "QNICE": 1e-11,
-      "QNRAIN": 1e-11}),
+     180, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0}),
+    ("real_p6_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p6_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_P6_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0, "QNICE": 0.0,
+      "QNRAIN": 0.0}),
     ("real_p6_fp32_1h", "cuda", "configs/real_p6_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P6/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 5e-4, "W": 1e-2, "THM": 1e-5, "QV": 5e-4}),
