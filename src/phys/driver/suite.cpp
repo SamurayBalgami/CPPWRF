@@ -1,5 +1,7 @@
 #include "phys/driver/suite.hpp"
 
+#include "core/vm_dump.hpp"
+
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -882,8 +884,15 @@ void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
                               re_snow_, &tsk, &albedo, &emiss, &xland, &xice, &snow},
               RadiationOutputs{&pt.rthraten, &glw, &gsw, &swdown, &coszen, &cldfra});
   }
+  vmdump::dump("vm_phy_prep", 1,
+               {&prep.th_phy, &prep.pi_phy, &prep.t_phy, &prep.p_hyd, &prep.p_hyd_w, &prep.p8w, &prep.t8w, &prep.rho,
+                &prep.dz8w, &prep.z, &prep.u_phy, &prep.v_phy, &prep.p_phy});
   surface_driver(s);
+  vmdump::dump("vm_surface", 1, {},
+               {&hfx, &qfx, &ust, &znt, &mol, &qsfc, &tsk, &flhc, &flqc, &br, &psim, &psih, &wspd, &u10, &v10, &t2,
+                &th2, &q2, &lh, &grdflx, &pblh, &regime, &zol, &fm, &fh, &rmol, &canwat});
   pbl_driver(s);
+  vmdump::dump("vm_pbl", 1, {&pt.rublten, &pt.rvblten, &pt.rthblten, &pt.rqvblten, &exch_h}, {&pblh});
   cumulus_driver(s, b);
 }
 

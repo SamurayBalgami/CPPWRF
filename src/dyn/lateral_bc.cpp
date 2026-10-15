@@ -71,6 +71,7 @@ struct KRelax {
   V3 o3; V2 o2; C3 f3; C2 f2; bool two;
   C2 mut; A1 c1, c2; bool massw; B2 msf; bool use_msf;
   SlabSet s; Ring r; A1 fcx, gcx; real dtbc;
+  bool direct = false;  // scalars: accumulated straight into the tendency (WRF association)
   CPPWRF_HD real F(int i, int j, int k) const {
     const real x = two ? f2(i, j) : f3(i, j, k);
     return massw ? x * (c1(k) * mut(i, j) + c2(k)) : x;
@@ -99,7 +100,9 @@ struct KRelax {
     }
     const real val = fcx(b) * fls0 - gcx(b) * (fls1 + fls2 + fls3 + fls4 - real(4) * fls0);
     if (two) o2(i, j) += val;
-    else o3(i, j, k) += use_msf ? val * msf(i, j) : val;  // rk_addtend_dry: *_tendf += *_save * msf
+    else if (direct)  // relax_bdy_scalar: moist_tend = moist_tend + fcx*fls0 - gcx*(...) (it may hold physics)
+      o3(i, j, k) = o3(i, j, k) + fcx(b) * fls0 - gcx(b) * (fls1 + fls2 + fls3 + fls4 - real(4) * fls0);
+    else o3(i, j, k) += use_msf ? val * msf(i, j) : val;  // dry: via *_save (zero), then *_tendf += *_save*msf
   }
 };
 
@@ -353,7 +356,7 @@ void LateralBC::relax_scalar(int n, Field3& q_tend, const Field3& q, const State
   const ScalarData& d = sdata_[n];
   parallel_for(ring_range(r, g_.nz, relax_zone_ - 1),
                KRelax{q_tend.view(), {}, q.cview(), {}, false, s.mut.cview(), b.c1h.view(), b.c2h.view(), true, {},
-                      false, scalar_slabs(d.data, d.off, g_.nz, g_.ny, g_.nx), r, fcx, gcx, real(dtbc)});
+                      false, scalar_slabs(d.data, d.off, g_.nz, g_.ny, g_.nx), r, fcx, gcx, real(dtbc), true});
 }
 
 void LateralBC::spec_scalar(int n, Field3& q_tend) const {

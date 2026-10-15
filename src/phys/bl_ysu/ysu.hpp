@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdio>
 
 #include <algorithm>
 #include <cassert>
@@ -234,6 +235,7 @@ struct YSUKernel {
   real xlv;
   real rv;
 
+  int dbg_i = -1, dbg_j = -1;  // debug print of one column (host)
   CPPWRF_HD void operator()(int i, int j) const {
     using std::abs;
     using std::exp;
@@ -934,11 +936,11 @@ struct YSUKernel {
     }
 
     for (int k = 0; k < nz - 1; ++k) {
-      real du_dz = (ux(i, j, k + 1) - ux(i, j, k)) / dza[k + 1];
-      real dv_dz = (vx(i, j, k + 1) - vx(i, j, k)) / dza[k + 1];
-      real term_u = -hgamu / hpbl(i, j) + du_dz;
-      real term_v = -hgamv / hpbl(i, j) + dv_dz;
-      real shear_ysu = xkzm[k] * (term_u * du_dz + term_v * dv_dz);
+      const real du = ux(i, j, k + 1) - ux(i, j, k), dv = vx(i, j, k + 1) - vx(i, j, k);
+      real term_u = -hgamu / hpbl(i, j) + du / dza[k + 1];
+      real term_v = -hgamv / hpbl(i, j) + dv / dza[k + 1];
+      // WRF: (term)*(ux(k+1)-ux(k))/dza(k+1), i.e. (term*du)/dza
+      real shear_ysu = xkzm[k] * (term_u * du / dza[k + 1] + term_v * dv / dza[k + 1]);
       real buoy_ysu = xkzh[k] * g * (real(1.0) / thx[k]) * (-hgamt / hpbl(i, j) + (thx[k + 1] - thx[k]) / dza[k + 1]);
 
       real zk = karman * zq[k + 1];
@@ -980,6 +982,15 @@ struct YSUKernel {
       ad[0] = real(1.0) + fric;
     }
 
+#if !defined(__CUDA_ARCH__)
+    if (i == dbg_i && j == dbg_j) {
+      std::printf("CY fric ad1 vconvfx pblh_ysu hpbl ust wspd1 wspd rhox %24.16E%24.16E%24.16E%24.16E%24.16E%24.16E%24.16E%24.16E%24.16E\n",
+                  double(fric), double(ad[0]), double(vconvfx), double(pblh_ysu), double(hpbl(i, j)), double(ust(i, j)),
+                  double(wspd1), double(wspd(i, j)), double(rhox));
+      std::printf("CY hgamu ufxpbl xkzm1 xkzm2 zfacent1 del1 %24.16E%24.16E%24.16E%24.16E%24.16E%24.16E\n", double(hgamu),
+                  double(ufxpbl), double(xkzm[0]), double(xkzm[1]), double(zfacent[0]), double(del[0]));
+    }
+#endif
     f1[0] = ux(i, j, 0) + uoxl * (ust(i, j) * ust(i, j)) * rhox * g / del[0] * dt2 / wspd1 * (wspd_ratio * wspd_ratio);
     f2[0] = vx(i, j, 0) + voxl * (ust(i, j) * ust(i, j)) * rhox * g / del[0] * dt2 / wspd1 * (wspd_ratio * wspd_ratio);
 

@@ -69,6 +69,7 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
   // time-t state (WRF small_step_prep, rk_step == 1)
   s.u_1.copy_from(s.u_2); s.v_1.copy_from(s.v_2); s.w_1.copy_from(s.w_2);
   s.t_1.copy_from(s.t_2); s.ph_1.copy_from(s.ph_2); s.mu_1.copy_from(s.mu_2);
+  fill_halo(s.mu_1, g_);  // WRF: MU_1 = MU_2 on the domain, then set_physical_bc2d(mu_1) fills its halo
   for (int n = 0; n < s.n_scalars(); ++n) s.q_1[n].copy_from(s.q_2[n]);  // rk_update_scalar, rk_step 1
   const double dt = g_.dt, dts = dt / n_sound_;
   for (int rk = 1; rk <= 3; ++rk) {
@@ -78,7 +79,9 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
     large_.prep(s, b);
     if (rk == 1 && cp_) {  // first_rk_step_part1: init_zero_tendency, then the column physics
       large_.zero_tendf(t);
+      { const char* e = std::getenv("CPPWRF_VM_DUMP_STEP"); vmdump::on() = vm_step_ == (e ? std::atol(e) - 1 : 0); }
       cp_->part1(s, b, t);
+      vmdump::on() = false;
     }
     if (rk == 1 && dd_) dd_->prepare(s, b);  // first_rk_step_part2: metrics, deformation, K
     large_.tendencies(s, t, b, rk);  // part2 (diffusion, update_phy_ten) + rk_tendency

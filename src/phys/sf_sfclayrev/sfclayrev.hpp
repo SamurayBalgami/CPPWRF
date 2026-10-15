@@ -275,6 +275,7 @@ struct SFClayRevKernel {
   real ep2;
   real karman;
   real p1000mb;
+  int nx = 0;  // WRF's i loop (its..ite): glibc libmvec lanes of the vectorised pow loops (cppwrf::vm)
 
   CPPWRF_HD void operator()(int i, int j) const {
     using std::abs;
@@ -299,12 +300,12 @@ struct SFClayRevKernel {
 
     // WRF lines 226-231: Convert ground temp to potential temp
     real tgdsa = tsk(i, j);
-    real thgb = tsk(i, j) * pow(p1000mb / psfcpa(i, j), rovcp);
+    real thgb = tsk(i, j) * vm::pow(p1000mb / psfcpa(i, j), rovcp, i, nx);  // WRF loop 5: vectorised (libmvec)
 
     // WRF lines 253-263
     real pl = p1d(i, j) / real(1000.0);
     real scr3 = t1d(i, j);
-    real thcon = pow(p1000mb * real(0.001) / pl, rovcp);
+    real thcon = pow(p1000mb * real(0.001) / pl, rovcp);  // scalar in WRF (loop 30 is not vectorised)
     real thx = scr3 * thcon;
     real scr4 = scr3;
     real thvx = thx;

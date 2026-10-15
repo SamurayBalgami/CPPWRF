@@ -80,6 +80,7 @@ void run_sfclayrev(
       lh, u10, v10, th2, t2, q2, ck, cka, cd, cda,
       tables, isfflx, shalwater_z0, isftcflx, iz0tlnd, scm_force_flux,
       cp, g, rovcp, r, xlv, svp1, svp2, svp3, svpt0, ep1, ep2, karman, p1000mb};
+  kernel.nx = range.i0 == 0 ? range.i1 : 0;  // WRF row its..ite (lanes only for the whole-row launch)
 
   column_for(range, kernel);
 }

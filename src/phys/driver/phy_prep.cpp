@@ -22,6 +22,7 @@ struct KPhyPrep {
   View1<const real> c1h, c2h, fnm, fnp, dnw;
   real p_top;
   int nz, use_theta_m;
+  int nx;  // WRF's i loop (vectorised libm lanes, cppwrf::vm)
   View3<real> th_phy, th_phy_m_t0, p_phy, pi_phy, t_phy, rho, u_phy, v_phy, z, z_at_w, dz8w, p8w, t8w, p_hyd,
       p_hyd_w;
 
@@ -36,7 +37,7 @@ struct KPhyPrep {
     for (int k = 0; k < nz; ++k) {
       th_phy_m_t0(i, j, k) = th_phy(i, j, k) - t0;
       p_phy(i, j, k) = p(i, j, k) + pb(i, j, k);
-      pi_phy(i, j, k) = rpow(p_phy(i, j, k) / p1000mb, rcp);
+      pi_phy(i, j, k) = vm::pow(p_phy(i, j, k) / p1000mb, rcp, i, nx);
       t_phy(i, j, k) = th_phy(i, j, k) * pi_phy(i, j, k);
       rho(i, j, k) = real(1.) / alt(i, j, k) * (real(1.) + q[p_qv](i, j, k));
       u_phy(i, j, k) = real(0.5) * (u(i, j, k) + u(i + 1, j, k));
@@ -63,7 +64,7 @@ struct KPhyPrep {
       z2 = z(i, j, nz - 2);
       w1 = (z0 - z2) / (z1 - z2);
       w2 = real(1.) - w1;
-      p8w(i, j, nz) = std::exp(w1 * rlog(p_phy(i, j, nz - 1)) + w2 * rlog(p_phy(i, j, nz - 2)));
+      p8w(i, j, nz) = vm::exp(w1 * vm::log(p_phy(i, j, nz - 1), i, nx) + w2 * vm::log(p_phy(i, j, nz - 2), i, nx), i, nx);
       t8w(i, j, nz) = w1 * t_phy(i, j, nz - 1) + w2 * t_phy(i, j, nz - 2);
     }
     p_hyd_w(i, j, kte) = p_top;
@@ -98,6 +99,7 @@ void run_phy_prep(const dyn::State& s, const dyn::BaseState& b, PhyPrepFields& p
   k.c1h = b.c1h.view(); k.c2h = b.c2h.view(); k.fnm = b.fnm.view(); k.fnp = b.fnp.view(); k.dnw = b.dnw.view();
   k.p_top = real(b.p_top);
   k.nz = s.t_2.layout().nz;
+  k.nx = s.t_2.layout().nx;
   k.use_theta_m = params.use_theta_m;
   k.th_phy = p.th_phy.view(); k.th_phy_m_t0 = p.th_phy_m_t0.view(); k.p_phy = p.p_phy.view();
   k.pi_phy = p.pi_phy.view(); k.t_phy = p.t_phy.view(); k.rho = p.rho.view(); k.u_phy = p.u_phy.view();
