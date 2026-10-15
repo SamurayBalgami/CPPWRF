@@ -61,7 +61,10 @@ struct SuiteOptions {
   int sf_sfclay_physics = 1;     // SFCLAYREVSCHEME
   int sf_surface_physics = 2;    // LSMSCHEME (Noah)
   int bl_pbl_physics = 1;        // YSUSCHEME
-  int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME, 16 = NTIEDTKESCHEME
+  int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME, 3 = GFSCHEME, 16 = NTIEDTKESCHEME
+  int ishallow = 0;              // Grell-Freitas shallow convection (WRF ishallow)
+  int gf_ichoice = 0;            // Grell-Freitas closure (WRF clos_choice)
+  double gf_sec2 = 1.e9;         // value WRF's get_inversion_layers finds in its unset sec_deriv(2)
   int num_soil_layers = 4;
   double bldt = 0;               // minutes; 0 = every step
   double cudt = 0;               // minutes; 0 = every step
@@ -96,8 +99,8 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   void part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) override;
   void part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) override;
   void after_rk(const dyn::State& s, const dyn::BaseState& b) override;
-  Field3* th_forcing() override { return o_.cu_physics == 16 ? &pt.rthften : nullptr; }
-  Field3* qv_forcing() override { return o_.cu_physics == 16 ? &pt.rqvften : nullptr; }
+  Field3* th_forcing() override { return o_.cu_physics == 16 || o_.cu_physics == 3 ? &pt.rthften : nullptr; }
+  Field3* qv_forcing() override { return o_.cu_physics == 16 || o_.cu_physics == 3 ? &pt.rqvften : nullptr; }
 
   long itimestep = 0;  // WRF grid%itimestep (incremented in part1, as solve_em does per step)
   int stepbl = 1;      // WRF grid%stepbl (set_physics_rconfigs: nint(bldt*60/dt), >= 1)
@@ -154,6 +157,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   noah::NoahTables noah_tables_;
   sfclayrev::SFClayRevTables<real>* d_sfclay_tables_ = nullptr;  // device copy, uploaded once
   cu_kf::KFTables<real>* d_kf_tables_ = nullptr;                 // device copy, uploaded once
+  void* d_gfinv_ = nullptr;  // Grell-Freitas: per-column inversion-layer info for the row scan
   // Noah driver scratch (inputs/outputs of SFLX per point)
   Field2 n_lwdn, n_soldn, n_solnet, n_sfcprs, n_prcp, n_sfctmp, n_th2, n_q2, n_q2sat, n_dqsdt2, n_ffrozp,
       n_shdfac, n_shmin, n_shmax, n_albbrd, n_snoalb1, n_tbot, n_z0brd, n_emissi, n_embrd, n_cmc, n_t1,
@@ -166,7 +170,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
 
   void surface_driver(const dyn::State& s);
   void pbl_driver(const dyn::State& s);
-  void cumulus_driver(const dyn::State& s);
+  void cumulus_driver(const dyn::State& s, const dyn::BaseState& b);
   void advance_ppt(const dyn::State& s);
 };
 

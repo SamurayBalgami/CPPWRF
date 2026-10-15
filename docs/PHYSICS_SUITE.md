@@ -437,3 +437,34 @@ steps/ every minute; FP32: `run_P7`):
 - 1 h: CUDA FP64 U 4.2e-7, W 1.4e-5, THM 1.1e-8, QV 1.8e-6 (CPU FP64 the same size); CUDA FP32 vs
   single-precision WRF U 6.8e-4, W 1.6e-2, THM 8.1e-6, QV 3.2e-4.
 wrf_suite: real_p7_r8_fp64_cpu, real_p7_r8_fp64_cuda_1h, real_p7_fp32_1h, restart_p7_fp64.
+
+## 13. Grell-Freitas cumulus (cu_physics = 3)
+
+Port: `src/phys/cu_gf/` = WRF 4.6.1 `module_cu_gf_deep.F` (CUP_gf), `module_cu_gf_sh.F` (CUP_gf_sh,
+`ishallow = 1`) and `module_cu_gf_wrfdrv.F` (GFDRV) with WRF's settings (imid = 0, dicycle = 1,
+irainevap = 0, autoconv = 1, aeroevap = 1, no stochastic perturbations, `clos_choice` = phys.clos_choice).
+Driver glue `KGrellFreitas` in `src/phys/driver/suite.cpp`; it uses the same RTHFTEN/RQVFTEN forcing as
+New Tiedtke (GF combines it with RTHRATEN/RTHBLTEN itself). Columns within 4 points of a specified
+boundary get no tendencies (ibegc/iendc), RUCUTEN/RVCUTEN are computed but WRF's phy_cu_ten does not add
+them, RQCCUTEN/RQICUTEN split at T = 258 K.
+
+Two WRF behaviours that are not "one column at a time":
+- **Vector pow.** gfortran vectorises the zu/zd profile loops (get_zu_zd_pdf_fim) and calls glibc's
+  libmvec `_ZGVbN2vv_pow` for pairs of iterations; it differs from scalar pow in the last bit, which GF's
+  cancelling closures (aa1 - aa0) turn into 1e-10. The CPU path calls the same function (cppwrf_core links
+  libmvec); the GPU uses its own pow.
+- **Row-carried scratch.** get_inversion_layers (shallow) resets its sec_deriv once per row and then lets
+  each column's search see the previous column's values; CPPWRF runs the shallow scheme in three
+  passes (per column, per-row scan, per column) to reproduce that. It also reads the never-set
+  sec_deriv(2) when kbcon = 2 (phys.gf_sec2, default 1e9; not seen to matter in P8).
+
+**Column replay** (tests/phys/cu_gf): GFDRV's inputs dumped from CPPWRF at P8 steps 1, 5 and 10 run
+through WRF's objects: every column bit-identical (deep only and shallow + deep).
+
+**Acceptance** (P8 = P2 with cu_physics = 3, ishallow = 1; `~/wrf_real/run_P8_r8` r8d8, steps/ every
+minute for 10 min; FP32 `run_P8`):
+- CPU FP64, 10 min: U 3.2e-14, THM 3.9e-16, QV 6.3e-15; RTHCUTEN 3e-11, RAINC 1e-11.
+- 1 h: CPU FP64 U 8.3e-10, RAINC 6.4e-11; CUDA FP64 U 3.3e-10, W 7.4e-9 (205 ns/cell/step).
+- CUDA FP32 vs single-precision WRF, 1 h: U 5.9e-4, W 2.2e-2, RAINC 8e-2 (WRF r8 vs WRF FP32 differ by
+  U 9e-4, RAINC 0.12).
+wrf_suite: real_p8_r8_fp64_cpu_10min, real_p8_r8_fp64_cuda_1h, real_p8_fp32_1h, restart_p8_fp64.

@@ -93,6 +93,18 @@ CASES = [
     ("real_p7_fp32_1h", "cuda", "configs/real_p7_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P7", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P7/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-3, "W": 5e-2, "THM": 3e-5, "QV": 8e-4}),
+    # P8 = P2 with Grell-Freitas (cu_physics = 3, ishallow = 1); reference WRF-4.6.1-r8d8. Column replay of
+    # GFDRV through WRF's objects is bit-identical (tests/phys/cu_gf); GF's closures cancel (aa1 - aa0), so
+    # roundoff in its inputs shows as ~1e-11 in RTHCUTEN/RAINC.
+    ("real_p8_r8_fp64_cpu_10min", "cpu_dp", "configs/real_p8_r8.ini", ["run.run_time=600"],
+     f"{WR}/run_P8_r8/steps/wrfout_d01_2026-10-12_00:00:00", 600,
+     {"U": 1e-13, "W": 1e-10, "PH": 1e-14, "THM": 1e-14, "QV": 1e-13, "MU": 1e-14}),
+    ("real_p8_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p8_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P8_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_P8_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-7, "W": 1e-6, "THM": 1e-9, "QV": 1e-7}),
+    ("real_p8_fp32_1h", "cuda", "configs/real_p8_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_P8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-3, "W": 5e-2, "THM": 3e-5, "QV": 8e-4}),
     # Nesting: one-way (N1) and two-way (N2, feedback changes d01 by 5e-3) vs WRF r8
     ("real_n1_r8_fp64_cpu", "cpu_dp", "configs/real_n1_steps.ini", [],
      {d: f"{WR}/run_N1_r8/steps/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 180,
@@ -204,7 +216,8 @@ def main():
             ok &= good
     if (not a.only or "restart" in a.only) and a.cpu_dp and os.path.exists(a.cpu_dp):
         for tag, cfg, rd in (("p1", "configs/real_p1_r8.ini", "run_P1_r8"),
-                             ("p7", "configs/real_p7_r8.ini", "run_P7_r8")):
+                             ("p7", "configs/real_p7_r8.ini", "run_P7_r8"),
+                             ("p8", "configs/real_p8_r8.ini", "run_P8_r8")):
             good, msg = restart_p1(a.cpu_dp, os.path.join(a.out, f"restart_{tag}"), cfg, rd)
             if good is None:
                 print(f"SKIP  restart_{tag}_fp64        ({msg})")

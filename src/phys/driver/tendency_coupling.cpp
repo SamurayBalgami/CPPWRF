@@ -139,6 +139,12 @@ void update_phy_ten(dyn::Tendencies& t, PhysicsTendencies& pt, const dyn::State&
     if (s.P_QI >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QI].view(), pt.rqicuten.cview()});
     if (s.P_QS >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QS].view(), pt.rqscuten.cview()});
   }
+  if (f.cu_physics == 3) {  // phy_cu_ten, GFSCHEME: no momentum (RUCUTEN/RVCUTEN are not added)
+    parallel_for(ar, KAddA2A{t.t_tendf.view(), pt.rthcuten.cview()});
+    if (s.P_QV >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QV].view(), pt.rqvcuten.cview()});
+    if (s.P_QC >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QC].view(), pt.rqccuten.cview()});
+    if (s.P_QI >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QI].view(), pt.rqicuten.cview()});
+  }
   if (f.cu_physics == 16) {  // phy_cu_ten, NTIEDTKESCHEME
     if (!g.specified()) fill_halos({&pt.rucuten, &pt.rvcuten}, g);
     parallel_for(a2c_u_range(g), KAddA2CU{t.ru_tendf.view(), pt.rucuten.cview()});
@@ -180,7 +186,7 @@ void phy_prep_part2(PhysicsTendencies& pt, const dyn::State& s, const dyn::BaseS
     if (s.P_QC >= 0) decouple(pt.rqcblten);
     if (s.P_QI >= 0) decouple(pt.rqiblten);
   }
-  if (f.cu_physics == 16) {  // advective forcing of the cumulus scheme
+  if (f.cu_physics == 16 || f.cu_physics == 3) {  // advective forcing of the cumulus scheme
     if (s.P_QV >= 0) decouple(pt.rqvften);
     decouple(pt.rthften);
     if (f.theta_m)

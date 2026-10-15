@@ -385,7 +385,7 @@ bool DomainRunner::start() {
       if (m_.st->P_QR >= 0) extra_3d_.push_back(&su.pt.rqrcuten);
       if (m_.st->P_QI >= 0) extra_3d_.push_back(&su.pt.rqicuten);
       if (m_.st->P_QS >= 0) extra_3d_.push_back(&su.pt.rqscuten);
-      if (su.options().cu_physics == 16)
+      if (su.options().cu_physics == 16 || su.options().cu_physics == 3)
         extra_3d_.insert(extra_3d_.end(), {&su.pt.rucuten, &su.pt.rvcuten, &su.pt.rthften, &su.pt.rqvften});
     }
     if (m_.st->P_QC >= 0) extra_3d_.push_back(&su.pt.rqcblten);
