@@ -413,7 +413,7 @@ struct KFKernel {
         int l5 = 0;
         int llfc = 0;
         for (int k = 0; k < kx; ++k) {
-            T es = aliq * exp((bliq * t0[k] - cliq) / (t0[k] - dliq));
+            T es = aliq * vm::exp((bliq * t0[k] - cliq) / (t0[k] - dliq), k, kx);  // vectorised in WRF (libmvec)
             qes[k] = static_cast<T>(0.622) * es / (p0[k] - es);
             q0[k] = (qes[k] < qv0[k]) ? qes[k] : qv0[k];
             if (q0[k] < static_cast<T>(0.000001)) q0[k] = static_cast<T>(0.000001);
@@ -779,7 +779,7 @@ struct KFKernel {
                     qice[nk1] = qice[nk1] * upold / upnew;
                     pptliq[nk1] = qlqout[nk1] * umf[nk];
                     pptice[nk1] = qicout[nk1] * umf[nk];
-                    trppt += pptliq[nk1] + pptice[nk1];
+                    trppt = trppt + pptliq[nk1] + pptice[nk1];  // WRF order (TRPPT+PPTLIQ)+PPTICE
                     if (nk1 <= kpbl) uer[nk1] += vmflcl * dp[nk1] / dpthmx;
                 }
             } // updraft loop
@@ -972,9 +972,9 @@ struct KFKernel {
         for (int nk = 0; nk <= ltop; ++nk) {
             ems[nk] = dp[nk] * dxsq / g;
             emsd[nk] = static_cast<T>(1.0) / ems[nk];
-            exn[nk] = pow(p00 / p0[nk], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qdt[nk]));
+            exn[nk] = vm::pow(p00 / p0[nk], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qdt[nk]), nk, ltop + 1);
             thtau[nk] = tu[nk] * exn[nk];
-            exn[nk] = pow(p00 / p0[nk], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * q0[nk]));
+            exn[nk] = vm::pow(p00 / p0[nk], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * q0[nk]), nk, ltop + 1);
             thta0[nk] = t0[nk] * exn[nk];
             ddilfrc[nk] = static_cast<T>(1.0) / dilfrc[nk];
             omg[nk] = static_cast<T>(0.0);
@@ -1314,7 +1314,7 @@ struct KFKernel {
             }
 
             for (int nk = 0; nk <= ltop; ++nk) {
-                exn[nk] = pow(p00 / p0[nk], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qg[nk]));
+                exn[nk] = vm::pow(p00 / p0[nk], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qg[nk]), nk, ltop + 1);
                 tg[nk] = thtag[nk] / exn[nk];
                 tvg[nk] = tg[nk] * (static_cast<T>(1.0) + static_cast<T>(0.608) * qg[nk]);
             }
@@ -1452,7 +1452,7 @@ struct KFKernel {
         if (ishall == 1) {
             for (int nk = k_start; nk <= k_end; ++nk) {
                 T umf_new = umf[nk] / dxsq;
-                T xcldfra = static_cast<T>(0.07) * log(static_cast<T>(1.0) + (static_cast<T>(500.0) * umf_new));
+                T xcldfra = static_cast<T>(0.07) * vm::log(static_cast<T>(1.0) + (static_cast<T>(500.0) * umf_new), nk - k_start, k_end - k_start + 1);
                 if (xcldfra < static_cast<T>(0.01)) xcldfra = static_cast<T>(0.01);
                 if (xcldfra > static_cast<T>(0.2)) xcldfra = static_cast<T>(0.2);
                 cldfra_sh_kf(i, j, nk) = xcldfra;
@@ -1460,7 +1460,7 @@ struct KFKernel {
         } else {
             for (int nk = k_start; nk <= k_end; ++nk) {
                 T umf_new = umf[nk] / dxsq;
-                T xcldfra = static_cast<T>(0.14) * log(static_cast<T>(1.0) + (static_cast<T>(500.0) * umf_new));
+                T xcldfra = static_cast<T>(0.14) * vm::log(static_cast<T>(1.0) + (static_cast<T>(500.0) * umf_new), nk - k_start, k_end - k_start + 1);
                 if (xcldfra < static_cast<T>(0.01)) xcldfra = static_cast<T>(0.01);
                 if (xcldfra > static_cast<T>(0.6)) xcldfra = static_cast<T>(0.6);
                 cldfra_dp_kf(i, j, nk) = xcldfra;
