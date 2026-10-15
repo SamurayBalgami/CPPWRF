@@ -1150,8 +1150,7 @@ struct KFKernel {
                 ddr[nk] *= ddinc;
             }
             cpr = trppt;
-            pptflx = trppt - tder;
-            if (pptflx < static_cast<T>(0.0)) pptflx = static_cast<T>(0.0);
+            pptflx = trppt - tder;  // WRF: no clip (TDER*DDINC <= TRPPT; can round to a tiny negative)
             peff = pptflx / trppt;
 
             if (ldb > 0) {
@@ -1570,10 +1569,9 @@ struct KFKernel {
             dqdt[k_idx] = (qg[k_idx] - q0[k_idx]) / timec;
         }
 
+        // WRF: PRATEC = PPTFLX*(1.-FBFRC)/DXSQ, RAINCV = DT*PRATEC, unclipped (can be a tiny negative)
         pratec(i, j) = pptflx * (static_cast<T>(1.0) - fbfrc) / dxsq;
-        if (pratec(i, j) < static_cast<T>(0.0)) pratec(i, j) = static_cast<T>(0.0);
         raincv(i, j) = dt * pratec(i, j);
-        if (raincv(i, j) < static_cast<T>(0.0)) raincv(i, j) = static_cast<T>(0.0);
         cutop(i, j) = static_cast<T>(ltop + 1); // 1-based level
         cubot(i, j) = static_cast<T>(lcl + 1);  // 1-based level
 

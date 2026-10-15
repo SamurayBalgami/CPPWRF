@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 
 #include "core/backend.hpp"
 #include "core/field.hpp"
@@ -386,7 +388,7 @@ struct NoahKernel {
     wdf = dwsat * std::pow(factr2, expon);
     if (sicemax > real(0.0)) {
       real term = real(500.0) * sicemax;
-      real vkwgt = real(1.0) / (real(1.0) + term * term * term);
+      real vkwgt = real(1.0) / (real(1.0) + std::pow(term, real(3.0)));  // WRF: (500.*SICEMAX)**3. (libm pow)
       wdf = vkwgt * wdf + (real(1.0) - vkwgt) * dwsat * std::pow(factr1, expon);
     }
     expon = real(2.0) * bexp + real(3.0);
@@ -1363,6 +1365,7 @@ struct NoahKernel {
              fxexp, csoil, beta_val, drip_val, dew_val, flx1_val, flx2_val, flx3_val, esnow_val,
              etns_val, cur_emissi, cur_ribb, soldn(i, j), isurban, vtyp, styp, opt_thcnd);
       eta_kin = esnow_val + etns_val - real(1000.0) * dew_val;
+      sncovr(i, j) = cur_sncovr;  // SNOPAC sets SNCOVR = 0 when the pack melts away (SFLX's inout SNCOVR)
     }
 
     // Diagnostics and unit conversions

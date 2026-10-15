@@ -83,8 +83,10 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
       cp_->part1(s, b, t);
       vmdump::on() = false;
     }
+    if (rk == 1) { const char* e = std::getenv("CPPWRF_VM_DUMP_STEP"); vmdump::on() = vm_step_ == (e ? std::atol(e) - 1 : 0); }
     if (rk == 1 && dd_) dd_->prepare(s, b);  // first_rk_step_part2: metrics, deformation, K
     large_.tendencies(s, t, b, rk);  // part2 (diffusion, update_phy_ten) + rk_tendency
+    vmdump::on() = false;
     { const char* e = std::getenv("CPPWRF_VM_DUMP_STEP"); vmdump::on() = vm_step_ == (e ? std::atol(e) - 1 : 0); }
     vmdump::dump("vm_tend_rk", rk, {&t.ru_tend, &t.rv_tend, &t.rw_tend, &t.ph_tend, &t.t_tend, &s.ru, &s.rv, &s.php, &s.alt, &s.ww}, {&s.muu, &s.mut});
     small_->ss.run_stage(s, t, b, real(dt_rk), real(dts_rk), ns, rk);
@@ -97,8 +99,12 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
   ++vm_step_;
   if (cp_) cp_->after_rk(s, b);  // phy_prep_part2
   if (phys_ && phys_->params().mp_physics != 0) {  // moist_physics_prep/microphysics/finish, calc_p_rho_phi
+    { const char* e = std::getenv("CPPWRF_VM_DUMP_STEP"); vmdump::on() = vm_step_ - 1 == (e ? std::atol(e) - 1 : 0); }
     phys_->step(s, b, real(dt));
-    small_->ss.calc_p_rho_phi(s, b);
+    vmdump::on() = false;
+    // solve_em scalar_tile_loop_1ba: calc_p_rho_phi on the tile without the spec zone
+    if (bc_) small_->ss.calc_p_rho_phi_interior(s, b, bc_->spec_zone());
+    else small_->ss.calc_p_rho_phi(s, b);
   }
   if (bc_) {  // spec_bdy_final: exact boundary values at t + dt
     bc_->final(s, b);

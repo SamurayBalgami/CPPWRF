@@ -138,6 +138,12 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   void set_effective_radii(Field3* re_cloud, Field3* re_ice, Field3* re_snow) {
     re_cloud_ = re_cloud; re_ice_ = re_ice; re_snow_ = re_snow;
   }
+  // grid-scale precipitation of the last step (PhysicsCoupling): WRF's grid%rainncv and grid%sr, read by
+  // surface_driver (RAINBL) and the Noah LSM (FFROZP = SR); sr = nullptr for schemes without it (WRF: 0)
+  void set_microphysics_precip(const Field2* rainncv_mp, const Field2* sr_mp) {
+    rainncv_mp_ = rainncv_mp; sr_mp_ = sr_mp;
+  }
+  const Field2 *rainncv_mp_ = nullptr, *sr_mp_ = nullptr;
   Field3 cldfra;  // radiation cloud fraction (WRF CLDFRA)
   bool radiation_on() const { return o_.rad.ra_lw_physics != 0 || o_.rad.ra_sw_physics != 0; }
   bool t1_lag_set_ = false;

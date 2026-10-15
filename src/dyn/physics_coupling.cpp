@@ -6,6 +6,7 @@
 #include "core/backend.hpp"
 #include "core/constants.hpp"
 #include "core/halo.hpp"
+#include "core/vm_dump.hpp"
 #include "phys/mp_kessler/kessler.hpp"
 #include "phys/mp_thompson/thompson.hpp"
 #include "phys/mp_wsm6/wsm6.hpp"
@@ -29,6 +30,7 @@ constexpr real T0 = real(cst::t0);
 struct KPrep {
   C3 t, qv, ph, al, p; B3 phb, alb, pb;
   V3 th_phy, hd, qvd, rho, pii, z, dz8w, p_phy;
+  int i0, ni;  // WRF's i loop (its..ite = i0..i0+ni-1): gfortran pairs it into libmvec's 2-lane pow (cppwrf::vm)
   CPPWRF_HD void operator()(int i, int j, int k) const {
     const real zw0 = (ph(i, j, k) + phb(i, j, k)) / real(cst::g);
     const real zw1 = (ph(i, j, k + 1) + phb(i, j, k + 1)) / real(cst::g);
@@ -41,7 +43,7 @@ struct KPrep {
     qvd(i, j, k) = q;
     rho(i, j, k) = real(1) / (al(i, j, k) + alb(i, j, k));
     p_phy(i, j, k) = p(i, j, k) + pb(i, j, k);
-    pii(i, j, k) = rpow((p(i, j, k) + pb(i, j, k)) / real(cst::p1000mb), real(cst::rcp));  // WRF REAL
+    pii(i, j, k) = vm::pow((p(i, j, k) + pb(i, j, k)) / real(cst::p1000mb), real(cst::rcp), i - i0, ni);
   }
 };
 
@@ -124,14 +126,22 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
     throw std::runtime_error("mp_physics = 8 (Thompson) needs qv, qc, qr, qi, qs, qg, qni, qnr");
   const Grid& g = g_;
   Field3& qv = s.q_2[s.P_QV];
+  // solve_em calls moist_physics_prep_em on the tile without the spec zone (sz) in x (unless periodic_x)
+  // and y; only the lanes of its i loop matter here (the mp columns all lie inside it)
+  const int pz = g.bc_x == BC::Specified || g.bc_y == BC::Specified ? 1 : 0;
+  const int pi0 = g.bc_x == BC::Periodic ? 0 : pz;
   parallel_for(g.mass_cells(), KPrep{s.t_2.cview(), qv.cview(), s.ph_2.cview(), s.al.cview(), s.p.cview(),
                                      b.phb.view(), b.alb.view(), b.pb.view(), th_phy.view(), s.h_diabatic.view(),
-                                     qv_diabatic.view(), rho.view(), pii.view(), z.view(), dz8w.view(), p_phy.view()});
+                                     qv_diabatic.view(), rho.view(), pii.view(), z.view(), dz8w.view(), p_phy.view(), pi0, g.nx - 2 * pi0});
   namespace pc = phys::cst;
   // microphysics_driver: with specified boundaries the spec zone is skipped (sz = spec_zone)
   const int sx = g.bc_x == BC::Specified ? 1 : 0, sy = g.bc_y == BC::Specified ? 1 : 0;
   const Range2D mp_cols{sx, g.nx - sx, sy, g.ny - sy};
   if (p_.mp_physics == 6) {
+    // debug (CPPWRF_VM_DUMP): WSM6 inputs and outputs, for a replay through WRF's mp_wsm6
+    vmdump::dump("vm_mp_in", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS],
+                                 &s.q_2[s.P_QG], &rho, &pii, &p_phy, &dz8w},
+                 {&rainnc, &rainncv, &snownc, &snowncv, &graupelnc, &graupelncv, &sr});
     column_for(mp_cols,
                phys::wsm6::Wsm6Kernel<real>{wp_, dt, g.nz, th_phy.view(), qv.view(), s.q_2[s.P_QC].view(),
                                             s.q_2[s.P_QR].view(), s.q_2[s.P_QI].view(), s.q_2[s.P_QS].view(),
@@ -145,7 +155,14 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
                        real(4.99E-6), real(9.99E-6), real(50.E-6), real(125.E-6), real(999.E-6), th_phy.cview(),
                        pii.cview(), s.q_2[s.P_QC].cview(), s.q_2[s.P_QI].cview(), s.q_2[s.P_QS].cview(), rho.cview(),
                        re_cloud.view(), re_ice.view(), re_snow.view()});
+    vmdump::dump("vm_mp_out", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS],
+                                  &s.q_2[s.P_QG]},
+                 {&rainnc, &rainncv, &snownc, &snowncv, &graupelnc, &graupelncv, &sr});
   } else if (p_.mp_physics == 8) {
+    // debug (CPPWRF_VM_DUMP): Thompson inputs and outputs, for a replay through WRF's mp_gt_driver
+    vmdump::dump("vm_mp_in", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS],
+                                 &s.q_2[s.P_QG], &s.q_2[s.P_QNI], &s.q_2[s.P_QNR], &pii, &p_phy, &s.w_2, &dz8w},
+                 {&rainnc, &rainncv, &snownc, &snowncv, &graupelnc, &graupelncv, &sr});
     phys::mp_thompson::run_thompson<real>(
         th_phy.view(), qv.view(), s.q_2[s.P_QC].view(), s.q_2[s.P_QR].view(),
         s.q_2[s.P_QI].view(), s.q_2[s.P_QS].view(), s.q_2[s.P_QG].view(),
@@ -153,6 +170,9 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
         s.w_2.cview(), dz8w.cview(), rainnc.view(), rainncv.view(), snownc.view(),
         snowncv.view(), graupelnc.view(), graupelncv.view(), sr.view(),
         dt, mp_cols, g.nz, tp_.view());
+    vmdump::dump("vm_mp_out", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS],
+                                  &s.q_2[s.P_QG], &s.q_2[s.P_QNI], &s.q_2[s.P_QNR]},
+                 {&rainnc, &rainncv, &snownc, &snowncv, &graupelnc, &graupelncv, &sr});
   } else {
     column_for(mp_cols,
                phys::kessler::KesslerKernel{th_phy.view(), qv.view(), s.q_2[s.P_QC].view(), s.q_2[s.P_QR].view(),

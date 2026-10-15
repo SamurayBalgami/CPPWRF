@@ -184,10 +184,11 @@ struct KHorizDiff3DMP {
                   real(0.5) * ((c1(k) * mut(i, j + 1) + c2(k)) + (c1(k) * mut(i, j) + c2(k))) * rdy;
     real mrdy = msftx(i, j) * msfty(i, j) * rdy;
 
-    real dfield_xp = (field(i + 1, j, k) - field(i, j, k)) - (base_3d(i + 1, j, k) - base_3d(i, j, k));
-    real dfield_xm = (field(i, j, k) - field(i - 1, j, k)) - (base_3d(i, j, k) - base_3d(i - 1, j, k));
-    real dfield_yp = (field(i, j + 1, k) - field(i, j, k)) - (base_3d(i, j + 1, k) - base_3d(i, j, k));
-    real dfield_ym = (field(i, j, k) - field(i, j - 1, k)) - (base_3d(i, j, k) - base_3d(i, j - 1, k));
+    // WRF: field(i+1)-field(i)-base_3d(i+1)+base_3d(i), evaluated left to right
+    real dfield_xp = field(i + 1, j, k) - field(i, j, k) - base_3d(i + 1, j, k) + base_3d(i, j, k);
+    real dfield_xm = field(i, j, k) - field(i - 1, j, k) - base_3d(i, j, k) + base_3d(i - 1, j, k);
+    real dfield_yp = field(i, j + 1, k) - field(i, j, k) - base_3d(i, j + 1, k) + base_3d(i, j, k);
+    real dfield_ym = field(i, j, k) - field(i, j - 1, k) - base_3d(i, j, k) + base_3d(i, j - 1, k);
 
     tendency(i, j, k) += mrdx * (mkrdxp * dfield_xp - mkrdxm * dfield_xm) +
                          mrdy * (mkrdyp * dfield_yp - mkrdym * dfield_ym);

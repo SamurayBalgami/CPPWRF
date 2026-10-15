@@ -244,6 +244,9 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   su.init_radiation(m.xlat, m.xlong);
   if (auto* pc = m.rk->physics(); pc && pc->params().microp_re)
     su.set_effective_radii(&pc->re_cloud, &pc->re_ice, &pc->re_snow);
+  if (auto* pc = m.rk->physics(); pc && pc->params().mp_physics != 0)
+    su.set_microphysics_precip(&pc->rainncv,
+                               pc->params().mp_physics == 6 || pc->params().mp_physics == 8 ? &pc->sr : nullptr);
   m.rk->set_column_physics(m.suite.get());
 }
 #endif

@@ -1,4 +1,5 @@
 #include "dyn/large_step.hpp"
+#include "core/vm_dump.hpp"
 
 #include <stdexcept>
 
@@ -616,7 +617,9 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
     parallel_for(mr, kern::KDiffM{s.t_2.cview(), s.alt.cview(), b.t_init.view(), s.mut.cview(), c, t.t_tendf.view(),
                                   kh * p_.pr_inv, kv * p_.pr_inv, rdx, rdy, nz, do_y, true, true});
   }
+  if (rk_step == 1) vmdump::dump("vm_prerelax", 0, {&t.t_tendf});
   if (bc_ && rk_step == 1) bc_->relax_dry(s, t, b);  // relax_bdy_dry -> *_save -> *_tendf (rk_addtend_dry)
+  if (rk_step == 1) vmdump::dump("vm_addtend_in", 0, {&t.t_tendf, &s.h_diabatic});
   const bool tendf = diff || bc_ != nullptr || cp_ != nullptr || dd_ != nullptr;
   Field3* thf_field = cp_ ? cp_->th_forcing() : nullptr;
   const bool thf_on = thf_field != nullptr;

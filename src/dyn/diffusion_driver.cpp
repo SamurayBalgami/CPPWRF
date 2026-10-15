@@ -1,4 +1,5 @@
 #include "dyn/diffusion_driver.hpp"
+#include "core/vm_dump.hpp"
 
 #include <stdexcept>
 
@@ -62,6 +63,7 @@ void DiffusionDriver::prepare(const State& s, const BaseState& b) {
                        zx_.cview(), zy_.cview(), b.msftx.view(), b.msfty.view(), xkmh_.view(), xkmv_.view(),
                        xkhh_.view(), xkhv_.view(), g.nx, g.ny, g.nz);
   fill_halos({&xkmh_, &xkmv_, &xkhh_, &xkhv_}, g);
+  vmdump::dump("vm_xk", 0, {&xkhh_, &xkmh_});
 }
 
 // rk_tendency, rk_step 1 (module_em.F 800-935)

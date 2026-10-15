@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 // Scalar transport (moist species and passive tracers), WRF solve_em scalar section:
 // rk_scalar_tend (advect_scalar / advect_scalar_pd with the acoustic-step-averaged mass fluxes
 // ru_m, rv_m, ww_m; stage-1 diffusion into *_tendf) followed by rk_update_scalar
@@ -38,6 +39,7 @@ class ScalarTransport {
   const LateralBC* bc_ = nullptr;
   const DiffusionDriver* dd_ = nullptr;
   Field3* qvf_ = nullptr;
+  std::unique_ptr<Field3> dbg_qvf_;  // debug (CPPWRF_VM_DUMP): qv advection tendency sink
   Field3 q_new_, scale_;
   Field3 dhx_, lox_, dhy_, loy_, dhz_, loz_;  // advect_scalar_pd face fluxes (high - low, low)
 };

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <iostream>
 
 #include "core/backend.hpp"
@@ -561,7 +563,7 @@ struct ThompsonKernel {
             ocp[k] = Real(1.0) / (Real(Cp_val) * (Real(1.0) + Real(0.887) * qv_loc[k]));
             vsc2[k] = std::sqrt(rho[k] / visco[k]);
             lvap[k] = Real(lvap0) + (Real(2106.0) - Real(4218.0)) * tempc;
-            tcond[k] = (Real(5.69) + Real(0.0168) * tempc) * Real(1.0e-5 * 418.936);
+            tcond[k] = (Real(5.69) + Real(0.0168) * tempc) * Real(1.0e-5) * Real(418.936);  // WRF: (..)*1.0E-5 * 418.936
             twet[k] = temp[k];
         }
 
@@ -685,11 +687,12 @@ struct ThompsonKernel {
             N0_g[k] = ng[k] * tables.ogg2 * std::pow(lamg, tables.cge[1]);
         }
 
+        // gfortran vectorises this k loop (kte down to kts): libmvec's 2-lane pow (cppwrf::vm)
         for (int k = nz - 1; k >= 0; --k) {
-            Real lamr = std::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_loc[k] / rr[k], obmr);
+            Real lamr = vm::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_loc[k] / rr[k], obmr, nz - 1 - k, nz);
             ilamr[k] = Real(1.0) / lamr;
             mvd_r[k] = (Real(3.0) + Real(mu_r) + Real(0.672)) / lamr;
-            N0_r[k] = nr_loc[k] * tables.org2 * std::pow(lamr, tables.cre[1]);
+            N0_r[k] = nr_loc[k] * tables.org2 * vm::pow(lamr, tables.cre[1], nz - 1 - k, nz);
         }
 
         // Warm-rain processes
@@ -718,11 +721,10 @@ struct ThompsonKernel {
             if (rc[k] > Real(0.01e-3)) {
                 int nu_idx = nu_c - 1;
                 Real Dc_g = (std::pow(tables.ccg[2][nu_idx] * tables.ocg2[nu_idx], obmr) / lamc) * Real(1.0e6);
-                Real xDc3 = xDc * xDc * xDc;
-                Real Dc_g3 = Dc_g * Dc_g * Dc_g;
-                Real diff6 = xDc3 * Dc_g3 - xDc3 * xDc3;
+                // WRF's left-to-right products: xDc*xDc*xDc*Dc_g*Dc_g*Dc_g - xDc*xDc*xDc*xDc*xDc*xDc
+                Real diff6 = xDc * xDc * xDc * Dc_g * Dc_g * Dc_g - xDc * xDc * xDc * xDc * xDc * xDc;
                 Real Dc_b = (diff6 > Real(0.0)) ? std::pow(diff6, Real(1.0 / 6.0)) : Real(0.0);
-                Real arg_zeta = Real(6.25e-6) * xDc * (Dc_b * Dc_b * Dc_b) - Real(0.4);
+                Real arg_zeta = Real(6.25e-6) * xDc * Dc_b * Dc_b * Dc_b - Real(0.4);
                 Real zeta1 = Real(0.5) * (arg_zeta + std::abs(arg_zeta));
                 Real zeta = Real(0.027) * rc[k] * zeta1;
                 Real arg_tau = Real(0.5) * Dc_b - Real(7.5);
@@ -731,7 +733,7 @@ struct ThompsonKernel {
                 prr_wau[k] = zeta / tau;
                 Real max_wau = rc[k] * odts;
                 if (prr_wau[k] > max_wau) prr_wau[k] = max_wau;
-                pnr_wau[k] = prr_wau[k] / (Real(am_r) * Real(nu_c) * Real(10.0) * Real(D0r * D0r * D0r));
+                pnr_wau[k] = prr_wau[k] / (Real(am_r) * Real(nu_c) * Real(10.0) * Real(D0r) * Real(D0r) * Real(D0r));
                 Real mvd_c3 = mvd_c[k] * mvd_c[k] * mvd_c[k];
                 Real pnc_calc = prr_wau[k] / (Real(am_r) * mvd_c3);
                 Real max_pnc = nc[k] * odts;
@@ -900,7 +902,11 @@ struct ThompsonKernel {
 
             // Rain collecting graupel
             if (rr[k] >= tables.r_r[0] && rg[k] >= tables.r_g[0]) {
-                size_t racg_idx = tables.idx_racg(idx_g1 - 1, idx_g - 1, 0, idx_r1 - 1, idx_r - 1);
+                // WRF (not hail-aware) indexes the (ntb_g1, ntb_g, dimNRHG = 1, ntb_r1, ntb_r) tables with
+                // idx_bg = idx_bg1 = 5: past the size-1 dimension, i.e. 4 steps further along idx_r1 (an
+                // out-of-bounds read of WRF's; kept for identical results, clamped at the end of the table)
+                size_t racg_idx = tables.idx_racg(idx_g1 - 1, idx_g - 1, 4, idx_r1 - 1, idx_r - 1);
+                if (racg_idx >= N_RACG) racg_idx = N_RACG - 1;
                 if (twet[k] < Real(273.15)) {
                     prg_rcg[k] = tables.tmr_racg[racg_idx] + tables.tcr_gacr[racg_idx];
                     if (prg_rcg[k] > rr[k] * odts) prg_rcg[k] = rr[k] * odts;
@@ -1258,17 +1264,17 @@ struct ThompsonKernel {
                 if (xDc < Real(D0c)) {
                     lamc = tables.cce[1][nu_idx] / Real(D0c);
                     xnc = tables.ccg[0][nu_idx] * tables.ocg2[nu_idx] * xrc / Real(am_r) * std::pow(lamc, Real(bm_r));
-                    ncten[k] = (xnc * orho - nc1d[k]) * odts;
+                    ncten[k] = (xnc - nc1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 } else if (xDc > Real(D0r * 2.0)) {
                     lamc = tables.cce[1][nu_idx] / Real(D0r * 2.0);
                     xnc = tables.ccg[0][nu_idx] * tables.ocg2[nu_idx] * xrc / Real(am_r) * std::pow(lamc, Real(bm_r));
-                    ncten[k] = (xnc * orho - nc1d[k]) * odts;
+                    ncten[k] = (xnc - nc1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 }
             } else {
                 ncten[k] = -nc1d[k] * odts;
             }
             xnc = (nc1d[k] + ncten[k] * dtsave) * rho[k];
-            if (xnc > Real(Nt_c_max)) ncten[k] = (Real(Nt_c_max) * orho - nc1d[k]) * odts;
+            if (xnc > Real(Nt_c_max)) ncten[k] = (Real(Nt_c_max) - nc1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
 
             qiten[k] += (pri_inu[k] + pri_iha[k] + pri_ihm[k] + pri_wfz[k] + pri_rfz[k] + pri_ide[k]
                        - prs_iau[k] - prs_sci[k] - pri_rci[k]) * orho;
@@ -1287,17 +1293,17 @@ struct ThompsonKernel {
                     lami = tables.cie[1] / Real(5.0e-6);
                     Real term = tables.cig[0] * tables.oig2 * xri / Real(am_i) * std::pow(lami, Real(bm_i));
                     xni = (term < Real(999.0e3)) ? term : Real(999.0e3);
-                    niten[k] = (xni * orho - ni1d[k]) * odts;
+                    niten[k] = (xni - ni1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 } else if (xDi > Real(300.0e-6)) {
                     lami = tables.cie[1] / Real(300.0e-6);
                     xni = tables.cig[0] * tables.oig2 * xri / Real(am_i) * std::pow(lami, Real(bm_i));
-                    niten[k] = (xni * orho - ni1d[k]) * odts;
+                    niten[k] = (xni - ni1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 }
             } else {
                 niten[k] = -ni1d[k] * odts;
             }
             xni = (ni1d[k] + niten[k] * dtsave) * rho[k];
-            if (xni > Real(999.0e3)) niten[k] = (Real(999.0e3) * orho - ni1d[k]) * odts;
+            if (xni > Real(999.0e3)) niten[k] = (Real(999.0e3) - ni1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
 
             qrten[k] += (prr_wau[k] + prr_rcw[k] + prr_sml[k] + prr_gml[k] + prr_rcs[k] + prr_rcg[k]
                        - prg_rfz[k] - pri_rfz[k] - prr_rci[k]) * orho;
@@ -1315,12 +1321,12 @@ struct ThompsonKernel {
                     mvd_r[k] = Real(2.5e-3);
                     lamr = (Real(3.0) + Real(mu_r) + Real(0.672)) / mvd_r[k];
                     xnr = tables.crg[1] * tables.org3 * xrr * std::pow(lamr, Real(bm_r)) / Real(am_r);
-                    nrten[k] = (xnr * orho - nr1d[k]) * odts;
+                    nrten[k] = (xnr - nr1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 } else if (mvd_r[k] < Real(D0r) * Real(0.75)) {
                     mvd_r[k] = Real(D0r) * Real(0.75);
                     lamr = (Real(3.0) + Real(mu_r) + Real(0.672)) / mvd_r[k];
                     xnr = tables.crg[1] * tables.org3 * xrr * std::pow(lamr, Real(bm_r)) / Real(am_r);
-                    nrten[k] = (xnr * orho - nr1d[k]) * odts;
+                    nrten[k] = (xnr - nr1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 }
             } else {
                 qrten[k] = -qr1d[k] * odts;
@@ -1347,12 +1353,12 @@ struct ThompsonKernel {
                     mvd_g[k] = Real(25.4e-3);
                     lamg = (Real(3.0) + Real(mu_g) + Real(0.672)) / mvd_g[k];
                     xng = tables.cgg[1] * tables.ogg3 * xrg * std::pow(lamg, Real(bm_g)) / Real(am_g5);
-                    ngten[k] = (xng * orho - ng1d[k]) * odts;
+                    ngten[k] = (xng - ng1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 } else if (mvd_g[k] < Real(D0r)) {
                     mvd_g[k] = Real(D0r);
                     lamg = (Real(3.0) + Real(mu_g) + Real(0.672)) / mvd_g[k];
                     xng = tables.cgg[1] * tables.ogg3 * xrg * std::pow(lamg, Real(bm_g)) / Real(am_g5);
-                    ngten[k] = (xng * orho - ng1d[k]) * odts;
+                    ngten[k] = (xng - ng1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 }
             } else {
                 qgten[k] = -qg1d[k] * odts;
@@ -1391,7 +1397,7 @@ struct ThompsonKernel {
             }
             vsc2[k] = std::sqrt(rho[k] / visco[k]);
             lvap[k] = Real(lvap0) + (Real(2106.0) - Real(4218.0)) * tempc;
-            tcond[k] = (Real(5.69) + Real(0.0168) * tempc) * Real(1.0e-5 * 418.936);
+            tcond[k] = (Real(5.69) + Real(0.0168) * tempc) * Real(1.0e-5) * Real(418.936);  // WRF: (..)*1.0E-5 * 418.936
             ocp[k] = Real(1.0) / (Real(Cp_val) * (Real(1.0) + Real(0.887) * qv_loc[k]));
             lvt2[k] = lvap[k] * lvap[k] * ocp[k] * Real(oRv_val) * otemp * otemp;
 
@@ -1515,11 +1521,12 @@ struct ThompsonKernel {
             N0_g[k] = ng[k] * tables.ogg2 * std::pow(lamg, tables.cge[1]);
         }
 
+        // gfortran vectorises this k loop (kte down to kts): libmvec's 2-lane pow (cppwrf::vm)
         for (int k = nz - 1; k >= 0; --k) {
-            Real lamr = std::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_loc[k] / rr[k], obmr);
+            Real lamr = vm::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_loc[k] / rr[k], obmr, nz - 1 - k, nz);
             ilamr[k] = Real(1.0) / lamr;
             mvd_r[k] = (Real(3.0) + Real(mu_r) + Real(0.672)) / lamr;
-            N0_r[k] = nr_loc[k] * tables.org2 * std::pow(lamr, tables.cre[1]);
+            N0_r[k] = nr_loc[k] * tables.org2 * vm::pow(lamr, tables.cre[1], nz - 1 - k, nz);
         }
 
         // Condensation & evaporation of cloud water
@@ -1578,7 +1585,7 @@ struct ThompsonKernel {
                 }
                 vsc2[k] = std::sqrt(rho[k] / visco[k]);
                 lvap[k] = Real(lvap0) + (Real(2106.0) - Real(4218.0)) * tempc;
-                tcond[k] = (Real(5.69) + Real(0.0168) * tempc) * Real(1.0e-5 * 418.936);
+                tcond[k] = (Real(5.69) + Real(0.0168) * tempc) * Real(1.0e-5) * Real(418.936);  // WRF: (..)*1.0E-5 * 418.936
                 ocp[k] = Real(1.0) / (Real(Cp_val) * (Real(1.0) + Real(0.887) * qv_loc[k]));
 
                 Real rvs = rho[k] * qvs[k];
@@ -1667,10 +1674,11 @@ struct ThompsonKernel {
                 rhof[k] = std::sqrt(Real(RHO_NOT) / rho[k]);
                 if (rr[k] > Real(R1)) {
                     Real lamr = std::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_loc[k] / rr[k], obmr);
+                    // gfortran pairs the two (lamr+fv_r)**(-cre) into one libmvec pow (SLP): vector lanes
                     vtrk[k] = rhof[k] * Real(av_r) * tables.crg[5] * tables.org3 * std::pow(lamr, tables.cre[2])
-                            * std::pow(lamr + Real(fv_r), -tables.cre[5]);
+                            * vm::pow(lamr + Real(fv_r), -tables.cre[5], 0, 2);
                     vtnrk[k] = rhof[k] * Real(av_r) * tables.crg[6] / tables.crg[11] * std::pow(lamr, tables.cre[11])
-                             * std::pow(lamr + Real(fv_r), -tables.cre[6]);
+                             * vm::pow(lamr + Real(fv_r), -tables.cre[6], 0, 2);
                 } else {
                     vtrk[k] = vtrk[k + 1];
                     vtnrk[k] = vtnrk[k + 1];

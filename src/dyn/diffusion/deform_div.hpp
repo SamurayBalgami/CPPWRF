@@ -136,14 +136,15 @@ struct KDeform12 {
     for (int k = 0; k < nz; ++k) {
       real tmpzy = real(0.25) * (zy(im1, j, k) + zy(i0, j, k) +
                                  zy(im1, j, k + 1) + zy(i0, j, k + 1));
-      real rdzw_avg = real(0.25) * (rdzw(i0, j0, k) + rdzw(im1, j0, k) +
-                                    rdzw(im1, jm1, k) + rdzw(i0, jm1, k));
-      real tmp1_u = (hatavg_u[k + 1] - hatavg_u[k]) * tmpzy * rdzw_avg;
+      // WRF: (dhat * 0.25 * tmpz * (sum of the four rdzw)), each term with its own sum order
+      real tmp1_u = (hatavg_u[k + 1] - hatavg_u[k]) * real(0.25) * tmpzy *
+                    (rdzw(i0, j0, k) + rdzw(im1, j0, k) + rdzw(im1, jm1, k) + rdzw(i0, jm1, k));
       real term_u = mm * (rdy * (hat_up[k] - hat_um[k]) - tmp1_u);
 
       real tmpzx = real(0.25) * (zx(i, jm1, k) + zx(i, j0, k) +
                                  zx(i, jm1, k + 1) + zx(i, j0, k + 1));
-      real tmp1_v = (hatavg_v[k + 1] - hatavg_v[k]) * tmpzx * rdzw_avg;
+      real tmp1_v = (hatavg_v[k + 1] - hatavg_v[k]) * real(0.25) * tmpzx *
+                    (rdzw(i0, j0, k) + rdzw(i0, jm1, k) + rdzw(im1, jm1, k) + rdzw(im1, j0, k));
       real term_v = mm * (rdx * (hat_vp[k] - hat_vm[k]) - tmp1_v);
 
       defor12(i, j, k) = term_u + term_v;
@@ -176,12 +177,12 @@ struct KDeform13 {
 
     defor13(i, j, 0) = real(0);
     for (int k = 1; k < nz; ++k) {
-      real rdz_avg = real(0.5) * (rdz(i0, j, k) + rdz(im1, j, k));
-      real tmp1_w = (hatavg[k] - hatavg[k - 1]) * zx(i, j, k) * rdz_avg;
+      const real rdz_sum = rdz(i0, j, k) + rdz(im1, j, k);
+      real tmp1_w = (hatavg[k] - hatavg[k - 1]) * zx(i, j, k) * real(0.5) * rdz_sum;
       real dwdx = mm * (rdx * (hat_wp[k] - hat_wm[k]) - tmp1_w);
-      real u_cur  = u(i, j, k)     - (mix_full_fields ? real(0) : u_base(k));
-      real u_prev = u(i, j, k - 1) - (mix_full_fields ? real(0) : u_base(k - 1));
-      real dudz = (u_cur - u_prev) * rdz_avg;
+      // WRF: (u - u_base(k) - u(k-1) + u_base(k-1)) * 0.5 * (rdz + rdz)
+      real dudz = mix_full_fields ? (u(i, j, k) - u(i, j, k - 1)) * real(0.5) * rdz_sum
+                                   : (u(i, j, k) - u_base(k) - u(i, j, k - 1) + u_base(k - 1)) * real(0.5) * rdz_sum;
       defor13(i, j, k) = dwdx + dudz;
     }
     defor13(i, j, nz) = real(0);
@@ -213,12 +214,12 @@ struct KDeform23 {
 
     defor23(i, j, 0) = real(0);
     for (int k = 1; k < nz; ++k) {
-      real rdz_avg = real(0.5) * (rdz(i, j0, k) + rdz(i, jm1, k));
-      real tmp1_w = (hatavg[k] - hatavg[k - 1]) * zy(i, j, k) * rdz_avg;
+      const real rdz_sum = rdz(i, j0, k) + rdz(i, jm1, k);
+      real tmp1_w = (hatavg[k] - hatavg[k - 1]) * zy(i, j, k) * real(0.5) * rdz_sum;
       real dwdy = mm * (rdy * (hat_wp[k] - hat_wm[k]) - tmp1_w);
-      real v_cur  = v(i, j, k)     - (mix_full_fields ? real(0) : v_base(k));
-      real v_prev = v(i, j, k - 1) - (mix_full_fields ? real(0) : v_base(k - 1));
-      real dvdz = (v_cur - v_prev) * rdz_avg;
+      // WRF: (u - u_base(k) - u(k-1) + u_base(k-1)) * 0.5 * (rdz + rdz)
+      real dvdz = mix_full_fields ? (v(i, j, k) - v(i, j, k - 1)) * real(0.5) * rdz_sum
+                                   : (v(i, j, k) - v_base(k) - v(i, j, k - 1) + v_base(k - 1)) * real(0.5) * rdz_sum;
       defor23(i, j, k) = dwdy + dvdz;
     }
     defor23(i, j, nz) = real(0);

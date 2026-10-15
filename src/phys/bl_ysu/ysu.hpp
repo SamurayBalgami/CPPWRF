@@ -603,7 +603,9 @@ struct YSUKernel {
           rvls = real(100.0) * real(6.112) * exp(real(17.67) * (temps - real(273.15)) / (temps - real(29.65))) * (ep2 / p2di(i, j, k + 1));
           real rcldb = max((qvx(i, j, k) + qcxl[k]) - rvls, real(0.0));
 
-          real dthvx_cloud = (thlix[k + 2] + thx[k + 2] * ep1 * (qvx(i, j, k + 2) + qcxl[k + 2])) -
+          // WRF reads level k+2 unguarded (past the column when kpbl reaches the top); clamped here
+          const int k2 = k + 2 < nz ? k + 2 : nz - 1;
+          real dthvx_cloud = (thlix[k2] + thx[k2] * ep1 * (qvx(i, j, k2) + qcxl[k2])) -
                              (thlix[k] + thx[k] * ep1 * (qvx(i, j, k) + qcxl[k]));
           dthvx_cloud = max(dthvx_cloud, real(0.1));
           real tmp1 = xlv / cp * rcldb / (pi2d(i, j, k) * dthvx_cloud);

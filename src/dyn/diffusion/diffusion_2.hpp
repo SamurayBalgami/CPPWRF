@@ -238,7 +238,7 @@ struct KHorizDiffS2 {
 
   CPPWRF_HD void operator()(int i, int j) const {
     const int ktes1 = nz - 1;
-    real factor_top = real(0.5) * dnw(ktes1) / dn(ktes1);
+    const real dnw_top = dnw(ktes1), dn_top = dn(ktes1);
 
     // H1 along x: need at u points (i and i+1)
     real H1_0[128], H1_1[128];
@@ -250,11 +250,11 @@ struct KHorizDiffS2 {
       }
       H1avg[0] = real(0.5) * (cf1 * var(ii, j, 0) + cf2 * var(ii, j, 1) + cf3 * var(ii, j, 2) +
                               cf1 * var(ii - 1, j, 0) + cf2 * var(ii - 1, j, 1) + cf3 * var(ii - 1, j, 2));
-      H1avg[nz] = real(0.5) * (var(ii, j, nz - 1) + (var(ii, j, nz - 1) - var(ii, j, nz - 2)) * factor_top +
-                               var(ii - 1, j, nz - 1) + (var(ii - 1, j, nz - 1) - var(ii - 1, j, nz - 2)) * factor_top);
+      H1avg[nz] = real(0.5) * (var(ii, j, nz - 1) + (var(ii, j, nz - 1) - var(ii, j, nz - 2)) * real(0.5) * dnw_top / dn_top +
+                               var(ii - 1, j, nz - 1) + (var(ii - 1, j, nz - 1) - var(ii - 1, j, nz - 2)) * real(0.5) * dnw_top / dn_top);
 
       for (int k = 0; k < nz; ++k) {
-        real xkxavg = real(0.25) * (xkhh(ii - 1, j, k) + xkhh(ii, j, k)) * (rho(ii - 1, j, k) + rho(ii, j, k));
+        real xkxavg = real(0.5) * (xkhh(ii - 1, j, k) + xkhh(ii, j, k)) * real(0.5) * (rho(ii - 1, j, k) + rho(ii, j, k));
         real tmpzx = real(0.5) * (zx(ii, j, k) + zx(ii, j, k + 1));
         real rdzu = real(2.0) / (real(1.0) / rdzw(ii, j, k) + real(1.0) / rdzw(ii - 1, j, k));
         real h = -msfux(ii, j) * xkxavg * (rdx * (var(ii, j, k) - var(ii - 1, j, k)) -
@@ -274,11 +274,11 @@ struct KHorizDiffS2 {
       }
       H2avg[0] = real(0.5) * (cf1 * var(i, jj, 0) + cf2 * var(i, jj, 1) + cf3 * var(i, jj, 2) +
                               cf1 * var(i, jj - 1, 0) + cf2 * var(i, jj - 1, 1) + cf3 * var(i, jj - 1, 2));
-      H2avg[nz] = real(0.5) * (var(i, jj, nz - 1) + (var(i, jj, nz - 1) - var(i, jj, nz - 2)) * factor_top +
-                               var(i, jj - 1, nz - 1) + (var(i, jj - 1, nz - 1) - var(i, jj - 1, nz - 2)) * factor_top);
+      H2avg[nz] = real(0.5) * (var(i, jj, nz - 1) + (var(i, jj, nz - 1) - var(i, jj, nz - 2)) * real(0.5) * dnw_top / dn_top +
+                               var(i, jj - 1, nz - 1) + (var(i, jj - 1, nz - 1) - var(i, jj - 1, nz - 2)) * real(0.5) * dnw_top / dn_top);
 
       for (int k = 0; k < nz; ++k) {
-        real xkxavg = real(0.25) * (xkhh(i, jj - 1, k) + xkhh(i, jj, k)) * (rho(i, jj - 1, k) + rho(i, jj, k));
+        real xkxavg = real(0.5) * (xkhh(i, jj - 1, k) + xkhh(i, jj, k)) * real(0.5) * (rho(i, jj - 1, k) + rho(i, jj, k));
         real tmpzy = real(0.5) * (zy(i, jj, k) + zy(i, jj, k + 1));
         real rdzv = real(2.0) / (real(1.0) / rdzw(i, jj, k) + real(1.0) / rdzw(i, jj - 1, k));
         real h = -msfvy(i, jj) * xkxavg * (rdy * (var(i, jj, k) - var(i, jj - 1, k)) -

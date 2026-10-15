@@ -873,6 +873,8 @@ std::vector<std::pair<std::string, IntField2*>> PhysicsSuite::carried_int() {
 
 void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies&) {
   ++itimestep;  // solve_em: grid%itimestep = grid%itimestep + 1
+  if (rainncv_mp_) rainncv.copy_from(*rainncv_mp_);  // the microphysics' grid%rainncv and grid%sr
+  if (sr_mp_) sr.copy_from(*sr_mp_);
   run_phy_prep(s, b, prep, PhyPrepParams{o_.use_theta_m});
   if (rad_) {  // radiation_driver: xtime (minutes) and julian of the step start
     const double xtime = double(itimestep - 1) * g_.dt / 60.;
@@ -901,6 +903,8 @@ void PhysicsSuite::part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
   calculate_phy_tend(pt, s, b, g_, f);
   update_phy_ten(t, pt, s, g_, f);
   if (o_.use_theta_m == 1) {
+    vmdump::dump("vm_conv_in", 0, {&t.t_tendf, &t.q_tendf[s.P_QV], wrf_t1_lag && t1_lag_set_ ? &t1_lag_ : &s.t_1,
+                                   &s.q_1[s.P_QV]});
     if (!wrf_t1_lag) {
       conv_t_tendf_to_moist(t, s.t_1, s, g_);
     } else {  // grid%t_1 lags one step behind the dycore's t_1 here (see conv_t_tendf_to_moist)
@@ -909,6 +913,7 @@ void PhysicsSuite::part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
       t1_lag_.copy_from(s.t_1);
       t1_lag_set_ = true;
     }
+    vmdump::dump("vm_conv_out", 0, {&t.t_tendf});
   }
 }
 
@@ -1011,7 +1016,61 @@ void PhysicsSuite::surface_driver(const dyn::State& s) {
     nk.tables = noah_tables_;
     nk.rdlai2d = o_.rdlai2d; nk.usemonalb = o_.usemonalb;
     nk.active = n_active.cview(); nk.alb_out = n_albbrd.view();
+    // debug: CPPWRF_NOAH_DUMP=dir, CPPWRF_NOAH_DUMP_STEP=n: SFLX inputs/outputs of the land columns at step n
+    // in the stream format of tests/phys/lsm_noah/fortran/driver_noah.f90 (replay through WRF's SFLX)
+    const char* ndump = std::getenv("CPPWRF_NOAH_DUMP");
+    const char* nstep = std::getenv("CPPWRF_NOAH_DUMP_STEP");
+    const bool do_ndump = ndump && nstep && itimestep == std::atol(nstep);
+    std::vector<std::pair<int, int>> ncol;
+    auto L2 = n_lwdn.layout();
+    auto h2 = [&](const Field2& f) { std::vector<real> h; f.download(h); return h; };
+    auto hi = [&](const IntField2& f) { std::vector<int> h; f.download(h); return h; };
+    auto h3 = [&](const Field3& f) { std::vector<real> h; f.download(h); return h; };
+    auto write_cols = [&](std::FILE* fp, bool out) {
+      auto wr2 = [&](const Field2& f) { auto h = h2(f); for (auto [i, j] : ncol) { double v = h[L2.index(i, j, 0)]; std::fwrite(&v, 8, 1, fp); } };
+      auto wr3 = [&](const Field3& f) { auto h = h3(f); const Layout& L = f.layout();
+        for (int k = 0; k < nsoil; ++k) for (auto [i, j] : ncol) { double v = h[L.index(i, j, k)]; std::fwrite(&v, 8, 1, fp); } };
+      if (!out) {
+        for (const IntField2* f : {&n_vegtyp, &n_soiltyp, &n_slopetyp}) { auto h = hi(*f); for (auto [i, j] : ncol) { int v = h[L2.index(i, j, 0)]; std::fwrite(&v, 4, 1, fp); } }
+        for (const Field2* f : {&n_shdfac, &n_shmin, &n_shmax, &n_albbrd, &n_snoalb1, &n_tbot, &n_z0brd, &n_embrd, &n_lwdn, &n_soldn,
+                                &n_solnet, &n_sfcprs, &n_prcp, &n_sfctmp, &n_th2, &n_q2, &n_q2, &n_q2sat, &n_dqsdt2, &n_ffrozp,
+                                &n_cmc, &n_t1, &n_snowhk, &n_sneqv, &n_albedok, &n_chk, &n_cm, &n_emissi, &n_z0k, &n_xlai,
+                                &n_snotime1, &n_ribb}) wr2(*f);
+        wr3(n_stc); wr3(n_smc); wr3(n_swc);
+      } else {
+        for (const Field2* f : {&n_eta, &n_sheat, &n_eta_kin, &n_fdown, &n_ec, &n_edir, &n_ett, &n_esnow, &n_drip, &n_dew,
+                                &n_beta, &n_etp, &n_ssoil, &n_flx1, &n_flx2, &n_flx3, &n_snomlt, &n_sncovr, &n_runoff1,
+                                &n_runoff2, &n_runoff3, &n_rc, &n_pc, &n_rsmin, &n_soilw, &n_soilm, &n_q1, &n_cmc, &n_t1,
+                                &n_snowhk, &n_sneqv, &n_albedok, &n_emissi, &n_z0k, &n_xlai, &n_snotime1, &n_ribb}) wr2(*f);
+        wr3(n_stc); wr3(n_smc); wr3(n_swc); wr3(n_et); wr3(n_smav);
+      }
+    };
+    if (do_ndump) {
+      auto act = hi(n_active);
+      for (int j = cols.j0; j < cols.j1; ++j)
+        for (int i = cols.i0; i < cols.i1; ++i)
+          if (act[L2.index(i, j, 0)]) ncol.emplace_back(i, j);
+      std::FILE* fp = std::fopen((std::string(ndump) + "/noah_in.bin").c_str(), "wb");
+      const int hdr[2] = {int(ncol.size()), nsoil};
+      std::fwrite(hdr, 4, 2, fp);
+      const double dd[2] = {double(dtbl), 0.0};
+      std::fwrite(dd, 8, 2, fp);
+      std::fwrite(&o_.isurban, 4, 1, fp);
+      for (int k = 0; k < nsoil; ++k) { double v = dzs[k]; std::fwrite(&v, 8, 1, fp); }
+      write_cols(fp, false);
+      std::fclose(fp);
+      fp = std::fopen((std::string(ndump) + "/noah_cols.txt").c_str(), "w");
+      for (auto [i, j] : ncol) std::fprintf(fp, "%d %d\n", i, j);
+      std::fclose(fp);
+    }
     noah::run_noah(nk, cols);
+    if (do_ndump) {
+      std::FILE* fp = std::fopen((std::string(ndump) + "/noah_out_c.bin").c_str(), "wb");
+      const int hdr[2] = {int(ncol.size()), nsoil};
+      std::fwrite(hdr, 4, 2, fp);
+      write_cols(fp, true);
+      std::fclose(fp);
+    }
 
     // SFLX_GLACIAL on the land-ice points (ICE == -1)
     KLsmGlacial gl{};

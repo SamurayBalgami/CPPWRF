@@ -57,6 +57,7 @@ CPPWRF_HD inline void cldprmc_sw_elem(int inflag, int iceflag, int liqflag, int 
         } else if (iceflag == 2) {
           double factor = (radice - 2.0) / 3.0;
           int index = static_cast<int>(factor);
+          if (index < 1) index = 1;  // WRF stops ('RADIUS OUT OF BOUNDS') below 5 um
           if (index == 43) index = 42;
           double fint = factor - static_cast<double>(index);
           int i0 = index - 1;
@@ -67,6 +68,7 @@ CPPWRF_HD inline void cldprmc_sw_elem(int inflag, int iceflag, int liqflag, int 
         } else if (iceflag >= 3) {
           double factor = (radice - 2.0) / 3.0;
           int index = static_cast<int>(factor);
+          if (index < 1) index = 1;  // WRF stops ('RADIUS OUT OF BOUNDS') below 5 um
           if (index >= 46) index = 45;
           double fint = factor - static_cast<double>(index);
           int i0 = index - 1;
@@ -81,6 +83,7 @@ CPPWRF_HD inline void cldprmc_sw_elem(int inflag, int iceflag, int liqflag, int 
         if (cswp > 0.0 && iceflag == 5) {
           double factor = (radsno - 2.0) / 3.0;
           int index = static_cast<int>(factor);
+          if (index < 1) index = 1;  // WRF stops ('RADIUS OUT OF BOUNDS') below 5 um
           if (index >= 46) index = 45;
           double fint = factor - static_cast<double>(index);
           int i0 = index - 1;

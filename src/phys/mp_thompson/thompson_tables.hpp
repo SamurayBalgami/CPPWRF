@@ -180,13 +180,13 @@ struct ThompsonTablesView {
         int n = ni_val;
         for (int nn = ni_val - 1; nn <= ni_val + 1; ++nn) {
             n = nn;
-            Real p10 = std::pow(Real(10.0), Real(nn));
+            Real p10 = powi(Real(10.0), nn);  // WRF: 10.**nn, INTEGER nn (__powidf2)
             Real scaled = val / p10;
             if (scaled >= Real(1.0) && scaled < Real(10.0)) {
                 break;
             }
         }
-        Real p10 = std::pow(Real(10.0), Real(n));
+        Real p10 = powi(Real(10.0), n);
         int idx = static_cast<int>(val / p10) + 10 * (n - ni_ref) - (n - ni_ref);
         if (idx < 1) idx = 1;
         if (idx > ntb_max) idx = ntb_max;

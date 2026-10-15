@@ -39,7 +39,7 @@ struct KSmag2dKm {
                                  defor12(i + 1, j, k) + defor12(i + 1, j + 1, k));
     def2 += d12_avg * d12_avg;
 
-    real mlen_h = std::sqrt((dx / msftx(i, j)) * (dy / msfty(i, j)));
+    real mlen_h = std::sqrt(dx / msftx(i, j) * dy / msfty(i, j));  // WRF: ((dx/msftx)*dy)/msfty
     real tmp = std::sqrt(def2);
     real kmh = c_s * c_s * mlen_h * mlen_h * tmp;
     kmh = kmh < real(10.0) * mlen_h ? kmh : real(10.0) * mlen_h;

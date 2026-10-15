@@ -245,9 +245,9 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
     Field3 &q1 = s.q_1[n], &q2 = s.q_2[n], &tf = t.q_tendf[n];
     const bool moist = n < s.n_moist;
     const bool pd = rk == 3 && (moist ? p_.moist_adv_opt : p_.scalar_adv_opt) == 1;
-    static Field3* dbg_f = nullptr;  // debug (CPPWRF_VM_DUMP): the qv advection tendency * msfty
-    if (vmdump::on() && !qvf_ && !dbg_f) dbg_f = new Field3(g, Stagger::M, "dbg_qvf");
-    Field3* fsink = qvf_ ? qvf_ : (vmdump::on() ? dbg_f : nullptr);
+    // debug (CPPWRF_VM_DUMP): the qv advection tendency * msfty
+    if (vmdump::on() && !qvf_ && !dbg_qvf_) dbg_qvf_ = std::make_unique<Field3>(g, Stagger::M, "dbg_qvf");
+    Field3* fsink = qvf_ ? qvf_ : (vmdump::on() ? dbg_qvf_.get() : nullptr);
     const bool want_ften = fsink != nullptr && n == s.P_QV;
     const V3 ften = want_ften ? fsink->view() : V3{};
     if (rk == 1) {  // rk_scalar_tend, rk_step == 1: diffusion into the held tendency (diff_opt = 1)

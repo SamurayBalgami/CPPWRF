@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <type_traits>
 #include <typeinfo>
+#include <stdexcept>
 #include <vector>
 
 #if defined(__CUDACC__)
@@ -65,6 +66,20 @@ extern "C" __m128d _ZGVbN2v_log(__m128d);
 extern "C" __m128d _ZGVbN2v_exp(__m128d);
 #define CPPWRF_HAVE_LIBMVEC 1
 #endif
+namespace cppwrf {
+// x**n for a variable INTEGER n as gfortran computes it: libgcc's __powidf2 (square-and-multiply,
+// 1/y for n < 0); differs from pow(x, double(n)) in the last bit for some arguments.
+template <typename T>
+CPPWRF_HD inline T powi(T x, int m) {
+  unsigned int n = m < 0 ? 0u - unsigned(m) : unsigned(m);
+  T y = (n % 2) ? x : T(1);
+  while (n >>= 1) {
+    x = x * x;
+    if (n % 2) y = y * x;
+  }
+  return m < 0 ? T(1) / y : y;
+}
+}  // namespace cppwrf
 namespace cppwrf::vm {
 CPPWRF_HD inline bool lane(int i, int n) { return n > 1 && !((n & 1) && i == n - 1); }
 CPPWRF_HD inline double pow(double a, double b, int i, int n) {
@@ -221,6 +236,7 @@ class Reducer {
   template <class F, bool MAX> double run(const Range3D& r, const F& f) {
     int nk = r.k1 - r.k0;
     if (nk <= 0) return MAX ? -1e308 : 0.0;
+    if (nk > max_k_) throw std::runtime_error("Reducer: k range exceeds max_k");
 #if defined(CPPWRF_USE_CUDA)
 #if defined(__CUDACC__)
     detail::kred<F, MAX><<<nk, 256>>>(f, r, dpart_);
