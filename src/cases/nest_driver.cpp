@@ -85,7 +85,7 @@ void recompute_start_domain(const io::Config& cfg, Model& m, const BaseField2* h
         const std::size_t ij = std::size_t(j) * nx + i;
         const double ht = ht_2d[ij];
         const double p_surf =
-            p00 * std::exp(-t00 / a + std::sqrt((t00 / a) * (t00 / a) - 2. * cst::g * ht / a / cst::r_d));
+            p00 * std::exp(-t00 / a + std::pow((t00 / a) * (t00 / a) - 2. * cst::g * ht / a / cst::r_d, 0.5));  // **0.5
         for (int k = 0; k < nz; ++k) {
           const std::size_t n = (std::size_t(k) * ny + j) * nx + i;
           pb[n] = double(b.c3h[k]) * (p_surf - b.p_top) + double(b.c4h[k]) + b.p_top;

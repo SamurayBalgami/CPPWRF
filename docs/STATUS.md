@@ -2,6 +2,9 @@
 
 ## Current state
 Identical to WRF 4.6.1 (CPU and CUDA, FP32 and FP64; `tests/verify/wrf_suite.py`, all PASS):
+- Real-data dycore on the CPU in FP64: **bit-identical** to WRF real*8 (R1: every field, every step;
+  tests/verify/wrf_dycore_dumps describes how the last ulp differences were found). CUDA FP64 stays at
+  roundoff (the device libm is not glibc's).
 - Real-data dycore: specified lateral boundaries, hybrid_opt 0/2, map factors, Coriolis,
   curvature, terrain, damp_opt 3, w_damping (active damping verified), moist (qv) PD advection.
   FP64 vs WRF real*8: U 2.6e-14, THM 3.7e-16, QV 1.8e-15 rel L2 (CPU and CUDA).

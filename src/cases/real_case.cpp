@@ -174,7 +174,7 @@ void init_real_case(const io::Config& cfg, Model& m) {
       for (int i = 0; i < nx; ++i) {
         const std::size_t ij = std::size_t(j) * nx + i;
         const double ht = d.hgt[ij];
-        const double p_surf = p00 * std::exp(-t00 / a + std::sqrt((t00 / a) * (t00 / a) - 2. * cst::g * ht / a / cst::r_d));
+        const double p_surf = p00 * std::exp(-t00 / a + std::pow((t00 / a) * (t00 / a) - 2. * cst::g * ht / a / cst::r_d, 0.5));  // WRF **0.5 is pow, not sqrt
         for (int k = 0; k < nz; ++k) {
           const std::size_t n = (std::size_t(k) * ny + j) * nx + i;
           pb[n] = d.c3h[k] * (p_surf - d.p_top) + d.c4h[k] + d.p_top;

@@ -1,5 +1,7 @@
 #include "dyn/scalars.hpp"
 
+#include "core/vm_dump.hpp"
+
 #include <stdexcept>
 #include <vector>
 
@@ -28,31 +30,39 @@ struct Fluxes {
   C3 q, qo, ru, rv, ww; C2 mut; VCoef c;
   real rdx, rdy, dt, hup, vup; int nz; bool do_y;
   B2 msftx, msfty; kern::Spec sp;
+  bool pd = false;  // advect_scalar_pd's flux statement functions
+  CPPWRF_HD real f5(real a, real b, real cc, real d, real e, real f, real v) const {
+    return pd ? kern::flux5_pd(a, b, cc, d, e, f, v, hup) : kern::flux5(a, b, cc, d, e, f, v, hup);
+  }
+  CPPWRF_HD real f3(real a, real b, real cc, real d, real v, real up) const {
+    return pd ? kern::flux3_pd(a, b, cc, d, v, up) : kern::flux3(a, b, cc, d, v, up);
+  }
   CPPWRF_HD real fx(int i, int j, int k) const {  // west face of cell i
     const real vel = ru(i, j, k);
     const int o = kern::ord_face(i, sp.nx, sp.x);
     if (o == 2) return H * vel * (q(i, j, k) + q(i - 1, j, k));
-    if (o == 3) return vel * kern::flux3(q(i - 2, j, k), q(i - 1, j, k), q(i, j, k), q(i + 1, j, k), vel, hup);
-    return vel * kern::flux5(q(i - 3, j, k), q(i - 2, j, k), q(i - 1, j, k), q(i, j, k), q(i + 1, j, k), q(i + 2, j, k), vel, hup);
+    if (o == 3) return vel * f3(q(i - 2, j, k), q(i - 1, j, k), q(i, j, k), q(i + 1, j, k), vel, hup);
+    return vel * f5(q(i - 3, j, k), q(i - 2, j, k), q(i - 1, j, k), q(i, j, k), q(i + 1, j, k), q(i + 2, j, k), vel);
   }
   CPPWRF_HD real fy(int i, int j, int k) const {
     const real vel = rv(i, j, k);
     const int o = kern::ord_face(j, sp.ny, sp.y);
     if (o == 2) return H * vel * (q(i, j, k) + q(i, j - 1, k));
-    if (o == 3) return vel * kern::flux3(q(i, j - 2, k), q(i, j - 1, k), q(i, j, k), q(i, j + 1, k), vel, hup);
-    return vel * kern::flux5(q(i, j - 3, k), q(i, j - 2, k), q(i, j - 1, k), q(i, j, k), q(i, j + 1, k), q(i, j + 2, k), vel, hup);
+    if (o == 3) return vel * f3(q(i, j - 2, k), q(i, j - 1, k), q(i, j, k), q(i, j + 1, k), vel, hup);
+    return vel * f5(q(i, j - 3, k), q(i, j - 2, k), q(i, j - 1, k), q(i, j, k), q(i, j + 1, k), q(i, j + 2, k), vel);
   }
   CPPWRF_HD real fz(int i, int j, int k) const {  // w level k
     if (k == 0 || k == nz) return 0;
     const real vel = ww(i, j, k);
     if (k == 1 || k == nz - 1) return vel * (c.fnm(k) * q(i, j, k) + c.fnp(k) * q(i, j, k - 1));
-    return vel * kern::flux3(q(i, j, k - 2), q(i, j, k - 1), q(i, j, k), q(i, j, k + 1), -vel, vup);
+    return vel * f3(q(i, j, k - 2), q(i, j, k - 1), q(i, j, k), q(i, j, k + 1), -vel, vup);
   }
   CPPWRF_HD real mh(int i, int j, int k) const { return c.c1h(k) * mut(i, j) + c.c2h(k); }
   CPPWRF_HD real fxl(int i, int j, int k) const {
     const real dx = real(2) / (msfty(i, j) + msfty(i - 1, j)) / rdx, mu = H * (mh(i, j, k) + mh(i - 1, j, k)),
                vel = ru(i, j, k);
-    const real cr = vel * dt / dx / mu;
+    // advect_scalar_pd, degrade_xs, i == ids+1 only: vel = ru/mu, cr = vel*dt/dx
+    const real cr = (sp.x && i == 1) ? (vel / mu) * dt / dx : vel * dt / dx / mu;
     return mu * (dx / dt) * kern::flux_upwind(qo(i - 1, j, k), qo(i, j, k), cr);
   }
   CPPWRF_HD real fyl(int i, int j, int k) const {
@@ -235,8 +245,11 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
     Field3 &q1 = s.q_1[n], &q2 = s.q_2[n], &tf = t.q_tendf[n];
     const bool moist = n < s.n_moist;
     const bool pd = rk == 3 && (moist ? p_.moist_adv_opt : p_.scalar_adv_opt) == 1;
-    const bool want_ften = qvf_ != nullptr && n == s.P_QV;
-    const V3 ften = want_ften ? qvf_->view() : V3{};
+    static Field3* dbg_f = nullptr;  // debug (CPPWRF_VM_DUMP): the qv advection tendency * msfty
+    if (vmdump::on() && !qvf_ && !dbg_f) dbg_f = new Field3(g, Stagger::M, "dbg_qvf");
+    Field3* fsink = qvf_ ? qvf_ : (vmdump::on() ? dbg_f : nullptr);
+    const bool want_ften = fsink != nullptr && n == s.P_QV;
+    const V3 ften = want_ften ? fsink->view() : V3{};
     if (rk == 1) {  // rk_scalar_tend, rk_step == 1: diffusion into the held tendency (diff_opt = 1)
       // q_tendf was zeroed by zero_tendf and holds the physics tendencies (update_phy_ten)
       if (diff) {
@@ -252,6 +265,7 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
     Fluxes fl{q2.cview(), q1.cview(), s.ru_m.cview(), s.rv_m.cview(), s.ww_m.cview(), s.muts.cview(), c,
               real(b.rdx), real(b.rdy), dt_rk, hup, vup, g.nz, do_y, b.msftx.view(), b.msfty.view(),
               kern::Spec{g.bc_x == BC::Specified, g.bc_y == BC::Specified, g.nx, g.ny}};
+    fl.pd = pd;
     if (!pd) {
       parallel_for(mr, KUpdate{fl, q1.cview(), tf.cview(), s.mu_1.cview(), s.mu_2.cview(), b.mub.view(),
                                q_new_.view(), dt_rk, true, ften, want_ften});
@@ -267,6 +281,7 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
       parallel_for(mr, KUpdatePD{fl, fa, scale_.cview(), q1.cview(), s.mu_1.cview(), s.mu_2.cview(), b.mub.view(),
                                  q_new_.view(), dt_rk, ften, want_ften});
     }
+    if (want_ften && vmdump::on()) vmdump::dump("vm_qv_rk", rk, {&q1, fsink});
     swap(q2, q_new_);
     if (bc_ && !bc_->has_scalar(n)) bc_->flow_dep(q2, s);  // no boundary data (have_bcs_moist/scalar = .false.)
   }

@@ -5,6 +5,7 @@
 #include "core/backend.hpp"
 #include "core/constants.hpp"
 #include "core/halo.hpp"
+#include "core/vm_dump.hpp"
 #include "dyn/kernels_common.hpp"
 #include "dyn/large_step.hpp"
 #include "dyn/lateral_bc.hpp"
@@ -50,10 +51,11 @@ struct KPrep {
   B2 mub; B3 pb; VCoef c;
   int nx, ny, nyv, nz;
   B2 msfuy, msfvx_inv, msfty;
+  bool first;  // rk_step == 1: WRF copies MUUS = MUU, MUVS = MUV (else rebuilds them from mub + mu_1)
   CPPWRF_HD void operator()(int i, int j, int k) const {
     const real mts = mub(i, j) + mu1(i, j);
-    const real mus_u = H * (mts + mub(i - 1, j) + mu1(i - 1, j));
-    const real mus_v = H * (mts + mub(i, j - 1) + mu1(i, j - 1));
+    const real mus_u = first ? muu(i, j) : H * (mts + mub(i - 1, j) + mu1(i - 1, j));
+    const real mus_v = first ? muv(i, j) : H * (mts + mub(i, j - 1) + mu1(i, j - 1));
     if (k == 0) {
       if (i < nx && j < ny) { muts(i, j) = mts; mus(i, j) = mu(i, j); mu(i, j) = mu1(i, j) - mu(i, j); }
       if (j < ny) muus(i, j) = mus_u;
@@ -91,7 +93,8 @@ struct KPrep {
 CPPWRF_HD inline void p_rho_point(int i, int j, int k, V3 al, V3 p, V3 pm1, C3 ph, C3 alt, C3 t, C3 ts, C3 c2a, C2 mu,
                                   C2 muts, const VCoef& c, real smdiv, bool damp) {
   const real m = c.c1h(k) * muts(i, j) + c.c2h(k);
-  const real a = -(alt(i, j, k) * (c.c1h(k) * mu(i, j)) + c.rdnw(k) * (ph(i, j, k + 1) - ph(i, j, k))) / m;
+  // WRF: al = -1./(c1h*Mut+c2h)*(...): the reciprocal times the sum
+  const real a = -((real(1.) / m) * (alt(i, j, k) * (c.c1h(k) * mu(i, j)) + c.rdnw(k) * (ph(i, j, k + 1) - ph(i, j, k))));
   al(i, j, k) = a;
   real pp = c2a(i, j, k) * (alt(i, j, k) * (t(i, j, k) - c.c1h(k) * mu(i, j) * ts(i, j, k)) / (m * (T0 + ts(i, j, k))) - a);
   if (damp) {
@@ -156,7 +159,7 @@ struct KUV {
   }
   template <int DI, int DJ> CPPWRF_HD real dp(int i, int j, int k, real mface, real rd, real rm) const {
     real d = rm * H * rd * (c.c1h(k) * mface + c.c2h(k)) *
-             ((ph(i, j, k + 1) - ph(i - DI, j - DJ, k + 1) + ph(i, j, k) - ph(i - DI, j - DJ, k)) +
+             (((ph(i, j, k + 1) - ph(i - DI, j - DJ, k + 1)) + (ph(i, j, k) - ph(i - DI, j - DJ, k))) +
               (alt(i, j, k) + alt(i - DI, j - DJ, k)) * (p(i, j, k) - p(i - DI, j - DJ, k)) +
               (al(i, j, k) + al(i - DI, j - DJ, k)) * (pb(i, j, k) - pb(i - DI, j - DJ, k)));
     d += rm * rd * (php(i, j, k) - php(i - DI, j - DJ, k)) *
@@ -445,13 +448,15 @@ struct KFinishMu {
 struct KPRhoPhi {
   V3 al, p; C3 ph, t; C2 mu, muts; B3 alb, pb; VCoef c;
   int hypso; B3 phb; View1<const real> c3h, c4h, c3f, c4f; real ptop;
+  int nx;  // WRF's i loop its..itf: vectorised libm lanes (cppwrf::vm)
+  int i0 = 0;  // first i of WRF's loop (lane = i - i0 of nx trips)
   CPPWRF_HD void operator()(int i, int j, int k) const {
     real a;
     if (hypso == 2) {  // log-linear in pressure
       const real m = muts(i, j);
       const real pfu = c3f(k + 1) * m + c4f(k + 1) + ptop, pfd = c3f(k) * m + c4f(k) + ptop;
       const real phm = c3h(k) * m + c4h(k) + ptop;
-      a = (ph(i, j, k + 1) - ph(i, j, k) + phb(i, j, k + 1) - phb(i, j, k)) / phm / rlog(pfd / pfu) - alb(i, j, k);
+      a = (ph(i, j, k + 1) - ph(i, j, k) + phb(i, j, k + 1) - phb(i, j, k)) / phm / vm::log(pfd / pfu, i - i0, nx) - alb(i, j, k);
     } else {
       a = real(-1) / (c.c1h(k) * muts(i, j) + c.c2h(k)) *
           (alb(i, j, k) * (c.c1h(k) * mu(i, j)) + c.rdnw(k) * (ph(i, j, k + 1) - ph(i, j, k)));
@@ -459,7 +464,7 @@ struct KPRhoPhi {
     al(i, j, k) = a;
     // in the working precision, as WRF (REAL): FP64 pow on consumer GPUs runs at 1/32 rate
     const real base = real(cst::r_d) * (T0 + t(i, j, k)) / (real(cst::p1000mb) * (a + alb(i, j, k)));
-    p(i, j, k) = real(cst::p1000mb) * rpow(base, real(cst::cpovcv)) - pb(i, j, k);
+    p(i, j, k) = real(cst::p1000mb) * vm::pow(base, real(cst::cpovcv), i - i0, nx) - pb(i, j, k);
   }
 };
 
@@ -497,7 +502,8 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                      s.u_1.cview(), s.v_1.cview(), s.w_1.cview(), s.t_1.cview(), s.ph_1.cview(), s.ww.cview(),
                      s.p.cview(), s.alt.cview(), s.mu_2.view(), mu_save.view(), s.muts.view(), s.muus.view(),
                      s.muvs.view(), s.mu_1.cview(), s.mut.cview(), s.muu.cview(), s.muv.cview(), b.mub.view(),
-                     b.pb.view(), c, nx, ny, nyv, nz, b.msfuy.view(), b.msfvx_inv.view(), b.msfty.view()});
+                     b.pb.view(), c, nx, ny, nyv, nz, b.msfuy.view(), b.msfvx_inv.view(), b.msfty.view(),
+                     stage_ == 1});
   fill_halos({&s.u_2, &s.v_2, &s.ph_2, &t_save, &u_save, &v_save}, g);
   fill_halos({&s.mu_2, &s.muts}, g);
 
@@ -508,18 +514,21 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
   const real cof = real(std::pow(0.5 * double(dts) * cst::g * (1.0 + double(p_.epssm)), 2));
   column_for(g.columns(), KCoefW{a.view(), alpha.view(), gamma.view(), c2a.cview(), s.mut.cview(), c, mc, cof,
                                  p_.top_lid ? real(0) : real(1), nz});
+  vmdump::dump("vm_s0_rk", stage_, {&s.p, &s.al, &t_save, &u_save, &v_save, &s.ph_2, &s.php, &s.alt, &s.cqu},
+               {&s.muu, &s.mu_2}, {&b.pb});
 
   const Range3D uv_range{0, nx, 0, ny, 0, nz};
   for (int it = 1; it <= n_small; ++it) {
     parallel_for(uv_range, KUV{s.u_2.view(), s.v_2.view(), tend.ru_tend.cview(), tend.rv_tend.cview(), s.p.cview(),
                                s.al.cview(), s.alt.cview(), s.ph_2.cview(), s.php.cview(), s.mu_2.cview(),
                                s.muu.cview(), s.muv.cview(), mudf.cview(), b.pb.view(), c, mc, dts, real(b.rdx),
-                               real(b.rdy), p_.emdiv * real(g.dx), do_y ? p_.emdiv * real(g.dy) : real(0), nz,
+                               real(b.rdy), p_.emdiv * (real(1.) / real(b.rdx)), do_y ? p_.emdiv * (real(1.) / real(b.rdy)) : real(0), nz,
                                g.u_i0(), g.u_i1(), g.v_j0(), g.v_j1(), do_y, p_.top_lid, b.msfux.view(),
                                b.msfuy.view(), b.msfvx.view(), b.msfvy.view(), b.msfvx_inv.view(), ed});
     if (bc_) bc_->update_uv(s, tend, dts);  // spec_bdyupdate u, v
     if (do_y) fill_halos({&s.u_2, &s.v_2}, g);
     else fill_halo(s.u_2, g);
+    if (it == 1) vmdump::dump("vm_s1_rk", stage_, {&s.u_2, &s.v_2});
 
     parallel_for(g.mass_cells(), KMuTDiv{s.u_2.cview(), s.v_2.cview(), u_save.cview(), v_save.cview(), s.muu.cview(),
                                          s.muv.cview(), c, real(b.rdx), real(b.rdy), do_y, b.msftx.view(),
@@ -540,6 +549,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                                        b.msfvx_inv.view(), false, nx, ny, it, n_small});
     if (bc_) bc_->update_mu_t(s, tend, dts);  // spec_bdyupdate t, mu, muts
     fill_halos({&s.mu_2, &mudf, &s.muts}, g);
+    if (it == 1) vmdump::dump("vm_s2_rk", stage_, {&s.t_2, &s.ww}, {&s.mu_2, &s.muts});
 
     {
       const KWCommon q{s.w_2.cview(), s.ph_2.cview(), tend.rw_tend.cview(), tend.ph_tend.cview(), s.ww.cview(),
@@ -560,6 +570,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                           c, p_.smdiv});
     }
     fill_halos({&s.ph_2, &s.p, &s.al}, g);
+    if (it == 1) vmdump::dump("vm_s3_rk", stage_, {&s.w_2, &s.ph_2, &s.p, &s.al});
   }
 
   fill_halo(s.muts, g);
@@ -582,7 +593,24 @@ void SmallStep::calc_p_rho_phi(State& s, const BaseState& b) {
   parallel_for(g.mass_cells(), KPRhoPhi{s.al.view(), s.p.view(), s.ph_2.cview(), s.t_2.cview(), s.mu_2.cview(),
                                         s.muts.cview(), b.alb.view(), b.pb.view(), c, p_.hypsometric_opt,
                                         b.phb.view(), b.c3h.view(), b.c4h.view(), b.c3f.view(), b.c4f.view(),
-                                        real(b.p_top)});
+                                        real(b.p_top), g.nx});
+  fill_halo(s.p, g);
+  fill_halo(s.al, g);
+}
+
+// solve_em after spec_bdy_final: calc_p_rho_phi again on the interior (its = ids+spec_zone ..
+// ide-1-spec_zone, same in j). The values only change where the shorter i loop moves an element
+// between libm's vector lanes and the scalar remainder.
+void SmallStep::calc_p_rho_phi_interior(State& s, const BaseState& b, int sz) {
+  const Grid& g = g_;
+  const VCoef c = VCoef::from(b);
+  const bool px = g.bc_x == BC::Periodic, py = g.bc_y == BC::Periodic;
+  const int i0 = px ? 0 : sz, i1 = px ? g.nx : g.nx - sz, j0 = py ? 0 : sz, j1 = py ? g.ny : g.ny - sz;
+  KPRhoPhi k{s.al.view(), s.p.view(), s.ph_2.cview(), s.t_2.cview(), s.mu_2.cview(), s.muts.cview(), b.alb.view(),
+             b.pb.view(), c, p_.hypsometric_opt, b.phb.view(), b.c3h.view(), b.c4h.view(), b.c3f.view(),
+             b.c4f.view(), real(b.p_top), i1 - i0};
+  k.i0 = i0;
+  parallel_for(Range3D{i0, i1, j0, j1, 0, g.nz}, k);
   fill_halo(s.p, g);
   fill_halo(s.al, g);
 }

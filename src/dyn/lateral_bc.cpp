@@ -121,8 +121,8 @@ struct KUpdatePh {  // spec_bdyupdate_ph
     if (!r.map(pos, side, b, i, j)) return;
     const real mu_old = muts(i, j) - dts * mu_tend(i, j);
     const real m_old = c1f(k) * mu_old + c2f(k), m_new = c1f(k) * muts(i, j) + c2f(k);
-    const real ratio = m_old / m_new;
-    ph(i, j, k) = ph(i, j, k) * ratio + dts * ph_tend(i, j, k) / m_new + ph_save(i, j, k) * (ratio - real(1));
+    // WRF: field*(m_old)/(m_new) + dt*tend/(m_new) + ph_save*((m_old)/(m_new) - 1.)
+    ph(i, j, k) = ph(i, j, k) * m_old / m_new + dts * ph_tend(i, j, k) / m_new + ph_save(i, j, k) * (m_old / m_new - real(1));
   }
 };
 

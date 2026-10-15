@@ -51,6 +51,58 @@ CPPWRF_HD inline double rpow(double a, double b) {
 #endif
 }
 
+// ---- WRF's vectorised libm ----
+// WRF (gfortran -O2 -ftree-vectorize on x86-64) computes exp/log/pow/sin/... inside vectorised loops
+// with glibc's libmvec (2-lane SSE2 ABI for REAL*8): pairs of iterations from the start of the loop,
+// a trailing odd iteration (and a 1-trip loop) with the scalar libm. The vector results are lane
+// independent and differ from the scalar libm in the last bit for ~30% of arguments. On the host the
+// v* functions below give WRF's value for iteration i (0-based) of an n-trip loop; double only (float
+// and the device use the scalar functions).
+#if defined(__x86_64__) && !defined(__CUDA_ARCH__) && !defined(CPPWRF_NO_LIBMVEC)
+#include <emmintrin.h>
+extern "C" __m128d _ZGVbN2vv_pow(__m128d, __m128d);
+extern "C" __m128d _ZGVbN2v_log(__m128d);
+extern "C" __m128d _ZGVbN2v_exp(__m128d);
+#define CPPWRF_HAVE_LIBMVEC 1
+#endif
+namespace cppwrf::vm {
+CPPWRF_HD inline bool lane(int i, int n) { return n > 1 && !((n & 1) && i == n - 1); }
+CPPWRF_HD inline double pow(double a, double b, int i, int n) {
+#if defined(CPPWRF_HAVE_LIBMVEC)
+  if (lane(i, n)) return _mm_cvtsd_f64(_ZGVbN2vv_pow(_mm_set1_pd(a), _mm_set1_pd(b)));
+#endif
+  (void)i; (void)n;
+  return rpow(a, b);
+}
+CPPWRF_HD inline double log(double a, int i, int n) {
+#if defined(CPPWRF_HAVE_LIBMVEC)
+  if (lane(i, n)) return _mm_cvtsd_f64(_ZGVbN2v_log(_mm_set1_pd(a)));
+#endif
+  (void)i; (void)n;
+  return rlog(a);
+}
+CPPWRF_HD inline double exp(double a, int i, int n) {
+#if defined(CPPWRF_HAVE_LIBMVEC)
+  if (lane(i, n)) return _mm_cvtsd_f64(_ZGVbN2v_exp(_mm_set1_pd(a)));
+#endif
+  (void)i; (void)n;
+#if defined(__CUDA_ARCH__)
+  return ::exp(a);
+#else
+  return std::exp(a);
+#endif
+}
+CPPWRF_HD inline float pow(float a, float b, int, int) { return rpow(a, b); }
+CPPWRF_HD inline float log(float a, int, int) { return rlog(a); }
+CPPWRF_HD inline float exp(float a, int, int) {
+#if defined(__CUDA_ARCH__)
+  return expf(a);
+#else
+  return std::exp(a);
+#endif
+}
+}  // namespace cppwrf::vm
+
 namespace cppwrf {
 
 struct Range3D { int i0, i1, j0, j1, k0, k1; };

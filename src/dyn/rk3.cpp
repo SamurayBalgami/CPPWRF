@@ -1,15 +1,21 @@
 #include "dyn/rk3.hpp"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <initializer_list>
 #include <stdexcept>
 #include <vector>
 
 #ifdef CPPWRF_HAVE_SMALL_STEP
 #include "core/halo.hpp"
+#include "core/vm_dump.hpp"
 #include "dyn/diffusion_driver.hpp"
 #include "dyn/lateral_bc.hpp"
 #include "dyn/small_step.hpp"
 #endif
+
+
 
 namespace cppwrf::dyn {
 
@@ -76,10 +82,16 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
     }
     if (rk == 1 && dd_) dd_->prepare(s, b);  // first_rk_step_part2: metrics, deformation, K
     large_.tendencies(s, t, b, rk);  // part2 (diffusion, update_phy_ten) + rk_tendency
+    { const char* e = std::getenv("CPPWRF_VM_DUMP_STEP"); vmdump::on() = vm_step_ == (e ? std::atol(e) - 1 : 0); }
+    vmdump::dump("vm_tend_rk", rk, {&t.ru_tend, &t.rv_tend, &t.rw_tend, &t.ph_tend, &t.t_tend, &s.ru, &s.rv, &s.php, &s.alt, &s.ww}, {&s.muu, &s.mut});
     small_->ss.run_stage(s, t, b, real(dt_rk), real(dts_rk), ns, rk);
     scalars_.run_stage(s, t, b, rk, real(dt_rk));
+    vmdump::dump("vm_state_rk", rk, {&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2, &s.q_2[s.P_QV], &s.ww, &s.ru_m, &s.rv_m, &s.ww_m}, {&s.mu_2, &s.muts});
     small_->ss.calc_p_rho_phi(s, b);
+    vmdump::dump("vm_p_rk", rk, {&s.p, &s.al});
+    vmdump::on() = false;
   }
+  ++vm_step_;
   if (cp_) cp_->after_rk(s, b);  // phy_prep_part2
   if (phys_ && phys_->params().mp_physics != 0) {  // moist_physics_prep/microphysics/finish, calc_p_rho_phi
     phys_->step(s, b, real(dt));
@@ -87,10 +99,9 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
   }
   if (bc_) {  // spec_bdy_final: exact boundary values at t + dt
     bc_->final(s, b);
-    std::vector<Field3*> f{&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2};
-    for (int n = 0; n < s.n_scalars(); ++n) f.push_back(&s.q_2[n]);  // calc_cq reads the q halos
-    fill_halos(f, g_);
-    fill_halo(s.mu_2, g_);
+    // WRF (serial) does not refresh any halo after spec_bdy_final: until the next refresh the halos
+    // keep the values from before it (read e.g. by calc_cq for q and by calc_ww_cp for mu_2)
+    small_->ss.calc_p_rho_phi_interior(s, b, bc_->spec_zone());  // solve_em after spec_bdy_final
   }
   // solve_em: "reset surface w for consistency" (kinematic condition from the new u, v)
   if (!b.ht.uniform()) set_w_surface(s.w_2, s.u_2, s.v_2, b, g_, false);

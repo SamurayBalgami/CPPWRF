@@ -32,6 +32,7 @@ class LateralBC {
   // nested = WRF config_flags%nested: W is relaxed, specified and updated from boundary data
   // (instead of zero_grad_bdy) and every scalar with data gets relax/spec (no flow_dep).
   LateralBC(const Grid& g, double dt, int width = 5, int spec_zone = 1, int relax_zone = 4, bool nested = false);
+  int spec_zone() const { return spec_zone_; }
 
   // Host data of one variable and side for the current boundary interval: values and
   // tendencies, (pos, k, b) with pos fastest.

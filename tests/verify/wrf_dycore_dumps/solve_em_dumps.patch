@@ -1,0 +1,202 @@
+diff --git a/dyn_em/solve_em.F b/dyn_em/solve_em.F
+index c5f47a5..97fd454 100644
+--- a/dyn_em/solve_em.F
++++ b/dyn_em/solve_em.F
+@@ -1081,6 +1081,29 @@ BENCH_START(small_step_prep_tim)
+ 
+        CALL wrf_debug ( 200 , ' call small_step_prep ' )
+ 
++       IF ( grid%itimestep == 3 ) THEN  ! CPPWRF debug: dycore checkpoint
++         WRITE(wrf_err_message,'(A,I1,A)') 'vm_tend_rk', rk_step, '.bin'
++         OPEN(unit=78, file=TRIM(wrf_err_message), status='replace', access='stream', form='unformatted')
++         WRITE(78) ims,ime,kms,kme,jms,jme
++         WRITE(78) grid%ru_tend
++         WRITE(78) grid%rv_tend
++         WRITE(78) rw_tend
++         WRITE(78) ph_tend
++         WRITE(78) t_tend
++         WRITE(78) mu_tend
++         WRITE(78) grid%ru
++         WRITE(78) grid%rv
++         WRITE(78) grid%php
++         WRITE(78) grid%alt
++         WRITE(78) grid%ww
++         WRITE(78) grid%muu
++         WRITE(78) grid%mut
++         WRITE(78) grid%mu_2
++         WRITE(78) grid%mub
++         WRITE(78) grid%u_2
++         WRITE(78) grid%v_2
++         CLOSE(78)
++       ENDIF
+        CALL small_step_prep( grid%u_1,grid%u_2,grid%v_1,grid%v_2,grid%w_1,grid%w_2,   &
+                              grid%t_1,grid%t_2,grid%ph_1,grid%ph_2,                   &
+                              grid%mub, grid%mu_1, grid%mu_2,                          &
+@@ -1256,6 +1279,24 @@ BENCH_START(set_phys_bc2_tim)
+                                grid%j_start(ij), grid%j_end(ij)      )
+ 
+      END DO
++       IF ( grid%itimestep == 3 ) THEN  ! CPPWRF debug: small-step checkpoint
++         WRITE(wrf_err_message,'(A,I1,A)') 'vm_s0_rk', rk_step, '.bin'
++         OPEN(unit=78, file=TRIM(wrf_err_message), status='replace', access='stream', form='unformatted')
++         WRITE(78) ims,ime,kms,kme,jms,jme
++         WRITE(78) grid%p
++         WRITE(78) grid%al
++         WRITE(78) grid%t_save
++         WRITE(78) grid%u_save
++         WRITE(78) grid%v_save
++         WRITE(78) grid%ph_2
++         WRITE(78) grid%php
++         WRITE(78) grid%alt
++         WRITE(78) cqu
++         WRITE(78) grid%pb
++         WRITE(78) grid%muu
++         WRITE(78) grid%mu_2
++         CLOSE(78)
++       ENDIF
+      !$OMP END PARALLEL DO
+ BENCH_END(set_phys_bc2_tim)
+      small_steps : DO iteration = 1 , number_of_small_timesteps
+@@ -1361,6 +1402,14 @@ BENCH_START(spec_bdy_uv_tim)
+ BENCH_END(spec_bdy_uv_tim)
+ 
+        END DO
++       IF ( grid%itimestep == 3 .AND. iteration == 1 ) THEN  ! CPPWRF debug: small-step checkpoint
++         WRITE(wrf_err_message,'(A,I1,A)') 'vm_s1_rk', rk_step, '.bin'
++         OPEN(unit=78, file=TRIM(wrf_err_message), status='replace', access='stream', form='unformatted')
++         WRITE(78) ims,ime,kms,kme,jms,jme
++         WRITE(78) grid%u_2
++         WRITE(78) grid%v_2
++         CLOSE(78)
++       ENDIF
+        !$OMP END PARALLEL DO
+ 
+ #ifdef DM_PARALLEL
+@@ -1491,6 +1540,16 @@ BENCH_END(spec_bdy_t_tim)
+ 
+ BENCH_START(advance_w_tim)
+          IF ( config_flags%non_hydrostatic ) THEN
++       IF ( grid%itimestep == 3 .AND. iteration == 1 ) THEN  ! CPPWRF debug: small-step checkpoint
++         WRITE(wrf_err_message,'(A,I1,A)') 'vm_s2_rk', rk_step, '.bin'
++         OPEN(unit=78, file=TRIM(wrf_err_message), status='replace', access='stream', form='unformatted')
++         WRITE(78) ims,ime,kms,kme,jms,jme
++         WRITE(78) grid%t_2
++         WRITE(78) grid%ww
++         WRITE(78) grid%mu_2
++         WRITE(78) grid%muts
++         CLOSE(78)
++       ENDIF
+            CALL advance_w( grid%w_2, rw_tend, grid%ww, w_save,         &
+                            grid%u_2, grid%v_2,                         &
+                            grid%mu_2, grid%mut, muave, grid%muts,      &
+@@ -1631,6 +1690,16 @@ BENCH_START(cald_p_rho_tim)
+ BENCH_END(cald_p_rho_tim)
+ 
+        ENDDO
++       IF ( grid%itimestep == 3 .AND. iteration == 1 ) THEN  ! CPPWRF debug: small-step checkpoint
++         WRITE(wrf_err_message,'(A,I1,A)') 'vm_s3_rk', rk_step, '.bin'
++         OPEN(unit=78, file=TRIM(wrf_err_message), status='replace', access='stream', form='unformatted')
++         WRITE(78) ims,ime,kms,kme,jms,jme
++         WRITE(78) grid%w_2
++         WRITE(78) grid%ph_2
++         WRITE(78) grid%p
++         WRITE(78) grid%al
++         CLOSE(78)
++       ENDIF
+        !$OMP END PARALLEL DO
+ 
+ #ifdef DM_PARALLEL
+@@ -2317,6 +2386,13 @@ BENCH_START(update_scal_tim)
+                                its=grid%i_start(ij), ite=grid%i_end(ij),               &
+                                jts=grid%j_start(ij), jte=grid%j_end(ij),               &
+                                kts=k_start    , kte=k_end                              )
++               IF ( grid%itimestep == 3 .AND. (im == P_QV) ) THEN  ! CPPWRF debug: moist per RK stage
++                 WRITE(wrf_err_message,'(A,I1,A,I1,A)') 'moist_rk', rk_step, '_', im, '.bin'
++                 OPEN(unit=79, file=TRIM(wrf_err_message), status='replace', access='stream', form='unformatted')
++                 WRITE(79) ims,ime,kms,kme,jms,jme
++                 WRITE(79) moist(:,:,:,im), moist_tend(:,:,:,im), advect_tend, moist_old(:,:,:,im)
++                 CLOSE(79)
++               ENDIF
+                IF( rk_step == rk_order .AND. config_flags%use_q_diabatic == 1 )THEN
+                IF( im.eq.p_qv .or. im.eq.p_qc )THEN
+                    CALL q_diabatic_subtr( im, im,            & 
+@@ -2957,6 +3033,24 @@ BENCH_END(tracer_adv_tim)
+ 
+ BENCH_START(calc_p_rho_tim)
+ 
++       IF ( grid%itimestep == 3 ) THEN  ! CPPWRF debug: dycore checkpoint
++         WRITE(wrf_err_message,'(A,I1,A)') 'vm_state_rk', rk_step, '.bin'
++         OPEN(unit=78, file=TRIM(wrf_err_message), status='replace', access='stream', form='unformatted')
++         WRITE(78) ims,ime,kms,kme,jms,jme
++         WRITE(78) grid%u_2
++         WRITE(78) grid%v_2
++         WRITE(78) grid%w_2
++         WRITE(78) grid%t_2
++         WRITE(78) grid%ph_2
++         WRITE(78) grid%mu_2
++         WRITE(78) grid%muts
++         WRITE(78) moist(:,:,:,P_QV)
++         WRITE(78) grid%ww
++         WRITE(78) grid%ru_m
++         WRITE(78) grid%rv_m
++         WRITE(78) grid%ww_m
++         CLOSE(78)
++       ENDIF
+        CALL calc_p_rho_phi( moist, num_3d_m, config_flags%hypsometric_opt,                    &
+                             grid%al, grid%alb, grid%mu_2, grid%muts,                          &
+                             grid%c1h, grid%c2h, grid%c3h, grid%c4h, grid%c3f, grid%c4f,       &
+@@ -2970,6 +3064,14 @@ BENCH_START(calc_p_rho_tim)
+                             k_start    , k_end                                                )
+ 
+ BENCH_END(calc_p_rho_tim)
++       IF ( grid%itimestep == 3 ) THEN  ! CPPWRF debug: dycore checkpoint
++         WRITE(wrf_err_message,'(A,I1,A)') 'vm_p_rk', rk_step, '.bin'
++         OPEN(unit=78, file=TRIM(wrf_err_message), status='replace', access='stream', form='unformatted')
++         WRITE(78) ims,ime,kms,kme,jms,jme
++         WRITE(78) grid%p
++         WRITE(78) grid%al
++         CLOSE(78)
++       ENDIF
+ 
+      ENDDO
+      !$OMP END PARALLEL DO
+@@ -3656,6 +3758,9 @@ BENCH_END(advance_ppt_tim)
+                                    k_start    , k_end                )
+        end if
+ 
++       ! CPPWRF debug: pre-microphysics QI, QC into RTHRATLW, RTHRATSW (ra = 0, unused)
++       grid%rthratenlw(:,:,:) = moist(:,:,:,P_QI)
++       grid%rthratensw(:,:,:) = moist(:,:,:,P_QC)
+        CALL wrf_debug ( 200 , ' call moist_physics_prep' )
+ BENCH_START(moist_physics_prep_tim)
+        CALL moist_physics_prep_em( grid%t_2, grid%t_1, t0, grid%rho,           &
+@@ -3717,6 +3822,29 @@ BENCH_START(micro_driver_tim)
+ #endif
+ 
+ 
++     IF ( grid%itimestep == 1 ) THEN  ! CPPWRF debug: WSM6 inputs, driver_wsm6.f90 stream format
++       OPEN(unit=77, file='wsm6_wrf_in.bin', status='replace', access='stream', form='unformatted')
++       WRITE(77) (ide-3)*(jde-3), kde-1
++       WRITE(77) dtm, g, cp, cpv, r_d, r_v, svpt0, ep_1, ep_2, 1.e-15, xls, xlv, xlf, rhoair0, rhowater, rhosnow, &
++                 cliq, cice, psat
++       WRITE(77) 0
++       WRITE(77) (((th_phy(i,k,j), i=ids+1,ide-2), j=jds+1,jde-2), k=kds,kde-1)
++       DO im = P_QV, P_QG
++         WRITE(77) (((moist(i,k,j,im), i=ids+1,ide-2), j=jds+1,jde-2), k=kds,kde-1)
++       ENDDO
++       WRITE(77) (((grid%rho(i,k,j), i=ids+1,ide-2), j=jds+1,jde-2), k=kds,kde-1)
++       WRITE(77) (((pi_phy(i,k,j), i=ids+1,ide-2), j=jds+1,jde-2), k=kds,kde-1)
++       WRITE(77) (((p_phy(i,k,j), i=ids+1,ide-2), j=jds+1,jde-2), k=kds,kde-1)
++       WRITE(77) (((dz8w(i,k,j), i=ids+1,ide-2), j=jds+1,jde-2), k=kds,kde-1)
++       WRITE(77) ((grid%rainnc(i,j), i=ids+1,ide-2), j=jds+1,jde-2)
++       WRITE(77) ((grid%rainncv(i,j), i=ids+1,ide-2), j=jds+1,jde-2)
++       WRITE(77) ((grid%snownc(i,j), i=ids+1,ide-2), j=jds+1,jde-2)
++       WRITE(77) ((grid%snowncv(i,j), i=ids+1,ide-2), j=jds+1,jde-2)
++       WRITE(77) ((grid%graupelnc(i,j), i=ids+1,ide-2), j=jds+1,jde-2)
++       WRITE(77) ((grid%graupelncv(i,j), i=ids+1,ide-2), j=jds+1,jde-2)
++       WRITE(77) ((grid%sr(i,j), i=ids+1,ide-2), j=jds+1,jde-2)
++       CLOSE(77)
++     ENDIF
+      CALL microphysics_driver(                                            &
+       &         DT=dtm             ,DX=grid%dx              ,DY=grid%dy   &
+       &        ,DZ8W=dz8w          ,F_ICE_PHY=grid%f_ice_phy              &

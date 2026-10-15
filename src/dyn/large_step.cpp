@@ -37,14 +37,15 @@ struct KMu {  // calc_mu_uv: full column masses at stage
   CPPWRF_HD void operator()(int i, int j, int) const {
     if (i < nx && j < ny) mut(i, j) = mu(i, j) + mub(i, j);
     if (j < ny) {
-      if (spx && i == 0) muu(i, j) = mu(0, j) + mub(0, j);
-      else if (spx && i == nx) muu(i, j) = mu(nx - 1, j) + mub(nx - 1, j);
-      else muu(i, j) = H * (mu(i, j) + mub(i, j) + mu(i - 1, j) + mub(i - 1, j));
+      // WRF calc_mu_uv: 0.5*(MU(i)+MU(i-1)+MUB(i)+MUB(i-1)); at a non-periodic edge the column is doubled
+      if (spx && i == 0) muu(i, j) = H * (mu(0, j) + mu(0, j) + mub(0, j) + mub(0, j));
+      else if (spx && i == nx) muu(i, j) = H * (mu(nx - 1, j) + mu(nx - 1, j) + mub(nx - 1, j) + mub(nx - 1, j));
+      else muu(i, j) = H * (mu(i, j) + mu(i - 1, j) + mub(i, j) + mub(i - 1, j));
     }
     if (i < nx && j < nyv) {
-      if (spy && j == 0) muv(i, j) = mu(i, 0) + mub(i, 0);
-      else if (spy && j == ny) muv(i, j) = mu(i, ny - 1) + mub(i, ny - 1);
-      else muv(i, j) = H * (mu(i, j) + mub(i, j) + mu(i, j - 1) + mub(i, j - 1));
+      if (spy && j == 0) muv(i, j) = H * (mu(i, 0) + mu(i, 0) + mub(i, 0) + mub(i, 0));
+      else if (spy && j == ny) muv(i, j) = H * (mu(i, ny - 1) + mu(i, ny - 1) + mub(i, ny - 1) + mub(i, ny - 1));
+      else muv(i, j) = H * (mu(i, j) + mu(i, j - 1) + mub(i, j) + mub(i, j - 1));
     }
   }
 };
@@ -65,9 +66,18 @@ struct KPrep3 {  // couple_momentum, calc_alt, calc_php
 };
 
 struct KWW {  // calc_ww_cp: mass-coupled eta velocity from the column-integrated divergence
-  C3 ru, rv; V3 ww; B2 msftx; VCoef c; real rdx, rdy; int nz;
-  CPPWRF_HD real divv(int i, int j, int k) const {  // ru = mu u / msfuy, rv = mu v / msfvx
-    return msftx(i, j) * c.dnw(k) * (rdx * (ru(i + 1, j, k) - ru(i, j, k)) + rdy * (rv(i, j + 1, k) - rv(i, j, k)));
+  // WRF recomputes its own MUU/MUV here, summed as 0.5*(MUP(i)+MUB(i)+MUP(i-1)+MUB(i-1)) (a different
+  // order from calc_mu_uv) and with the halo column at the domain edge
+  C3 u, v; C2 mu; B2 mub; V3 ww; B2 msftx, msfuy, msfvx_inv; VCoef c; real rdx, rdy; int nz;
+  CPPWRF_HD real mu_u(int i, int j) const { return H * (mu(i, j) + mub(i, j) + mu(i - 1, j) + mub(i - 1, j)); }
+  CPPWRF_HD real mu_v(int i, int j) const { return H * (mu(i, j) + mub(i, j) + mu(i, j - 1) + mub(i, j - 1)); }
+  CPPWRF_HD real divv(int i, int j, int k) const {
+    const real mu1 = mu_u(i + 1, j), mu0 = mu_u(i, j), mv1 = mu_v(i, j + 1), mv0 = mu_v(i, j);
+    return msftx(i, j) * c.dnw(k) *
+           (rdx * ((c.c1h(k) * mu1 + c.c2h(k)) * u(i + 1, j, k) / msfuy(i + 1, j) -
+                   (c.c1h(k) * mu0 + c.c2h(k)) * u(i, j, k) / msfuy(i, j)) +
+            rdy * ((c.c1h(k) * mv1 + c.c2h(k)) * v(i, j + 1, k) * msfvx_inv(i, j + 1) -
+                   (c.c1h(k) * mv0 + c.c2h(k)) * v(i, j, k) * msfvx_inv(i, j)));
   }
   CPPWRF_HD void operator()(int i, int j) const {
     real dmdt = 0;
@@ -533,7 +543,9 @@ void LargeStep::prep(State& s, const BaseState& b) const {
   const Grid& g = g_;
   const int nyv = g.nys(Stagger::V);
   fill_halos({&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2, &s.p, &s.al}, g);
-  fill_halo(s.mu_2, g);
+  // mu_2: WRF does not refresh its halo before rk_step_prep (calc_ww_cp reads it); the halo column
+  // follows small_step_finish there, and the boundary copy only after small_step_prep
+  if (!g.specified()) fill_halo(s.mu_2, g);
   VCoef c = VCoef::from(b);
   parallel_for(Range3D{0, g.nx + 1, 0, nyv, 0, 1},
                KMu{s.mu_2.cview(), b.mub.view(), s.mut.view(), s.muu.view(), s.muv.view(), g.nx, g.ny, nyv,
@@ -545,7 +557,8 @@ void LargeStep::prep(State& s, const BaseState& b) const {
                       b.msfty.view(), c, s.ru.view(), s.rv.view(),
                       s.rw.view(), s.alt.view(), s.php.view(), g.nx, g.ny, nyv, g.nz});
   fill_halos({&s.ru, &s.rv, &s.rw, &s.alt, &s.php}, g);
-  column_for(g.columns(), KWW{s.ru.cview(), s.rv.cview(), s.ww.view(), b.msftx.view(), c, real(b.rdx), real(b.rdy), g.nz});
+  column_for(g.columns(), KWW{s.u_2.cview(), s.v_2.cview(), s.mu_2.cview(), b.mub.view(), s.ww.view(), b.msftx.view(),
+                              b.msfuy.view(), b.msfvx_inv.view(), c, real(b.rdx), real(b.rdy), g.nz});
   fill_halo(s.ww, g);
   if (s.n_moist > 0) {  // calc_cq: per species, sum of the two neighbours (WRF summation order)
     if (s.n_moist > KCq::kMax) throw std::runtime_error("calc_cq: too many moist species");

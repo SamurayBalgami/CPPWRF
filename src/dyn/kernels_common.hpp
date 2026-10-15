@@ -18,6 +18,17 @@ CPPWRF_HD inline real flux3(real qm2, real qm1, real q0, real qp1, real ua, real
   return (real(7) * (q0 + qm1) - (qp1 + qm2)) / real(12) +
          up * sgn1(ua) * ((qp1 - qm2) - real(3) * (q0 - qm1)) / real(12);
 }
+// advect_scalar_pd's own statement functions (module_advect_em.F): the coefficients are folded
+// constants, (37./60.)*(..) - (2./15.)*(..) + (1./60.)*(..), so the roundoff differs from flux5/flux3
+CPPWRF_HD inline real flux5_pd(real qm3, real qm2, real qm1, real q0, real qp1, real qp2, real ua, real up) {
+  const real f6 = (real(37.) / real(60.)) * (q0 + qm1) - (real(2.) / real(15.)) * (qp1 + qm2) +
+                  (real(1.) / real(60.)) * (qp2 + qm3);
+  return f6 - up * sgn1(ua) * (real(1.) / real(60.)) * ((qp2 - qm3) - real(5.) * (qp1 - qm2) + real(10.) * (q0 - qm1));
+}
+CPPWRF_HD inline real flux3_pd(real qm2, real qm1, real q0, real qp1, real ua, real up) {
+  const real f4 = (real(7.) / real(12.)) * (q0 + qm1) - (real(1.) / real(12.)) * (qp1 + qm2);
+  return f4 + up * sgn1(ua) * (real(1.) / real(12.)) * ((qp1 - qm2) - real(3.) * (q0 - qm1));
+}
 // Specified (real-data) lateral boundaries: WRF degrades the horizontal advection near the edges
 // (module_advect_em.F, degrade_xs/xe/ys/ye): 2nd order next to the boundary, 3rd one further in.
 struct Spec {

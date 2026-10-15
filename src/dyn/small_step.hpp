@@ -35,6 +35,7 @@ class SmallStep {
                  int rk_step = 0);
   // calc_p_rho_phi (non-hydrostatic, hypsometric_opt = 1): al, p from mu_2, ph_2, t_2 (+ moisture).
   void calc_p_rho_phi(State& s, const BaseState& base);
+  void calc_p_rho_phi_interior(State& s, const BaseState& b, int spec_zone);
   void set_lateral_bc(const LateralBC* bc) { bc_ = bc; }
 
  private:

@@ -64,6 +64,7 @@ class RK3 {
   LateralBC* bc_ = nullptr;
   ColumnPhysics* cp_ = nullptr;
   DiffusionDriver* dd_ = nullptr;
+  long vm_step_ = 0;  // debug dump of the first step (CPPWRF_VM_DUMP)
 };
 
 }  // namespace cppwrf::dyn
