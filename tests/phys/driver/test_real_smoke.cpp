@@ -16,9 +16,18 @@ using namespace cppwrf;
 using namespace cppwrf::phys::driver;
 
 int main(int argc, char** argv) {
-  std::string tbl_dir = "/home/ostriquetrum/wrf_real/wrf_run";
+  std::string tbl_dir;
   std::string bin_file = "wrfinput_extracted.bin";
-  if (argc >= 2) tbl_dir = argv[1];
+  if (argc >= 2) {
+    tbl_dir = argv[1];
+  } else {
+    const char* runs_env = std::getenv("CPPWRF_WRF_RUNS");
+    if (!runs_env || !*runs_env) {
+      std::cout << "SKIP: CPPWRF_WRF_RUNS is not set; skipping test.\n";
+      return 0;
+    }
+    tbl_dir = std::string(runs_env) + "/wrf_run";
+  }
   if (argc >= 3) bin_file = argv[2];
 
   std::cout << "======================================================================\n";

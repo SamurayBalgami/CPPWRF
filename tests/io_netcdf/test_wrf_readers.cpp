@@ -18,10 +18,14 @@ static void check_near(double val, double expected, double tol, const std::strin
 }
 
 int main() {
-  const char* home_env = std::getenv("HOME");
-  std::string home = home_env ? home_env : "/home/ostriquetrum";
-  std::string wrfinput_path = home + "/wrf_real/wrf_run/wrfinput_d01";
-  std::string wrfbdy_path = home + "/wrf_real/wrf_run/wrfbdy_d01";
+  const char* runs_env = std::getenv("CPPWRF_WRF_RUNS");
+  if (!runs_env || !*runs_env) {
+    std::cout << "Notice: CPPWRF_WRF_RUNS is not set; skipping real file checks.\n";
+    return 0;
+  }
+  std::string runs = runs_env;
+  std::string wrfinput_path = runs + "/wrf_run/wrfinput_d01";
+  std::string wrfbdy_path = runs + "/wrf_run/wrfbdy_d01";
 
   if (!std::filesystem::exists(wrfinput_path)) {
     std::cout << "Notice: " << wrfinput_path << " not found, skipping real file checks.\n";

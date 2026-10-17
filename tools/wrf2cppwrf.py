@@ -513,7 +513,19 @@ class WrfTranslator:
             r_dir = self.real_dir
             if not r_dir:
                 r_dir = os.path.dirname(self.namelist_path) if self.namelist_path else "."
-            sections["real"]["dir"] = os.path.abspath(r_dir)
+            r_dir_abs = os.path.abspath(os.path.expanduser(r_dir))
+            wrf_runs = os.environ.get("CPPWRF_WRF_RUNS")
+            if wrf_runs:
+                wrf_runs_abs = os.path.abspath(os.path.expanduser(wrf_runs))
+                if r_dir_abs == wrf_runs_abs:
+                    sections["real"]["dir"] = "${CPPWRF_WRF_RUNS}"
+                elif r_dir_abs.startswith(wrf_runs_abs + os.sep):
+                    rel = os.path.relpath(r_dir_abs, wrf_runs_abs)
+                    sections["real"]["dir"] = f"${{CPPWRF_WRF_RUNS}}/{rel}"
+                else:
+                    sections["real"]["dir"] = r_dir_abs
+            else:
+                sections["real"]["dir"] = r_dir_abs
 
             # In configs/real_p1..p4, wrfinput/wrfbdy were written explicitly
             if self.explicit_files or has_physics_suite:
@@ -751,17 +763,19 @@ class WrfTranslator:
 
                 tbl_dir = self.table_dir
                 if not tbl_dir:
-                    candidates = [
-                        "/home/ostriquetrum/wrf_real/wrf_run",
-                        os.path.join(os.path.dirname(self.namelist_path), "wrf_run"),
-                        os.path.dirname(self.namelist_path),
-                    ]
+                    wrf_runs = os.environ.get("CPPWRF_WRF_RUNS")
+                    candidates = []
+                    if wrf_runs:
+                        candidates.append(os.path.join(wrf_runs, "wrf_run"))
+                    if self.namelist_path:
+                        candidates.append(os.path.join(os.path.dirname(self.namelist_path), "wrf_run"))
+                        candidates.append(os.path.dirname(self.namelist_path))
                     for cand in candidates:
                         if cand and os.path.exists(os.path.join(cand, "LANDUSE.TBL")):
                             tbl_dir = cand
                             break
                     if not tbl_dir:
-                        tbl_dir = "/home/ostriquetrum/wrf_real/wrf_run"
+                        tbl_dir = os.path.join(wrf_runs, "wrf_run") if wrf_runs else "${CPPWRF_WRF_RUNS}/wrf_run"
                 sections["phys"]["table_dir"] = tbl_dir
 
                 if sf_sfclay not in SUPPORTED_OPTIONS["sf_sfclay_physics"]:

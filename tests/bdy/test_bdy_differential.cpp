@@ -2,8 +2,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <random>
+#include <string>
 #include <vector>
 #include <netcdf.h>
 
@@ -987,12 +989,23 @@ bool test_set_physical_bc() {
 // ---------------------------------------------------------------------------
 bool test_r0_wrfbdy_verification() {
   std::cout << "[TEST 11] Verification against R0 wrfbdy_d01 & wrfinput_d01 ...\n";
-  const char* bdy_path = "/home/ostriquetrum/wrf_real/run_R0/wrfbdy_d01";
-  const char* inp_path = "/home/ostriquetrum/wrf_real/run_R0/wrfinput_d01";
+  const char* runs_env = std::getenv("CPPWRF_WRF_RUNS");
+  if (!runs_env || !*runs_env) {
+    std::cout << "  SKIP: CPPWRF_WRF_RUNS is not set; skipping R0 wrfbdy & wrfinput verification.\n";
+    return true;
+  }
+  std::string runs = runs_env;
+  std::string bdy_path = runs + "/run_R0/wrfbdy_d01";
+  std::string inp_path = runs + "/run_R0/wrfinput_d01";
+
+  if (!std::filesystem::exists(bdy_path) || !std::filesystem::exists(inp_path)) {
+    std::cout << "  SKIP: " << bdy_path << " or " << inp_path << " not found; skipping R0 verification.\n";
+    return true;
+  }
 
   int ncid_bdy = -1, ncid_inp = -1;
-  CHECK_NC(nc_open(bdy_path, NC_NOWRITE, &ncid_bdy));
-  CHECK_NC(nc_open(inp_path, NC_NOWRITE, &ncid_inp));
+  CHECK_NC(nc_open(bdy_path.c_str(), NC_NOWRITE, &ncid_bdy));
+  CHECK_NC(nc_open(inp_path.c_str(), NC_NOWRITE, &ncid_inp));
 
   // Read dimensions from wrfinput:
   // west_east = 119, south_north = 89, bottom_top = 44

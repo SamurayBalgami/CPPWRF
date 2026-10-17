@@ -115,8 +115,17 @@ static void print_stat(const DiffStats& s) {
 }
 
 int main(int argc, char* argv[]) {
-    std::string run_dir = "/home/ostriquetrum/wrf_real/wrf_run";
-    if (argc > 1) run_dir = argv[1];
+    std::string run_dir;
+    if (argc > 1) {
+        run_dir = argv[1];
+    } else {
+        const char* runs_env = std::getenv("CPPWRF_WRF_RUNS");
+        if (!runs_env || !*runs_env) {
+            std::cout << "SKIP: CPPWRF_WRF_RUNS is not set; skipping test.\n";
+            return 0; // CTest skip
+        }
+        run_dir = std::string(runs_env) + "/wrf_run";
+    }
 
     std::vector<std::string> met_files = {
         run_dir + "/met_em.d01.2026-10-12_00:00:00.nc",
