@@ -108,6 +108,10 @@ if(TARGET netCDF::netcdf OR NETCDF_FOUND OR NETCDF_INCDIR)
   if(EXISTS ${CMAKE_SOURCE_DIR}/tests/io_netcdf)
     add_subdirectory(tests/io_netcdf)
   endif()
+  # C++ real.exe (host only)
+  find_library(NETCDF_LIBRARY NAMES netcdf HINTS /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib)
+  set(NETCDF_INCLUDE_DIR ${NETCDF_INCDIR})
+  add_subdirectory(src/init_real)
 endif()
 
 # Single-source kernels: every source of the core is compiled by nvcc in CUDA builds.
