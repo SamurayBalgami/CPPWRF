@@ -241,10 +241,12 @@ SUPPORTED_OPTIONS = {
         0: "None / off",
         1: "Kessler warm-rain",
         6: "WSM6 6-class single-moment",
+        8: "Thompson",
     },
     "sf_sfclay_physics": {
         0: "None / off",
         1: "Revised MM5 surface layer (sfclayrev)",
+        2: "Eta similarity surface layer (MYJ)",
     },
     "sf_surface_physics": {
         0: "None / off",
@@ -253,10 +255,13 @@ SUPPORTED_OPTIONS = {
     "bl_pbl_physics": {
         0: "None / off",
         1: "YSU (Yonsei University) planetary boundary layer",
+        2: "MYJ (Mellor-Yamada-Janjic) planetary boundary layer",
     },
     "cu_physics": {
         0: "None / off",
         1: "Kain-Fritsch cumulus parameterization",
+        3: "Grell-Freitas cumulus parameterization",
+        16: "New Tiedtke cumulus parameterization",
     },
     "ra_lw_physics": {
         0: "None / off",
@@ -269,13 +274,17 @@ SUPPORTED_OPTIONS = {
     "diff_opt": {
         0: "None / off",
         1: "Cartesian or coordinate-surface diffusion",
+        2: "Physical-space (full metric) diffusion",
     },
     "km_opt": {
         1: "Constant eddy viscosity (khdif / kvdif)",
+        2: "1.5-order prognostic TKE",
         4: "2D horizontal Smagorinsky",
     },
     "damp_opt": {
         0: "None / off",
+        1: "Upper diffusive damping layer",
+        2: "Rayleigh relaxation layer",
         3: "Implicit Rayleigh damping of w in upper layer",
     },
     "h_adv_order": {5: "5th-order upwind", 6: "6th-order centered"},
@@ -633,7 +642,7 @@ class WrfTranslator:
         if damp_opt != 0:
             sections["dyn"]["damp_opt"] = damp_opt
             if damp_opt not in SUPPORTED_OPTIONS["damp_opt"]:
-                self.warn(f"WRF damp_opt = {damp_opt} is not supported; CPPWRF supports damp_opt 0 (off) and 3 (Rayleigh damping).")
+                self.warn(f"WRF damp_opt = {damp_opt} is not supported; CPPWRF supports damp_opt 0, 1, 2 and 3.")
             zdamp = self.get_opt("dynamics", "zdamp", 5000.0)
             dampcoef = self.get_opt("dynamics", "dampcoef", 0.2)
             sections["dyn"]["zdamp"] = int(zdamp) if float(zdamp).is_integer() else zdamp
@@ -645,14 +654,14 @@ class WrfTranslator:
         if diff_opt != 0:
             sections["dyn"]["diff_opt"] = diff_opt
             if diff_opt not in SUPPORTED_OPTIONS["diff_opt"]:
-                self.warn(f"WRF diff_opt = {diff_opt} is not directly supported; CPPWRF supports diff_opt 0 (off) and 1 (Cartesian/slope).")
+                self.warn(f"WRF diff_opt = {diff_opt} is not directly supported; CPPWRF supports diff_opt 0, 1 and 2.")
 
         km_opt = self.get_opt("dynamics", "km_opt", 1)
         if (diff_opt != 0 or km_opt != 1) and km_opt is not None:
             if km_opt not in (0, 1):
                 sections["dyn"]["km_opt"] = km_opt
             if km_opt not in SUPPORTED_OPTIONS["km_opt"] and km_opt != 0:
-                self.warn(f"WRF km_opt = {km_opt} is not supported; CPPWRF supports km_opt 1 (constant K) and 4 (2D Smagorinsky).")
+                self.warn(f"WRF km_opt = {km_opt} is not supported; CPPWRF supports km_opt 1, 2 and 4.")
 
         c_s = self.get_opt("dynamics", "c_s", None)
         if km_opt == 4 and c_s is not None:
@@ -718,9 +727,9 @@ class WrfTranslator:
         if chem_adv != 0:
             self.warn("WRF chemistry advection (chem_adv_opt) is not supported.")
 
-        tke_adv = self.get_opt("dynamics", "tke_adv_opt", 0)
-        if tke_adv != 0:
-            self.warn("WRF prognostic TKE advection (tke_adv_opt) is not supported.")
+        tke_adv = self.get_opt("dynamics", "tke_adv_opt", None)
+        if tke_adv is not None and km_opt == 2:
+            sections["dyn"]["tke_adv_opt"] = tke_adv
 
         # 10. Moisture Species [moist]
         if case_name == "real":

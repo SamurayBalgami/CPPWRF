@@ -120,7 +120,7 @@ python3 tools/wrf2cppwrf.py /path/to/wrf/run/namelist.input -o run.ini --format 
 Key translator features:
 - **f90nml-Free Parser:** Pure Python tokenizer supporting standard Fortran namelist syntax, repetition counts (`3*0`), exponents (`1.0d-4`), and inline comments.
 - **Single-Domain Filtering:** Extracts domain 1 settings; issues descriptive warnings when nested domain arrays (`max_dom > 1`) are present.
-- **Non-Silent Diagnostics:** Reports clear warnings on unsupported schemes (e.g. `diff_opt=2`, `mp_physics=2`) and informational notices for ignored WPS/quilt metadata.
+- **Non-Silent Diagnostics:** Reports clear warnings on unsupported schemes (e.g. `diff_opt=3`, `mp_physics=2`) and informational notices for ignored WPS/quilt metadata.
 
 ### Idealized Cases
 CPPWRF supports standard ARW idealized benchmarks:
@@ -197,8 +197,8 @@ Every option supported by the CPPWRF runtime is cataloged below, along with its 
 | `[time]` | `dt` | double | *required* | Large time step in seconds ($\Delta t$) | `time_step` |
 | `[time]` | `time_step_sound` | integer | `0` (auto) | Acoustic small steps per RK stage (0 = auto-computed CFL rule) | `time_step_sound` |
 | `[dyn]` | `khdif`, `kvdif` | double | `0.0` | Constant horizontal/vertical eddy diffusion in $m^2/s$ | `khdif`, `kvdif` |
-| `[dyn]` | `diff_opt` | integer | `0` | Diffusion option (0 = off, 1 = coordinate/slope diffusion) | `diff_opt` |
-| `[dyn]` | `km_opt` | integer | `1` | Eddy viscosity closure (1 = constant, 4 = 2D Smagorinsky) | `km_opt` |
+| `[dyn]` | `diff_opt` | integer | `0` | Diffusion option (0 = off, 1 = coordinate-surface diffusion, 2 = physical-space diffusion) | `diff_opt` |
+| `[dyn]` | `km_opt` | integer | `1` | Eddy viscosity closure (1 = constant, 2 = 1.5-order TKE, 4 = 2D Smagorinsky) | `km_opt` |
 | `[dyn]` | `c_s` | double | `0.25` | Smagorinsky diffusion constant | `c_s` |
 | `[dyn]` | `diff_6th_opt` | integer | `0` | 6th-order spatial diffusion (0 = off, 1 = standard, 2 = monotonic) | `diff_6th_opt` |
 | `[dyn]` | `diff_6th_factor` | double | `0.12` | 6th-order numerical diffusion coefficient | `diff_6th_factor` |
@@ -208,7 +208,7 @@ Every option supported by the CPPWRF runtime is cataloged below, along with its 
 | `[dyn]` | `v_adv_order` | integer | `3` | Vertical advection order (3 = upwind, 4 = centered) | `v_mom_adv_order` |
 | `[dyn]` | `w_damping` | integer | `0` | Vertical velocity damping where $w$-CFL > 1 (0 = off, 1 = on) | `w_damping` |
 | `[dyn]` | `w_crit_cfl` | double | `1.0` | Critical Courant number threshold for $w$-damping | `w_crit_cfl` |
-| `[dyn]` | `damp_opt` | integer | `0` | Upper damping layer (0 = off, 3 = implicit Rayleigh damping of $w$) | `damp_opt` |
+| `[dyn]` | `damp_opt` | integer | `0` | Upper damping layer (0 = off, 1 = diffusive layer, 2 = Rayleigh relaxation, 3 = implicit Rayleigh damping of $w$) | `damp_opt` |
 | `[dyn]` | `zdamp` | double | `5000.0` | Depth of upper Rayleigh damping sponge layer in meters | `zdamp` |
 | `[dyn]` | `dampcoef` | double | `0.2` | Rayleigh damping coefficient ($s^{-1}$) | `dampcoef` |
 | `[dyn]` | `moist_adv_opt` | integer | `1` | Moisture advection scheme (0 = standard, 1 = positive-definite) | `moist_adv_opt` |
@@ -219,9 +219,9 @@ Every option supported by the CPPWRF runtime is cataloged below, along with its 
 | `[phys]` | `mp_physics` | integer | `0` | Microphysics scheme (0 = off, 1 = Kessler, 6 = WSM6, 8 = Thompson) | `mp_physics` |
 | `[phys]` | `hail_opt` | integer | `0` | WSM6 6th class density (0 = graupel, 1 = hail) | `hail_opt` |
 | `[phys]` | `mp_tend_lim` | double | `10.0` | Heating rate limiter for microphysics ($K/s$) | `mp_tend_lim` |
-| `[phys]` | `sf_sfclay_physics` | integer | `1` | Surface layer formulation (0 = off, 1 = Revised MM5 / sfclayrev) | `sf_sfclay_physics` |
+| `[phys]` | `sf_sfclay_physics` | integer | `1` | Surface layer formulation (0 = off, 1 = Revised MM5 / sfclayrev, 2 = Eta / MYJ) | `sf_sfclay_physics` |
 | `[phys]` | `sf_surface_physics` | integer | `2` | Land surface model (0 = off, 2 = Unified Noah LSM 4-layer) | `sf_surface_physics` |
-| `[phys]` | `bl_pbl_physics` | integer | `1` | Planetary boundary layer scheme (0 = off, 1 = YSU) | `bl_pbl_physics` |
+| `[phys]` | `bl_pbl_physics` | integer | `1` | Planetary boundary layer scheme (0 = off, 1 = YSU, 2 = MYJ) | `bl_pbl_physics` |
 | `[phys]` | `cu_physics` | integer | `0` | Cumulus parameterization (0 = off, 1 = Kain-Fritsch, 3 = Grell-Freitas, 16 = New Tiedtke); GF also reads `ishallow` and `clos_choice` | `cu_physics` |
 | `[phys]` | `ra_lw_physics` | integer | `0` | Longwave radiation scheme (0 = off, 4 = RRTMG LW) | `ra_lw_physics` |
 | `[phys]` | `ra_sw_physics` | integer | `0` | Shortwave radiation scheme (0 = off, 4 = RRTMG SW) | `ra_sw_physics` |

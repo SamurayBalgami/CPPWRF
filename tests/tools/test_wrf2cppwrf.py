@@ -306,12 +306,12 @@ class TestValidationAndWarnings(unittest.TestCase):
         text = """
         &time_control /
         &domains time_step = 60 /
-        &dynamics diff_opt = 2 /
+        &dynamics diff_opt = 3 /
         """
         nml = parse_namelist(text)
         t = WrfTranslator(nml)
         t.translate()
-        self.assertTrue(any("diff_opt = 2" in w for w in t.warnings))
+        self.assertTrue(any("diff_opt = 3" in w for w in t.warnings))
 
     def test_hydrostatic_error(self):
         text = """

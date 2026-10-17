@@ -8,11 +8,11 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 
 | Component | WRF options |
 |---|---|
-| Dynamics | RK3 split-explicit, hybrid_opt 0/2, hypsometric_opt 1/2, map factors, Coriolis and curvature, terrain, specified lateral boundaries (spec_zone 1, relax_zone 4), w_damping, damp_opt 3, h_adv_order 5/6, v_adv_order 3/4, positive-definite moisture and scalar advection |
-| Diffusion | diff_opt 1 with km_opt 1 (constant K) and 4 (2-D Smagorinsky), 6th-order diffusion |
+| Dynamics | RK3 split-explicit, hybrid_opt 0/2, hypsometric_opt 1/2, map factors, Coriolis and curvature, terrain, specified lateral boundaries (spec_zone 1, relax_zone 4), w_damping, damp_opt 3 (damp_opt 1 and 2: kernel tests), h_adv_order 5/6, v_adv_order 3/4, positive-definite moisture and scalar advection |
+| Diffusion | diff_opt 1 with km_opt 1 (constant K) and 4 (2-D Smagorinsky); diff_opt 2 with km_opt 2 (1.5-order TKE, advected TKE); 6th-order diffusion |
 | Microphysics | Kessler (1), WSM6 (6, with effective radii), Thompson (8) |
 | Cumulus | Kain-Fritsch (1), Grell-Freitas (3, deep and shallow), New Tiedtke (16) |
-| PBL, surface layer, land surface | YSU (1), revised MM5 surface layer (1), Noah LSM (2, including glacial and sea-ice points) |
+| PBL, surface layer, land surface | YSU (1), MYJ (2), revised MM5 surface layer (1), Eta surface layer (2), Noah LSM (2, including glacial and sea-ice points) |
 | Radiation | RRTMG LW and SW (4), CAM ozone and greenhouse gases, cal_cldfra1, McICA |
 | Nesting | static one-way and two-way nests (interp_fcn_sint, bdy_interp1, copy_fcn feedback, sm121/smdsm smoothers, blend_terrain, adjust_tempqv) |
 | I/O | reads wrfinput_d0N / wrfbdy_d01, writes wrfout_d0N (NetCDF) and restart files; native binary output |
@@ -52,10 +52,12 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | P6 | P5 with Thompson | 1 h |
 | P7 | P2 with New Tiedtke | 1 h |
 | P8 | P2 with Grell-Freitas (deep and shallow) | 1 h |
+| P9 | P1 with MYJ PBL and the Eta surface layer | 1 h |
+| T1 | R1 with diff_opt 2 / km_opt 2 (TKE) | 5 steps |
 | N1 | one-way nest (both domains) | 3 parent steps |
 | N2 | two-way nest (both domains) | 1 h |
 
-Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8).
+Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8, P9, T1).
 
 CUDA (relative L2 at 1 h unless noted):
 
@@ -95,5 +97,4 @@ RRTMG runs on the GPU as a batched pipeline (docs/PHYSICS_SUITE.md section 10).
 
 ## Not yet implemented
 
-MYJ PBL and the eta surface layer, sf_sfclay_physics 91, TKE closures (km_opt 2/3), diff_opt 2,
-damp_opt 1/2, moving nests, a C++ real.exe (src/init_real is partial), and parallel (MPI) runs.
+sf_sfclay_physics 91, km_opt 3, Noah-MP, moving nests, a C++ real.exe (src/init_real is partial), and parallel (MPI) runs.
