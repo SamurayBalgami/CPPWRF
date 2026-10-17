@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <stdexcept>
 
+#include "phys/bl_myj/myjpbl.hpp"
 #include "phys/bl_ysu/ysu.hpp"
 #include "phys/cu_gf/gf_driver.hpp"
 #include "phys/cu_ntiedtke/ntiedtke.hpp"
@@ -95,6 +96,19 @@ struct KCopy2 {
   CPPWRF_HD void operator()(int i, int j) const { dst(i, j) = src(i, j); }
 };
 
+// module_surface_driver.F:2226-2232 after MYJSFC
+struct KMyjsfcPost {
+  V2 ustm, wspd, ch;
+  C2 ust, chs;
+  C3 u_phy, v_phy;
+  CPPWRF_HD void operator()(int i, int j) const {
+    ustm(i, j) = ust(i, j);
+    real w = std::sqrt(u_phy(i, j, 0) * u_phy(i, j, 0) + v_phy(i, j, 0) * v_phy(i, j, 0));
+    wspd(i, j) = w > real(0.001) ? w : real(0.001);
+    ch(i, j) = chs(i, j);
+  }
+};
+
 // ---------------------------------------------------------------- Noah driver (lsm), before SFLX
 struct LsmConst {
   // module_sf_noahdrv.F lsm parameters
@@ -107,7 +121,7 @@ struct LsmConst {
 struct KLsmPre {
   // inputs
   C3 dz8w, qv3d, p8w3d, t3d;
-  C2 qgh, glw, swdown, rainbl, vegfra, shdmin, shdmax, snoalb, tmn, xice, chs, rib, sr;
+  C2 qgh, glw, swdown, rainbl, vegfra, shdmin, shdmax, snoalb, tmn, xice, chs, rib, sr, qz0;
   CI2 ivgtyp, isltyp;
   // in/out
   V2 tsk, albedo, albbck, z0, emiss, embck, snow, snowh, snowc, canwat, snotime, lai, smstav, smstot, chklowq,
@@ -149,7 +163,7 @@ struct KLsmPre {
     q2k(i, j) = qv3d(i, j, 0) / (real(1.0) + qv3d(i, j, 0));
     soilw(i, j) = real(0.);
     real q2s = qgh(i, j) / (real(1.0) + qgh(i, j));
-    if (myj && (q2k(i, j) >= q2s * C::tresh)) {  // QZ0 test of MYJ (not used with sfclayrev)
+    if (myj && (q2k(i, j) >= q2s * C::tresh) && (q2k(i, j) < qz0(i, j))) {  // QZ0 test of MYJ (not used with sfclayrev)
       chklowq(i, j) = real(0.);
     } else {
       chklowq(i, j) = real(1.);
@@ -758,13 +772,19 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       voce(g, Stagger::M, "voce"), ctopo(g, Stagger::M, "ctopo"), ctopo2(g, Stagger::M, "ctopo2"),
       ck(g, Stagger::M, "ck"), cka(g, Stagger::M, "cka"), cd(g, Stagger::M, "cd"), cda(g, Stagger::M, "cda"),
       wstar(g, Stagger::M, "wstar"), delta(g, Stagger::M, "delta"), hol(g, Stagger::M, "hol"),
-      ivgtyp(g, "ivgtyp"), isltyp(g, "isltyp"), kpbl(g, "kpbl"), pt(g), prep(g),
+      thz0(g, Stagger::M, "thz0"), uz0(g, Stagger::M, "uz0"), vz0(g, Stagger::M, "vz0"),
+      akhs(g, Stagger::M, "akhs"), akms(g, Stagger::M, "akms"), ct(g, Stagger::M, "ct"),
+      tshltr(g, Stagger::M, "tshltr"), th10(g, Stagger::M, "th10"), qshltr(g, Stagger::M, "qshltr"),
+      q10(g, Stagger::M, "q10"), pshltr(g, Stagger::M, "pshltr"), u10e(g, Stagger::M, "u10e"),
+      v10e(g, Stagger::M, "v10e"), mixht(g, Stagger::M, "mixht"),
+      ivgtyp(g, "ivgtyp"), isltyp(g, "isltyp"), kpbl(g, "kpbl"), lowlyr(g, "lowlyr"), pt(g), prep(g),
       psim(g, Stagger::M, "psim"), psih(g, Stagger::M, "psih"), gz1oz0(g, Stagger::M, "gz1oz0"),
       chklowq(g, Stagger::M, "chklowq"), qgh(g, Stagger::M, "qgh"), chs(g, Stagger::M, "chs"),
       chs2(g, Stagger::M, "chs2"), cqs2(g, Stagger::M, "cqs2"), cpm(g, Stagger::M, "cpm"),
       u_phytmp(g, Stagger::M, "u_phytmp"), v_phytmp(g, Stagger::M, "v_phytmp"), t1_lag_(g, Stagger::M, "t1_lag"), coszen(g, Stagger::M, "coszen"), g_(g), gs_(g), o_(o) {
-  if (o.sf_sfclay_physics != 1 || o.sf_surface_physics != 2 || o.bl_pbl_physics != 1)
-    throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1, sf_surface_physics=2, bl_pbl_physics=1");
+  if ((o.sf_sfclay_physics != 1 && o.sf_sfclay_physics != 2) || o.sf_surface_physics != 2 ||
+      (o.bl_pbl_physics != 1 && o.bl_pbl_physics != 2))
+    throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1|2, sf_surface_physics=2, bl_pbl_physics=1|2");
   if (o.cu_physics != 0 && o.cu_physics != 1 && o.cu_physics != 3 && o.cu_physics != 16)
     throw std::runtime_error("PhysicsSuite: only cu_physics=0, 1 (Kain-Fritsch), 3 (Grell-Freitas) or 16 (New Tiedtke)");
   if (o.cu_physics == 3 && g.nz > cu_gf::kMaxLevels)
@@ -779,13 +799,19 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   if (o.seaice_thickness_opt != 0 || o.seaice_snowdepth_opt != 0)
     throw std::runtime_error("PhysicsSuite: seaice_thickness_opt/seaice_snowdepth_opt 1 need ICEDEPTH/SNOWSI input");
   if (o.num_soil_layers > noah::kMaxSoilLevels) throw std::runtime_error("PhysicsSuite: too many soil layers");
-  if (g.nz > ysu::kMaxLevels) throw std::runtime_error("PhysicsSuite: nz exceeds the YSU column limit");
+  if (o.bl_pbl_physics == 1 && g.nz > ysu::kMaxLevels)
+    throw std::runtime_error("PhysicsSuite: nz exceeds the YSU column limit");
+  if (o.bl_pbl_physics == 2 && g.nz > myjpbl::kMaxLevels)
+    throw std::runtime_error("PhysicsSuite: nz exceeds the MYJ column limit");
+  if (o.sf_sfclay_physics == 2 && g.nz > sf_myjsfc::kMaxLevels)
+    throw std::runtime_error("PhysicsSuite: nz exceeds the MYJSFC column limit");
   if (o.cu_physics == 1 && g.nz > cu_kf::kMaxLevels)
     throw std::runtime_error("PhysicsSuite: nz exceeds the KF column limit");
   gs_.nz = o.num_soil_layers;
   auto mk3 = [&](Field3& f, const Grid& gg, const char* n) { f = Field3(gg, Stagger::M, n); };
   mk3(tslb, gs_, "tslb"); mk3(smois, gs_, "smois"); mk3(sh2o, gs_, "sh2o"); mk3(smcrel, gs_, "smcrel");
   mk3(exch_h, g, "exch_h"); mk3(exch_m, g, "exch_m");
+  mk3(tke_pbl, g, "tke_pbl"); mk3(el_pbl, g, "el_pbl");
   mk3(w0avg, g, "w0avg"); mk3(cldfra_dp, g, "cldfra_dp"); mk3(cldfra_sh, g, "cldfra_sh");
   mk3(qc_cu, g, "qc_cu"); mk3(qi_cu, g, "qi_cu"); mk3(cldfra, g, "cldfra");
   mk3(n_stc, gs_, "n_stc"); mk3(n_smc, gs_, "n_smc"); mk3(n_swc, gs_, "n_swc"); mk3(n_et, gs_, "n_et");
@@ -800,13 +826,23 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   n_vegtyp = IntField2(g, "n_vegtyp"); n_soiltyp = IntField2(g, "n_soiltyp"); n_slopetyp = IntField2(g, "n_slopetyp");
   n_ice = IntField2(g, "n_ice"); n_active = IntField2(g, "n_active");
   dzs.assign(o.num_soil_layers, 0.0);
-  // tables: read once (SOIL_VEG_GEN_PARM), sfclayrev psi tables built once (sf_sfclayrev_init)
+  // tables: read once (SOIL_VEG_GEN_PARM), sfclayrev / myjsfc psi tables built once
   if (!noah::read_noah_tables(o.table_dir, o.mminlu, o.mminsl, noah_tables_))
     throw std::runtime_error("PhysicsSuite: cannot read the Noah tables from " + o.table_dir);
-  sfclayrev::SFClayRevTables<real> h{};
-  sfclayrev::init_sfclayrev_tables(h);
-  d_sfclay_tables_ = static_cast<sfclayrev::SFClayRevTables<real>*>(dev_alloc(sizeof(h)));
-  copy_to_dev(d_sfclay_tables_, &h, sizeof(h));
+  if (o.sf_sfclay_physics == 1) {
+    sfclayrev::SFClayRevTables<real> h{};
+    sfclayrev::init_sfclayrev_tables(h);
+    d_sfclay_tables_ = static_cast<sfclayrev::SFClayRevTables<real>*>(dev_alloc(sizeof(h)));
+    copy_to_dev(d_sfclay_tables_, &h, sizeof(h));
+  }
+  if (o.sf_sfclay_physics == 2) {
+    lowlyr.upload(std::vector<int>(lowlyr.layout().total, 1));  // myjsfcinit: LOWLYR = 1
+    ust.fill_host([](int, int, int) { return 0.1; });           // myjsfcinit: USTAR = 0.1
+  }
+  if (o.bl_pbl_physics == 2) {
+    lowlyr.upload(std::vector<int>(lowlyr.layout().total, 1));
+    tke_pbl.fill_host([](int, int, int) { return 0.2; });       // myjpblinit: TKE_MYJ = EPSQ2 = 0.2
+  }
   if (o.cu_physics == 1) {
     using namespace wrfc;
     cu_kf::KFTables<real> h_kf{};
@@ -831,7 +867,7 @@ void PhysicsSuite::init_radiation(const std::vector<double>& xlat, const std::ve
 }
 
 PhysicsSuite::~PhysicsSuite() {
-  dev_free(d_sfclay_tables_);
+  if (d_sfclay_tables_) dev_free(d_sfclay_tables_);
   if (d_kf_tables_) dev_free(d_kf_tables_);
   if (d_gfinv_) dev_free(d_gfinv_);
 }
@@ -847,6 +883,10 @@ std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
                     &ctopo, &ctopo2, &ck, &cka, &cd, &cda, &wstar, &delta, &hol, &rainc, &rainsh, &pratec, &pratesh, &nca, &htop, &hbot,
                     &cutop, &cubot, &cuppt, &coszen})
     v.emplace_back("sfc_" + f->name(), f);
+  if (o_.sf_sfclay_physics == 2 || o_.bl_pbl_physics == 2) {
+    for (Field2* f : {&thz0, &uz0, &vz0, &akhs, &akms, &ct, &tshltr, &th10, &qshltr, &q10, &pshltr, &u10e, &v10e, &mixht})
+      v.emplace_back("sfc_" + f->name(), f);
+  }
   return v;
 }
 
@@ -857,6 +897,10 @@ std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
                     &qc_cu, &qi_cu, &pt.rucuten, &pt.rvcuten, &pt.rthcuten, &pt.rqvcuten, &pt.rqccuten, &pt.rqrcuten,
                     &pt.rqicuten, &pt.rqscuten})
     v.emplace_back("sfc_" + f->name(), f);
+  if (o_.sf_sfclay_physics == 2 || o_.bl_pbl_physics == 2) {
+    v.emplace_back("sfc_tke_pbl", &tke_pbl);
+    v.emplace_back("sfc_el_pbl", &el_pbl);
+  }
   if (rad_) v.emplace_back("sfc_cldfra", &cldfra);
   if (o_.cu_physics == 16 || o_.cu_physics == 3) {
     v.emplace_back("sfc_rthften", &pt.rthften);
@@ -868,7 +912,9 @@ std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
 }
 
 std::vector<std::pair<std::string, IntField2*>> PhysicsSuite::carried_int() {
-  return {{"sfc_ivgtyp", &ivgtyp}, {"sfc_isltyp", &isltyp}, {"sfc_kpbl", &kpbl}};
+  std::vector<std::pair<std::string, IntField2*>> v = {{"sfc_ivgtyp", &ivgtyp}, {"sfc_isltyp", &isltyp}, {"sfc_kpbl", &kpbl}};
+  if (o_.sf_sfclay_physics == 2 || o_.bl_pbl_physics == 2) v.emplace_back("sfc_lowlyr", &lowlyr);
+  return v;
 }
 
 void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies&) {
@@ -889,11 +935,11 @@ void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
   vmdump::dump("vm_phy_prep", 1,
                {&prep.th_phy, &prep.pi_phy, &prep.t_phy, &prep.p_hyd, &prep.p_hyd_w, &prep.p8w, &prep.t8w, &prep.rho,
                 &prep.dz8w, &prep.z, &prep.u_phy, &prep.v_phy, &prep.p_phy});
-  surface_driver(s);
+  surface_driver(s, b);
   vmdump::dump("vm_surface", 1, {},
                {&hfx, &qfx, &ust, &znt, &mol, &qsfc, &tsk, &flhc, &flqc, &br, &psim, &psih, &wspd, &u10, &v10, &t2,
                 &th2, &q2, &lh, &grdflx, &pblh, &regime, &zol, &fm, &fh, &rmol, &canwat});
-  pbl_driver(s);
+  pbl_driver(s, b);
   vmdump::dump("vm_pbl", 1, {&pt.rublten, &pt.rvblten, &pt.rthblten, &pt.rqvblten, &exch_h}, {&pblh});
   cumulus_driver(s, b);
 }
@@ -922,8 +968,8 @@ void PhysicsSuite::after_rk(const dyn::State& s, const dyn::BaseState& b) {
   phy_prep_part2(pt, s, b, g_, CouplingFlags{radiation_on(), true, o_.cu_physics, o_.use_theta_m == 1});
 }
 
-// module_surface_driver.F surface_driver for SFCLAYREVSCHEME + LSMSCHEME
-void PhysicsSuite::surface_driver(const dyn::State& s) {
+// module_surface_driver.F surface_driver for SFCLAYREVSCHEME / MYJSFCSCHEME + LSMSCHEME
+void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) {
   const Range2D cols = g_.columns();
   const int nz = g_.nz;
   const real xice_threshold = o_.fractional_seaice == 0 ? real(0.5) : real(0.02);
@@ -937,9 +983,9 @@ void PhysicsSuite::surface_driver(const dyn::State& s) {
 
   column_for(cols, KSfcPrep{psfc.view(), prep.p_hyd_w.cview(), prep.u_phy.cview(), prep.v_phy.cview(),
                             uoce.cview(), voce.cview(), u_phytmp.view(), v_phytmp.view(), nz});
-  // SFCLAYREV (module_sf_sfclayrev.F wrapper: level kts of u_phytmp, v_phytmp, t_phy, qv,
-  // P_PHY = grid%p_hyd, dz8w)
-  {
+  if (o_.sf_sfclay_physics == 1) {
+    // SFCLAYREV (module_sf_sfclayrev.F wrapper: level kts of u_phytmp, v_phytmp, t_phy, qv,
+    // P_PHY = grid%p_hyd, dz8w)
     using namespace wrfc;
     sfclayrev::run_sfclayrev(
         slice0(u_phytmp), slice0(v_phytmp), slice0(prep.t_phy), slice0(s.q_2[s.P_QV]), slice0(prep.p_hyd),
@@ -951,8 +997,23 @@ void PhysicsSuite::surface_driver(const dyn::State& s) {
         ck.view(), cka.view(), cd.view(), cda.view(), d_sfclay_tables_, cols, o_.isfflx != 0, o_.shalwater_z0 != 0,
         o_.isftcflx, o_.iz0tlnd, o_.scm_force_flux != 0, cp, g, rcp, r_d, xlv, svp1, svp2, svp3, svpt0, ep_1,
         ep_2, karman, p1000mb);
+    column_for(cols, KCopy2{ch.view(), chs.cview()});  // ch = chs (EM_CORE)
+  } else if (o_.sf_sfclay_physics == 2) {
+    // MYJSFC (module_sf_myjsfc.F: u_phy, v_phy, p_phy=grid%p_hyd, p8w=grid%p_hyd_w)
+    const C2 ht_v = b.ht.uniform() ? slice0(zero3_) : C2{b.ht.data(), int(b.ht.layout().sj)};
+    sf_myjsfc::run_myjsfc(
+        ht_v, prep.dz8w.cview(), prep.p_hyd.cview(), prep.p_hyd_w.cview(), prep.th_phy.cview(), prep.t_phy.cview(),
+        s.q_2[s.P_QV].cview(), s.P_QC >= 0 ? s.q_2[s.P_QC].cview() : zero3_.cview(), prep.u_phy.cview(),
+        prep.v_phy.cview(), tke_pbl.cview(), tsk.cview(), xland.cview(), ivgtyp.cview(), z0.cview(), mavail.cview(),
+        lowlyr.cview(), qsfc.view(), thz0.view(), qz0.view(), uz0.view(), vz0.view(), ust.view(), znt.view(),
+        pblh.view(), rmol.view(), akhs.view(), akms.view(), br.view(), chs.view(), chs2.view(), cqs2.view(),
+        hfx.view(), qfx.view(), lh.view(), flhc.view(), flqc.view(), qgh.view(), cpm.view(), ct.view(), u10.view(),
+        v10.view(), t2.view(), th2.view(), tshltr.view(), th10.view(), q2.view(), qshltr.view(), q10.view(),
+        pshltr.view(), u10e.view(), v10e.view(), myjsfc_tables_.get_tables(), cols, int(itimestep), o_.isurban,
+        o_.iz0tlnd, wrfc::p1000mb, nz);
+    column_for(cols, KMyjsfcPost{ustm.view(), wspd.view(), ch.view(), ust.cview(), chs.cview(),
+                                 prep.u_phy.cview(), prep.v_phy.cview()});
   }
-  column_for(cols, KCopy2{ch.view(), chs.cview()});  // ch = chs (EM_CORE)
 
   if (o_.isfflx != 0) {
     const int nsoil = o_.num_soil_layers;
@@ -963,6 +1024,7 @@ void PhysicsSuite::surface_driver(const dyn::State& s) {
     pre.qgh = qgh.cview(); pre.glw = glw.cview(); pre.swdown = swdown.cview(); pre.rainbl = rainbl.cview();
     pre.vegfra = vegfra.cview(); pre.shdmin = shdmin.cview(); pre.shdmax = shdmax.cview(); pre.snoalb = snoalb.cview();
     pre.tmn = tmn.cview(); pre.xice = xice.cview(); pre.chs = chs.cview(); pre.rib = br.cview(); pre.sr = sr.cview();
+    pre.qz0 = qz0.cview();
     pre.ivgtyp = ivgtyp.cview(); pre.isltyp = isltyp.cview();
     pre.tsk = tsk.view(); pre.albedo = albedo.view(); pre.albbck = albbck.view(); pre.z0 = z0.view();
     pre.emiss = emiss.view(); pre.embck = embck.view(); pre.snow = snow.view(); pre.snowh = snowh.view();
@@ -984,7 +1046,7 @@ void PhysicsSuite::surface_driver(const dyn::State& s) {
     pre.nsoil = nsoil; pre.itimestep = int(itimestep); pre.isurban = o_.isurban; pre.isice = o_.isice;
     pre.sf_urban_physics = 0;
     for (int n = 0; n < 11; ++n) pre.lcz[n] = noah_tables_.lcz[n];
-    pre.myj = false; pre.frpcpn = true;  // SR is passed by first_rk_step_part1
+    pre.myj = (o_.sf_sfclay_physics == 2); pre.frpcpn = true;  // SR is passed by first_rk_step_part1
     pre.rdlai2d = o_.rdlai2d; pre.dt = dtbl; pre.xice_threshold = xice_threshold;
     column_for(cols, pre);
 
@@ -1142,8 +1204,8 @@ void PhysicsSuite::surface_driver(const dyn::State& s) {
   column_for(cols, KSfcEnd{rainbl.view(), q2.view(), xland.cview(), s.q_2[s.P_QV].cview()});
 }
 
-// module_pbl_driver.F pbl_driver for YSUSCHEME
-void PhysicsSuite::pbl_driver(const dyn::State& s) {
+// module_pbl_driver.F pbl_driver for YSUSCHEME / MYJPBLSCHEME
+void PhysicsSuite::pbl_driver(const dyn::State& s, const dyn::BaseState& b) {
   const Range2D cols = g_.columns();
   const bool run_param = itimestep == 1 || o_.bldt == 0 || stepbl == 1 || itimestep % stepbl == 0;
   if (!run_param) return;
@@ -1152,21 +1214,36 @@ void PhysicsSuite::pbl_driver(const dyn::State& s) {
   const bool flag_qc = s.P_QC >= 0, flag_qi = s.P_QI >= 0;
   column_for(cols, KPblPrep{prep.u_phy.cview(), prep.v_phy.cview(), prep.p_hyd_w.cview(), u_phytmp.view(),
                             v_phytmp.view(), pt.rthblten.view(), pt.rublten.view(), pt.rvblten.view(),
-                            pt.rqcblten.view(), pt.rqvblten.view(), pt.rqiblten.view(), psfc.view(), g_.nz, flag_qi});
-  using namespace wrfc;
-  // YSU: U3D=u_phytmp, T3D=t_phy, P3D=p_phy (grid%p_hyd), P3DI=p8w (grid%p_hyd_w), PI3D=pi_phy,
-  // PSIM=fm, PSIH=fhh, DT=dtbl
-  ysu::run_ysu(u_phytmp.cview(), v_phytmp.cview(), prep.t_phy.cview(), s.q_2[s.P_QV].cview(),
-               flag_qc ? s.q_2[s.P_QC].cview() : zero3_.cview(), flag_qi ? s.q_2[s.P_QI].cview() : zero3_.cview(),
-               prep.p_hyd.cview(), prep.p_hyd_w.cview(), prep.pi_phy.cview(), prep.dz8w.cview(),
-               pt.rthraten.cview(), psfc.cview(), znt.cview(), ust.cview(), fm.cview(), fh.cview(), xland.cview(),
-               hfx.cview(), qfx.cview(), wspd.cview(), br.cview(), u10.view(), v10.view(), uoce.cview(),
-               voce.cview(), ctopo.cview(), ctopo2.cview(), pt.rublten.view(), pt.rvblten.view(),
-               pt.rthblten.view(), pt.rqvblten.view(), pt.rqcblten.view(), pt.rqiblten.view(), exch_h.view(),
-               exch_m.view(), pblh.view(), kpbl.view(), wstar.view(), delta.view(), hol.view(), hol.view(),
-               hol.view(), hol.view(), dtbl, cols, g_.nz, flag_qc, flag_qi, o_.ysu_topdown_pblmix == 1,
-               /*have_ctopo=*/true, /*have_surface_diag=*/false, cp, g, rcp, r_d, rovg, ep_1, ep_2, karman,
-               xlv, r_v);
+                            pt.rqcblten.view(), pt.rqvblten.view(), pt.rqiblten.view(), psfc.view(), g_.nz,
+                            flag_qi || o_.bl_pbl_physics == 2});
+  if (o_.bl_pbl_physics == 1) {
+    using namespace wrfc;
+    // YSU: U3D=u_phytmp, T3D=t_phy, P3D=p_phy (grid%p_hyd), P3DI=p8w (grid%p_hyd_w), PI3D=pi_phy,
+    // PSIM=fm, PSIH=fhh, DT=dtbl
+    ysu::run_ysu(u_phytmp.cview(), v_phytmp.cview(), prep.t_phy.cview(), s.q_2[s.P_QV].cview(),
+                 flag_qc ? s.q_2[s.P_QC].cview() : zero3_.cview(), flag_qi ? s.q_2[s.P_QI].cview() : zero3_.cview(),
+                 prep.p_hyd.cview(), prep.p_hyd_w.cview(), prep.pi_phy.cview(), prep.dz8w.cview(),
+                 pt.rthraten.cview(), psfc.cview(), znt.cview(), ust.cview(), fm.cview(), fh.cview(), xland.cview(),
+                 hfx.cview(), qfx.cview(), wspd.cview(), br.cview(), u10.view(), v10.view(), uoce.cview(),
+                 voce.cview(), ctopo.cview(), ctopo2.cview(), pt.rublten.view(), pt.rvblten.view(),
+                 pt.rthblten.view(), pt.rqvblten.view(), pt.rqcblten.view(), pt.rqiblten.view(), exch_h.view(),
+                 exch_m.view(), pblh.view(), kpbl.view(), wstar.view(), delta.view(), hol.view(), hol.view(),
+                 hol.view(), hol.view(), dtbl, cols, g_.nz, flag_qc, flag_qi, o_.ysu_topdown_pblmix == 1,
+                 /*have_ctopo=*/true, /*have_surface_diag=*/false, cp, g, rcp, r_d, rovg, ep_1, ep_2, karman,
+                 xlv, r_v);
+  } else if (o_.bl_pbl_physics == 2) {
+    // MYJPBL (module_pbl_driver.F:1447-1466: DT=dt, STEPBL=stepbl, PMID=p_phy, PINT=p8w, QCI=qi_curr always PRESENT)
+    const C2 ht_v = b.ht.uniform() ? slice0(zero3_) : C2{b.ht.data(), int(b.ht.layout().sj)};
+    myjpbl::run_myjpbl(
+        ht_v, prep.dz8w.cview(), prep.p_hyd.cview(), prep.p_hyd_w.cview(), prep.th_phy.cview(), prep.t_phy.cview(),
+        prep.pi_phy.cview(), s.q_2[s.P_QV].cview(), flag_qc ? s.q_2[s.P_QC].cview() : zero3_.cview(),
+        flag_qi ? s.q_2[s.P_QI].cview() : zero3_.cview(), prep.u_phy.cview(), prep.v_phy.cview(), prep.rho.cview(),
+        tsk.cview(), chklowq.cview(), thz0.cview(), qz0.cview(), uz0.cview(), vz0.cview(), lowlyr.cview(),
+        xland.cview(), xice.cview(), snow.cview(), ust.cview(), znt.cview(), akhs.cview(), akms.cview(), lh.cview(),
+        qsfc.view(), thz0.view(), qz0.view(), ct.view(), tke_pbl.view(), exch_h.view(), el_pbl.view(), pblh.view(),
+        kpbl.view(), mixht.view(), pt.rublten.view(), pt.rvblten.view(), pt.rthblten.view(), pt.rqvblten.view(),
+        pt.rqcblten.view(), pt.rqiblten.view(), cols, dt, stepbl, g_.nz, /*has_qi=*/true);
+  }
 }
 
 // module_cumulus_driver.F cumulus_driver for KFETASCHEME (cu_physics = 1)

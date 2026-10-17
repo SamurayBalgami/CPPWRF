@@ -126,6 +126,20 @@ CASES = [
     ("real_p8_fp32_1h", "cuda", "configs/real_p8_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-3, "W": 5e-2, "THM": 3e-5, "QV": 8e-4}),
+    # P9 = P1 with MYJ PBL (bl_pbl_physics = 2) + Eta surface layer (sf_sfclay_physics = 2);
+    # reference WRF real*8. Bit-identical on CPU FP64 for both 3 steps and 1 h.
+    ("real_p9_r8_fp64_cpu", "cpu_dp", "configs/real_p9_r8.ini", [],
+     f"{WR}/run_P9_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
+    ("real_p9_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p9_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P9_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_P9_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    ("real_p9_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p9_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P9_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_P9_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-9, "W": 1e-7, "THM": 1e-9, "QV": 1e-8}),
+    ("real_p9_fp32_1h", "cuda", "configs/real_p9_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P9", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_P9/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 6e-4, "W": 1e-2, "THM": 1e-5, "QV": 2e-3}),
     # Nesting: one-way (N1) and two-way (N2, feedback) vs WRF r8, bit-identical on the CPU (both domains;
     # N2 for 1 h)
     ("real_n1_r8_fp64_cpu", "cpu_dp", "configs/real_n1_steps.ini", ["real.dir=" + f"{WR}/run_N1_r8/steps"],
@@ -239,15 +253,19 @@ def main():
         else:
             print(f"{'PASS' if good else 'FAIL'}  straka_wrf             {msg}")
             ok &= good
-    if (not a.only or "restart" in a.only) and a.cpu_dp and os.path.exists(a.cpu_dp):
+    if a.cpu_dp and os.path.exists(a.cpu_dp):
         for tag, cfg, rd in (("p1", "configs/real_p1_r8.ini", "run_P1_r8"),
                              ("p7", "configs/real_p7_r8.ini", "run_P7_r8"),
-                             ("p8", "configs/real_p8_r8.ini", "run_P8_r8")):
+                             ("p8", "configs/real_p8_r8.ini", "run_P8_r8"),
+                             ("p9", "configs/real_p9_r8.ini", "run_P9_r8")):
+            rname = f"restart_{tag}_fp64"
+            if a.only and a.only not in rname:
+                continue
             good, msg = restart_p1(a.cpu_dp, os.path.join(a.out, f"restart_{tag}"), cfg, rd)
             if good is None:
-                print(f"SKIP  restart_{tag}_fp64        ({msg})")
+                print(f"SKIP  {rname:22s} ({msg})")
             else:
-                print(f"{'PASS' if good else 'FAIL'}  restart_{tag}_fp64        {msg}")
+                print(f"{'PASS' if good else 'FAIL'}  {rname:22s} {msg}")
                 ok &= good
     sys.exit(0 if ok else 1)
 

@@ -62,7 +62,9 @@ list(APPEND CPPWRF_SOURCES
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/cam_gases.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/cam_ozone.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/sf_sfclayrev/sfclayrev.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/sf_myjsfc/myjsfc.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/bl_ysu/ysu.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/bl_myj/myjpbl.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/lsm_noah/noah.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/lsm_noah/noah_tables.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/cu_kf/kf.cpp

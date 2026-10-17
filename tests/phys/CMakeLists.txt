@@ -170,3 +170,14 @@ add_test(
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+# ==============================================================================
+# MYJ PBL + Eta Surface Layer Scheme (bl_myj + sf_myjsfc)
+# ==============================================================================
+add_test(
+  NAME test_phys_bl_myj
+  COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/bl_myj/run_test.sh ${CMAKE_CURRENT_BINARY_DIR}/bl_myj_test
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+set_tests_properties(test_phys_bl_myj PROPERTIES LABELS diff)
+
+

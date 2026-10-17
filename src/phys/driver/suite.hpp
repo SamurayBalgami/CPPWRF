@@ -28,6 +28,7 @@
 #include "phys/driver/radiation.hpp"
 #include "phys/driver/tendency_coupling.hpp"
 #include "phys/lsm_noah/noah_tables.hpp"
+#include "phys/sf_myjsfc/myjsfc.hpp"
 #include "phys/sf_sfclayrev/sfclayrev.hpp"
 
 namespace cppwrf::phys::driver {
@@ -58,9 +59,9 @@ class IntField2 {
 
 // Namelist options of the P1/P2 suite (WRF Registry defaults unless noted).
 struct SuiteOptions {
-  int sf_sfclay_physics = 1;     // SFCLAYREVSCHEME
+  int sf_sfclay_physics = 1;     // 1 = SFCLAYREVSCHEME, 2 = MYJSFCSCHEME
   int sf_surface_physics = 2;    // LSMSCHEME (Noah)
-  int bl_pbl_physics = 1;        // YSUSCHEME
+  int bl_pbl_physics = 1;        // 1 = YSUSCHEME, 2 = MYJPBLSCHEME
   int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME, 3 = GFSCHEME, 16 = NTIEDTKESCHEME
   int ishallow = 0;              // Grell-Freitas shallow convection (WRF ishallow)
   int gf_ichoice = 0;            // Grell-Freitas closure (WRF clos_choice)
@@ -116,11 +117,13 @@ class PhysicsSuite : public dyn::ColumnPhysics {
       zol, regime, u10, v10, t2, th2, q2, psfc, ch, snow, snowh, snowc, canwat, lai, snotime, qz0, rainbl, raincv,
       rainncv, rainshv, rainc, rainsh, pratec, pratesh, nca, htop, hbot, cutop, cubot, cuppt, sr, glw, swdown, gsw,
       smstav, smstot, sfcrunoff, udrunoff, acsnom, acsnow, snopcx, potevp, noahres, sfcevp, sfcexc, achfx, aclhf,
-      acgrdflx, dx2d, uoce, voce, ctopo, ctopo2, ck, cka, cd, cda, wstar, delta, hol;
-  IntField2 ivgtyp, isltyp, kpbl;
+      acgrdflx, dx2d, uoce, voce, ctopo, ctopo2, ck, cka, cd, cda, wstar, delta, hol,
+      thz0, uz0, vz0, akhs, akms, ct, tshltr, th10, qshltr, q10, pshltr, u10e, v10e, mixht;
+  IntField2 ivgtyp, isltyp, kpbl, lowlyr;
   Field3 tslb, smois, sh2o, smcrel;  // (i, j, soil layer)
   std::vector<double> dzs;            // soil layer thicknesses (m)
   Field3 exch_h, exch_m;              // M (WRF kme-sized; levels 0..nz-1 used)
+  Field3 tke_pbl, el_pbl;             // MYJ PBL 3D TKE and master length scale
   Field3 w0avg, cldfra_dp, cldfra_sh, qc_cu, qi_cu;  // cumulus 3D state and diagnostics
   PhysicsTendencies pt;               // R*BLTEN, R*CUTEN, RTHRATEN at mass points
   PhyPrepFields prep;                 // phy_prep diagnostics (incl. t_phy, rho, u_phy, ...)
@@ -162,6 +165,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   SuiteOptions o_;
   noah::NoahTables noah_tables_;
   sfclayrev::SFClayRevTables<real>* d_sfclay_tables_ = nullptr;  // device copy, uploaded once
+  sf_myjsfc::MYJSFCTableManager myjsfc_tables_;                  // host/device copy, uploaded once
   cu_kf::KFTables<real>* d_kf_tables_ = nullptr;                 // device copy, uploaded once
   void* d_gfinv_ = nullptr;  // Grell-Freitas: per-column inversion-layer info for the row scan
   // Noah driver scratch (inputs/outputs of SFLX per point)
@@ -172,10 +176,10 @@ class PhysicsSuite : public dyn::ColumnPhysics {
       n_snomlt, n_sncovr, n_runoff1, n_runoff2, n_runoff3, n_rc, n_pc, n_rsmin, n_soilw, n_soilm, n_q1;
   Field3 n_stc, n_smc, n_swc, n_et, n_smav;
   IntField2 n_vegtyp, n_soiltyp, n_slopetyp, n_ice, n_active;
-  Field3 zero3_;  // qc/qi stand-ins for YSU (flag_qc = flag_qi = false)
+  Field3 zero3_;  // qc/qi stand-ins for YSU/MYJ (flag_qc = flag_qi = false)
 
-  void surface_driver(const dyn::State& s);
-  void pbl_driver(const dyn::State& s);
+  void surface_driver(const dyn::State& s, const dyn::BaseState& b);
+  void pbl_driver(const dyn::State& s, const dyn::BaseState& b);
   void cumulus_driver(const dyn::State& s, const dyn::BaseState& b);
   void advance_ppt(const dyn::State& s);
 };

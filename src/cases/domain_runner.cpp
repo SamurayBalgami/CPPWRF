@@ -372,6 +372,12 @@ bool DomainRunner::start() {
       extra_2d_.push_back(f);
     extra_3d_.insert(extra_3d_.end(), {&su.tslb, &su.smois, &su.sh2o, &su.pt.rublten, &su.pt.rvblten, &su.pt.rthblten,
                                        &su.pt.rqvblten, &su.exch_h});
+    if (su.options().sf_sfclay_physics == 2 || su.options().bl_pbl_physics == 2) {
+      for (const Field2* f : {&su.thz0, &su.uz0, &su.vz0, &su.akhs, &su.akms, &su.ct, &su.tshltr, &su.th10, &su.qshltr,
+                              &su.q10, &su.pshltr, &su.u10e, &su.v10e, &su.mixht})
+        extra_2d_.push_back(f);
+      extra_3d_.insert(extra_3d_.end(), {&su.tke_pbl, &su.el_pbl});
+    }
     if (su.radiation_on()) {
       for (const Field2* f : {&su.glw, &su.gsw, &su.swdown, &su.coszen}) extra_2d_.push_back(f);
       extra_3d_.push_back(&su.pt.rthraten);

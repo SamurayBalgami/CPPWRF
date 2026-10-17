@@ -140,11 +140,15 @@ void init_real_physics(const io::Config& cfg, Model& m) {
                                                    {"U10", &su.u10}, {"V10", &su.v10}, {"PSFC", &su.psfc}};
   for (const auto& [n, f] : diag)
     if (in.has(n)) put2(*f, rd2(n));
+  if (o.sf_sfclay_physics == 2) {  // phy_init (module_physics_init.F): u10e = u10, v10e = v10 for MYJSFCSCHEME
+    if (in.has("U10")) put2(su.u10e, rd2("U10"));
+    if (in.has("V10")) put2(su.v10e, rd2("V10"));
+  }
   const std::vector<double> dzs = in.var("DZS", std::size_t(ns));
   for (int k = 0; k < ns; ++k) su.dzs[k] = dzs[k];
 
-  // ---- phy_init
-  put_const(su.ust, 0.0001);
+  // ---- phy_init / myjsfcinit
+  put_const(su.ust, o.sf_sfclay_physics == 2 ? 0.1 : 0.0001);
   put_const(su.dx2d, g.dx);
   put_const(su.ctopo, 1.0); put_const(su.ctopo2, 1.0);
   {
