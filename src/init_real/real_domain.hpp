@@ -48,7 +48,8 @@ struct RealOptions {
   // bdy_control
   int spec_bdy_width = 5;
 
-  static RealOptions from_namelist(const Namelist& nl);
+  int dom = 1, max_dom = 1, parent_id = 0, i_parent_start = 1, j_parent_start = 1, parent_grid_ratio = 1;
+  static RealOptions from_namelist(const Namelist& nl, int dom = 1);
 };
 
 std::string add_seconds(const std::string& date, long seconds);  // geth_newdate

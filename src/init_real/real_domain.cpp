@@ -7,83 +7,89 @@
 namespace cppwrf::init_real {
 
 // ---------------------------------------------------------------- options and dates
-RealOptions RealOptions::from_namelist(const Namelist& nl) {
+RealOptions RealOptions::from_namelist(const Namelist& nl, int dom) {
   RealOptions o;
+  o.dom = dom;
   auto date = [&](const char* p) {
     char b[32];
-    std::snprintf(b, sizeof b, "%04d-%02d-%02d_%02d:%02d:%02d", nl.get_int("time_control", std::string(p) + "_year", 0),
-                  nl.get_int("time_control", std::string(p) + "_month", 0),
-                  nl.get_int("time_control", std::string(p) + "_day", 0),
-                  nl.get_int("time_control", std::string(p) + "_hour", 0),
-                  nl.get_int("time_control", std::string(p) + "_minute", 0),
-                  nl.get_int("time_control", std::string(p) + "_second", 0));
+    std::snprintf(b, sizeof b, "%04d-%02d-%02d_%02d:%02d:%02d", nl.get_int("time_control", std::string(p) + "_year", 0, dom),
+                  nl.get_int("time_control", std::string(p) + "_month", 0, dom),
+                  nl.get_int("time_control", std::string(p) + "_day", 0, dom),
+                  nl.get_int("time_control", std::string(p) + "_hour", 0, dom),
+                  nl.get_int("time_control", std::string(p) + "_minute", 0, dom),
+                  nl.get_int("time_control", std::string(p) + "_second", 0, dom));
     return std::string(b);
   };
   o.start_date = date("start");
   o.end_date = date("end");
-  o.interval_seconds = nl.get_int("time_control", "interval_seconds", o.interval_seconds);
+  o.interval_seconds = nl.get_int("time_control", "interval_seconds", o.interval_seconds, dom);
   const char* D = "domains";
-  o.e_we = nl.get_int(D, "e_we", 0);
-  o.e_sn = nl.get_int(D, "e_sn", 0);
-  o.e_vert = nl.get_int(D, "e_vert", 0);
-  o.num_metgrid_levels = nl.get_int(D, "num_metgrid_levels", 0);
-  o.num_metgrid_soil_levels = nl.get_int(D, "num_metgrid_soil_levels", o.num_metgrid_soil_levels);
-  o.dx = nl.get_real(D, "dx", 0);
-  o.dy = nl.get_real(D, "dy", 0);
-  o.p_top_requested = nl.get_real(D, "p_top_requested", o.p_top_requested);
+  o.e_we = nl.get_int(D, "e_we", 0, dom);
+  o.e_sn = nl.get_int(D, "e_sn", 0, dom);
+  o.e_vert = nl.get_int(D, "e_vert", 0, dom);
+  o.num_metgrid_levels = nl.get_int(D, "num_metgrid_levels", 0, dom);
+  o.num_metgrid_soil_levels = nl.get_int(D, "num_metgrid_soil_levels", o.num_metgrid_soil_levels, dom);
+  o.dx = nl.get_real(D, "dx", 0, dom);
+  o.dy = nl.get_real(D, "dy", 0, dom);
+  o.p_top_requested = nl.get_real(D, "p_top_requested", o.p_top_requested, dom);
   for (const std::string& v : nl.values(D, "eta_levels")) o.eta_levels.push_back(std::strtod(v.c_str(), nullptr));
-  o.auto_levels_opt = nl.get_int(D, "auto_levels_opt", o.auto_levels_opt);
-  o.max_dz = nl.get_real(D, "max_dz", o.max_dz);
-  o.dzbot = nl.get_real(D, "dzbot", o.dzbot);
-  o.dzstretch_s = nl.get_real(D, "dzstretch_s", o.dzstretch_s);
-  o.dzstretch_u = nl.get_real(D, "dzstretch_u", o.dzstretch_u);
-  o.interp_type = nl.get_int(D, "interp_type", o.interp_type);
-  o.lagrange_order = nl.get_int(D, "lagrange_order", o.lagrange_order);
-  o.linear_interp = nl.get_int(D, "linear_interp", o.linear_interp);
-  o.extrap_type = nl.get_int(D, "extrap_type", o.extrap_type);
-  o.t_extrap_type = nl.get_int(D, "t_extrap_type", o.t_extrap_type);
-  o.lowest_lev_from_sfc = nl.get_bool(D, "lowest_lev_from_sfc", o.lowest_lev_from_sfc);
-  o.use_levels_below_ground = nl.get_bool(D, "use_levels_below_ground", o.use_levels_below_ground);
-  o.use_surface = nl.get_bool(D, "use_surface", o.use_surface);
-  o.zap_close_levels = nl.get_real(D, "zap_close_levels", o.zap_close_levels);
-  o.force_sfc_in_vinterp = nl.get_int(D, "force_sfc_in_vinterp", o.force_sfc_in_vinterp);
-  o.interp_theta = nl.get_bool(D, "interp_theta", o.interp_theta);
-  o.sfcp_to_sfcp = nl.get_bool(D, "sfcp_to_sfcp", o.sfcp_to_sfcp);
-  o.adjust_heights = nl.get_bool(D, "adjust_heights", o.adjust_heights);
-  o.smooth_cg_topo = nl.get_bool(D, "smooth_cg_topo", o.smooth_cg_topo);
-  o.rebalance = nl.get_int(D, "rebalance", o.rebalance);
-  o.hypsometric_opt = nl.get_int(D, "hypsometric_opt", o.hypsometric_opt);
-  o.rh2qv_wrt_liquid = nl.get_bool(D, "rh2qv_wrt_liquid", o.rh2qv_wrt_liquid);
-  o.rh2qv_method = nl.get_int(D, "rh2qv_method", o.rh2qv_method);
-  o.use_sh_qv = nl.get_bool(D, "use_sh_qv", o.use_sh_qv);
-  o.qv_max_p_safe = nl.get_real(D, "qv_max_p_safe", o.qv_max_p_safe);
-  o.qv_max_flag = nl.get_real(D, "qv_max_flag", o.qv_max_flag);
-  o.qv_max_value = nl.get_real(D, "qv_max_value", o.qv_max_value);
-  o.qv_min_p_safe = nl.get_real(D, "qv_min_p_safe", o.qv_min_p_safe);
-  o.qv_min_flag = nl.get_real(D, "qv_min_flag", o.qv_min_flag);
-  o.qv_min_value = nl.get_real(D, "qv_min_value", o.qv_min_value);
-  o.use_maxw_level = nl.get_int(D, "use_maxw_level", o.use_maxw_level);
-  o.use_trop_level = nl.get_int(D, "use_trop_level", o.use_trop_level);
+  o.auto_levels_opt = nl.get_int(D, "auto_levels_opt", o.auto_levels_opt, dom);
+  o.max_dz = nl.get_real(D, "max_dz", o.max_dz, dom);
+  o.dzbot = nl.get_real(D, "dzbot", o.dzbot, dom);
+  o.dzstretch_s = nl.get_real(D, "dzstretch_s", o.dzstretch_s, dom);
+  o.dzstretch_u = nl.get_real(D, "dzstretch_u", o.dzstretch_u, dom);
+  o.interp_type = nl.get_int(D, "interp_type", o.interp_type, dom);
+  o.lagrange_order = nl.get_int(D, "lagrange_order", o.lagrange_order, dom);
+  o.linear_interp = nl.get_int(D, "linear_interp", o.linear_interp, dom);
+  o.extrap_type = nl.get_int(D, "extrap_type", o.extrap_type, dom);
+  o.t_extrap_type = nl.get_int(D, "t_extrap_type", o.t_extrap_type, dom);
+  o.lowest_lev_from_sfc = nl.get_bool(D, "lowest_lev_from_sfc", o.lowest_lev_from_sfc, dom);
+  o.use_levels_below_ground = nl.get_bool(D, "use_levels_below_ground", o.use_levels_below_ground, dom);
+  o.use_surface = nl.get_bool(D, "use_surface", o.use_surface, dom);
+  o.zap_close_levels = nl.get_real(D, "zap_close_levels", o.zap_close_levels, dom);
+  o.force_sfc_in_vinterp = nl.get_int(D, "force_sfc_in_vinterp", o.force_sfc_in_vinterp, dom);
+  o.interp_theta = nl.get_bool(D, "interp_theta", o.interp_theta, dom);
+  o.sfcp_to_sfcp = nl.get_bool(D, "sfcp_to_sfcp", o.sfcp_to_sfcp, dom);
+  o.adjust_heights = nl.get_bool(D, "adjust_heights", o.adjust_heights, dom);
+  o.smooth_cg_topo = nl.get_bool(D, "smooth_cg_topo", o.smooth_cg_topo, dom);
+  o.rebalance = nl.get_int(D, "rebalance", o.rebalance, dom);
+  o.hypsometric_opt = nl.get_int(D, "hypsometric_opt", o.hypsometric_opt, dom);
+  o.rh2qv_wrt_liquid = nl.get_bool(D, "rh2qv_wrt_liquid", o.rh2qv_wrt_liquid, dom);
+  o.rh2qv_method = nl.get_int(D, "rh2qv_method", o.rh2qv_method, dom);
+  o.use_sh_qv = nl.get_bool(D, "use_sh_qv", o.use_sh_qv, dom);
+  o.qv_max_p_safe = nl.get_real(D, "qv_max_p_safe", o.qv_max_p_safe, dom);
+  o.qv_max_flag = nl.get_real(D, "qv_max_flag", o.qv_max_flag, dom);
+  o.qv_max_value = nl.get_real(D, "qv_max_value", o.qv_max_value, dom);
+  o.qv_min_p_safe = nl.get_real(D, "qv_min_p_safe", o.qv_min_p_safe, dom);
+  o.qv_min_flag = nl.get_real(D, "qv_min_flag", o.qv_min_flag, dom);
+  o.qv_min_value = nl.get_real(D, "qv_min_value", o.qv_min_value, dom);
+  o.use_maxw_level = nl.get_int(D, "use_maxw_level", o.use_maxw_level, dom);
+  o.use_trop_level = nl.get_int(D, "use_trop_level", o.use_trop_level, dom);
   const char* Y = "dynamics";
-  o.hybrid_opt = nl.get_int(Y, "hybrid_opt", o.hybrid_opt);
-  o.use_theta_m = nl.get_int(Y, "use_theta_m", o.use_theta_m);
-  o.etac = nl.get_real(Y, "etac", o.etac);
-  o.base_pres = nl.get_real(Y, "base_pres", o.base_pres);
-  o.base_temp = nl.get_real(Y, "base_temp", o.base_temp);
-  o.base_lapse = nl.get_real(Y, "base_lapse", o.base_lapse);
-  o.iso_temp = nl.get_real(Y, "iso_temp", o.iso_temp);
-  o.base_pres_strat = nl.get_real(Y, "base_pres_strat", o.base_pres_strat);
-  o.base_lapse_strat = nl.get_real(Y, "base_lapse_strat", o.base_lapse_strat);
+  o.hybrid_opt = nl.get_int(Y, "hybrid_opt", o.hybrid_opt, dom);
+  o.use_theta_m = nl.get_int(Y, "use_theta_m", o.use_theta_m, dom);
+  o.etac = nl.get_real(Y, "etac", o.etac, dom);
+  o.base_pres = nl.get_real(Y, "base_pres", o.base_pres, dom);
+  o.base_temp = nl.get_real(Y, "base_temp", o.base_temp, dom);
+  o.base_lapse = nl.get_real(Y, "base_lapse", o.base_lapse, dom);
+  o.iso_temp = nl.get_real(Y, "iso_temp", o.iso_temp, dom);
+  o.base_pres_strat = nl.get_real(Y, "base_pres_strat", o.base_pres_strat, dom);
+  o.base_lapse_strat = nl.get_real(Y, "base_lapse_strat", o.base_lapse_strat, dom);
   const char* P = "physics";
-  o.sf_surface_physics = nl.get_int(P, "sf_surface_physics", o.sf_surface_physics);
-  o.num_soil_layers = nl.get_int(P, "num_soil_layers", o.num_soil_layers);
-  o.surface_input_source = nl.get_int(P, "surface_input_source", o.surface_input_source);
-  o.sf_urban_physics = nl.get_int(P, "sf_urban_physics", o.sf_urban_physics);
-  o.mp_physics = nl.get_int(P, "mp_physics", o.mp_physics);
-  o.fractional_seaice = nl.get_int(P, "fractional_seaice", o.fractional_seaice);
-  o.seaice_threshold = nl.get_real(P, "seaice_threshold", o.seaice_threshold);
-  o.use_tavg_for_tsk = nl.get_bool(P, "use_tavg_for_tsk", o.use_tavg_for_tsk);
+  o.sf_surface_physics = nl.get_int(P, "sf_surface_physics", o.sf_surface_physics, dom);
+  o.num_soil_layers = nl.get_int(P, "num_soil_layers", o.num_soil_layers, dom);
+  o.surface_input_source = nl.get_int(P, "surface_input_source", o.surface_input_source, dom);
+  o.sf_urban_physics = nl.get_int(P, "sf_urban_physics", o.sf_urban_physics, dom);
+  o.mp_physics = nl.get_int(P, "mp_physics", o.mp_physics, dom);
+  o.fractional_seaice = nl.get_int(P, "fractional_seaice", o.fractional_seaice, dom);
+  o.seaice_threshold = nl.get_real(P, "seaice_threshold", o.seaice_threshold, dom);
+  o.use_tavg_for_tsk = nl.get_bool(P, "use_tavg_for_tsk", o.use_tavg_for_tsk, dom);
   o.spec_bdy_width = nl.get_int("bdy_control", "spec_bdy_width", o.spec_bdy_width);
+  o.max_dom = nl.get_int(D, "max_dom", 1);
+  o.parent_id = nl.get_int(D, "parent_id", dom == 1 ? 0 : 1, dom);
+  o.i_parent_start = nl.get_int(D, "i_parent_start", 1, dom);
+  o.j_parent_start = nl.get_int(D, "j_parent_start", 1, dom);
+  o.parent_grid_ratio = nl.get_int(D, "parent_grid_ratio", 1, dom);
   // WRF ignores hypsometric_opt = 1 settings? no: it is used as given
   if (o.e_we <= 0 || o.e_sn <= 0 || o.e_vert <= 0 || o.num_metgrid_levels <= 0)
     throw std::runtime_error("real: e_we, e_sn, e_vert and num_metgrid_levels are required in &domains");

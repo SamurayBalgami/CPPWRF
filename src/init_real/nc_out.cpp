@@ -2,6 +2,7 @@
 
 #include <netcdf.h>
 
+#include <cctype>
 #include <stdexcept>
 
 namespace cppwrf::init_real {
@@ -12,7 +13,9 @@ void ck(int st, const std::string& what) {
 }
 }  // namespace
 
-NcOut::NcOut(const std::string& path) { ck(nc_create(path.c_str(), NC_CLOBBER | NC_64BIT_OFFSET, &nc_), "create " + path); }
+NcOut::NcOut(const std::string& path, bool netcdf4) : nc4_(netcdf4) {
+  ck(nc_create(path.c_str(), netcdf4 ? (NC_CLOBBER | NC_NETCDF4) : (NC_CLOBBER | NC_64BIT_OFFSET), &nc_), "create " + path);
+}
 
 NcOut::~NcOut() {
   if (nc_ >= 0) nc_close(nc_);
@@ -22,6 +25,7 @@ void NcOut::dim(const std::string& name, std::size_t len) {
   int id;
   ck(nc_def_dim(nc_, name.c_str(), len == 0 ? NC_UNLIMITED : len, &id), "dim " + name);
   dims_[name] = id;
+  dimlen_[name] = len == 0 ? 1 : len;
 }
 
 void NcOut::att(const std::string& name, const std::string& v) {
@@ -30,6 +34,9 @@ void NcOut::att(const std::string& name, const std::string& v) {
 void NcOut::att(const std::string& name, int v) { ck(nc_put_att_int(nc_, NC_GLOBAL, name.c_str(), NC_INT, 1, &v), "att " + name); }
 void NcOut::att_f(const std::string& name, float v) {
   ck(nc_put_att_float(nc_, NC_GLOBAL, name.c_str(), NC_FLOAT, 1, &v), "att " + name);
+}
+void NcOut::att_d(const std::string& name, double v) {
+  ck(nc_put_att_double(nc_, NC_GLOBAL, name.c_str(), NC_DOUBLE, 1, &v), "att " + name);
 }
 void NcOut::att_f(const std::string& name, const std::vector<float>& v) {
   ck(nc_put_att_float(nc_, NC_GLOBAL, name.c_str(), NC_FLOAT, v.size(), v.data()), "att " + name);
@@ -46,6 +53,38 @@ void NcOut::var(const std::string& name, char type, const std::vector<std::strin
   nc_type t = type == 'f' ? NC_FLOAT : type == 'd' ? NC_DOUBLE : type == 'i' ? NC_INT : NC_CHAR;
   int id;
   ck(nc_def_var(nc_, name.c_str(), t, int(ids.size()), ids.data(), &id), "var " + name);
+  // external/io_netcdf ext_ncd_write_field: chunk the first two (Fortran-order) dimensions in halves,
+  // shuffle + deflate level 2, for memory orders xyz/xy/xsz/xez/ysz/yez
+  auto mo = satts.find("MemoryOrder");
+  std::string m = mo == satts.end() ? "" : mo->second;
+  while (!m.empty() && m.back() == ' ') m.pop_back();
+  for (char& ch : m) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+  const bool chunk = m == "xyz" || m == "xzy" || m == "yxz" || m == "yzx" || m == "zxy" || m == "zyx" || m == "xsz" ||
+                     m == "xez" || m == "ysz" || m == "yez" || m == "xy" || m == "yx";
+  if (nc4_ && chunk) {
+    const std::size_t nd = dims.size();  // includes Time first
+    std::vector<std::size_t> len(nd);
+    for (std::size_t k = 0; k < nd; ++k) len[k] = dimlen_[dims[k]];
+    // Fortran order: L(1) = fastest = dims[nd-1], ..., time = dims[0]
+    std::vector<std::size_t> ch(nd);
+    for (std::size_t k = 0; k < nd; ++k) ch[k] = len[k];
+    ch[0] = 1;
+    std::size_t& c1 = ch[nd - 1];
+    std::size_t& c2 = ch[nd - 2];
+    c1 = (len[nd - 1] + 1) / 2;
+    c2 = (len[nd - 2] + 1) / 2;
+    auto block = [&] {
+      std::size_t b = 1;
+      for (std::size_t k = 1; k < nd; ++k) b *= ch[k];
+      return b;
+    };
+    while (block() > 32000000) {
+      c1 = (c1 + 1) / 2;
+      c2 = (c2 + 1) / 2;
+    }
+    ck(nc_def_var_chunking(nc_, id, NC_CHUNKED, ch.data()), "chunking " + name);
+    ck(nc_def_var_deflate(nc_, id, 1, 1, 2), "deflate " + name);
+  }
   if (field_type != 0) ck(nc_put_att_int(nc_, id, "FieldType", NC_INT, 1, &field_type), "FieldType");
   for (const char* key : {"MemoryOrder", "description", "units", "stagger", "coordinates"}) {
     auto it = satts.find(key);

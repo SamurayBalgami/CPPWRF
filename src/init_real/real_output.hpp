@@ -1,5 +1,8 @@
 #pragma once
 // wrfinput_d01 / wrfbdy_d01 writers (WRF names, dimensions and per-variable attributes).
+#include <algorithm>
+#include <cstdio>
+#include <functional>
 #include <map>
 #include <string>
 
@@ -7,94 +10,145 @@
 #include "init_real/nc_out.hpp"
 #include "init_real/real_bdy.hpp"
 #include "init_real/real_domain.hpp"
+#include "init_real/real_values.hpp"
+#include "init_real/wrf_schema.hpp"
 
 namespace cppwrf::init_real {
 
+// Global attributes of WRF's output_wrf (switch input_only / boundary_only), in WRF's order.
 template <typename T>
-void write_wrfinput(const RealDomain<T>& dm, const MetEm& m, const std::string& path, const std::string& date) {
-  (void)m;
-  const int nx = dm.d.ide - 1, ny = dm.d.jde - 1, nz = dm.d.kde - 1;
-  const char ft = sizeof(T) == 8 ? 'd' : 'f';
-  const int fieldtype = sizeof(T) == 8 ? 105 : 104;
-  NcOut nc(path);
+void write_global_atts(NcOut& nc, const WrfConfig& c, const MetEm& m, const RealDomain<T>& dm,
+                       const std::string& start_date, bool input) {
+  auto r = [&](const std::string& n, double v) {
+    if (sizeof(T) == 8) nc.att_d(n, v); else nc.att_f(n, float(v));
+  };
+  auto i = [&](const std::string& n, int v) { nc.att(n, v); };
+  const int ide = dm.d.ide, jde = dm.d.jde, kde = dm.d.kde;
+  nc.att("TITLE", std::string(" OUTPUT FROM CPPWRF REAL V4.8.0 PREPROCESSOR"));
+  nc.att("START_DATE", start_date);
+  if (input) nc.att("SIMULATION_START_DATE", start_date);
+  i("WEST-EAST_GRID_DIMENSION", ide);
+  i("SOUTH-NORTH_GRID_DIMENSION", jde);
+  i("BOTTOM-TOP_GRID_DIMENSION", kde);
+  r("DX", c.num("dx")); r("DY", c.num("dy"));
+  i("AERCU_OPT", c.integer("aercu_opt")); r("AERCU_FCT", c.num("aercu_fct"));
+  i("IDEAL_CASE", c.integer("ideal_case")); i("DIFF_6TH_SLOPEOPT", c.integer("diff_6th_slopeopt"));
+  i("AUTO_LEVELS_OPT", c.integer("auto_levels_opt")); r("DIFF_6TH_THRESH", c.num("diff_6th_thresh"));
+  r("DZBOT", c.num("dzbot")); r("DZSTRETCH_S", c.num("dzstretch_s")); r("DZSTRETCH_U", c.num("dzstretch_u"));
+  nc.att("GRIDTYPE", std::string("C"));
+  i("DIFF_OPT", c.integer("diff_opt")); i("KM_OPT", c.integer("km_opt")); i("DAMP_OPT", c.integer("damp_opt"));
+  r("DAMPCOEF", c.num("dampcoef")); r("KHDIF", c.num("khdif")); r("KVDIF", c.num("kvdif"));
+  i("MP_PHYSICS", c.integer("mp_physics")); i("RA_LW_PHYSICS", c.integer("ra_lw_physics"));
+  i("RA_SW_PHYSICS", c.integer("ra_sw_physics")); i("SF_SFCLAY_PHYSICS", c.integer("sf_sfclay_physics"));
+  i("SF_SURFACE_PHYSICS", c.integer("sf_surface_physics")); i("BL_PBL_PHYSICS", c.integer("bl_pbl_physics"));
+  i("CU_PHYSICS", c.integer("cu_physics")); i("SF_LAKE_PHYSICS", c.integer("sf_lake_physics"));
+  i("SURFACE_INPUT_SOURCE", c.integer("surface_input_source")); i("SST_UPDATE", c.integer("sst_update"));
+  i("GHG_INPUT", c.integer("ghg_input")); i("GRID_FDDA", c.integer("grid_fdda"));
+  i("GFDDA_INTERVAL_M", c.integer("auxinput10_interval_m")); i("GFDDA_END_H", c.integer("auxinput10_end_h"));
+  i("GRID_SFDDA", c.integer("grid_sfdda")); i("SGFDDA_INTERVAL_M", c.integer("auxinput9_interval_m"));
+  i("SGFDDA_END_H", c.integer("auxinput9_end_h")); i("HYPSOMETRIC_OPT", c.integer("hypsometric_opt"));
+  i("USE_THETA_M", c.integer("use_theta_m"));
+  if (input) { i("USE_MAXW_LEVEL", c.integer("use_maxw_level")); i("USE_TROP_LEVEL", c.integer("use_trop_level")); }
+  i("GWD_OPT", c.integer("gwd_opt")); i("SF_URBAN_PHYSICS", c.integer("sf_urban_physics"));
+  i("SF_SURFACE_MOSAIC", c.integer("sf_surface_mosaic")); i("SF_OCEAN_PHYSICS", c.integer("sf_ocean_physics"));
+  i("SLUCM_DISTRIBUTED_DRAG", c.logical("slucm_distributed_drag") ? 1 : 0);
+  i("DISTRIBUTED_AHE_OPT", c.integer("distributed_ahe_opt"));
+  if (input) nc.att("SIMULATION_INITIALIZATION_TYPE", std::string("REAL-DATA CASE"));
+  i("WEST-EAST_PATCH_START_UNSTAG", 1); i("WEST-EAST_PATCH_END_UNSTAG", ide - 1);
+  i("WEST-EAST_PATCH_START_STAG", 1); i("WEST-EAST_PATCH_END_STAG", ide);
+  i("SOUTH-NORTH_PATCH_START_UNSTAG", 1); i("SOUTH-NORTH_PATCH_END_UNSTAG", jde - 1);
+  i("SOUTH-NORTH_PATCH_START_STAG", 1); i("SOUTH-NORTH_PATCH_END_STAG", jde);
+  i("BOTTOM-TOP_PATCH_START_UNSTAG", 1); i("BOTTOM-TOP_PATCH_END_UNSTAG", kde - 1);
+  i("BOTTOM-TOP_PATCH_START_STAG", 1); i("BOTTOM-TOP_PATCH_END_STAG", kde);
+  i("GRID_ID", dm.o.dom); i("PARENT_ID", dm.o.parent_id); i("I_PARENT_START", dm.o.i_parent_start);
+  i("J_PARENT_START", dm.o.j_parent_start); i("PARENT_GRID_RATIO", dm.o.parent_grid_ratio);
+  {  // grid%dt: time_step divided by the parent time-step ratios down to this domain
+    double dt = c.num("time_step", 1) + c.num("time_step_fract_num", 1) / std::max(1.0, c.num("time_step_fract_den", 1));
+    for (int id = dm.o.dom; id > 1; id = c.integer("parent_id", id)) dt = dt / c.num("parent_time_step_ratio", id);
+    r("DT", dt);
+  }
+  // the projection comes from the metgrid input (float attributes there)
+  for (const char* a : {"CEN_LAT", "CEN_LON", "TRUELAT1", "TRUELAT2", "MOAD_CEN_LAT", "STAND_LON", "POLE_LAT", "POLE_LON"})
+    r(a, double(float(m.att_real(a))));
+  if (input) {
+    int jy, jd;
+    double gm;
+    get_julgmt(start_date, jy, jd, gm);
+    r("GMT", gm); i("JULYR", jy); i("JULDAY", jd);
+  }
+  const int mp = m.att_int("MAP_PROJ");
+  i("MAP_PROJ", mp);
+  nc.att("MAP_PROJ_CHAR", std::string(mp == 1 ? "Lambert Conformal" : mp == 2 ? "Polar Stereographic"
+                                     : mp == 3 ? "Mercator" : mp == 6 ? "Cylindrical Equidistant" : "unknown"));
+  nc.att("MMINLU", dm.mminlu);
+  i("NUM_LAND_CAT", m.att_int("NUM_LAND_CAT")); i("ISWATER", dm.iswater); i("ISLAKE", dm.islake);
+  i("ISICE", dm.isice); i("ISURBAN", dm.isurban); i("ISOILWATER", dm.isoilwater);
+  i("HYBRID_OPT", c.integer("hybrid_opt")); r("ETAC", c.integer("hybrid_opt") == 0 ? 0.0 : c.num("etac"));
+}
+
+// wrfinput_d01: every variable of WRF's input stream for this configuration (tools/wrf_schema), with the
+// fields real.exe computes and WRF's initial value 0 elsewhere.
+template <typename T>
+void write_wrfinput(const RealDomain<T>& dm, const MetEm& m, const WrfSchema& sc, const WrfConfig& c,
+                    const std::string& path, const std::string& date) {
+  const int ide = dm.d.ide, jde = dm.d.jde, kde = dm.d.kde;
+  std::vector<OutVar> vars = sc.input_vars(c, ide, jde, kde, int(sizeof(T)));
+  NcOut nc(path, !c.logical("use_netcdf_classic"));
   nc.dim("Time", 0);
   nc.dim("DateStrLen", 19);
-  nc.dim("west_east", std::size_t(nx));
-  nc.dim("south_north", std::size_t(ny));
-  nc.dim("bottom_top", std::size_t(nz));
-  nc.dim("bottom_top_stag", std::size_t(nz + 1));
-  nc.dim("soil_layers_stag", std::size_t(dm.o.num_soil_layers));
-  nc.dim("west_east_stag", std::size_t(nx + 1));
-  nc.dim("south_north_stag", std::size_t(ny + 1));
+  {
+    // dimensions in the order WRF defines them (Fortran order of each variable); an unnamed dimension
+    // reuses an existing one of the same length or becomes DIM<nnnn> (external/io_netcdf)
+    std::vector<std::pair<std::string, std::size_t>> defined = {{"Time", 0}, {"DateStrLen", 19}};
+    for (OutVar& v : vars)
+      for (int k = int(v.dimnames.size()) - 1; k >= 0; --k) {
+        std::string& n = v.dimnames[std::size_t(k)];
+        const std::size_t len = v.dimlens[std::size_t(k)];
+        if (n.empty()) {
+          for (auto& [dn, dl] : defined)
+            if (dl == len && dn != "Time") { n = dn; break; }
+          if (n.empty()) {
+            char b[16];
+            std::snprintf(b, sizeof b, "DIM%04d", int(defined.size()));
+            n = b;
+          }
+        }
+        bool found = false;
+        for (auto& [dn, dl] : defined) found = found || dn == n;
+        if (!found) {
+          nc.dim(n, len);
+          defined.push_back({n, len});
+        }
+      }
+  }
   nc.var("Times", 'c', {"Time", "DateStrLen"}, {}, 0);
-  struct V3 { const char* name; const F3<T>* f; char st; };
-  struct V2 { const char* name; const F2<T>* f; char st; };
-  struct V1 { const char* name; const F1<T>* f; bool stag; };
-  const V3 v3[] = {{"U", &dm.u_2, 'X'}, {"V", &dm.v_2, 'Y'}, {"PH", &dm.ph_2, 'Z'}, {"PHB", &dm.phb, 'Z'},
-                   {"T", &dm.th_phy_m_t0, ' '}, {"THM", &dm.t_2, ' '}, {"T_INIT", &dm.t_init, ' '}, {"P", &dm.p, ' '},
-                   {"AL", &dm.al, ' '}, {"ALB", &dm.alb, ' '}, {"PB", &dm.pb, ' '}, {"P_HYD", &dm.p_hyd, ' '},
-                   {"QVAPOR", &dm.qv, ' '}};
-  const V2 v2[] = {{"MU", &dm.mu_2, ' '}, {"MUB", &dm.mub, ' '}, {"PSFC", &dm.psfc, ' '}, {"U10", &dm.u10, ' '},
-                   {"V10", &dm.v10, ' '}, {"T2", &dm.t2, ' '}, {"TH2", &dm.th2, ' '}, {"Q2", &dm.q2, ' '},
-                   {"HGT", &dm.ht, ' '}, {"TSK", &dm.tsk, ' '}, {"TMN", &dm.tmn, ' '}, {"LANDMASK", &dm.landmask, ' '},
-                   {"XLAND", &dm.xland, ' '}, {"LU_INDEX", &dm.lu_index, ' '}, {"VEGFRA", &dm.vegfra, ' '},
-                   {"SHDMAX", &dm.shdmax, ' '}, {"SHDMIN", &dm.shdmin, ' '}, {"SHDAVG", &dm.shdavg, ' '},
-                   {"ALBBCK", &dm.albbck, ' '}, {"SNOALB", &dm.snoalb, ' '}, {"LAI", &dm.lai, ' '},
-                   {"SNOW", &dm.snow, ' '}, {"SNOWH", &dm.snowh, ' '}, {"SST", &dm.sst, ' '},
-                   {"SEAICE", &dm.xice, ' '}, {"LAKEMASK", &dm.lakemask, ' '}, {"XLAT", &dm.xlat, ' '},
-                   {"XLONG", &dm.xlong, ' '}, {"MF_VX_INV", &dm.msfvx_inv, 'Y'}, {"WATER_DEPTH", &dm.water_depth, ' '}};
-  const V1 v1[] = {{"ZNW", &dm.znw, true}, {"ZNU", &dm.znu, false}, {"DNW", &dm.dnw, false}, {"RDNW", &dm.rdnw, false},
-                   {"DN", &dm.dn, false}, {"RDN", &dm.rdn, false}, {"FNM", &dm.fnm, false}, {"FNP", &dm.fnp, false},
-                   {"C1H", &dm.c1h, false}, {"C2H", &dm.c2h, false}, {"C3H", &dm.c3h, false}, {"C4H", &dm.c4h, false},
-                   {"C1F", &dm.c1f, true}, {"C2F", &dm.c2f, true}, {"C3F", &dm.c3f, true}, {"C4F", &dm.c4f, true}};
-  for (const V3& v : v3) {
-    std::string zd = v.st == 'Z' ? "bottom_top_stag" : "bottom_top";
-    std::string yd = v.st == 'Y' ? "south_north_stag" : "south_north";
-    std::string xd = v.st == 'X' ? "west_east_stag" : "west_east";
-    nc.var(v.name, ft, {"Time", zd, yd, xd}, {{"MemoryOrder", "XYZ"}}, fieldtype);
+  const int ftr = sizeof(T) == 8 ? 105 : 104;
+  for (const OutVar& v : vars) {
+    std::vector<std::string> dims = {"Time"};
+    for (const std::string& n : v.dimnames) dims.push_back(n);
+    std::map<std::string, std::string> at = {{"MemoryOrder", v.memorder_att}, {"description", v.desc},
+                                             {"units", v.units}, {"stagger", v.stagger}};
+    if (!v.coordinates.empty()) at["coordinates"] = v.coordinates;
+    const char t = v.type == 'l' ? 'i' : v.type;
+    const int ft = t == 'f' ? 104 : t == 'd' ? 105 : t == 'i' ? 106 : ftr;
+    nc.var(v.name, t, dims, at, ft);
   }
-  for (const V2& v : v2) {
-    std::string yd = v.st == 'Y' ? "south_north_stag" : "south_north";
-    nc.var(v.name, ft, {"Time", yd, "west_east"}, {{"MemoryOrder", "XY "}}, fieldtype);
-  }
-  for (const V1& v : v1) nc.var(v.name, ft, {"Time", v.stag ? "bottom_top_stag" : "bottom_top"}, {{"MemoryOrder", "Z  "}}, fieldtype);
-  nc.var("SMOIS", ft, {"Time", "soil_layers_stag", "south_north", "west_east"}, {{"MemoryOrder", "XYZ"}}, fieldtype);
-  nc.var("TSLB", ft, {"Time", "soil_layers_stag", "south_north", "west_east"}, {{"MemoryOrder", "XYZ"}}, fieldtype);
-  nc.var("SH2O", ft, {"Time", "soil_layers_stag", "south_north", "west_east"}, {{"MemoryOrder", "XYZ"}}, fieldtype);
-  nc.var("ZS", ft, {"Time", "soil_layers_stag"}, {{"MemoryOrder", "Z  "}}, fieldtype);
-  nc.var("DZS", ft, {"Time", "soil_layers_stag"}, {{"MemoryOrder", "Z  "}}, fieldtype);
-  nc.var("IVGTYP", 'i', {"Time", "south_north", "west_east"}, {{"MemoryOrder", "XY "}}, 106);
-  nc.var("ISLTYP", 'i', {"Time", "south_north", "west_east"}, {{"MemoryOrder", "XY "}}, 106);
-  for (const char* s : {"P_TOP", "CF1", "CF2", "CF3", "CFN", "CFN1", "RDX", "RDY", "T00", "P00", "TLP", "TISO", "TLP_STRAT",
-                        "P_STRAT"})
-    nc.var(s, ft, {"Time"}, {{"MemoryOrder", "0  "}}, fieldtype);
+  write_global_atts(nc, c, m, dm, date, true);
   nc.enddef();
   nc.put_text("Times", date);
-  for (const V3& v : v3) {
-    int ni = v.st == 'X' ? nx + 1 : nx, nj = v.st == 'Y' ? ny + 1 : ny, nk = v.st == 'Z' ? nz + 1 : nz;
-    nc.put(v.name, nc_order(*v.f, ni, nk, nj));
+  const auto values = wrfinput_values(dm, m);
+  for (const OutVar& v : vars) {
+    std::size_t n = 1;
+    for (std::size_t l : v.dimlens) n *= l;
+    std::vector<double> data(n, 0.0);
+    auto it = values.find(v.name);
+    if (it != values.end()) {
+      data = it->second(v);
+      if (data.size() != n) throw std::runtime_error("wrfinput: size mismatch for " + v.name);
+    }
+    if (v.type == 'i' || v.type == 'l') nc.put_int(v.name, std::vector<int>(data.begin(), data.end()));
+    else nc.put(v.name, data);
   }
-  for (const V2& v : v2) nc.put(v.name, nc_order(*v.f, nx, v.st == 'Y' ? ny + 1 : ny));
-  for (const V1& v : v1) nc.put(v.name, nc_order(*v.f, v.stag ? nz + 1 : nz));
-  nc.put("SMOIS", nc_order(dm.smois, nx, dm.o.num_soil_layers, ny));
-  nc.put("TSLB", nc_order(dm.tslb, nx, dm.o.num_soil_layers, ny));
-  nc.put("SH2O", nc_order(dm.sh2o, nx, dm.o.num_soil_layers, ny));
-  nc.put("ZS", nc_order(dm.zs, dm.o.num_soil_layers));
-  nc.put("DZS", nc_order(dm.dzs, dm.o.num_soil_layers));
-  {
-    std::vector<int> a(static_cast<std::size_t>(nx) * ny), b(static_cast<std::size_t>(nx) * ny);
-    for (int j = 1; j <= ny; ++j)
-      for (int i = 1; i <= nx; ++i) {
-        a[std::size_t(j - 1) * nx + (i - 1)] = dm.ivgtyp(i, j);
-        b[std::size_t(j - 1) * nx + (i - 1)] = dm.isltyp(i, j);
-      }
-    nc.put_int("IVGTYP", a);
-    nc.put_int("ISLTYP", b);
-  }
-  auto s = [&](const char* n, T v) { nc.put(n, {double(v)}); };
-  s("P_TOP", dm.p_top); s("CF1", dm.cf1); s("CF2", dm.cf2); s("CF3", dm.cf3); s("CFN", dm.cfn); s("CFN1", dm.cfn1);
-  s("RDX", dm.rdx); s("RDY", dm.rdy); s("T00", dm.t00); s("P00", dm.p00); s("TLP", dm.a); s("TISO", dm.tiso);
-  s("TLP_STRAT", dm.a_strat); s("P_STRAT", dm.p_strat);
 }
 
 }  // namespace cppwrf::init_real
@@ -110,8 +164,10 @@ class WrfBdyWriter {
     const BdyVar<T>* val;
     const BdyVar<T>* tend;
   };
-  WrfBdyWriter(const std::string& path, const Dims& d, int w) : nc_(path), d_(d), w_(w) {
-    const int nx = d.ide - 1, ny = d.jde - 1, nz = d.kde - 1;
+  WrfBdyWriter(const std::string& path, const RealDomain<T>& dm, const MetEm& m, const WrfSchema& sc,
+               const WrfConfig& c, const std::string& start_date, int w)
+      : nc_(path, !c.logical("use_netcdf_classic")), d_(dm.d), w_(w) {
+    const int nx = d_.ide - 1, ny = d_.jde - 1, nz = d_.kde - 1;
     nc_.dim("Time", 0);
     nc_.dim("DateStrLen", 19);
     nc_.dim("south_north", std::size_t(ny));
@@ -124,17 +180,57 @@ class WrfBdyWriter {
     nc_.var("Times", 'c', {"Time", "DateStrLen"}, {}, 0);
     nc_.var("md___thisbdytimee_x_t_d_o_m_a_i_n_m_e_t_a_data_", 'c', {"Time", "DateStrLen"}, {}, 0);
     nc_.var("md___nextbdytimee_x_t_d_o_m_a_i_n_m_e_t_a_data_", 'c', {"Time", "DateStrLen"}, {}, 0);
+    // share/wrf_bdyout: U V W PH T MU, the moist species with boundary data, HT_SHAD, PC
+    auto state = [&](const char* name, const char* varname, const char* kdim, const char* xdim, const char* ydim) {
+      const SchemaVar* v = sc.find(varname);
+      if (!v) throw std::runtime_error(std::string("wrfbdy: no schema entry for ") + varname);
+      specs_.push_back({name, kdim, xdim, ydim, v->desc_full, v->units, v->stagger, true});
+    };
+    state("U", "u_2", "bottom_top", "south_north", "west_east_stag");
+    state("V", "v_2", "bottom_top", "south_north_stag", "west_east");
+    state("W", "w_2", "bottom_top_stag", "south_north", "west_east");
+    state("PH", "ph_2", "bottom_top_stag", "south_north", "west_east");
+    state("T", "t_2", "bottom_top", "south_north", "west_east");
+    state("MU", "mu_2", nullptr, "south_north", "west_east");
+    for (const SchemaMember* mb : sc.boundary_members("moist", c))
+      specs_.push_back({mb->dname, "bottom_top", "south_north", "west_east", mb->desc, mb->units, "", false});
+    state("HT_SHAD", "ht_shad", nullptr, "south_north", "west_east");
+    state("PC", "pc_2", nullptr, "south_north", "west_east");
     const char ft = sizeof(T) == 8 ? 'd' : 'f';
     const int fieldtype = sizeof(T) == 8 ? 105 : 104;
-    for (const Spec& s : specs()) {
-      for (const char* side : {"BXS", "BXE", "BYS", "BYE", "BTXS", "BTXE", "BTYS", "BTYE"}) {
-        const bool x = side[1] == 'X' || side[2] == 'X';
-        std::vector<std::string> dims = {"Time", "bdy_width"};
-        if (s.kdim) dims.push_back(s.kdim);
-        dims.push_back(x ? s.xdim : s.ydim);
-        nc_.var(std::string(s.name) + "_" + side, ft, dims, {}, fieldtype);
+    // write order: a state variable's 8 arrays together; for a 4-D array all members' values, then
+    // all members' tendencies
+    for (std::size_t k = 0; k < specs_.size();) {
+      if (specs_[k].state) {
+        for (int sd = 0; sd < 8; ++sd) order_.push_back({k, sd});
+        ++k;
+      } else {
+        std::size_t e = k;
+        while (e < specs_.size() && !specs_[e].state) ++e;
+        for (int t = 0; t < 2; ++t)
+          for (std::size_t q = k; q < e; ++q)
+            for (int sd = 0; sd < 4; ++sd) order_.push_back({q, t * 4 + sd});
+        k = e;
       }
     }
+    static const char* sides[8] = {"BXS", "BXE", "BYS", "BYE", "BTXS", "BTXE", "BTYS", "BTYE"};
+    for (auto [k, sdi] : order_) {
+      const Spec& s = specs_[k];
+      {
+        const char* side = sides[sdi];
+        const bool tend = side[1] == 'T';
+        const char* sd = side + (tend ? 2 : 1);  // XS, XE, YS, YE
+        std::vector<std::string> dims = {"Time", "bdy_width"};
+        if (s.kdim) dims.push_back(s.kdim);
+        dims.push_back(sd[0] == 'X' ? s.xdim : s.ydim);
+        std::string mo = std::string(sd) + (s.kdim ? "Z" : " ");
+        std::string desc = s.state ? (tend ? "bdy tend " : "bdy ") + s.desc : s.desc;
+        std::string units = s.state && tend ? "(" + s.units + ")/dt" : s.units;
+        nc_.var(s.name + "_" + side, ft, dims,
+                {{"MemoryOrder", mo}, {"description", desc}, {"units", units}, {"stagger", s.stagger}}, fieldtype);
+      }
+    }
+    write_global_atts(nc_, c, m, dm, start_date, false);
     nc_.enddef();
   }
 
@@ -144,13 +240,15 @@ class WrfBdyWriter {
     nc_.put_text("md___thisbdytimee_x_t_d_o_m_a_i_n_m_e_t_a_data_", this_date, rec);
     nc_.put_text("md___nextbdytimee_x_t_d_o_m_a_i_n_m_e_t_a_data_", next_date, rec);
     const int nx = d_.ide - 1, ny = d_.jde - 1, nz = d_.kde - 1;
-    for (const Spec& s : specs()) {
+    for (auto [k, sdi] : order_) {
+      const Spec& s = specs_[k];
       const int nk = s.kdim == nullptr ? 1 : (std::string(s.kdim) == "bottom_top_stag" ? nz + 1 : nz);
       const int nxs = std::string(s.xdim) == "south_north_stag" ? ny + 1 : ny;  // length along a west/east side
       const int nys = std::string(s.ydim) == "west_east_stag" ? nx + 1 : nx;
       auto it = v.find(s.name);
-      for (int t = 0; t < 2; ++t)
-        for (int sd = 0; sd < 4; ++sd) {
+      {
+        const int t = sdi / 4, sd = sdi % 4;
+        {
           static const char* names[2][4] = {{"BXS", "BXE", "BYS", "BYE"}, {"BTXS", "BTXE", "BTYS", "BTYE"}};
           const int n = sd < 2 ? nxs : nys;
           std::vector<double> out(static_cast<std::size_t>(w_) * nk * n, 0.0);
@@ -159,31 +257,27 @@ class WrfBdyWriter {
             const F3<T>& a = sd == 0 ? b->xs : sd == 1 ? b->xe : sd == 2 ? b->ys : b->ye;
             const int k0 = a.klo();
             for (int ww = 1; ww <= w_; ++ww)
-              for (int k = 0; k < nk; ++k)
+              for (int kk = 0; kk < nk; ++kk)
                 for (int p = 1; p <= n; ++p)
-                  out[(std::size_t(ww - 1) * nk + k) * n + (p - 1)] = double(a(p, k0 + k, ww));
+                  out[(std::size_t(ww - 1) * nk + kk) * n + (p - 1)] = double(a(p, k0 + kk, ww));
           }
-          nc_.put(std::string(s.name) + "_" + names[t][sd], out, rec);
+          nc_.put(s.name + "_" + names[t][sd], out, rec);
         }
+      }
     }
   }
 
  private:
   struct Spec {
-    const char* name;
+    std::string name;
     const char* kdim;  // nullptr: 2-D
     const char* xdim;  // dimension along the west/east sides
     const char* ydim;  // dimension along the south/north sides
+    std::string desc, units, stagger;
+    bool state;  // state variable (bdy/bdy tend descriptions) or 4-D array member
   };
-  static const std::vector<Spec>& specs() {
-    static const std::vector<Spec> s = {
-        {"U", "bottom_top", "south_north", "west_east_stag"}, {"V", "bottom_top", "south_north_stag", "west_east"},
-        {"W", "bottom_top_stag", "south_north", "west_east"}, {"PH", "bottom_top_stag", "south_north", "west_east"},
-        {"T", "bottom_top", "south_north", "west_east"},       {"MU", nullptr, "south_north", "west_east"},
-        {"QVAPOR", "bottom_top", "south_north", "west_east"},  {"HT_SHAD", nullptr, "south_north", "west_east"},
-        {"PC", nullptr, "south_north", "west_east"}};
-    return s;
-  }
+  std::vector<Spec> specs_;
+  std::vector<std::pair<std::size_t, int>> order_;  // (spec, side 0..7)
   NcOut nc_;
   Dims d_;
   int w_;

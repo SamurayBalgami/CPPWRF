@@ -11,7 +11,8 @@ namespace cppwrf::init_real {
 
 class NcOut {
  public:
-  explicit NcOut(const std::string& path);
+  // netcdf4: WRF built with NetCDF-4 features (deflate level 2 and chunking); else 64-bit offset classic
+  explicit NcOut(const std::string& path, bool netcdf4 = true);
   ~NcOut();
   NcOut(const NcOut&) = delete;
   NcOut& operator=(const NcOut&) = delete;
@@ -20,6 +21,7 @@ class NcOut {
   void att(const std::string& name, const std::string& v);
   void att(const std::string& name, int v);
   void att_f(const std::string& name, float v);
+  void att_d(const std::string& name, double v);
   void att_f(const std::string& name, const std::vector<float>& v);
   // define a variable; dims slowest first, e.g. {"Time","bottom_top","south_north","west_east"}
   void var(const std::string& name, char type /* 'f','d','i','c' */, const std::vector<std::string>& dims,
@@ -31,6 +33,8 @@ class NcOut {
 
  private:
   int nc_ = -1;
+  bool nc4_ = true;
+  std::map<std::string, std::size_t> dimlen_;
   std::map<std::string, int> dims_, vars_;
   std::map<std::string, char> types_;
 };
