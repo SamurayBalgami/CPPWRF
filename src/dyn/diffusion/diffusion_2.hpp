@@ -235,6 +235,7 @@ struct KHorizDiffS2 {
   View3<real> tendf;
   real rdx, rdy;
   int nz;
+  bool doing_tke = false;
 
   CPPWRF_HD void operator()(int i, int j) const {
     const int ktes1 = nz - 1;
@@ -302,6 +303,7 @@ struct KHorizDiffS2 {
     real mrdy = msfty(i, j) * rdy;
 
     for (int k = 0; k < nz; ++k) {
+      real tmptendf = tendf(i, j, k);
       real zx_at_m = real(0.25) * (zx(i, j, k) + zx(i + 1, j, k) + zx(i, j, k + 1) + zx(i + 1, j, k + 1));
       real zy_at_m = real(0.25) * (zy(i, j, k) + zy(i, j + 1, k) + zy(i, j, k + 1) + zy(i, j + 1, k + 1));
 
@@ -311,6 +313,9 @@ struct KHorizDiffS2 {
       real term_zy = msfty(i, j) * zy_at_m * (H2avg[k + 1] - H2avg[k]) * rdzw(i, j, k);
 
       tendf(i, j, k) += (Gr / (dnw(k) * rdzw(i, j, k))) * (term_x + term_y - term_zx - term_zy);
+      if (doing_tke) {
+        tendf(i, j, k) = tmptendf + real(2.0) * (tendf(i, j, k) - tmptendf);
+      }
     }
   }
 };
@@ -365,6 +370,7 @@ struct KVertDiffS2 {
   View1<const real> fnm, fnp, dnw;
   View3<real> tendf;
   int nz;
+  bool doing_tke = false;
 
   CPPWRF_HD void operator()(int i, int j) const {
     real H3[128];
@@ -376,7 +382,11 @@ struct KVertDiffS2 {
       H3[k] = -xkxavg * (var(i, j, k) - var(i, j, k - 1)) * rdz(i, j, k);
     }
     for (int k = 0; k < nz; ++k) {
+      real tmptendf = tendf(i, j, k);
       tendf(i, j, k) += Gr * (H3[k + 1] - H3[k]) / dnw(k);
+      if (doing_tke) {
+        tendf(i, j, k) = tmptendf + real(2.0) * (tendf(i, j, k) - tmptendf);
+      }
     }
   }
 };
@@ -394,11 +404,131 @@ struct KVertDiffS2Pert {
     for (int k = 1; k < nz; ++k) {
       real xkxavg = (fnm(k) * xkhv(i, j, k) + fnp(k) * xkhv(i, j, k - 1)) *
                     (fnm(k) * rho(i, j, k) + fnp(k) * rho(i, j, k - 1));
-      real dpert = (var(i, j, k) - var(i, j, k - 1)) - (base(k) - base(k - 1));
+      // WRF: var_mix(k) = var(k) - base(k), then var_mix(k) - var_mix(k-1)
+      real dpert = (var(i, j, k) - base(k)) - (var(i, j, k - 1) - base(k - 1));
       H3[k] = -xkxavg * dpert * rdz(i, j, k);
     }
     for (int k = 0; k < nz; ++k) {
       tendf(i, j, k) += Gr * (H3[k + 1] - H3[k]) / dnw(k);
+    }
+  }
+};
+
+// Surface momentum flux on U at k = 0 (module_diffusion_em.F:4161-4244)
+struct KVertDiffSfcFluxU2 {
+  View3<const real> u_2, v_2, rho;
+  View2<const real> ust;
+  View1<const real> dnw;
+  bool has_ust, periodic_x;
+  int isfflx, nx;
+  real tke_drag_coefficient;
+  View3<real> ru_tendf;
+
+  CPPWRF_HD void operator()(int i, int j) const {
+    constexpr real epsilon = real(1.0e-15);
+    const int k   = 0;
+    const int i0  = (i == nx) ? (periodic_x ? 0 : nx - 1) : i;
+    const int im1 = (i == 0) ? (periodic_x ? nx - 1 : 0) : (i - 1);
+    real v_avg  = (v_2(i0, j, k) + v_2(i0, j + 1, k) + v_2(im1, j, k) + v_2(im1, j + 1, k)) / real(4.0);
+    real V0_u   = std::sqrt((u_2(i, j, k) * u_2(i, j, k)) + (v_avg * v_avg)) + epsilon;
+    real tao_xz;
+    if (isfflx == 0) {
+      tao_xz = tke_drag_coefficient * V0_u * u_2(i, j, k);
+    } else {
+      real ustar = has_ust ? real(0.5) * (ust(i0, j) + ust(im1, j)) : real(0.0);
+      tao_xz     = ustar * ustar * u_2(i, j, k) / V0_u;
+    }
+    ru_tendf(i, j, k) = ru_tendf(i, j, k) +
+                        Gr * tao_xz * real(0.5) * (rho(i0, j, k) + rho(im1, j, k)) / dnw(k);
+  }
+};
+
+// Surface momentum flux on V at k = 0 (module_diffusion_em.F:4185-4241)
+struct KVertDiffSfcFluxV2 {
+  View3<const real> u_2, v_2, rho;
+  View2<const real> ust;
+  View1<const real> dnw;
+  bool has_ust, periodic_y;
+  int isfflx, ny;
+  real tke_drag_coefficient;
+  View3<real> rv_tendf;
+
+  CPPWRF_HD void operator()(int i, int j) const {
+    constexpr real epsilon = real(1.0e-15);
+    const int k   = 0;
+    const int j0  = (j == ny) ? (periodic_y ? 0 : ny - 1) : j;
+    const int jm1 = (j == 0) ? (periodic_y ? ny - 1 : 0) : (j - 1);
+    real u_avg  = (u_2(i, j0, k) + u_2(i, jm1, k) + u_2(i + 1, j0, k) + u_2(i + 1, jm1, k)) / real(4.0);
+    real V0_v   = std::sqrt((v_2(i, j, k) * v_2(i, j, k)) + (u_avg * u_avg)) + epsilon;
+    real tao_yz;
+    if (isfflx == 0) {
+      tao_yz = tke_drag_coefficient * V0_v * v_2(i, j, k);
+    } else {
+      real ustar = has_ust ? real(0.5) * (ust(i, j0) + ust(i, jm1)) : real(0.0);
+      tao_yz     = ustar * ustar * v_2(i, j, k) / V0_v;
+    }
+    rv_tendf(i, j, k) = rv_tendf(i, j, k) +
+                        Gr * tao_yz * real(0.5) * (rho(i, j0, k) + rho(i, jm1, k)) / dnw(k);
+  }
+};
+
+// Surface heat flux on theta at k = 0 (module_diffusion_em.F:4286-4325)
+struct KVertDiffSfcFluxH2 {
+  View3<const real> theta, rho, qv;
+  View2<const real> hfx, qfx;
+  View1<const real> dnw;
+  bool has_qv, has_hfx, has_qfx;
+  int isfflx, use_theta_m;
+  real tke_heat_flux;
+  View3<real> rt_tendf;
+
+  CPPWRF_HD void operator()(int i, int j) const {
+    constexpr real r_d    = real(287.0);
+    constexpr real cp     = real(7.0) * r_d / real(2.0);
+    constexpr real r_v    = real(461.6);
+    constexpr real rvovrd = r_v / r_d;
+    const int k = 0;
+    real qv_0   = has_qv ? qv(i, j, k) : real(0.0);
+    real qfx_ij = has_qfx ? qfx(i, j) : real(0.0);
+    real cpm    = cp * (real(1.0) + real(0.8) * qv_0);
+
+    if (isfflx == 0 || isfflx == 2) {
+      real heat_flux = tke_heat_flux;
+      if (use_theta_m == 1) {
+        rt_tendf(i, j, k) = rt_tendf(i, j, k) -
+                            Gr * heat_flux * (real(1.0) + rvovrd * qv_0) * rho(i, j, k) / dnw(k) -
+                            Gr * real(1.61) * theta(i, j, k) * qfx_ij / dnw(k);
+      } else {
+        rt_tendf(i, j, k) = rt_tendf(i, j, k) -
+                            Gr * heat_flux * rho(i, j, k) / dnw(k);
+      }
+    } else {
+      real hfx_ij    = has_hfx ? hfx(i, j) : real(0.0);
+      real heat_flux = hfx_ij / cpm;
+      if (use_theta_m == 1) {
+        rt_tendf(i, j, k) = rt_tendf(i, j, k) -
+                            Gr * heat_flux * (real(1.0) + rvovrd * qv_0) / dnw(k) -
+                            Gr * real(1.61) * theta(i, j, k) * qfx_ij / dnw(k);
+      } else {
+        rt_tendf(i, j, k) = rt_tendf(i, j, k) -
+                            Gr * heat_flux / dnw(k);
+      }
+    }
+  }
+};
+
+// Surface moisture flux on qv at k = 0 (module_diffusion_em.F:4384-4400)
+struct KVertDiffSfcFluxQ2 {
+  View2<const real> qfx;
+  View1<const real> dnw;
+  bool has_qfx;
+  int isfflx;
+  View3<real> qv_tendf;
+
+  CPPWRF_HD void operator()(int i, int j) const {
+    if (isfflx == 1 || isfflx == 2) {
+      real moist_flux = has_qfx ? qfx(i, j) : real(0.0);
+      qv_tendf(i, j, 0) = qv_tendf(i, j, 0) - Gr * moist_flux / dnw(0);
     }
   }
 };
@@ -444,38 +574,46 @@ inline void horizontal_diffusion_2(const DiffusionParams& p,
                                    View3<const real> moist,
                                    View3<real> moist_tendf,
                                    bool has_moist,
-                                   int nx, int ny, int nz) {
+                                   int nx, int ny, int nz,
+                                   View3<const real> tke = {},
+                                   View3<real> tke_tendf = {},
+                                   bool has_tke = false) {
+  const bool bdy_xs = p.open_xs || p.specified || p.nested;
+  const bool bdy_xe = p.open_xe || p.specified || p.nested;
+  const bool bdy_ys = p.open_ys || p.specified || p.nested;
+  const bool bdy_ye = p.open_ye || p.specified || p.nested;
+
   // 1. Calculate stress tensor components
   parallel_for(Range3D{0, nx, 0, ny, 0, nz}, KCalTitauDiag{rho, xkmh, defor11, titau11});
   parallel_for(Range3D{0, nx, 0, ny, 0, nz}, KCalTitauDiag{rho, xkmh, defor22, titau22});
   parallel_for(Range3D{0, nx, 0, ny, 0, nz}, KCalTitauDiag{rho, xkmh, defor33, titau33});
 
-  int i12_s = p.specified ? 1 : 0;
-  int i12_e = p.specified ? nx : nx + 1;
-  int j12_s = p.specified ? 1 : 0;
-  int j12_e = p.specified ? ny : ny + 1;
+  int i12_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
+  int i12_e = (!p.periodic_x && bdy_xe) ? nx : nx + 1;
+  int j12_s = bdy_ys ? 1 : 0;
+  int j12_e = bdy_ye ? ny : ny + 1;
   parallel_for(Range3D{i12_s, i12_e, j12_s, j12_e, 0, nz},
                KCalTitau12{rho, xkmh, defor12, titau12});
 
-  int i13_s = p.specified ? 1 : 0;
-  int i13_e = p.specified ? nx : nx + 1;
-  int j13_s = p.specified ? 1 : 0;
-  int j13_e = p.specified ? ny - 1 : ny;
+  int i13_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
+  int i13_e = (!p.periodic_x && bdy_xe) ? nx : nx + 1;
+  int j13_s = bdy_ys ? 1 : 0;
+  int j13_e = bdy_ye ? ny - 1 : ny;
   parallel_for(Range3D{i13_s, i13_e, j13_s, j13_e, 0, nz + 1},
                KCalTitau13{rho, xkmv, defor13, fnm, fnp, titau13, nz});
 
-  int i23_s = p.specified ? 1 : 0;
-  int i23_e = p.specified ? nx - 1 : nx;
-  int j23_s = p.specified ? 1 : 0;
-  int j23_e = p.specified ? ny : ny + 1;
+  int i23_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
+  int i23_e = (!p.periodic_x && bdy_xe) ? nx - 1 : nx;
+  int j23_s = bdy_ys ? 1 : 0;
+  int j23_e = bdy_ye ? ny : ny + 1;
   parallel_for(Range3D{i23_s, i23_e, j23_s, j23_e, 0, nz + 1},
                KCalTitau23{rho, xkmv, defor23, fnm, fnp, titau23, nz});
 
   // 2. Horizontal diffusion of U
-  int iu_s = p.specified ? 1 : 0;
-  int iu_e = p.specified ? nx : nx + 1;
-  int ju_s = p.specified ? 1 : 0;
-  int ju_e = p.specified ? ny - 1 : ny;
+  int iu_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
+  int iu_e = (!p.periodic_x && bdy_xe) ? nx : nx + 1;
+  int ju_s = bdy_ys ? 1 : 0;
+  int ju_e = bdy_ye ? ny - 1 : ny;
   column_for(Range2D{iu_s, iu_e, ju_s, ju_e},
              KHorizDiffU2{View3<const real>{titau11.p, titau11.sj, titau11.sk},
                           View3<const real>{titau12.p, titau12.sj, titau12.sk},
@@ -483,10 +621,10 @@ inline void horizontal_diffusion_2(const DiffusionParams& p,
                           ru_tendf, rdx, rdy, nz});
 
   // 3. Horizontal diffusion of V
-  int iv_s = p.specified ? 1 : 0;
-  int iv_e = p.specified ? nx - 1 : nx;
-  int jv_s = p.specified ? 1 : 0;
-  int jv_e = p.specified ? ny : ny + 1;
+  int iv_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
+  int iv_e = (!p.periodic_x && bdy_xe) ? nx - 1 : nx;
+  int jv_s = bdy_ys ? 1 : 0;
+  int jv_e = bdy_ye ? ny : ny + 1;
   column_for(Range2D{iv_s, iv_e, jv_s, jv_e},
              KHorizDiffV2{View3<const real>{titau12.p, titau12.sj, titau12.sk},
                           View3<const real>{titau22.p, titau22.sj, titau22.sk},
@@ -494,29 +632,36 @@ inline void horizontal_diffusion_2(const DiffusionParams& p,
                           rv_tendf, rdx, rdy, nz});
 
   // 4. Horizontal diffusion of W
-  int iw_s = p.specified ? 1 : 0;
-  int iw_e = p.specified ? nx - 1 : nx;
-  int jw_s = p.specified ? 1 : 0;
-  int jw_e = p.specified ? ny - 1 : ny;
+  int iw_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
+  int iw_e = (!p.periodic_x && bdy_xe) ? nx - 1 : nx;
+  int jw_s = bdy_ys ? 1 : 0;
+  int jw_e = bdy_ye ? ny - 1 : ny;
   column_for(Range2D{iw_s, iw_e, jw_s, jw_e},
              KHorizDiffW2{View3<const real>{titau13.p, titau13.sj, titau13.sk},
                           View3<const real>{titau23.p, titau23.sj, titau23.sk},
                           zx, zy, rdz, msftx, msfty, dn,
                           rw_tendf, rdx, rdy, nz});
 
-  // 5. Horizontal diffusion of scalars (theta and moisture)
-  int is_s = p.specified ? 1 : 0;
-  int is_e = p.specified ? nx - 1 : nx;
-  int js_s = p.specified ? 1 : 0;
-  int js_e = p.specified ? ny - 1 : ny;
+  // 5. Horizontal diffusion of scalars (theta, TKE, and moisture)
+  int is_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
+  int is_e = (!p.periodic_x && bdy_xe) ? nx - 1 : nx;
+  int js_s = bdy_ys ? 1 : 0;
+  int js_e = bdy_ye ? ny - 1 : ny;
   column_for(Range2D{is_s, is_e, js_s, js_e},
              KHorizDiffS2{thp, xkhh, rho, zx, zy, rdz, rdzw, msftx, msfty, msfux, msfvy,
-                          fnm, fnp, dn, dnw, cf1, cf2, cf3, t_tendf, rdx, rdy, nz});
+                          fnm, fnp, dn, dnw, cf1, cf2, cf3, t_tendf, rdx, rdy, nz, false});
 
-  if (has_moist) {
+  if (has_tke && ((p.km_opt == 2 && !p.tke_mix2_off) || p.km_opt == 5)) {
+    // Note: WRF passes xkmh (not xkhh) and doing_tke = .true. for TKE horizontal diffusion
+    column_for(Range2D{is_s, is_e, js_s, js_e},
+               KHorizDiffS2{tke, xkmh, rho, zx, zy, rdz, rdzw, msftx, msfty, msfux, msfvy,
+                            fnm, fnp, dn, dnw, cf1, cf2, cf3, tke_tendf, rdx, rdy, nz, true});
+  }
+
+  if (has_moist && !p.moist_mix2_off) {
     column_for(Range2D{is_s, is_e, js_s, js_e},
                KHorizDiffS2{moist, xkhh, rho, zx, zy, rdz, rdzw, msftx, msfty, msfux, msfvy,
-                            fnm, fnp, dn, dnw, cf1, cf2, cf3, moist_tendf, rdx, rdy, nz});
+                            fnm, fnp, dn, dnw, cf1, cf2, cf3, moist_tendf, rdx, rdy, nz, false});
   }
 }
 
@@ -531,19 +676,24 @@ inline void cal_titau_vert(View3<const real> rho,
                            View3<real> titau13,
                            View3<real> titau23,
                            View3<real> titau33,
-                           bool specified, int nx, int ny, int nz) {
+                           bool specified, int nx, int ny, int nz,
+                           const DiffusionParams& p = {}) {
+  const bool bdy_xs = p.open_xs || p.specified || p.nested || specified;
+  const bool bdy_xe = p.open_xe || p.specified || p.nested || specified;
+  const bool bdy_ys = p.open_ys || p.specified || p.nested || specified;
+  const bool bdy_ye = p.open_ye || p.specified || p.nested || specified;
   parallel_for(Range3D{0, nx, 0, ny, 0, nz}, KCalTitauDiag{rho, xkmh, defor33, titau33});
-  int i13_s = specified ? 1 : 0;
-  int i13_e = specified ? nx : nx + 1;
-  int j13_s = specified ? 1 : 0;
-  int j13_e = ny;
-  parallel_for(Range3D{i13_s, i13_e, j13_s, j13_e, 0, nz},
+  int i13_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
+  int i13_e = (!p.periodic_x && bdy_xe) ? nx : nx + 1;
+  int j13_s = bdy_ys ? 1 : 0;
+  int j13_e = bdy_ye ? ny - 1 : ny;
+  parallel_for(Range3D{i13_s, i13_e, j13_s, j13_e, 0, nz + 1},
                KCalTitau13{rho, xkmv, defor13, fnm, fnp, titau13, nz});
-  int i23_s = specified ? 1 : 0;
-  int i23_e = nx;
-  int j23_s = specified ? 1 : 0;
-  int j23_e = specified ? ny : ny + 1;
-  parallel_for(Range3D{i23_s, i23_e, j23_s, j23_e, 0, nz},
+  int i23_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
+  int i23_e = (!p.periodic_x && bdy_xe) ? nx - 1 : nx;
+  int j23_s = bdy_ys ? 1 : 0;
+  int j23_e = bdy_ye ? ny : ny + 1;
+  parallel_for(Range3D{i23_s, i23_e, j23_s, j23_e, 0, nz + 1},
                KCalTitau23{rho, xkmv, defor23, fnm, fnp, titau23, nz});
 }
 
@@ -567,42 +717,102 @@ inline void vertical_diffusion_2(const DiffusionParams& p,
                                  View3<const real> moist,
                                  View3<real> moist_tendf,
                                  bool has_moist,
-                                 int nx, int ny, int nz) {
+                                 int nx, int ny, int nz,
+                                 View3<const real> tke = {},
+                                 View3<real> tke_tendf = {},
+                                 View3<const real> xkmv = {},
+                                 bool has_tke = false,
+                                 View3<const real> u_2 = {},
+                                 View3<const real> v_2 = {},
+                                 View3<const real> theta = {},
+                                 View1<const real> qv_base = {},
+                                 bool has_qv_base = false,
+                                 View2<const real> ust = {},
+                                 bool has_ust = false,
+                                 View2<const real> hfx = {},
+                                 bool has_hfx = false,
+                                 View2<const real> qfx = {},
+                                 bool has_qfx = false) {
+  const bool bdy_xs = p.open_xs || p.specified || p.nested;
+  const bool bdy_xe = p.open_xe || p.specified || p.nested;
+  const bool bdy_ys = p.open_ys || p.specified || p.nested;
+  const bool bdy_ye = p.open_ye || p.specified || p.nested;
+
   // 1. Vertical diffusion of U
-  int iu_s = p.specified ? 1 : 0;
-  int iu_e = p.specified ? nx : nx + 1;
-  int ju_s = p.specified ? 1 : 0;
-  int ju_e = p.specified ? ny - 1 : ny;
+  int iu_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
+  int iu_e = (!p.periodic_x && bdy_xe) ? nx : nx + 1;
+  int ju_s = bdy_ys ? 1 : 0;
+  int ju_e = bdy_ye ? ny - 1 : ny;
   column_for(Range2D{iu_s, iu_e, ju_s, ju_e},
              KVertDiffU2{titau13, dnw, ru_tendf, nz});
 
   // 2. Vertical diffusion of V
-  int iv_s = p.specified ? 1 : 0;
-  int iv_e = p.specified ? nx - 1 : nx;
-  int jv_s = p.specified ? 1 : 0;
-  int jv_e = p.specified ? ny : ny + 1;
+  int iv_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
+  int iv_e = (!p.periodic_x && bdy_xe) ? nx - 1 : nx;
+  int jv_s = bdy_ys ? 1 : 0;
+  int jv_e = bdy_ye ? ny : ny + 1;
   column_for(Range2D{iv_s, iv_e, jv_s, jv_e},
              KVertDiffV2{titau23, dnw, rv_tendf, nz});
 
   // 3. Vertical diffusion of W
-  int iw_s = p.specified ? 1 : 0;
-  int iw_e = p.specified ? nx - 1 : nx;
-  int jw_s = p.specified ? 1 : 0;
-  int jw_e = p.specified ? ny - 1 : ny;
+  int iw_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
+  int iw_e = (!p.periodic_x && bdy_xe) ? nx - 1 : nx;
+  int jw_s = bdy_ys ? 1 : 0;
+  int jw_e = bdy_ye ? ny - 1 : ny;
   column_for(Range2D{iw_s, iw_e, jw_s, jw_e},
              KVertDiffW2{titau33, dn, rw_tendf, nz});
 
-  // 4. Vertical diffusion of scalars (theta and moisture)
-  int is_s = p.specified ? 1 : 0;
-  int is_e = p.specified ? nx - 1 : nx;
-  int js_s = p.specified ? 1 : 0;
-  int js_e = p.specified ? ny - 1 : ny;
-  column_for(Range2D{is_s, is_e, js_s, js_e},
-             KVertDiffS2Pert{var_th, xkhv, rho, rdz, t_base, fnm, fnp, dnw, t_tendf, nz});
+  // 3b. Surface momentum fluxes (vflux) if u_2 and v_2 are provided
+  if (u_2.p != nullptr && v_2.p != nullptr) {
+    column_for(Range2D{0, nx + 1, 0, ny},
+               KVertDiffSfcFluxU2{u_2, v_2, rho, ust, dnw, has_ust, p.periodic_x,
+                                  p.isfflx, nx, p.tke_drag_coefficient, ru_tendf});
+    column_for(Range2D{0, nx, 0, ny + 1},
+               KVertDiffSfcFluxV2{u_2, v_2, rho, ust, dnw, has_ust, p.periodic_y,
+                                  p.isfflx, ny, p.tke_drag_coefficient, rv_tendf});
+  }
+
+  // 4. Vertical diffusion of scalars (theta, TKE, and moisture)
+  int is_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
+  int is_e = (!p.periodic_x && bdy_xe) ? nx - 1 : nx;
+  int js_s = bdy_ys ? 1 : 0;
+  int js_e = bdy_ye ? ny - 1 : ny;
+  if (p.mix_full_fields) {
+    column_for(Range2D{is_s, is_e, js_s, js_e},
+               KVertDiffS2{var_th, xkhv, rho, rdz, fnm, fnp, dnw, t_tendf, nz, false});
+  } else {
+    column_for(Range2D{is_s, is_e, js_s, js_e},
+               KVertDiffS2Pert{var_th, xkhv, rho, rdz, t_base, fnm, fnp, dnw, t_tendf, nz});
+  }
+
+  // 4b. Surface heat flux (hflux) if theta is provided (or when isfflx == 0/2 or has_hfx)
+  if (theta.p != nullptr || p.isfflx == 0 || p.isfflx == 2 || has_hfx) {
+    View3<const real> th_view = (theta.p != nullptr) ? theta : var_th;
+    column_for(Range2D{0, nx, 0, ny},
+               KVertDiffSfcFluxH2{th_view, rho, moist, hfx, qfx, dnw,
+                                  has_moist, has_hfx, has_qfx,
+                                  p.isfflx, p.use_theta_m, p.tke_heat_flux, t_tendf});
+  }
+
+  // 4c. Vertical diffusion of TKE (when km_opt == 2)
+  if (has_tke && p.km_opt == 2) {
+    // Note: WRF passes xkmv (not xkhv) and doing_tke = .true. for TKE vertical diffusion
+    column_for(Range2D{is_s, is_e, js_s, js_e},
+               KVertDiffS2{tke, xkmv, rho, rdz, fnm, fnp, dnw, tke_tendf, nz, true});
+  }
 
   if (has_moist) {
-    column_for(Range2D{is_s, is_e, js_s, js_e},
-               KVertDiffS2{moist, xkhv, rho, rdz, fnm, fnp, dnw, moist_tendf, nz});
+    if (!p.mix_full_fields && has_qv_base) {
+      column_for(Range2D{is_s, is_e, js_s, js_e},
+                 KVertDiffS2Pert{moist, xkhv, rho, rdz, qv_base, fnm, fnp, dnw, moist_tendf, nz});
+    } else {
+      column_for(Range2D{is_s, is_e, js_s, js_e},
+                 KVertDiffS2{moist, xkhv, rho, rdz, fnm, fnp, dnw, moist_tendf, nz, false});
+    }
+    if (has_qfx) {
+      column_for(Range2D{0, nx, 0, ny},
+                 KVertDiffSfcFluxQ2{qfx, dnw, has_qfx, p.isfflx, moist_tendf});
+    }
   }
 }
 

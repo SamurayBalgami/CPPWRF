@@ -120,6 +120,10 @@ static void init_ideal(const io::Config& cfg, Model& m, const std::string& cname
     m.st->add_scalar(g, n, false);
     m.tend->add_scalar(g, n);
   }
+  if (cfg.get_int("dyn.km_opt", 1) == 2 && m.st->P_TKE < 0) {
+    m.st->add_scalar(g, "tke", false);
+    m.tend->add_scalar(g, "tke");
+  }
   if (m.cd.qv_env && m.st->P_QV < 0) throw std::runtime_error("case.qv0 needs qv in moist.species");
   std::unique_ptr<Sounding> moist;
   if (m.st->P_QV >= 0) {  // moist sounding for the full state (qv = 0 if the case has no vapour)
@@ -150,12 +154,19 @@ static void init_ideal(const io::Config& cfg, Model& m, const std::string& cname
     while (m.st->q_names[idx] != n) ++idx;
     init_tracer(cfg, n, g, *m.base, m.st->q_1[idx], m.st->q_2[idx]);
   }
-  // module_initialize_ideal: u_base(k) = u_1(1,k,1), v_base(k) = v_1(1,k,1) (all ideal cases)
+  // module_initialize_ideal: u_base(k) = u_1(1,k,1), v_base(k) = v_1(1,k,1), t_base, qv_base, z_base (all ideal cases)
   std::vector<real> h;
   m.st->u_2.download(h);
   for (int k = 0; k < g.nz; ++k) m.base->u_base[k] = h[m.st->u_2.layout().index(0, 0, k)];
   m.st->v_2.download(h);
   for (int k = 0; k < g.nz; ++k) m.base->v_base[k] = h[m.st->v_2.layout().index(0, 0, k)];
+  m.base->t_init.download(h);
+  for (int k = 0; k < g.nz; ++k) m.base->t_base[k] = h[m.base->t_init.layout().index(0, 0, k)];
+  m.base->qv_base.download(h);
+  for (int k = 0; k < g.nz; ++k) m.base->qv_base_1d[k] = h[m.base->qv_base.layout().index(0, 0, k)];
+  m.base->phb.download(h);
+  for (int k = 0; k < g.nz; ++k)
+    m.base->z_base[k] = real(0.5) * (h[m.base->phb.layout().index(0, 0, k)] + h[m.base->phb.layout().index(0, 0, k + 1)]) / cst::g;
   m.base->upload_levels();
 }
 
@@ -184,15 +195,18 @@ Model Model::build(const io::Config& cfg) {
   if (cname != "real") m.ap.hypsometric_opt = int(cfg.get_int("dyn.hypsometric_opt", 1));  // real: from the input
   if (m.ap.hypsometric_opt != 1 && m.ap.hypsometric_opt != 2) throw std::runtime_error("dyn.hypsometric_opt: 1 or 2");
   m.ap.damp_opt = int(cfg.get_int("dyn.damp_opt", 0));
-  if (m.ap.damp_opt != 0 && m.ap.damp_opt != 3) throw std::runtime_error("dyn.damp_opt must be 0 or 3");
+  if (m.ap.damp_opt < 0 || m.ap.damp_opt > 3) throw std::runtime_error("dyn.damp_opt must be 0, 1, 2 or 3");
   m.ap.zdamp = real(cfg.get_double("dyn.zdamp", 5000.0));
   m.ap.dampcoef = real(cfg.get_double("dyn.dampcoef", 0.2));
   dyn::ScalarParams& sp = m.sp;
   sp.moist_adv_opt = int(cfg.get_int("dyn.moist_adv_opt", 1));
   sp.scalar_adv_opt = int(cfg.get_int("dyn.scalar_adv_opt", 1));
-  if (sp.moist_adv_opt < 0 || sp.moist_adv_opt > 1 || sp.scalar_adv_opt < 0 || sp.scalar_adv_opt > 1)
-    throw std::runtime_error("dyn.moist_adv_opt and dyn.scalar_adv_opt must be 0 or 1");
-  if (m.st->n_scalars() > 0 && (sp.moist_adv_opt == 1 || sp.scalar_adv_opt == 1) && lp.h_adv_order != 5)
+  sp.tke_adv_opt = int(cfg.get_int("dyn.tke_adv_opt", 1));
+  if (sp.moist_adv_opt < 0 || sp.moist_adv_opt > 1 || sp.scalar_adv_opt < 0 || sp.scalar_adv_opt > 1 ||
+      sp.tke_adv_opt < 0 || sp.tke_adv_opt > 1)
+    throw std::runtime_error("dyn.moist_adv_opt, dyn.scalar_adv_opt and dyn.tke_adv_opt must be 0 or 1");
+  if (m.st->n_scalars() > 0 && (sp.moist_adv_opt == 1 || sp.scalar_adv_opt == 1 || sp.tke_adv_opt == 1) &&
+      lp.h_adv_order != 5)
     throw std::runtime_error("positive-definite advection is implemented for h_adv_order = 5 only");
   // Diffusion: WRF diff_opt / km_opt / diff_6th_opt. diff_opt defaults to 1 when khdif or kvdif
   // is set (older configs). dyn.legacy_diffusion = true keeps the old constant-K kernels (flat,
@@ -203,11 +217,31 @@ Model Model::build(const io::Config& cfg) {
   m.diff_opt = dc.diff_opt;
   m.km_opt = dc.km_opt;
   m.hybrid_opt = int(cfg.get_int("dyn.hybrid_opt", m.hybrid_opt));  // real: from the input file
+  dc.damp_opt = m.ap.damp_opt;
+  dc.zdamp = m.ap.zdamp;
+  dc.dampcoef = m.ap.dampcoef;
   dc.khdif = lp.khdif; dc.kvdif = lp.kvdif;
   dc.c_s = real(cfg.get_double("dyn.c_s", 0.25));
+  dc.c_k = real(cfg.get_double("dyn.c_k", 0.15));
+  dc.mix_isotropic = int(cfg.get_int("dyn.mix_isotropic", 0));
+  dc.mix_full_fields = cfg.get_bool("dyn.mix_full_fields", false);
+  dc.mix_upper_bound = real(cfg.get_double("dyn.mix_upper_bound", 0.1));
+  dc.prandtl = real(1.0) / lp.pr_inv;
+  dc.tke_drag_coefficient = real(cfg.get_double("dyn.tke_drag_coefficient", 0.0));
+  dc.tke_heat_flux = real(cfg.get_double("dyn.tke_heat_flux", 0.0));
+  dc.tke_upper_bound = real(cfg.get_double("dyn.tke_upper_bound", 1000.0));
+  dc.moist_mix2_off = cfg.get_bool("dyn.moist_mix2_off", false);
+  dc.scalar_mix2_off = cfg.get_bool("dyn.scalar_mix2_off", false);
+  dc.tke_mix2_off = cfg.get_bool("dyn.tke_mix2_off", false);
+  dc.moist_mix6_off = cfg.get_bool("dyn.moist_mix6_off", false);
+  dc.scalar_mix6_off = cfg.get_bool("dyn.scalar_mix6_off", false);
+  dc.tke_mix6_off = cfg.get_bool("dyn.tke_mix6_off", false);
   dc.diff_6th_opt = int(cfg.get_int("dyn.diff_6th_opt", 0));
   dc.diff_6th_factor = real(cfg.get_double("dyn.diff_6th_factor", 0.12));
   dc.pbl = cfg.get_int("phys.bl_pbl_physics", 0) != 0;
+  dc.sf_sfclay_physics = int(cfg.get_int("phys.sf_sfclay_physics", 0));
+  dc.isfflx = int(cfg.get_int("phys.isfflx", 1));
+  dc.use_theta_m = int(cfg.get_int("dyn.use_theta_m", 1));
   const bool legacy = cfg.get_bool("dyn.legacy_diffusion", false);
   if (legacy && (dc.km_opt != 1 || dc.diff_6th_opt != 0)) throw std::runtime_error("dyn.legacy_diffusion: km_opt 1 only");
   sp.khdif = lp.khdif; sp.kvdif = lp.kvdif; sp.pr_inv = lp.pr_inv;
@@ -233,6 +267,7 @@ Model Model::build(const io::Config& cfg) {
     if (m.bc) m.rk->set_lateral_bc(m.bc.get());
     if (!legacy && dc.on()) {
       m.diff = std::make_unique<dyn::DiffusionDriver>(g, dc);
+      if (m.suite) m.diff->set_physics_suite(m.suite.get());
       m.rk->set_diffusion(m.diff.get());
     }
   }

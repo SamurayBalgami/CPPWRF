@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-BUILD_DIR="${SCRIPT_DIR}/build"
+BUILD_DIR="${DIFF_TEST_BUILD_DIR:-${SCRIPT_DIR}/build}"
 HEAVY="${REPO_ROOT}/tools/heavy.sh"
 WRF_R8="${WRF_DIR:-$HOME/wrf_real/WRF-4.6.1-r8}"
 
@@ -38,6 +38,7 @@ echo "======================================================================"
   -I "${REPO_ROOT}/src" \
   "${SCRIPT_DIR}/driver_diffusion.cpp" \
   "${REPO_ROOT}/src/core/backend.cpp" \
+  -lmvec \
   -o "${BUILD_DIR}/driver_diffusion_cpp"
 
 echo "======================================================================"
@@ -48,6 +49,7 @@ echo "======================================================================"
   -I "${REPO_ROOT}/src" \
   -x cu "${SCRIPT_DIR}/driver_diffusion_cuda.cu" \
   -x cu "${REPO_ROOT}/src/core/backend.cpp" \
+  -lmvec \
   -o "${BUILD_DIR}/driver_diffusion_cuda"
 
 echo "======================================================================"

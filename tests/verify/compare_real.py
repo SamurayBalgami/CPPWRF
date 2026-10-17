@@ -34,7 +34,7 @@ def main(wrfout, d, inner):
             "P": (g("P") + g("PB"), sn["p"]), "QV": (g("QVAPOR"), sn["qv"]),
         }
         for wn, cn in (("QCLOUD", "qc"), ("QRAIN", "qr"), ("QICE", "qi"), ("QSNOW", "qs"), ("QGRAUP", "qg"),
-                       ("QNICE", "qni"), ("QNRAIN", "qnr")):
+                       ("QNICE", "qni"), ("QNRAIN", "qnr"), ("TKE", "tke")):
             if wn in ds.variables and cn in sn:
                 pairs[wn] = (g(wn), sn[cn])
         if "RAINNC" in ds.variables and "rainnc" in sn:

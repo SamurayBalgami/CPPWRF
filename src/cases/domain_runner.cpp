@@ -648,6 +648,7 @@ void DomainRunner::do_snap(long n) {
       else if (qname == "qg") qname = "QGRAUP";
       else if (qname == "qni") qname = "QNICE";
       else if (qname == "qnr") qname = "QNRAIN";
+      else if (qname == "tke") qname = "TKE";
       nc_vars.emplace_back(qname, 'M', nx, ny, nz, scalar_bufs[s].data(), f32, nx, (std::ptrdiff_t)nx * ny);
     }
 

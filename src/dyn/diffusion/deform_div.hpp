@@ -278,7 +278,7 @@ inline void cal_deform_and_div(const DiffusionParams& p,
       for (int k = 0; k < nz; ++k) defor12(nx, j, k) = defor12(0, j, k);
     });
   } else if (p.specified) {
-    column_for(Range2D{0, 1, 0, ny}, [=] CPPWRF_HD (int, int j) {
+    column_for(Range2D{0, 1, 0, ny + 1}, [=] CPPWRF_HD (int, int j) {
       for (int k = 0; k < nz; ++k) defor12(0, j, k) = defor12(1, j, k);
     });
   }
@@ -288,19 +288,19 @@ inline void cal_deform_and_div(const DiffusionParams& p,
       for (int k = 0; k < nz; ++k) defor12(i, ny, k) = defor12(i, 0, k);
     });
   } else if (p.specified) {
-    column_for(Range2D{0, nx, 0, 1}, [=] CPPWRF_HD (int i, int) {
+    column_for(Range2D{0, nx + 1, 0, 1}, [=] CPPWRF_HD (int i, int) {
       for (int k = 0; k < nz; ++k) defor12(i, 0, k) = defor12(i, 1, k);
     });
   }
 
   if (!p.periodic_x && p.specified) {
-    column_for(Range2D{0, 1, 0, ny}, [=] CPPWRF_HD (int, int j) {
+    column_for(Range2D{0, 1, 0, ny + 1}, [=] CPPWRF_HD (int, int j) {
       for (int k = 0; k < nz; ++k) defor12(nx, j, k) = defor12(nx - 1, j, k);
     });
   }
 
   if (!p.periodic_y && p.specified) {
-    column_for(Range2D{0, nx, 0, 1}, [=] CPPWRF_HD (int i, int) {
+    column_for(Range2D{0, nx + 1, 0, 1}, [=] CPPWRF_HD (int i, int) {
       for (int k = 0; k < nz; ++k) defor12(i, ny, k) = defor12(i, ny - 1, k);
     });
   }

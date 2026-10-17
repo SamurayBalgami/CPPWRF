@@ -114,14 +114,23 @@ void init_real_case(const io::Config& cfg, Model& m) {
   }
   b.dn[nz] = 0; b.rdn[nz] = 0; b.fnm[nz] = 0; b.fnp[nz] = 0;
   b.cf1 = d.cf1; b.cf2 = d.cf2; b.cf3 = d.cf3; b.cfn = d.cfn; b.cfn1 = d.cfn1;
-  b.upload_levels();
   b.p_top = d.p_top;
-  {  // WRF uses RDX, RDY of the input (registry 'i'), e.g. float 1/dx from a single-precision real.exe
+  {  // WRF uses RDX, RDY and 1D *_BASE profiles of the input (registry 'i')
     const std::string wi = dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01");
     const std::vector<double> rdx = read_var_if_present(wi, "RDX", 1), rdy = read_var_if_present(wi, "RDY", 1);
     if (!rdx.empty()) b.rdx = rdx[0];
     if (!rdy.empty()) b.rdy = rdy[0];
+    auto load_base1d = [&](const char* name, Array1& dst) {
+      const std::vector<double> v = read_var_if_present(wi, name, std::size_t(nz));
+      for (int k = 0; k < nz && std::size_t(k) < v.size(); ++k) dst[k] = real(v[k]);
+    };
+    load_base1d("U_BASE", b.u_base);
+    load_base1d("V_BASE", b.v_base);
+    load_base1d("T_BASE", b.t_base);
+    load_base1d("QV_BASE", b.qv_base_1d);
+    load_base1d("Z_BASE", b.z_base);
   }
+  b.upload_levels();
 
   auto cl = [](int a, int lo, int hi) { return a < lo ? lo : (a > hi ? hi : a); };
   auto m2 = [&](const std::vector<double>& v) {  // mass-point 2D, flat halo
@@ -222,6 +231,10 @@ void init_real_case(const io::Config& cfg, Model& m) {
     s.add_scalar(g, n, false);
     m.tend->add_scalar(g, n);
   }
+  if (cfg.get_int("dyn.km_opt", 1) == 2 && s.P_TKE < 0) {
+    s.add_scalar(g, "tke", false);
+    m.tend->add_scalar(g, "tke");
+  }
   if (s.P_QV < 0) throw std::runtime_error("case = real needs qv in moist.species");
   const std::vector<double>& qv = d.qvapor;
   const std::string wi_path = dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01");
@@ -245,6 +258,7 @@ void init_real_case(const io::Config& cfg, Model& m) {
     std::vector<double> extra_q;
     if (nm == "qni") extra_q = read_var_if_present(wi_path, "QNICE", qv.size());
     else if (nm == "qnr") extra_q = read_var_if_present(wi_path, "QNRAIN", qv.size());
+    else if (nm == "tke") extra_q = read_var_if_present(wi_path, "TKE", qv.size());
     const std::vector<double>* src = nm == "qc" ? &d.qcloud : nm == "qr" ? &d.qrain : nm == "qi" ? &d.qice
                                      : nm == "qs" ? &d.qsnow : nm == "qg" ? &d.qgraup
                                      : (!extra_q.empty() ? &extra_q : nullptr);

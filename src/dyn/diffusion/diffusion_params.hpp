@@ -36,6 +36,25 @@ struct DiffusionParams {
   bool polar = false;
   real fft_filter_lat = 0;
   int zadvect_implicit = 0;
+
+  // TKE (km_opt = 2) and damping (damp_opt = 1, 2)
+  real c_k = real(0.15);                  // TKE diffusion coefficient constant (WRF default = 0.15)
+  real mix_upper_bound = real(0.1);       // non-dimensional diffusivity upper limit (WRF default = 0.1)
+  int bl_pbl_physics = 0;                 // PBL scheme option (0 = none)
+  int damp_opt = 0;                       // 0 = none, 1 = upper diffusive layer, 2 = Rayleigh
+  real zdamp = real(5000.0);              // damping depth from model top (m)
+  real dampcoef = real(0.0);              // damping coefficient
+  int isotropic = 0;                      // 0 = anisotropic mixing length, 1 = isotropic
+  int isfflx = 1;                         // surface flux option (WRF default = 1)
+  int use_theta_m = 0;                    // moist theta flag for tke_buoyancy
+  real tke_drag_coefficient = real(0.0);  // surface drag coefficient when isfflx = 0
+  real tke_heat_flux = real(0.0);         // surface kinematic heat flux when isfflx = 0 or 2
+  real tke_upper_bound = real(1000.0);    // upper bound on TKE (m^2/s^2)
+  bool tke_mix2_off = false;              // disable 2nd-order diffusion of TKE
+  bool tke_mix6_off = false;              // disable 6th-order diffusion of TKE
+  bool moist_mix2_off = false;            // disable 2nd-order diffusion of moist species
+  bool nested = false;                    // nested domain flag
+  int spec_bdy_width = 5;                 // specified boundary zone width (WRF default = 5)
 };
 
 }  // namespace cppwrf::dyn::diffusion

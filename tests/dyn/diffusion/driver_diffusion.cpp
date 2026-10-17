@@ -134,7 +134,7 @@ int main(int argc, char* argv[]) {
   DevField<double> dn(nz), rdn(nz), dnw(nz), rdnw(nz), fnm(nz), fnp(nz);
   double cf1, cf2, cf3;
   DevField<double> c1(nz), c2(nz), c3(nz), c4(nz), c1f(nz + 1), c2f(nz + 1);
-  DevField<double> u_base(nz), v_base(nz), t_base(nz), qv_base(nz);
+  DevField<double> u_base(nz), v_base(nz), t_base(nz), qv_base(nz), z_base(nz);
 
   read_field(in, dn);
   read_field(in, rdn);
@@ -155,6 +155,7 @@ int main(int argc, char* argv[]) {
   read_field(in, v_base);
   read_field(in, t_base);
   read_field(in, qv_base);
+  read_field(in, z_base);
 
   // 2D fields
   DevField<double> mut(nx * ny), muu((nx + 1) * ny), muv(nx * (ny + 1));
@@ -189,7 +190,7 @@ int main(int argc, char* argv[]) {
   DevField<double> thp(nx * nz * ny), theta(nx * nz * ny), t(nx * nz * ny);
   DevField<double> pb(nx * nz * ny), p(nx * nz * ny);
   DevField<double> alt(nx * nz * ny), rho(nx * nz * ny);
-  DevField<double> moist(nx * nz * ny), tke(nx * (nz + 1) * ny);
+  DevField<double> moist(nx * nz * ny), tke(nx * nz * ny);
 
   read_field(in, phb);
   read_field(in, ph);
@@ -208,6 +209,24 @@ int main(int argc, char* argv[]) {
   read_field(in, tke);
   in.close();
 
+  DevField<double> p8w(nx * (nz + 1) * ny), t8w(nx * (nz + 1) * ny);
+  for (int j = 0; j < ny; ++j) {
+    for (int i = 0; i < nx; ++i) {
+      auto idx_m = [&](int k) { return i + k * nx + j * nx * nz; };
+      auto idx_w = [&](int k) { return i + k * nx + j * nx * (nz + 1); };
+      p8w[idx_w(0)] = p[idx_m(0)];
+      t8w[idx_w(0)] = t[idx_m(0)];
+      for (int k = 1; k < nz; ++k) {
+        p8w[idx_w(k)] = 0.5 * (p[idx_m(k - 1)] + p[idx_m(k)]);
+        t8w[idx_w(k)] = 0.5 * (t[idx_m(k - 1)] + t[idx_m(k)]);
+      }
+      p8w[idx_w(nz)] = p[idx_m(nz - 1)];
+      t8w[idx_w(nz)] = t[idx_m(nz - 1)];
+    }
+  }
+  p8w.upload();
+  t8w.upload();
+
   // Outputs
   DevField<double> z(nx * nz * ny), rdz(nx * nz * ny), rdzw(nx * nz * ny);
   DevField<double> zx((nx + 1) * (nz + 1) * ny), zy(nx * (nz + 1) * (ny + 1));
@@ -215,7 +234,7 @@ int main(int argc, char* argv[]) {
   DevField<double> defor12((nx + 1) * nz * (ny + 1));
   DevField<double> defor13((nx + 1) * (nz + 1) * ny);
   DevField<double> defor23(nx * (nz + 1) * (ny + 1));
-  DevField<double> div(nx * nz * ny);
+  DevField<double> div(nx * nz * ny), bn2(nx * nz * ny);
   DevField<double> xkmh(nx * nz * ny), xkmv(nx * nz * ny);
   DevField<double> xkhh(nx * nz * ny), xkhv(nx * nz * ny);
   DevField<double> xkmh_k1(nx * nz * ny), xkmv_k1(nx * nz * ny);
@@ -226,6 +245,7 @@ int main(int argc, char* argv[]) {
   DevField<double> titau23(nx * (nz + 1) * (ny + 1));
   DevField<double> ru_tend((nx + 1) * nz * ny), rv_tend(nx * nz * (ny + 1));
   DevField<double> rw_tend(nx * (nz + 1) * ny), rt_tend(nx * nz * ny);
+  DevField<double> tke_tend(nx * nz * ny), tke_tend_rhs(nx * nz * ny);
   DevField<double> moist_tend(nx * nz * ny);
   DevField<double> dummy3d(nx * nz * ny);
   dummy3d.fill(0.0);
@@ -1001,6 +1021,360 @@ int main(int argc, char* argv[]) {
     write_field(out, "rw_tend_damp", rw_tend);
     write_chunk(out, "max_vert_cfl", &max_vert_cfl, 1);
     write_chunk(out, "max_horiz_cfl", &max_horiz_cfl, 1);
+  }
+
+  // ============================================================================
+  // TEST 8: calculate_km_kh with km_opt = 2 (1.5-order TKE, calculate_N2, tke_km, calc_l_scale, cal_dampkm)
+  // ============================================================================
+  // Case A: km_opt = 2, diff_opt = 2, isotropic = 0, damp_opt = 0
+  {
+    DiffusionParams p_cfg;
+    p_cfg.km_opt = 2;
+    p_cfg.diff_opt = 2;
+    p_cfg.c_k = 0.15;
+    p_cfg.c_s = 0.25;
+    p_cfg.mix_upper_bound = 10.0;
+    p_cfg.bl_pbl_physics = 0;
+    p_cfg.damp_opt = 0;
+    p_cfg.isotropic = 0;
+    p_cfg.specified = true;
+    p_cfg.periodic_x = false;
+    p_cfg.periodic_y = false;
+
+    xkmh.fill(0.0);
+    xkmv.fill(0.0);
+    xkhh.fill(0.0);
+    xkhv.fill(0.0);
+    bn2.fill(0.0);
+
+    View3<const double> empty3{};
+    calculate_km_kh(p_cfg, dx, dy, dt, cf1, cf2, cf3,
+                    make_const_view3(defor11.data(), nx, nz),
+                    make_const_view3(defor22.data(), nx, nz),
+                    make_const_view3(defor33.data(), nx, nz),
+                    make_const_view3(defor12.data(), nx + 1, nz),
+                    make_const_view3(defor13.data(), nx + 1, nz + 1),
+                    make_const_view3(defor23.data(), nx, nz + 1),
+                    make_const_view3(tke.data(), nx, nz),
+                    make_const_view3(p8w.data(), nx, nz + 1),
+                    make_const_view3(t8w.data(), nx, nz + 1),
+                    make_const_view3(theta.data(), nx, nz),
+                    make_const_view3(t.data(), nx, nz),
+                    make_const_view3(p.data(), nx, nz),
+                    make_const_view3(moist.data(), nx, nz), true,
+                    empty3, false,
+                    empty3, false,
+                    make_const_view3(rdz.data(), nx, nz),
+                    make_const_view3(rdzw.data(), nx, nz),
+                    make_const_view3(zx.data(), nx + 1, nz + 1),
+                    make_const_view3(zy.data(), nx, nz + 1),
+                    make_bview2(msftx.data(), nx),
+                    make_bview2(msfty.data(), nx),
+                    make_view3(bn2.data(), nx, nz),
+                    make_view3(xkmh.data(), nx, nz),
+                    make_view3(xkmv.data(), nx, nz),
+                    make_view3(xkhh.data(), nx, nz),
+                    make_view3(xkhv.data(), nx, nz),
+                    nx, ny, nz);
+
+    write_field(out, "bn2_kmopt2_iso0", bn2);
+    write_field(out, "xkmh_kmopt2_iso0", xkmh);
+    write_field(out, "xkmv_kmopt2_iso0", xkmv);
+    write_field(out, "xkhh_kmopt2_iso0", xkhh);
+    write_field(out, "xkhv_kmopt2_iso0", xkhv);
+
+    // Case B: km_opt = 2, diff_opt = 2, isotropic = 1, damp_opt = 1 (cal_dampkm)
+    p_cfg.isotropic = 1;
+    p_cfg.damp_opt = 1;
+    p_cfg.dampcoef = 0.05;
+    p_cfg.zdamp = 5000.0;
+    xkmh.fill(0.0);
+    xkmv.fill(0.0);
+    xkhh.fill(0.0);
+    xkhv.fill(0.0);
+    bn2.fill(0.0);
+
+    calculate_km_kh(p_cfg, dx, dy, dt, cf1, cf2, cf3,
+                    make_const_view3(defor11.data(), nx, nz),
+                    make_const_view3(defor22.data(), nx, nz),
+                    make_const_view3(defor33.data(), nx, nz),
+                    make_const_view3(defor12.data(), nx + 1, nz),
+                    make_const_view3(defor13.data(), nx + 1, nz + 1),
+                    make_const_view3(defor23.data(), nx, nz + 1),
+                    make_const_view3(tke.data(), nx, nz),
+                    make_const_view3(p8w.data(), nx, nz + 1),
+                    make_const_view3(t8w.data(), nx, nz + 1),
+                    make_const_view3(theta.data(), nx, nz),
+                    make_const_view3(t.data(), nx, nz),
+                    make_const_view3(p.data(), nx, nz),
+                    make_const_view3(moist.data(), nx, nz), true,
+                    empty3, false,
+                    empty3, false,
+                    make_const_view3(rdz.data(), nx, nz),
+                    make_const_view3(rdzw.data(), nx, nz),
+                    make_const_view3(zx.data(), nx + 1, nz + 1),
+                    make_const_view3(zy.data(), nx, nz + 1),
+                    make_bview2(msftx.data(), nx),
+                    make_bview2(msfty.data(), nx),
+                    make_view3(bn2.data(), nx, nz),
+                    make_view3(xkmh.data(), nx, nz),
+                    make_view3(xkmv.data(), nx, nz),
+                    make_view3(xkhh.data(), nx, nz),
+                    make_view3(xkhv.data(), nx, nz),
+                    nx, ny, nz);
+
+    write_field(out, "xkmh_kmopt2_iso1_damp1", xkmh);
+    write_field(out, "xkmv_kmopt2_iso1_damp1", xkmv);
+    write_field(out, "xkhh_kmopt2_iso1_damp1", xkhh);
+    write_field(out, "xkhv_kmopt2_iso1_damp1", xkhv);
+  }
+
+  // ============================================================================
+  // TEST 9: tke_rhs (tke_shear + tke_buoyancy + tke_dissip + lower limit)
+  // ============================================================================
+  {
+    DiffusionParams p_cfg;
+    p_cfg.km_opt = 2;
+    p_cfg.diff_opt = 2;
+    p_cfg.c_k = 0.15;
+    p_cfg.isfflx = 1;
+    p_cfg.use_theta_m = 1;
+    p_cfg.isotropic = 0;
+    p_cfg.tke_drag_coefficient = 0.0;
+    p_cfg.tke_heat_flux = 0.0;
+    p_cfg.specified = true;
+    p_cfg.periodic_x = false;
+    p_cfg.periodic_y = false;
+
+    tke_tend.fill(0.0);
+    tke_rhs(p_cfg, dx, dy, dt,
+            make_const_view3(defor11.data(), nx, nz),
+            make_const_view3(defor22.data(), nx, nz),
+            make_const_view3(defor33.data(), nx, nz),
+            make_const_view3(defor12.data(), nx + 1, nz),
+            make_const_view3(defor13.data(), nx + 1, nz + 1),
+            make_const_view3(defor23.data(), nx, nz + 1),
+            make_const_view3(u.data(), nx + 1, nz),
+            make_const_view3(v.data(), nx, nz),
+            make_const_view3(tke.data(), nx, nz),
+            make_const_view3(bn2.data(), nx, nz),
+            make_const_view3(theta.data(), nx, nz),
+            make_const_view3(rho.data(), nx, nz),
+            make_const_view3(rdzw.data(), nx, nz),
+            make_const_view3(xkmh.data(), nx, nz),
+            make_const_view3(xkmv.data(), nx, nz),
+            make_const_view3(xkhv.data(), nx, nz),
+            make_const_view3(moist.data(), nx, nz), true,
+            make_view2(mut.data(), nx),
+            make_view1(c1.data()), make_view1(c2.data()),
+            make_bview2(msftx.data(), nx),
+            make_bview2(msfty.data(), nx),
+            make_view2(ust.data(), nx), true,
+            make_view2(hfx.data(), nx), true,
+            make_view3(tke_tend.data(), nx, nz),
+            nx, ny, nz);
+
+    write_field(out, "tke_tend_rhs_isfflx1", tke_tend);
+    copy_dev(tke_tend_rhs.data(), tke_tend.data(), tke_tend.size() * sizeof(double));
+
+    // Case B: isfflx = 0, tke_drag_coefficient = 0.0015, tke_heat_flux = 0.05, use_theta_m = 0, isotropic = 1
+    p_cfg.isfflx = 0;
+    p_cfg.use_theta_m = 0;
+    p_cfg.isotropic = 1;
+    p_cfg.tke_drag_coefficient = 0.0015;
+    p_cfg.tke_heat_flux = 0.05;
+
+    tke_tend.fill(0.0);
+    tke_rhs(p_cfg, dx, dy, dt,
+            make_const_view3(defor11.data(), nx, nz),
+            make_const_view3(defor22.data(), nx, nz),
+            make_const_view3(defor33.data(), nx, nz),
+            make_const_view3(defor12.data(), nx + 1, nz),
+            make_const_view3(defor13.data(), nx + 1, nz + 1),
+            make_const_view3(defor23.data(), nx, nz + 1),
+            make_const_view3(u.data(), nx + 1, nz),
+            make_const_view3(v.data(), nx, nz),
+            make_const_view3(tke.data(), nx, nz),
+            make_const_view3(bn2.data(), nx, nz),
+            make_const_view3(theta.data(), nx, nz),
+            make_const_view3(rho.data(), nx, nz),
+            make_const_view3(rdzw.data(), nx, nz),
+            make_const_view3(xkmh.data(), nx, nz),
+            make_const_view3(xkmv.data(), nx, nz),
+            make_const_view3(xkhv.data(), nx, nz),
+            make_const_view3(moist.data(), nx, nz), true,
+            make_view2(mut.data(), nx),
+            make_view1(c1.data()), make_view1(c2.data()),
+            make_bview2(msftx.data(), nx),
+            make_bview2(msfty.data(), nx),
+            make_view2(ust.data(), nx), true,
+            make_view2(hfx.data(), nx), true,
+            make_view3(tke_tend.data(), nx, nz),
+            nx, ny, nz);
+
+    write_field(out, "tke_tend_rhs_isfflx0", tke_tend);
+  }
+
+  // ============================================================================
+  // TEST 10: horizontal_diffusion_2 and vertical_diffusion_2 with km_opt = 2 and isfflx = 1
+  // ============================================================================
+  {
+    DiffusionParams p_cfg;
+    p_cfg.diff_opt = 2;
+    p_cfg.km_opt = 2;
+    p_cfg.isfflx = 1;
+    p_cfg.use_theta_m = 1;
+    p_cfg.tke_drag_coefficient = 0.0;
+    p_cfg.tke_mix2_off = 0;
+    p_cfg.moist_mix2_off = 0;
+    p_cfg.specified = true;
+    p_cfg.periodic_x = false;
+    p_cfg.periodic_y = false;
+
+    ru_tend.fill(0.0);
+    rv_tend.fill(0.0);
+    rw_tend.fill(0.0);
+    rt_tend.fill(0.0);
+    moist_tend.fill(0.0);
+    copy_dev(tke_tend.data(), tke_tend_rhs.data(), tke_tend.size() * sizeof(double));
+
+    horizontal_diffusion_2(p_cfg,
+                           make_const_view3(defor11.data(), nx, nz),
+                           make_const_view3(defor22.data(), nx, nz),
+                           make_const_view3(defor33.data(), nx, nz),
+                           make_const_view3(defor12.data(), nx + 1, nz),
+                           make_const_view3(defor13.data(), nx + 1, nz + 1),
+                           make_const_view3(defor23.data(), nx, nz + 1),
+                           make_const_view3(rho.data(), nx, nz),
+                           make_const_view3(xkmh.data(), nx, nz),
+                           make_const_view3(xkmv.data(), nx, nz),
+                           make_const_view3(xkhh.data(), nx, nz),
+                           make_const_view3(zx.data(), nx + 1, nz + 1),
+                           make_const_view3(zy.data(), nx, nz + 1),
+                           make_const_view3(rdz.data(), nx, nz),
+                           make_const_view3(rdzw.data(), nx, nz),
+                           make_bview2(msftx.data(), nx),
+                           make_bview2(msfty.data(), nx),
+                           make_bview2(msfux.data(), nx + 1),
+                           make_bview2(msfuy.data(), nx + 1),
+                           make_bview2(msfvx.data(), nx),
+                           make_bview2(msfvy.data(), nx),
+                           make_view1(fnm.data()), make_view1(fnp.data()),
+                           make_view1(dn.data()), make_view1(dnw.data()),
+                           cf1, cf2, cf3, 1.0 / dx, 1.0 / dy,
+                           make_view3(titau11.data(), nx, nz),
+                           make_view3(titau22.data(), nx, nz),
+                           make_view3(titau33.data(), nx, nz),
+                           make_view3(titau12.data(), nx + 1, nz),
+                           make_view3(titau13.data(), nx + 1, nz + 1),
+                           make_view3(titau23.data(), nx, nz + 1),
+                           make_view3(ru_tend.data(), nx + 1, nz),
+                           make_view3(rv_tend.data(), nx, nz),
+                           make_view3(rw_tend.data(), nx, nz + 1),
+                           make_const_view3(thp.data(), nx, nz),
+                           make_view3(rt_tend.data(), nx, nz),
+                           make_const_view3(moist.data(), nx, nz),
+                           make_view3(moist_tend.data(), nx, nz),
+                           true, nx, ny, nz,
+                           make_const_view3(tke.data(), nx, nz),
+                           make_view3(tke_tend.data(), nx, nz),
+                           true);
+
+    write_field(out, "u_hdiff2_kmopt2", ru_tend);
+    write_field(out, "v_hdiff2_kmopt2", rv_tend);
+    write_field(out, "w_hdiff2_kmopt2", rw_tend);
+    write_field(out, "t_hdiff2_kmopt2", rt_tend);
+    write_field(out, "m_hdiff2_kmopt2", moist_tend);
+    write_field(out, "tke_hdiff2_kmopt2", tke_tend);
+
+    ru_tend.fill(0.0);
+    rv_tend.fill(0.0);
+    rw_tend.fill(0.0);
+    rt_tend.fill(0.0);
+    moist_tend.fill(0.0);
+    copy_dev(tke_tend.data(), tke_tend_rhs.data(), tke_tend.size() * sizeof(double));
+
+    vertical_diffusion_2(p_cfg,
+                         make_const_view3(titau13.data(), nx + 1, nz + 1),
+                         make_const_view3(titau23.data(), nx, nz + 1),
+                         make_const_view3(titau33.data(), nx, nz),
+                         make_const_view3(thp.data(), nx, nz),
+                         make_view1(t_base.data()),
+                         make_const_view3(xkhv.data(), nx, nz),
+                         make_const_view3(rho.data(), nx, nz),
+                         make_const_view3(rdz.data(), nx, nz),
+                         make_view1(fnm.data()), make_view1(fnp.data()),
+                         make_view1(dn.data()), make_view1(dnw.data()),
+                         make_view3(ru_tend.data(), nx + 1, nz),
+                         make_view3(rv_tend.data(), nx, nz),
+                         make_view3(rw_tend.data(), nx, nz + 1),
+                         make_view3(rt_tend.data(), nx, nz),
+                         make_const_view3(moist.data(), nx, nz),
+                         make_view3(moist_tend.data(), nx, nz),
+                         true, nx, ny, nz,
+                         make_const_view3(tke.data(), nx, nz),
+                         make_view3(tke_tend.data(), nx, nz),
+                         make_const_view3(xkmv.data(), nx, nz),
+                         true,
+                         make_const_view3(u.data(), nx + 1, nz),
+                         make_const_view3(v.data(), nx, nz),
+                         make_const_view3(theta.data(), nx, nz),
+                         make_view1(qv_base.data()), true,
+                         make_view2(ust.data(), nx), true,
+                         make_view2(hfx.data(), nx), true,
+                         make_view2(qfx.data(), nx), true);
+
+    write_field(out, "u_vdiff2_kmopt2", ru_tend);
+    write_field(out, "v_vdiff2_kmopt2", rv_tend);
+    write_field(out, "w_vdiff2_kmopt2", rw_tend);
+    write_field(out, "t_vdiff2_kmopt2", rt_tend);
+    write_field(out, "m_vdiff2_kmopt2", moist_tend);
+    write_field(out, "tke_vdiff2_kmopt2", tke_tend);
+  }
+
+  // ============================================================================
+  // TEST 11: rk_rayleigh_damp (damp_opt = 2)
+  // ============================================================================
+  {
+    DiffusionParams p_cfg;
+    p_cfg.damp_opt = 2;
+    p_cfg.dampcoef = 0.05;
+    p_cfg.zdamp = 5000.0;
+    p_cfg.specified = true;
+    p_cfg.periodic_x = false;
+    p_cfg.periodic_y = false;
+
+    ru_tend.fill(0.0);
+    rv_tend.fill(0.0);
+    rw_tend.fill(0.0);
+    rt_tend.fill(0.0);
+
+    rk_rayleigh_damp(p_cfg,
+                     make_const_view3(u.data(), nx + 1, nz),
+                     make_const_view3(v.data(), nx, nz),
+                     make_const_view3(w.data(), nx, nz + 1),
+                     make_const_view3(thp.data(), nx, nz),
+                     make_const_view3(ph.data(), nx, nz + 1),
+                     make_bview3(phb.data(), nx, nz + 1),
+                     make_view2(mut.data(), nx),
+                     make_view2(muu.data(), nx + 1),
+                     make_view2(muv.data(), nx),
+                     make_view1(c1.data()), make_view1(c2.data()),
+                     make_view1(c1f.data()), make_view1(c2f.data()),
+                     make_view1(u_base.data()),
+                     make_view1(v_base.data()),
+                     make_view1(t_base.data()),
+                     make_view1(z_base.data()),
+                     make_view3(ru_tend.data(), nx + 1, nz),
+                     make_view3(rv_tend.data(), nx, nz),
+                     make_view3(rw_tend.data(), nx, nz + 1),
+                     make_view3(rt_tend.data(), nx, nz),
+                     nx, ny, nz);
+
+    write_field(out, "u_rayleigh_damp", ru_tend);
+    write_field(out, "v_rayleigh_damp", rv_tend);
+    write_field(out, "w_rayleigh_damp", rw_tend);
+    write_field(out, "t_rayleigh_damp", rt_tend);
   }
 
   out.close();

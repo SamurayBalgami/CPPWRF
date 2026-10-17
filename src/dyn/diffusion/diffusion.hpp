@@ -6,6 +6,8 @@
 #include "dyn/diffusion/diff_metrics.hpp"
 #include "dyn/diffusion/deform_div.hpp"
 #include "dyn/diffusion/km_kh.hpp"
+#include "dyn/diffusion/tke_rhs.hpp"
+#include "dyn/diffusion/rayleigh_damp.hpp"
 #include "dyn/diffusion/diffusion_2.hpp"
 #include "dyn/diffusion/big_step_diffusion.hpp"
 #include "dyn/diffusion/sixth_order.hpp"

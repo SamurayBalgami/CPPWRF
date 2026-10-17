@@ -57,6 +57,7 @@ static void test_precision(DType dt) {
   std::vector<char> ph1(sz_w * item_size), ph2(sz_w * item_size);
   std::vector<char> mu1(sz_mu * item_size), mu2(sz_mu * item_size);
   std::vector<char> q1(sz_m * item_size), q2(sz_m * item_size);
+  std::vector<char> tke1(sz_m * item_size), tke2(sz_m * item_size);
 
   fill(u1.data(), sz_u, 1.1); fill(u2.data(), sz_u, 1.2);
   fill(v1.data(), sz_v, 2.1); fill(v2.data(), sz_v, 2.2);
@@ -65,6 +66,7 @@ static void test_precision(DType dt) {
   fill(ph1.data(), sz_w, 5.1); fill(ph2.data(), sz_w, 5.2);
   fill(mu1.data(), sz_mu, 6.1); fill(mu2.data(), sz_mu, 6.2);
   fill(q1.data(), sz_m, 7.1); fill(q2.data(), sz_m, 7.2);
+  fill(tke1.data(), sz_m, 8.1); fill(tke2.data(), sz_m, 8.2);
 
   std::vector<VarView> vars_out;
   vars_out.emplace_back("u_1", 'U', nx + 1, ny, nz, u1.data(), dt);
@@ -81,6 +83,8 @@ static void test_precision(DType dt) {
   vars_out.emplace_back("mu_2", 'M', nx, ny, 1, mu2.data(), dt);
   vars_out.emplace_back("q1_qv", 'M', nx, ny, nz, q1.data(), dt);
   vars_out.emplace_back("q2_qv", 'M', nx, ny, nz, q2.data(), dt);
+  vars_out.emplace_back("q1_tke", 'M', nx, ny, nz, tke1.data(), dt);
+  vars_out.emplace_back("q2_tke", 'M', nx, ny, nz, tke2.data(), dt);
 
   std::string filename = is_dp ? "tests/io_netcdf/test_out/restart_dp.nc" : "tests/io_netcdf/test_out/restart_sp.nc";
   write_restart(filename, meta_out, vars_out);
@@ -93,6 +97,7 @@ static void test_precision(DType dt) {
   std::vector<char> rph1(sz_w * item_size, 0), rph2(sz_w * item_size, 0);
   std::vector<char> rmu1(sz_mu * item_size, 0), rmu2(sz_mu * item_size, 0);
   std::vector<char> rq1(sz_m * item_size, 0), rq2(sz_m * item_size, 0);
+  std::vector<char> rtke1(sz_m * item_size, 0), rtke2(sz_m * item_size, 0);
 
   std::vector<VarView> vars_in;
   vars_in.emplace_back("u_1", 'U', nx + 1, ny, nz, ru1.data(), dt);
@@ -109,6 +114,8 @@ static void test_precision(DType dt) {
   vars_in.emplace_back("mu_2", 'M', nx, ny, 1, rmu2.data(), dt);
   vars_in.emplace_back("q1_qv", 'M', nx, ny, nz, rq1.data(), dt);
   vars_in.emplace_back("q2_qv", 'M', nx, ny, nz, rq2.data(), dt);
+  vars_in.emplace_back("q1_tke", 'M', nx, ny, nz, rtke1.data(), dt);
+  vars_in.emplace_back("q2_tke", 'M', nx, ny, nz, rtke2.data(), dt);
 
   RestartMeta meta_in;
   read_restart(filename, meta_in, vars_in);
@@ -140,6 +147,8 @@ static void test_precision(DType dt) {
   assert(std::memcmp(mu2.data(), rmu2.data(), mu2.size()) == 0);
   assert(std::memcmp(q1.data(), rq1.data(), q1.size()) == 0);
   assert(std::memcmp(q2.data(), rq2.data(), q2.size()) == 0);
+  assert(std::memcmp(tke1.data(), rtke1.data(), tke1.size()) == 0);
+  assert(std::memcmp(tke2.data(), rtke2.data(), tke2.size()) == 0);
 
   std::printf("PASS: Bitwise identity verified for %s (memcmp == 0)\n", is_dp ? "FP64" : "FP32");
 }

@@ -23,7 +23,7 @@ Tendencies::Tendencies(const Grid& g)
       t_tendf(g, S::M, "t_tendf"), ph_tendf(g, S::W, "ph_tendf") {}
 
 int State::add_scalar(const Grid& g, const std::string& name, bool moist) {
-  if (name == "qni" || name == "qnr") moist = false;  // number concentrations [#/kg] are WRF 'scalar', not 'moist'
+  if (name == "qni" || name == "qnr" || name == "tke") moist = false;  // number concentrations [#/kg] and TKE are not 'moist'
   for (auto& n : q_names)
     if (n == name) throw std::runtime_error("duplicate scalar '" + name + "'");
   if (moist && n_moist != n_scalars()) throw std::runtime_error("moist species must precede passive tracers");
@@ -46,6 +46,7 @@ int State::add_scalar(const Grid& g, const std::string& name, bool moist) {
   }
   if (name == "qni") P_QNI = idx;
   if (name == "qnr") P_QNR = idx;
+  if (name == "tke") P_TKE = idx;
   return idx;
 }
 
@@ -60,7 +61,8 @@ BaseState::BaseState(const Grid& g, bool flat_, bool mapped_)
       e(g, S::M, "e", !mapped_), sina(g, S::M, "sina", !mapped_), cosa(g, S::M, "cosa", !mapped_), p_top(g.p_top),
       znu(g.nz), znw(g.nz + 1), dnw(g.nz), dn(g.nz + 1), rdnw(g.nz), rdn(g.nz + 1), fnm(g.nz + 1),
       fnp(g.nz + 1), c1h(g.nz), c2h(g.nz), c3h(g.nz), c4h(g.nz), c1f(g.nz + 1), c2f(g.nz + 1),
-      c3f(g.nz + 1), c4f(g.nz + 1), u_base(g.nz), v_base(g.nz), rdx(1.0 / g.dx), rdy(g.two_d() ? 0.0 : 1.0 / g.dy) {
+      c3f(g.nz + 1), c4f(g.nz + 1), u_base(g.nz), v_base(g.nz), t_base(g.nz), qv_base_1d(g.nz), z_base(g.nz),
+      rdx(1.0 / g.dx), rdy(g.two_d() ? 0.0 : 1.0 / g.dy) {
   // defaults: no projection, no rotation, no Coriolis, flat (cases / real init overwrite them)
   auto one = [](int, int, int) { return 1.0; };
   auto zero = [](int, int, int) { return 0.0; };
@@ -102,7 +104,8 @@ void BaseState::set_levels(const std::vector<double>& e) {
 }
 
 void BaseState::upload_levels() {
-  for (Array1* a : {&znu, &znw, &dnw, &dn, &rdnw, &rdn, &fnm, &fnp, &c1h, &c2h, &c3h, &c4h, &c1f, &c2f, &c3f, &c4f, &u_base, &v_base})
+  for (Array1* a : {&znu, &znw, &dnw, &dn, &rdnw, &rdn, &fnm, &fnp, &c1h, &c2h, &c3h, &c4h, &c1f, &c2f, &c3f, &c4f,
+                    &u_base, &v_base, &t_base, &qv_base_1d, &z_base})
     a->upload();
 }
 

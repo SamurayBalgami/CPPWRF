@@ -28,6 +28,12 @@ CASES = [
      {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
     ("real_r1_fp64_cuda", "cuda_dp", "configs/real_r1.ini", [], f"{WR}/run_R1_r8/wrfout_d01_2026-10-12_00:00:00", 300,
      {"U": 1e-12, "W": 1e-10, "PH": 1e-13, "THM": 1e-13, "QV": 1e-13, "MU": 1e-13}),
+    # T1 = R1 + diff_opt = 2, km_opt = 2 (1.5-order TKE, full metric stress tensor diffusion):
+    # bit-identical on CPU FP64 across all fields including TKE
+    ("real_t1_fp64_cpu", "cpu_dp", "configs/real_t1.ini", [], f"{WR}/run_T1_r8/wrfout_d01_2026-10-12_00:00:00", 300,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0, "TKE": 0.0}),
+    ("real_t1_fp64_cuda", "cuda_dp", "configs/real_t1.ini", [], f"{WR}/run_T1_r8/wrfout_d01_2026-10-12_00:00:00", 300,
+     {"U": 1e-12, "V": 1e-12, "W": 1e-10, "PH": 1e-13, "THM": 1e-13, "QV": 1e-13, "MU": 1e-13, "TKE": 1e-10}),
     ("real_r0_fp32_1h", "cuda", "configs/real_r0.ini", [], f"{WR}/run_R0/wrfout_d01_2026-10-12_00:00:00", 3600,
      {"U": 3e-4, "W": 1e-2, "THM": 2e-6, "QV": 5e-5}),
     ("real_r2_fp32_1h", "cuda", "configs/real_r2.ini", [], f"{WR}/run_R2/wrfout_d01_2026-10-12_00:00:00", 3600,
@@ -198,9 +204,9 @@ def straka(binary, out):
 
 
 def restart_p1(binary, out, cfg="configs/real_p1_r8.ini", run_dir="run_P1_r8"):
-    """Physics restart: 3 steps straight vs restarted after step 1 must be bit-identical
-    (dycore, surface/soil state, R*BLTEN, lagged t_1; for P7 also R*CUTEN and RTHFTEN/RQVFTEN)."""
-    if not os.path.exists(f"{WR}/{run_dir}/steps/wrfinput_d01"):
+    """Physics/TKE restart: 3 steps straight vs restarted after step 1 must be bit-identical
+    (dycore, TKE, surface/soil state, R*BLTEN, lagged t_1; for P7 also R*CUTEN and RTHFTEN/RQVFTEN)."""
+    if not os.path.exists(f"{WR}/{run_dir}/steps/wrfinput_d01") and not os.path.exists(f"{WR}/{run_dir}/wrfinput_d01"):
         return None, "input missing"
     a, b = os.path.join(out, "straight"), os.path.join(out, "restarted")
     rc, log = run(binary, cfg, ["restart.interval=60"], a)
@@ -257,7 +263,8 @@ def main():
         for tag, cfg, rd in (("p1", "configs/real_p1_r8.ini", "run_P1_r8"),
                              ("p7", "configs/real_p7_r8.ini", "run_P7_r8"),
                              ("p8", "configs/real_p8_r8.ini", "run_P8_r8"),
-                             ("p9", "configs/real_p9_r8.ini", "run_P9_r8")):
+                             ("p9", "configs/real_p9_r8.ini", "run_P9_r8"),
+                             ("t1", "configs/real_t1.ini", "run_R1_r8")):
             rname = f"restart_{tag}_fp64"
             if a.only and a.only not in rname:
                 continue

@@ -76,6 +76,7 @@ def generate_inputs(output_path, nx=16, ny=16, nz=15):
     v_base = 2.0 + 5.0 * (1.0 - znu)
     t_base = 300.0 - 50.0 * (1.0 - znu)
     qv_base = 0.012 * np.exp(- (1.0 - znu) * 3.0)
+    z_base = 150.0 + (1.0 - znu) * 12000.0
 
     # 2. 2D horizontal fields
     # Meshgrid x, y
@@ -212,7 +213,7 @@ def generate_inputs(output_path, nx=16, ny=16, nz=15):
                 pb[i, k, j] = c1[k] * mut[i, j] + c2[k] * p_top
                 p[i, k, j] = 20.0 * np.sin(2 * np.pi * i / nx)
 
-    # Inverse density alt and density rho (nx, nz, ny)
+    # Inverse density alt and density rho (nx, nz, ny), plus physical t (K) and p (Pa)
     alt = np.zeros((nx, nz, ny))
     rho = np.zeros((nx, nz, ny))
     for j in range(ny):
@@ -224,6 +225,8 @@ def generate_inputs(output_path, nx=16, ny=16, nz=15):
                 density = total_p / (r_d * temp)
                 rho[i, k, j] = density
                 alt[i, k, j] = 1.0 / density
+                t[i, k, j] = temp
+                p[i, k, j] = total_p
 
     # Moisture qv (nx, nz, ny)
     moist = np.zeros((nx, nz, ny))
@@ -234,12 +237,12 @@ def generate_inputs(output_path, nx=16, ny=16, nz=15):
                 if 4 <= i < 12 and 4 <= j < 12:
                     moist[i, k, j] += 0.005
 
-    # TKE (nx, nz + 1, ny)
-    tke = np.zeros((nx, nz + 1, ny))
+    # TKE (nx, nz, ny)
+    tke = np.zeros((nx, nz, ny))
     for j in range(ny):
-        for k in range(nz + 1):
+        for k in range(nz):
             for i in range(nx):
-                tke[i, k, j] = 1.0 + 0.5 * np.cos(np.pi * i / nx) * np.sin(np.pi * j / ny)
+                tke[i, k, j] = (0.8 + 0.5 * np.cos(np.pi * i / nx) * np.sin(np.pi * j / ny)) * (0.3 + 0.7 * np.sin(np.pi * znu[k]))
 
     # Surface fluxes
     ust = np.full((nx, ny), 0.3)
@@ -272,6 +275,7 @@ def generate_inputs(output_path, nx=16, ny=16, nz=15):
         f.write(v_base.astype(np.float64).tobytes())
         f.write(t_base.astype(np.float64).tobytes())
         f.write(qv_base.astype(np.float64).tobytes())
+        f.write(z_base.astype(np.float64).tobytes())
 
         # 2D arrays (Fortran column-major order: i fastest, j slowest)
         f.write(mut.astype(np.float64).tobytes(order='F'))

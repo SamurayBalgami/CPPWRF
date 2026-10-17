@@ -4,6 +4,7 @@
 
 PROGRAM driver_diffusion
   USE module_configure, ONLY: grid_config_rec_type
+  USE module_state_description, ONLY: P_QV, P_QC, P_QI
   USE module_diffusion_em
   USE module_big_step_utilities_em
   IMPLICIT NONE
@@ -19,7 +20,7 @@ PROGRAM driver_diffusion
   REAL(8), ALLOCATABLE :: dn(:), rdn(:), dnw(:), rdnw(:), fnm(:), fnp(:)
   REAL(8) :: cf1, cf2, cf3
   REAL(8), ALLOCATABLE :: c1_h(:), c2_h(:), c3_h(:), c4_h(:), c1f_h(:), c2f_h(:)
-  REAL(8), ALLOCATABLE :: u_base(:), v_base(:), t_base(:), qv_base(:)
+  REAL(8), ALLOCATABLE :: u_base(:), v_base(:), t_base(:), qv_base(:), z_base(:)
 
   ! 2D arrays
   REAL(8), ALLOCATABLE :: mut(:,:), muu(:,:), muv(:,:)
@@ -43,12 +44,17 @@ PROGRAM driver_diffusion
   REAL(8), ALLOCATABLE :: xkmh(:,:,:), xkmv(:,:,:), xkhh(:,:,:), xkhv(:,:,:)
   REAL(8), ALLOCATABLE :: xkmh_k1(:,:,:), xkmv_k1(:,:,:), xkhh_k1(:,:,:), xkhv_k1(:,:,:)
   REAL(8), ALLOCATABLE :: ru_tend(:,:,:), rv_tend(:,:,:), rw_tend(:,:,:), rt_tend(:,:,:)
+  REAL(8), ALLOCATABLE :: tke_tend(:,:,:), tke_tend_rhs(:,:,:)
   REAL(8), ALLOCATABLE :: moist_tend(:,:,:,:)
   REAL(8), ALLOCATABLE :: nba_rij(:,:,:,:), nba_mij(:,:,:,:)
 
   REAL(8) :: max_vert_cfl, max_horiz_cfl
   CHARACTER(LEN=256) :: in_path, out_path
   TYPE(grid_config_rec_type) :: config_flags
+
+  P_QV = 1
+  P_QC = 1
+  P_QI = 1
 
   IF (COMMAND_ARGUMENT_COUNT() .LT. 2) THEN
     in_path = "diffusion_input.bin"
@@ -68,7 +74,7 @@ PROGRAM driver_diffusion
   ! Allocate 1D
   ALLOCATE(dn(nz), rdn(nz), dnw(nz), rdnw(nz), fnm(nz), fnp(nz))
   ALLOCATE(c1_h(nz), c2_h(nz), c3_h(nz), c4_h(nz), c1f_h(nz+1), c2f_h(nz+1))
-  ALLOCATE(u_base(nz), v_base(nz), t_base(nz), qv_base(nz))
+  ALLOCATE(u_base(nz), v_base(nz), t_base(nz), qv_base(nz), z_base(nz))
 
   READ(in_unit) dn
   READ(in_unit) rdn
@@ -87,6 +93,7 @@ PROGRAM driver_diffusion
   READ(in_unit) v_base
   READ(in_unit) t_base
   READ(in_unit) qv_base
+  READ(in_unit) z_base
 
   ! Allocate 2D
   ALLOCATE(mut(ims:ime, jms:jme), muu(ims:ime, jms:jme), muv(ims:ime, jms:jme))
@@ -147,20 +154,20 @@ PROGRAM driver_diffusion
   READ(in_unit) rho(1:nx, 1:nz, 1:ny)
   READ(in_unit) moist(1:nx, 1:nz, 1:ny, 1)
   moist(:, :, :, 2) = moist(:, :, :, 1)
-  READ(in_unit) tke(1:nx, 1:nz+1, 1:ny)
+  READ(in_unit) tke(1:nx, 1:nz, 1:ny)
   CLOSE(in_unit)
 
-  ! Compute p8w and t8w for calculate_N2
+  ! Compute p8w and t8w for calculate_N2 and tke_km
   DO j = 1, ny
     DO i = 1, nx
-      p8w(i, 1, j) = pb(i, 1, j) + p(i, 1, j)
-      t8w(i, 1, j) = theta(i, 1, j)
+      p8w(i, 1, j) = p(i, 1, j)
+      t8w(i, 1, j) = t(i, 1, j)
       DO k = 2, nz
-        p8w(i, k, j) = 0.5_8 * (pb(i, k-1, j) + p(i, k-1, j) + pb(i, k, j) + p(i, k, j))
-        t8w(i, k, j) = 0.5_8 * (theta(i, k-1, j) + theta(i, k, j))
+        p8w(i, k, j) = 0.5_8 * (p(i, k-1, j) + p(i, k, j))
+        t8w(i, k, j) = 0.5_8 * (t(i, k-1, j) + t(i, k, j))
       END DO
-      p8w(i, nz+1, j) = pb(i, nz, j) + p(i, nz, j)
-      t8w(i, nz+1, j) = theta(i, nz, j)
+      p8w(i, nz+1, j) = p(i, nz, j)
+      t8w(i, nz+1, j) = t(i, nz, j)
     END DO
   END DO
 
@@ -176,6 +183,7 @@ PROGRAM driver_diffusion
   ALLOCATE(xkhh_k1(ims:ime, kms:kme, jms:jme), xkhv_k1(ims:ime, kms:kme, jms:jme))
   ALLOCATE(ru_tend(ims:ime, kms:kme, jms:jme), rv_tend(ims:ime, kms:kme, jms:jme))
   ALLOCATE(rw_tend(ims:ime, kms:kme, jms:jme), rt_tend(ims:ime, kms:kme, jms:jme))
+  ALLOCATE(tke_tend(ims:ime, kms:kme, jms:jme), tke_tend_rhs(ims:ime, kms:kme, jms:jme))
   ALLOCATE(moist_tend(ims:ime, kms:kme, jms:jme, 2))
   ALLOCATE(nba_rij(ims:ime, kms:kme, jms:jme, 1), nba_mij(ims:ime, kms:kme, jms:jme, 1))
   ALLOCATE(dummy4d(ims:ime, kms:kme, jms:jme, 1))
@@ -273,7 +281,7 @@ PROGRAM driver_diffusion
                           defor12, defor13, defor23, nba_rij, 1, u_base, v_base, &
                           msfux, msfuy, msfvx, msfvy, msftx, msfty, &
                           1.0_8/dx, 1.0_8/dy, dn, dnw, rdz, rdzw, fnm, fnp, cf1, cf2, cf3, zx, zy, &
-                          ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+                          ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ide, jts, jde, kts, kte)
   CALL write_chunk(out_unit, "defor11_specified", defor11(1:nx, 1:nz, 1:ny), nx*nz*ny)
   CALL write_chunk(out_unit, "defor22_specified", defor22(1:nx, 1:nz, 1:ny), nx*nz*ny)
   CALL write_chunk(out_unit, "defor33_specified", defor33(1:nx, 1:nz, 1:ny), nx*nz*ny)
@@ -524,6 +532,188 @@ PROGRAM driver_diffusion
   CALL write_chunk(out_unit, "rw_tend_damp", rw_tend(1:nx, 1:nz+1, 1:ny), nx*(nz+1)*ny)
   CALL write_chunk(out_unit, "max_vert_cfl", (/ max_vert_cfl /), 1)
   CALL write_chunk(out_unit, "max_horiz_cfl", (/ max_horiz_cfl /), 1)
+
+  ! ============================================================================
+  ! TEST 8: calculate_km_kh with km_opt = 2 (1.5-order TKE, calculate_N2, tke_km, calc_l_scale, cal_dampkm)
+  ! ============================================================================
+  P_QV = 2
+  ! Case A: km_opt = 2, diff_opt = 2, isotropic = 0, damp_opt = 0
+  config_flags%km_opt = 2
+  config_flags%diff_opt = 2
+  config_flags%c_k = 0.15_8
+  config_flags%c_s = 0.25_8
+  config_flags%mix_upper_bound = 10.0_8
+  config_flags%bl_pbl_physics = 0
+  config_flags%damp_opt = 0
+  config_flags%mix_isotropic = 0
+  config_flags%spec_bdy_width = 5
+  config_flags%specified = .TRUE.
+  config_flags%periodic_x = .FALSE.
+  config_flags%periodic_y = .FALSE.
+  xkmh = 0.0_8; xkmv = 0.0_8; xkhh = 0.0_8; xkhv = 0.0_8; bn2 = 0.0_8
+
+  CALL calculate_km_kh(config_flags, dt, 0.05_8, 5000.0_8, 0, xkmh, xkmv, xkhh, xkhv, bn2, &
+                       12.0_8, 6.0_8, div, defor11, defor22, defor33, defor12, defor13, defor23, &
+                       tke, p8w, t8w, theta, t, p, moist, dn, dnw, dx, dy, rdz, rdzw, &
+                       0, 2, cf1, cf2, cf3, .FALSE., 10.0_8, msftx, msfty, zx, zy, &
+                       dummy_hpbl, dummy_dlk, dummy_meso, &
+                       ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+
+  CALL write_chunk(out_unit, "bn2_kmopt2_iso0", bn2(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkmh_kmopt2_iso0", xkmh(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkmv_kmopt2_iso0", xkmv(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkhh_kmopt2_iso0", xkhh(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkhv_kmopt2_iso0", xkhv(1:nx, 1:nz, 1:ny), nx*nz*ny)
+
+  ! Case B: km_opt = 2, diff_opt = 2, isotropic = 1, damp_opt = 1 (cal_dampkm)
+  config_flags%mix_isotropic = 1
+  config_flags%damp_opt = 1
+  xkmh = 0.0_8; xkmv = 0.0_8; xkhh = 0.0_8; xkhv = 0.0_8; bn2 = 0.0_8
+
+  CALL calculate_km_kh(config_flags, dt, 0.05_8, 5000.0_8, 1, xkmh, xkmv, xkhh, xkhv, bn2, &
+                       12.0_8, 6.0_8, div, defor11, defor22, defor33, defor12, defor13, defor23, &
+                       tke, p8w, t8w, theta, t, p, moist, dn, dnw, dx, dy, rdz, rdzw, &
+                       1, 2, cf1, cf2, cf3, .FALSE., 10.0_8, msftx, msfty, zx, zy, &
+                       dummy_hpbl, dummy_dlk, dummy_meso, &
+                       ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+
+  CALL write_chunk(out_unit, "xkmh_kmopt2_iso1_damp1", xkmh(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkmv_kmopt2_iso1_damp1", xkmv(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkhh_kmopt2_iso1_damp1", xkhh(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkhv_kmopt2_iso1_damp1", xkhv(1:nx, 1:nz, 1:ny), nx*nz*ny)
+
+  ! ============================================================================
+  ! TEST 9: tke_rhs (tke_shear + tke_buoyancy + tke_dissip + lower limit)
+  ! ============================================================================
+  ! Restore hfx (overwritten by vertical_diffusion_2 with isfflx = 0 in TEST 5)
+  hfx(1:nx, 1:ny) = 20.0_8
+  ! Case A: isfflx = 1, use_theta_m = 1, isotropic = 0
+  config_flags%isfflx = 1
+  config_flags%use_theta_m = 1
+  config_flags%mix_isotropic = 0
+  config_flags%tke_drag_coefficient = 0.0_8
+  config_flags%tke_heat_flux = 0.0_8
+  tke_tend = 0.0_8
+
+  CALL tke_rhs(tke_tend, bn2, config_flags, &
+               defor11, defor22, defor33, defor12, defor13, defor23, &
+               u, v, w, div, tke, mut, c1_h, c2_h, &
+               theta, p, p8w, t8w, z, fnm, fnp, &
+               cf1, cf2, cf3, msftx, msfty, &
+               xkmh, xkmv, xkhv, &
+               1.0_8/dx, 1.0_8/dy, dx, dy, dt, zx, zy, &
+               rdz, rdzw, dn, dnw, 0, &
+               hfx, qfx, moist(:,:,:,2), ust, rho, &
+               dummy_meso, dummy_dlk, dummy_hpbl, dummy_dlk, &
+               ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+
+  CALL write_chunk(out_unit, "tke_tend_rhs_isfflx1", tke_tend(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  tke_tend_rhs = tke_tend
+
+  ! Case B: isfflx = 0, tke_drag_coefficient = 0.0015, tke_heat_flux = 0.05, use_theta_m = 0, isotropic = 1
+  config_flags%isfflx = 0
+  config_flags%use_theta_m = 0
+  config_flags%mix_isotropic = 1
+  config_flags%tke_drag_coefficient = 0.0015_8
+  config_flags%tke_heat_flux = 0.05_8
+  tke_tend = 0.0_8
+
+  CALL tke_rhs(tke_tend, bn2, config_flags, &
+               defor11, defor22, defor33, defor12, defor13, defor23, &
+               u, v, w, div, tke, mut, c1_h, c2_h, &
+               theta, p, p8w, t8w, z, fnm, fnp, &
+               cf1, cf2, cf3, msftx, msfty, &
+               xkmh, xkmv, xkhv, &
+               1.0_8/dx, 1.0_8/dy, dx, dy, dt, zx, zy, &
+               rdz, rdzw, dn, dnw, 1, &
+               hfx, qfx, moist(:,:,:,2), ust, rho, &
+               dummy_meso, dummy_dlk, dummy_hpbl, dummy_dlk, &
+               ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+
+  CALL write_chunk(out_unit, "tke_tend_rhs_isfflx0", tke_tend(1:nx, 1:nz, 1:ny), nx*nz*ny)
+
+  ! ============================================================================
+  ! TEST 10: horizontal_diffusion_2 and vertical_diffusion_2 with km_opt = 2 and isfflx = 1
+  ! ============================================================================
+  hfx(1:nx, 1:ny) = 20.0_8
+  config_flags%diff_opt = 2
+  config_flags%km_opt = 2
+  config_flags%isfflx = 1
+  config_flags%use_theta_m = 1
+  config_flags%tke_drag_coefficient = 0.0_8
+  config_flags%tke_mix2_off = .FALSE.
+  config_flags%moist_mix2_off = .FALSE.
+
+  ru_tend = 0.0_8; rv_tend = 0.0_8; rw_tend = 0.0_8; rt_tend = 0.0_8; moist_tend = 0.0_8
+  tke_tend = tke_tend_rhs
+  nba_mij = 0.0_8
+
+  CALL horizontal_diffusion_2(rt_tend, ru_tend, rv_tend, rw_tend, tke_tend, &
+                              moist_tend, 2, dummy4d, 0, dummy4d, 0, dummy4d, 0, &
+                              thp, theta, tke, config_flags, defor11, defor22, defor12, defor13, defor23, &
+                              nba_mij, 1, div, moist, dummy4d, dummy4d, dummy4d, &
+                              msfux, msfuy, msfvx, msfvy, msftx, msfty, &
+                              xkmh, xkmv, xkhh, config_flags%km_opt, 1.0_8/dx, 1.0_8/dy, rdz, rdzw, &
+                              fnm, fnp, cf1, cf2, cf3, zx, zy, dn, dnw, rho, &
+                              ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+
+  CALL write_chunk(out_unit, "u_hdiff2_kmopt2", ru_tend(1:nx+1, 1:nz, 1:ny), (nx+1)*nz*ny)
+  CALL write_chunk(out_unit, "v_hdiff2_kmopt2", rv_tend(1:nx, 1:nz, 1:ny+1), nx*nz*(ny+1))
+  CALL write_chunk(out_unit, "w_hdiff2_kmopt2", rw_tend(1:nx, 1:nz+1, 1:ny), nx*(nz+1)*ny)
+  CALL write_chunk(out_unit, "t_hdiff2_kmopt2", rt_tend(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "m_hdiff2_kmopt2", moist_tend(1:nx, 1:nz, 1:ny, 2), nx*nz*ny)
+  CALL write_chunk(out_unit, "tke_hdiff2_kmopt2", tke_tend(1:nx, 1:nz, 1:ny), nx*nz*ny)
+
+  ! Set physical boundary conditions (copy halos) for specified BC before vertical_diffusion_2
+  v(0, 1:nz, 1:ny+1) = v(1, 1:nz, 1:ny+1); v(nx+1, 1:nz, 1:ny+1) = v(nx, 1:nz, 1:ny+1)
+  u(1:nx+1, 1:nz, 0) = u(1:nx+1, 1:nz, 1); u(1:nx+1, 1:nz, ny+1) = u(1:nx+1, 1:nz, ny)
+  ust(0, 1:ny) = ust(1, 1:ny); ust(nx+1, 1:ny) = ust(nx, 1:ny)
+  ust(1:nx, 0) = ust(1:nx, 1); ust(1:nx, ny+1) = ust(1:nx, ny)
+  rho(0, 1:nz, 1:ny) = rho(1, 1:nz, 1:ny); rho(nx+1, 1:nz, 1:ny) = rho(nx, 1:nz, 1:ny)
+  rho(1:nx, 1:nz, 0) = rho(1:nx, 1:nz, 1); rho(1:nx, 1:nz, ny+1) = rho(1:nx, 1:nz, ny)
+
+  ru_tend = 0.0_8; rv_tend = 0.0_8; rw_tend = 0.0_8; rt_tend = 0.0_8; moist_tend = 0.0_8
+  tke_tend = tke_tend_rhs
+  nba_mij = 0.0_8
+
+  CALL vertical_diffusion_2(ru_tend, rv_tend, rw_tend, rt_tend, tke_tend, &
+                            moist_tend, 2, dummy4d, 0, dummy4d, 0, dummy4d, 0, &
+                            u, v, thp, u_base, v_base, t_base, qv_base, tke, theta, &
+                            config_flags, defor13, defor23, defor33, nba_mij, 1, div, &
+                            moist, dummy4d, dummy4d, dummy4d, &
+                            xkmv, xkhv, xkmh, config_flags%km_opt, fnm, fnp, dn, dnw, rdz, rdzw, &
+                            hfx, qfx, ust, rho, &
+                            ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ide, jts, jde, kts, kte)
+
+  CALL write_chunk(out_unit, "u_vdiff2_kmopt2", ru_tend(1:nx+1, 1:nz, 1:ny), (nx+1)*nz*ny)
+  CALL write_chunk(out_unit, "v_vdiff2_kmopt2", rv_tend(1:nx, 1:nz, 1:ny+1), nx*nz*(ny+1))
+  CALL write_chunk(out_unit, "w_vdiff2_kmopt2", rw_tend(1:nx, 1:nz+1, 1:ny), nx*(nz+1)*ny)
+  CALL write_chunk(out_unit, "t_vdiff2_kmopt2", rt_tend(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "m_vdiff2_kmopt2", moist_tend(1:nx, 1:nz, 1:ny, 2), nx*nz*ny)
+  CALL write_chunk(out_unit, "tke_vdiff2_kmopt2", tke_tend(1:nx, 1:nz, 1:ny), nx*nz*ny)
+
+  ! ============================================================================
+  ! TEST 11: rk_rayleigh_damp (damp_opt = 2)
+  ! ============================================================================
+  ph(0, 1:nz+1, 1:ny) = ph(1, 1:nz+1, 1:ny); ph(nx+1, 1:nz+1, 1:ny) = ph(nx, 1:nz+1, 1:ny)
+  ph(:, 1:nz+1, 0) = ph(:, 1:nz+1, 1); ph(:, 1:nz+1, ny+1) = ph(:, 1:nz+1, ny)
+  phb(0, 1:nz+1, 1:ny) = phb(1, 1:nz+1, 1:ny); phb(nx+1, 1:nz+1, 1:ny) = phb(nx, 1:nz+1, 1:ny)
+  phb(:, 1:nz+1, 0) = phb(:, 1:nz+1, 1); phb(:, 1:nz+1, ny+1) = phb(:, 1:nz+1, ny)
+
+  ru_tend = 0.0_8; rv_tend = 0.0_8; rw_tend = 0.0_8; rt_tend = 0.0_8
+
+  CALL rk_rayleigh_damp(ru_tend, rv_tend, rw_tend, rt_tend, &
+                        u, v, w, thp, thp, &
+                        c1_h, c2_h, c1f_h, c2f_h, &
+                        mut, muu, muv, ph, phb, &
+                        u_base, v_base, t_base, z_base, &
+                        0.05_8, 5000.0_8, &
+                        ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ide, jts, jde, kts, kte)
+
+  CALL write_chunk(out_unit, "u_rayleigh_damp", ru_tend(1:nx+1, 1:nz, 1:ny), (nx+1)*nz*ny)
+  CALL write_chunk(out_unit, "v_rayleigh_damp", rv_tend(1:nx, 1:nz, 1:ny+1), nx*nz*(ny+1))
+  CALL write_chunk(out_unit, "w_rayleigh_damp", rw_tend(1:nx, 1:nz+1, 1:ny), nx*(nz+1)*ny)
+  CALL write_chunk(out_unit, "t_rayleigh_damp", rt_tend(1:nx, 1:nz, 1:ny), nx*nz*ny)
 
   CLOSE(out_unit)
   PRINT *, "Fortran driver finished successfully."

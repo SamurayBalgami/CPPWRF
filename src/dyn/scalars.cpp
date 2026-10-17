@@ -244,7 +244,8 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
   for (int n = 0; n < ns; ++n) {
     Field3 &q1 = s.q_1[n], &q2 = s.q_2[n], &tf = t.q_tendf[n];
     const bool moist = n < s.n_moist;
-    const bool pd = rk == 3 && (moist ? p_.moist_adv_opt : p_.scalar_adv_opt) == 1;
+    const bool is_tke = n == s.P_TKE;
+    const bool pd = rk == 3 && (is_tke ? p_.tke_adv_opt : (moist ? p_.moist_adv_opt : p_.scalar_adv_opt)) == 1;
     // debug (CPPWRF_VM_DUMP): the qv advection tendency * msfty
     if (vmdump::on() && !qvf_ && !dbg_qvf_) dbg_qvf_ = std::make_unique<Field3>(g, Stagger::M, "dbg_qvf");
     Field3* fsink = qvf_ ? qvf_ : (vmdump::on() ? dbg_qvf_.get() : nullptr);
@@ -283,6 +284,7 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
     }
     if (want_ften && vmdump::on()) vmdump::dump("vm_qv_rk", rk, {&q1, fsink});
     swap(q2, q_new_);
+    if (is_tke && dd_) dd_->bound_tke(q2);
     if (bc_ && !bc_->has_scalar(n)) bc_->flow_dep(q2, s);  // no boundary data (have_bcs_moist/scalar = .false.)
   }
   std::vector<Field3*> qs;  // halos of the new scalars, batched (one launch per 8 fields)

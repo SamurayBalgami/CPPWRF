@@ -55,7 +55,7 @@ struct State {
   std::vector<std::string> q_names;
   std::vector<Field3> q_1, q_2;
   int n_moist = 0;
-  int P_QV = -1, P_QC = -1, P_QR = -1, P_QI = -1, P_QS = -1, P_QG = -1, P_QNI = -1, P_QNR = -1;  // indices into q_* (-1: absent)
+  int P_QV = -1, P_QC = -1, P_QR = -1, P_QI = -1, P_QS = -1, P_QG = -1, P_QNI = -1, P_QNR = -1, P_TKE = -1;  // indices into q_* (-1: absent)
   Field3 qtot;  // M, sum of the moist species of the stage state; allocated if n_moist > 0
   Field3 cqu, cqv, cqw;  // WRF calc_cq moisture coefficients (U, V, W points), with qtot
   Field3 h_diabatic;  // M, microphysics heating of the last step [theta_m K/s] (WRF h_diabatic); with qtot
@@ -96,7 +96,7 @@ struct BaseState {
   double p_top = 0.0;
   Array1 znu, znw, dnw, dn, rdnw, rdn, fnm, fnp;
   Array1 c1h, c2h, c3h, c4h, c1f, c2f, c3f, c4f;
-  Array1 u_base, v_base;  // WRF u_base/v_base (ideal sounding wind; 0 for real data): diffusion
+  Array1 u_base, v_base, t_base, qv_base_1d, z_base;  // WRF 1D base profiles: diffusion / Rayleigh damping
   double cf1 = 0, cf2 = 0, cf3 = 0;  // surface extrapolation from the lowest 3 mass levels
   double cfn = 0, cfn1 = 0;          // top extrapolation from the highest 2 mass levels
   double rdx = 0, rdy = 0;

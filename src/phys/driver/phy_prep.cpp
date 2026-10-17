@@ -39,7 +39,7 @@ struct KPhyPrep {
       p_phy(i, j, k) = p(i, j, k) + pb(i, j, k);
       pi_phy(i, j, k) = vm::pow(p_phy(i, j, k) / p1000mb, rcp, i, nx);
       t_phy(i, j, k) = th_phy(i, j, k) * pi_phy(i, j, k);
-      rho(i, j, k) = real(1.) / alt(i, j, k) * (real(1.) + q[p_qv](i, j, k));
+      rho(i, j, k) = real(1.) / alt(i, j, k) * (real(1.) + (p_qv >= 0 ? q[p_qv](i, j, k) : real(0.)));
       u_phy(i, j, k) = real(0.5) * (u(i, j, k) + u(i + 1, j, k));
       v_phy(i, j, k) = real(0.5) * (v(i, j, k) + v(i, j + 1, k));
     }
@@ -87,7 +87,6 @@ PhyPrepFields::PhyPrepFields(const Grid& g)
       p8w(g, Stagger::W, "p8w"), t8w(g, Stagger::W, "t8w"), p_hyd_w(g, Stagger::W, "p_hyd_w") {}
 
 void run_phy_prep(const dyn::State& s, const dyn::BaseState& b, PhyPrepFields& p, const PhyPrepParams& params) {
-  if (s.P_QV < 0) throw std::runtime_error("phy_prep: the physics suite needs qv");
   if (s.n_moist > kMaxMoist) throw std::runtime_error("phy_prep: too many moist species");
   KPhyPrep k{};
   k.u = s.u_2.cview(); k.v = s.v_2.cview(); k.p = s.p.cview(); k.alt = s.alt.cview();
