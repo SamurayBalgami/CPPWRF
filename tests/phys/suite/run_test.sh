@@ -40,12 +40,13 @@ $HEAVY gfortran -o suite_ref suite_ref.o "$W/main/module_wrf_top.o" "$W/main/lib
 tail -1 suite_ref.log
 
 echo "== 3. C++ suite (CPU FP64, and FP32 compile check)"
-SRC=("$SCRIPT_DIR/driver_suite.cpp" "$REPO/src/phys/driver/suite.cpp" "$REPO/src/phys/driver/phy_prep.cpp"
-     "$REPO/src/phys/driver/tendency_coupling.cpp" "$REPO/src/phys/sf_sfclayrev/sfclayrev.cpp"
-     "$REPO/src/phys/bl_ysu/ysu.cpp" "$REPO/src/phys/lsm_noah/noah.cpp" "$REPO/src/phys/lsm_noah/noah_tables.cpp"
-     "$REPO/src/core/backend.cpp" "$REPO/src/core/halo.cpp" "$REPO/src/dyn/state.cpp")
-$HEAVY g++ -std=c++20 -DCPPWRF_DOUBLE -O3 -march=native -ffp-contract=off -fopenmp -I "$REPO/src" "${SRC[@]}" -o driver_suite_fp64
-$HEAVY g++ -std=c++20 -O3 -march=native -ffp-contract=off -fopenmp -I "$REPO/src" "${SRC[@]}" -o driver_suite_fp32
+# the physics sources of cppwrf_core (CMakeLists.txt) + the core pieces the driver uses
+mapfile -t PHYS_SRC < <(find "$REPO/src/phys" -name '*.cpp' ! -name physics_init.cpp ! -name kessler.cpp \
+                         ! -name wsm6.cpp | sort)
+SRC=("$SCRIPT_DIR/driver_suite.cpp" "${PHYS_SRC[@]}" "$REPO/src/core/backend.cpp" "$REPO/src/core/halo.cpp"
+     "$REPO/src/dyn/state.cpp")
+$HEAVY g++ -std=c++20 -DCPPWRF_DOUBLE -O3 -march=native -ffp-contract=off -fopenmp -DCPPWRF_DATA_DIR=\"$REPO/data\" -I "$REPO/src" "${SRC[@]}" -lmvec -o driver_suite_fp64
+$HEAVY g++ -std=c++20 -O3 -march=native -ffp-contract=off -fopenmp -DCPPWRF_DATA_DIR=\"$REPO/data\" -I "$REPO/src" "${SRC[@]}" -lmvec -o driver_suite_fp32
 ./driver_suite_fp64 suite_ref.bin suite_cpp.bin .
 
 echo "== 4. compare"

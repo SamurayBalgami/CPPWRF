@@ -44,7 +44,7 @@ PROGRAM suite_ref
    REAL, ALLOCATABLE, DIMENSION(:,:,:) :: th_phy, pi_phy, p_phy, dz8w, p8w, t8w
    REAL, ALLOCATABLE, DIMENSION(:,:) :: mu_tendf, psim, psih, gz1oz0, chklowq, hol
    LOGICAL, ALLOCATABLE, DIMENSION(:,:) :: cu_act_flag
-   REAL :: curr_secs
+   REAL :: curr_secs, curr_mins2
    LOGICAL :: adapt_step_flag, f_flux, restart_flag
 
    ! ---------------- wrf_init without med_initialdata_input ----------------
@@ -204,10 +204,11 @@ PROGRAM suite_ref
       ! ---- solve_em ----
       grid%itimestep = grid%itimestep + 1
       curr_secs = REAL(grid%itimestep-1)*grid%dt
+      curr_mins2 = curr_secs / 60.  ! WRF 4.8: elapsed minutes (only the FDDA driver uses it)
       CALL first_rk_step_part1 ( grid, config_flags, grid%moist, moist_tend, grid%chem, chem_tend, &
                                  grid%tracer, tracer_tend, grid%scalar, scalar_tend, grid%fdda3d, grid%fdda2d, &
                                  grid%aerod, ru_tendf, rv_tendf, rw_tendf, t_tendf, ph_tendf, mu_tendf, &
-                                 tke_tend, config_flags%use_adaptive_time_step, curr_secs, &
+                                 tke_tend, config_flags%use_adaptive_time_step, curr_secs, curr_mins2, &
                                  psim, psih, gz1oz0, chklowq, cu_act_flag, hol, th_phy, &
                                  pi_phy, p_phy, grid%t_phy, dz8w, p8w, t8w, &
                                  ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, &

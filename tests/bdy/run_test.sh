@@ -8,33 +8,33 @@ WRF_DIR="${WRF_DIR:?set WRF_DIR to a WRF v4.8.0 -r8 build}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-BUILD_DIR="${SCRIPT_DIR}/build"
+BUILD_DIR="${DIFF_TEST_BUILD_DIR:-${CPPWRF_SCRATCH:-${HOME}/cppwrf_scratch}/bdy_test}"
 
 mkdir -p "${BUILD_DIR}"
 cd "${REPO_ROOT}"
 
 echo "================================================================="
-echo "   Building T4.3 Lateral Boundary Differential Test Suite"
+echo "   Lateral boundary differential test (C++ vs WRF module_bc / module_bc_em)"
 echo "================================================================="
 
-# 1. Compile Fortran bridge and static archive if not already built or if updated
-if [ ! -f "${BUILD_DIR}/libwrfbdy_ref.a" ] || [ "${BUILD_DIR}/bdy_fortran_bridge.f90" -nt "${BUILD_DIR}/libwrfbdy_ref.a" ]; then
-    echo "[1/3] Compiling Fortran reference objects and bridge..."
-    tools/heavy.sh gfortran -c -fdefault-real-8 -fdefault-double-8 -O2 \
-        -I${WRF_DIR}/frame \
-        -I${WRF_DIR}/share \
-        -I${WRF_DIR}/dyn_em \
-        -I${WRF_DIR}/main \
-        -I${WRF_DIR}/inc \
-        -I"${BUILD_DIR}" "${BUILD_DIR}/bdy_fortran_bridge.f90" \
-        -o "${BUILD_DIR}/bdy_fortran_bridge.o" -J"${BUILD_DIR}"
-
-    ar rcs "${BUILD_DIR}/libwrfbdy_ref.a" \
-        "${BUILD_DIR}/module_bc.o" \
-        "${BUILD_DIR}/module_bc_em.o" \
-        "${BUILD_DIR}/wrf_stubs.o" \
-        "${BUILD_DIR}/bdy_fortran_bridge.o"
-fi
+# 1. Bridge (bdy_fortran_bridge.f90) + WRF's own module_bc.o and module_bc_em.o + error stubs
+echo "[1/3] Compiling the Fortran bridge against ${WRF_DIR}..."
+cp "${WRF_DIR}/share/module_bc.o" "${WRF_DIR}/dyn_em/module_bc_em.o" "${BUILD_DIR}/"
+tools/heavy.sh gcc -c -O2 "${SCRIPT_DIR}/wrf_stubs.c" -o "${BUILD_DIR}/wrf_stubs.o"
+tools/heavy.sh gfortran -c -fdefault-real-8 -fdefault-double-8 -O2 \
+    -I${WRF_DIR}/frame \
+    -I${WRF_DIR}/share \
+    -I${WRF_DIR}/dyn_em \
+    -I${WRF_DIR}/main \
+    -I${WRF_DIR}/inc \
+    "${SCRIPT_DIR}/bdy_fortran_bridge.f90" \
+    -o "${BUILD_DIR}/bdy_fortran_bridge.o" -J"${BUILD_DIR}"
+rm -f "${BUILD_DIR}/libwrfbdy_ref.a"
+ar rcs "${BUILD_DIR}/libwrfbdy_ref.a" \
+    "${BUILD_DIR}/module_bc.o" \
+    "${BUILD_DIR}/module_bc_em.o" \
+    "${BUILD_DIR}/wrf_stubs.o" \
+    "${BUILD_DIR}/bdy_fortran_bridge.o"
 
 # 2. Compile C++ differential test executable
 echo "[2/3] Compiling C++ differential test executable..."
