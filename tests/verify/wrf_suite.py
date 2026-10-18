@@ -225,7 +225,13 @@ def main():
     ap.add_argument("--cuda-dp")
     ap.add_argument("--out", default=os.path.expanduser("~/cppwrf_scratch/wrf_suite"))
     ap.add_argument("--only")
+    ap.add_argument("--keep", action="store_true", help="keep the outputs of passing cases (default: deleted)")
     a = ap.parse_args()
+
+    def done(path, good):  # the outputs of passing cases are deleted (they take tens of GB)
+        if good and not a.keep:
+            shutil.rmtree(path, ignore_errors=True)
+
     bins = {"cpu_dp": a.cpu_dp, "cuda": a.cuda, "cuda_dp": a.cuda_dp}
     ok = True
     for name, key, cfg, sets, wo, t, tol in CASES:
@@ -251,6 +257,7 @@ def main():
         txt = " ".join(f"{v}={res.get(v, float('nan')):.1e}" for v in tol)
         print(f"{'PASS' if not bad else 'FAIL'}  {name:22s} t={t:g}s {txt}" + (f"  [{'; '.join(bad)}]" if bad else ""))
         ok &= not bad
+        done(out, not bad)
     if (not a.only or "straka" in a.only) and a.cpu_dp and os.path.exists(a.cpu_dp):
         good, msg = straka(a.cpu_dp, os.path.join(a.out, "straka"))
         if good is None:
@@ -258,6 +265,7 @@ def main():
         else:
             print(f"{'PASS' if good else 'FAIL'}  straka_wrf             {msg}")
             ok &= good
+            done(os.path.join(a.out, "straka"), good)
     if a.cpu_dp and os.path.exists(a.cpu_dp):
         for tag, cfg, rd in (("p1", "configs/real_p1_r8.ini", "run_P1_r8"),
                              ("p7", "configs/real_p7_r8.ini", "run_P7_r8"),
@@ -273,6 +281,7 @@ def main():
             else:
                 print(f"{'PASS' if good else 'FAIL'}  {rname:22s} {msg}")
                 ok &= good
+                done(os.path.join(a.out, f"restart_{tag}"), good)
     sys.exit(0 if ok else 1)
 
 

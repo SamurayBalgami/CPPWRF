@@ -65,7 +65,6 @@ struct SuiteOptions {
   int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME, 3 = GFLSCHEME, 16 = NTIEDTKESCHEME
   int ishallow = 0;              // Grell-Freitas-Li shallow convection (WRF ishallow)
   int gf_ichoice = 0;            // Grell-Freitas-Li closure (WRF clos_choice)
-  double gf_sec2 = 1.e9;         // retained for config compatibility (unused in GFL v4.8.0)
   int num_soil_layers = 4;
   double bldt = 0;               // minutes; 0 = every step
   double cudt = 0;               // minutes; 0 = every step

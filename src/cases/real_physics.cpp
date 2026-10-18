@@ -155,7 +155,6 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.kfeta_trigger = int(cfg.get_int("phys.kfeta_trigger", 1));
   o.ishallow = int(cfg.get_int("phys.ishallow", 0));          // Grell-Freitas shallow convection
   o.gf_ichoice = int(cfg.get_int("phys.clos_choice", 0));     // Grell-Freitas closure
-  o.gf_sec2 = cfg.get_double("phys.gf_sec2", 1.e9);
   o.warm_rain = cfg.get_int("phys.mp_physics", 0) == 1;  // mp_init: true only for KESSLERSCHEME
   o.isfflx = int(cfg.get_int("phys.isfflx", 1));
   o.ysu_topdown_pblmix = int(cfg.get_int("phys.ysu_topdown_pblmix", 1));

@@ -421,42 +421,6 @@ CPPWRF_HOST_DEVICE inline void cup_kbcon(
 }
 
 // ---------------------------------------------------------------------------
-// cup_up_he (lines 4520-4582 in 4.6.1 / 4470 in GFL if used; GFL deep/sh inline)
-// ---------------------------------------------------------------------------
-template <typename real>
-CPPWRF_HOST_DEVICE inline void cup_up_he(int ktf, int kte, int k22, real hkb,
-                                         const real* z_cup, const real* cd,
-                                         const real* entr_rate_2d,
-                                         const real* he, const real* he_cup,
-                                         real* hc, int kbcon, int ierr,
-                                         real* dby, const real* hes_cup,
-                                         const real* up_massentr,
-                                         const real* up_massdetr) {
-  for (int k = 1; k <= kte; ++k) {
-    hc[k] = R(0.0);
-    dby[k] = R(0.0);
-  }
-  if (ierr != 0) return;
-  for (int k = 1; k <= k22; ++k) {
-    hc[k] = he_cup[k];
-  }
-  hc[k22] = hkb;
-  for (int k = 2; k <= k22; ++k) {
-    dby[k] = hc[k] - hes_cup[k];
-  }
-  for (int k = k22 + 1; k <= ktf; ++k) {
-    hc[k] = (hc[k - 1] * R(1.0) - R(0.5) * up_massdetr[k - 1] * hc[k - 1] +
-             up_massentr[k - 1] * he[k - 1]) /
-            (R(1.0) - R(0.5) * up_massdetr[k - 1] + up_massentr[k - 1]);
-    dby[k] = hc[k] - hes_cup[k];
-  }
-  (void)z_cup;
-  (void)cd;
-  (void)entr_rate_2d;
-  (void)kbcon;
-}
-
-// ---------------------------------------------------------------------------
 // cup_up_aa0 (lines 4123-4196 of module_cu_gfl_deep.F90)
 // ---------------------------------------------------------------------------
 template <typename real>
