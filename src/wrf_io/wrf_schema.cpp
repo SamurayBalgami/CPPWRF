@@ -110,6 +110,11 @@ void derive_config(WrfConfig& c, int max_dom, bool real_exe) {
     c.set("bl_mynn_edmf_dd", "0");
     c.set("bl_mynn_output", "0");
   }
+  // cu_diag = 1 exactly for the Grell schemes and KF-CuP (GD 93, GFL 3, KF-CuP 10, G3 5)
+  {
+    const int cu = c.integer("cu_physics");
+    c.set("cu_diag", cu == 93 || cu == 3 || cu == 10 || cu == 5 ? "1" : "0");
+  }
   // mfshconv only with the QNSE PBL (bl_pbl_physics = 4)
   if (c.integer("bl_pbl_physics") != 4) c.set("mfshconv", "0");
   // wrf.exe: seed_dim from random_seed(size=...) of gfortran's runtime

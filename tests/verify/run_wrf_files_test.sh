@@ -27,6 +27,7 @@ p4|configs/real_p4_r8.ini|$R/run_P4_r8/steps|$R/rst_P4_r8|
 p5|configs/real_p5_r8.ini|$R/run_P5_r8|-|
 p6|configs/real_p6_r8.ini|$R/run_P6_r8/steps|$R/rst_P6_r8|
 p7|configs/real_p7_r8.ini|$R/run_P7_r8/steps|$R/rst_P7_r8|
+p8|configs/real_p8_r8.ini|$R/run_P8_r8/steps|$R/rst_P8_r8|--set run.run_time=600
 p9|configs/real_p9_r8.ini|$R/run_P9_r8/steps|$R/rst_P9_r8|
 mp8|configs/real_mp8_r8.ini|$R/run_mp8_r8/steps|$R/rst_mp8_r8|
 r1|configs/real_r1.ini|$R/run_R1_r8|-|
