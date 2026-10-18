@@ -3,7 +3,9 @@
 # every variable, value (tolerance 0), dimension, attribute and global attribute must be identical.
 #   usage: run_wrf_files_test.sh [BUILD_DIR] [case ...]
 # References: ${CPPWRF_WRF_RUNS}/run_<C>_r8[/steps] (history every step) and
-# ${CPPWRF_WRF_RUNS}/rst_<C>_r8 (tests/verify/make_restart_refs.sh: restart every minute).
+# ${CPPWRF_WRF_RUNS}/rst_<C>_r8 (tests/verify/make_restart_refs.sh: restart every minute) and
+# ${CPPWRF_WRF_RUNS}/rsm_<C>_r8 (make_resumed_refs.sh: WRF resumed from rst_<C>_r8 at minute 1; CPPWRF
+# resumes from the same wrfrst file).
 # RQCBLTEN and RQIBLTEN are not compared: without qc/qi WRF leaves them uninitialised.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,7 +44,9 @@ while IFS='|' read -r name cfg ref rst extra; do
   [ $# -gt 0 ] && [[ "$want" != *" $name "* ]] && continue
   [ -d "$ref" ] || { echo "SKIP $name: $ref not found"; continue; }
   sets=(--set output.format=wrfout --set output.out_interval=1 --set output.dir="$WORK/$name")
-  [ "$rst" != "-" ] && [ -d "$rst" ] && sets+=(--set restart.interval=60)
+  if { [ "$rst" != "-" ] && [ -d "$rst" ]; } || compgen -G "$ref/wrfrst_d0*" > /dev/null; then
+    sets+=(--set restart.interval=60)
+  fi
   # shellcheck disable=SC2206
   [ -n "$extra" ] && sets+=($extra)
   rm -rf "${WORK:?}/$name"; mkdir -p "$WORK/$name"
@@ -61,6 +65,22 @@ while IFS='|' read -r name cfg ref rst extra; do
       n=$((n + 1))
     done
   done
+  # resumed from WRF's restart file at minute 1 against WRF's resumed run (make_resumed_refs.sh)
+  rsm=${rst/\/rst_/\/rsm_}
+  if [ "$rst" != "-" ] && [ -d "$rsm" ]; then
+    rdir=$WORK/$name/resumed; mkdir -p "$rdir"
+    rsets=("${sets[@]}" --set output.dir="$rdir")
+    for r in "$rst"/wrfrst_d01_*_00:01:00; do rsets+=(--set run.restart_file="$r"); done
+    if ! "$EXE" "$cfg" "${rsets[@]}" > "$rdir/run.log" 2>&1; then
+      echo "FAIL $name: resumed run failed"; tail -3 "$rdir/run.log"; ok=0
+    else
+      for f in "$rsm"/wrfout_d0*; do
+        b=$(basename "$f"); ours=$rdir/$b; [ -f "$ours" ] || ours=$rdir/${b:7:3}/$b
+        $CMP "$ours" "$f" > "$rdir/cmp.log" 2>&1 || { ok=0; echo "FAIL $name resumed $b"; head -20 "$rdir/cmp.log"; }
+        n=$((n + 1))
+      done
+    fi
+  fi
   if [ $ok = 1 ]; then echo "PASS $name"; rm -rf "${WORK:?}/$name"; else fail=1; fi
 done <<< "$CASES"
 echo "compared $n files"

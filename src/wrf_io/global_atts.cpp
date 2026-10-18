@@ -136,7 +136,7 @@ void write_global_atts(NcOut& nc, const WrfConfig& c, const DomainAtts& d, Strea
   if (s != Stream::boundary) {
     int jy, jd;
     double gm;
-    julgmt(d.start_date, jy, jd, gm);  // config_flags%gmt/julyr/julday: this domain's start
+    julgmt(d.gmt_date.empty() ? d.start_date : d.gmt_date, jy, jd, gm);  // config_flags%gmt/julyr/julday: this domain's start
     r("GMT", gm); i("JULYR", jy); i("JULDAY", jd);
   }
   const int mp = d.map_proj;

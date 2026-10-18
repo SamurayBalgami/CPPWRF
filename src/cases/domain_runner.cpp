@@ -7,6 +7,15 @@
 #include <sstream>
 #include <stdexcept>
 
+#ifdef CPPWRF_HAVE_NETCDF
+#include <netcdf.h>
+#endif
+
+#include <algorithm>
+#include <cctype>
+#include <map>
+#include <type_traits>
+
 #include "core/constants.hpp"
 #include "core/halo.hpp"
 #include "core/precision.hpp"
@@ -19,6 +28,109 @@ namespace {
 const char* bc_name(BC b) {
   return b == BC::Periodic ? "periodic" : (b == BC::Symmetric ? "symmetric" : "specified");
 }
+
+#ifdef CPPWRF_HAVE_NETCDF
+// A WRF restart file (wrfrst_d0N): global attribute FLAG_RESTART
+bool is_wrfrst(const std::string& path) {
+  int id;
+  if (nc_open(path.c_str(), NC_NOWRITE, &id) != NC_NOERR) return false;
+  int flag = 0;
+  const bool r = nc_get_att_int(id, NC_GLOBAL, "FLAG_RESTART", &flag) == NC_NOERR;
+  nc_close(id);
+  return r;
+}
+
+// The WRF variable of a restart field (names of save_restart_file)
+std::vector<std::string> wrf_names(const std::string& n) {
+  auto up = [](std::string x) {
+    std::transform(x.begin(), x.end(), x.begin(), [](unsigned char c) { return char(std::toupper(c)); });
+    return x;
+  };
+  static const std::map<std::string, std::string> moist = {
+      {"qv", "QVAPOR"}, {"qc", "QCLOUD"}, {"qr", "QRAIN"}, {"qi", "QICE"}, {"qs", "QSNOW"},
+      {"qg", "QGRAUP"}, {"qni", "QNICE"}, {"qnr", "QNRAIN"}};
+  if (n.rfind("q1_", 0) == 0 || n.rfind("q2_", 0) == 0) {  // moist arrays have one time level (q_1 = q_2
+    const std::string q = n.substr(3);                      // at the step start); tke_1 / tke_2
+    auto it = moist.find(q);
+    if (it != moist.end()) return {it->second};
+    return {up(q) + (n[1] == '1' ? "_1" : "_2"), up(q)};
+  }
+  static const std::map<std::string, std::string> renamed = {
+      {"t_1", "THM_1"}, {"t_2", "THM_2"}, {"sfc_t1_lag", "THM_1"},  // grid%t_1 of first_rk_step_part2
+      {"sfc_xice", "SEAICE"}, {"sfc_sfcrunoff", "SFROFF"}, {"sfc_udrunoff", "UDROFF"}};
+  auto r = renamed.find(n);
+  if (r != renamed.end()) return {r->second};
+  if (n.rfind("sfc_", 0) == 0) return {up(n.substr(4))};
+  return {up(n)};
+}
+
+// Restart fields from a WRF wrfrst file (Time = 0); WRF's kms:kme arrays give their first nz levels
+void read_wrfrst(const std::string& path, io_netcdf::RestartMeta& meta, std::vector<io_netcdf::VarView>& vars) {
+  int id;
+  if (nc_open(path.c_str(), NC_NOWRITE, &id) != NC_NOERR) throw std::runtime_error("cannot open " + path);
+  auto dimlen = [&](const char* d) {
+    int did;
+    std::size_t l = 0;
+    if (nc_inq_dimid(id, d, &did) == NC_NOERR) nc_inq_dimlen(id, did, &l);
+    return int(l);
+  };
+  meta.nx = dimlen("west_east"); meta.ny = dimlen("south_north"); meta.nz = dimlen("bottom_top");
+  float dt = 0;
+  nc_get_att_float(id, NC_GLOBAL, "DT", &dt);
+  meta.dt = dt;
+  int vid, it = 0;
+  if (nc_inq_varid(id, "ITIMESTEP", &vid) == NC_NOERR) nc_get_var_int(id, vid, &it);
+  meta.step = it;
+  double xt = 0;
+  if (nc_inq_varid(id, "XTIME", &vid) == NC_NOERR) nc_get_var_double(id, vid, &xt);
+  meta.time_sec = xt * 60.;
+  std::vector<std::string> missing;
+  std::vector<double> buf;
+  for (io_netcdf::VarView& v : vars) {
+    int var = -1;
+    for (const std::string& wn : wrf_names(v.name))
+      if (nc_inq_varid(id, wn.c_str(), &var) == NC_NOERR) break; else var = -1;
+    if (var < 0) {  // not in WRF's restart stream: WRF's initial value 0, or what phy_init sets on
+      missing.push_back(v.name);  // restarts too (myjsfcinit: LOWLYR = 1), which the model's init has
+      if (v.name == "sfc_lowlyr") continue;
+      real* d = static_cast<real*>(const_cast<void*>(v.data));
+      for (int k = 0; k < std::max(1, v.nz); ++k)
+        for (int j = 0; j < v.ny; ++j)
+          for (int i = 0; i < v.nx; ++i) d[k * v.sk + j * v.sj + i] = real(0);
+      continue;
+    }
+    int nd;
+    nc_inq_varndims(id, var, &nd);
+    std::vector<int> dids(static_cast<std::size_t>(nd));
+    nc_inq_vardimid(id, var, dids.data());
+    std::vector<std::size_t> len(static_cast<std::size_t>(nd));
+    for (int d = 0; d < nd; ++d) nc_inq_dimlen(id, dids[std::size_t(d)], &len[std::size_t(d)]);
+    // (Time, [k,] j, i)
+    const bool three = nd == 4;
+    if (nd < 3 || int(len[std::size_t(nd - 1)]) != v.nx || int(len[std::size_t(nd - 2)]) != v.ny ||
+        (three && int(len[1]) < v.nz) || (!three && v.nz > 1))
+      throw std::runtime_error("wrfrst: " + std::string(path) + ": shape of " + v.name + " differs");
+    const int nk = three ? v.nz : 1;
+    std::vector<std::size_t> st(std::size_t(nd), 0), ct(len);
+    ct[0] = 1;
+    if (three) ct[1] = std::size_t(nk);
+    buf.resize(std::size_t(nk) * std::size_t(v.ny) * std::size_t(v.nx));
+    if (nc_get_vara_double(id, var, st.data(), ct.data(), buf.data()) != NC_NOERR)
+      throw std::runtime_error("wrfrst: cannot read " + v.name);
+    real* d = static_cast<real*>(const_cast<void*>(v.data));
+    for (int k = 0; k < nk; ++k)
+      for (int j = 0; j < v.ny; ++j)
+        for (int i = 0; i < v.nx; ++i)
+          d[k * v.sk + j * v.sj + i] = real(buf[(std::size_t(k) * std::size_t(v.ny) + std::size_t(j)) * std::size_t(v.nx) + std::size_t(i)]);
+  }
+  nc_close(id);
+  if (!missing.empty()) {
+    std::string m;
+    for (const std::string& x : missing) m += " " + x;
+    std::fprintf(stderr, "cppwrf: %s: not in the restart stream, start from 0:%s\n", path.c_str(), m.c_str());
+  }
+}
+#endif
 
 }  // namespace
 
@@ -154,6 +266,35 @@ void DomainRunner::load_restart_file(const std::string& path) {
   reg_field2("mu_1", st.mu_1); reg_field2("mu_2", st.mu_2);
   reg_field3("p", st.p);
   reg_field3("al", st.al);
+  const bool wrf_file = is_wrfrst(path);
+  // base-state fields of a WRF restart file (nest feedback changes the parent's)
+  struct TargetB { BaseFieldT<3>* f3; BaseFieldT<2>* f2; size_t buf_idx; };
+  std::vector<TargetB> targets_b;
+  if (wrf_file) {  // WRF's restart stream also carries these diagnostics of the last step
+    reg_field3("ww", st.ww);
+    reg_field3("ww_m", st.ww_m);
+    reg_field3("php", st.php);
+    reg_field3("alt", st.alt);
+    dyn::BaseState& b = *m_.base;
+    auto reg_base = [&](const std::string& name, auto& f, char stag) {
+      if (f.uniform()) return;
+      const Layout& L = f.layout();
+      size_t idx = bufs.size();
+      bufs.emplace_back();
+      f.download(bufs.back());
+      vars.emplace_back(name, stag, L.nx, L.ny, L.nz, bufs.back().data() + L.offset, dt, L.sj, L.sk);
+      if constexpr (std::is_same_v<std::decay_t<decltype(f)>, BaseFieldT<3>>) targets_b.push_back({&f, nullptr, idx});
+      else targets_b.push_back({nullptr, &f, idx});
+    };
+    reg_base("PHB", b.phb, 'W'); reg_base("PB", b.pb, 'M'); reg_base("ALB", b.alb, 'M'); reg_base("T_INIT", b.t_init, 'M');
+    reg_base("MUB", b.mub, 'M'); reg_base("HGT", b.ht, 'M');
+    if (b.mapped) {
+      reg_base("MAPFAC_MX", b.msftx, 'M'); reg_base("MAPFAC_MY", b.msfty, 'M'); reg_base("MAPFAC_UX", b.msfux, 'U');
+      reg_base("MAPFAC_UY", b.msfuy, 'U'); reg_base("MAPFAC_VX", b.msfvx, 'V'); reg_base("MAPFAC_VY", b.msfvy, 'V');
+      reg_base("MF_VX_INV", b.msfvx_inv, 'V'); reg_base("F", b.f, 'M'); reg_base("E", b.e, 'M');
+      reg_base("SINALPHA", b.sina, 'M'); reg_base("COSALPHA", b.cosa, 'M');
+    }
+  }
 
   for (int n = 0; n < st.n_scalars(); ++n) {
     reg_field3("q1_" + st.q_names[n], st.q_1[n]);
@@ -190,7 +331,12 @@ void DomainRunner::load_restart_file(const std::string& path) {
     }
   }
 
-  io_netcdf::read_restart(path, meta, vars);
+  if (wrf_file) {
+    read_wrfrst(path, meta, vars);
+    meta.dx = g.dx; meta.dy = g.dy;
+  } else {
+    io_netcdf::read_restart(path, meta, vars);
+  }
 
   if (meta.nx != g.nx || meta.ny != g.ny || meta.nz != g.nz) {
     throw std::runtime_error("restart file grid dimension mismatch");
@@ -212,6 +358,10 @@ void DomainRunner::load_restart_file(const std::string& path) {
   for (const auto& t : targets2) {
     copy_to_dev(t.f->data() - t.f->layout().offset, bufs[t.buf_idx].data(), t.f->bytes());
     fill_halo(*t.f, g);
+  }
+  for (const auto& t : targets_b) {
+    if (t.f3) copy_to_dev(t.f3->data() - t.f3->layout().offset, bufs[t.buf_idx].data(), t.f3->layout().total * sizeof(real));
+    else copy_to_dev(t.f2->data() - t.f2->layout().offset, bufs[t.buf_idx].data(), t.f2->layout().total * sizeof(real));
   }
   for (const auto& t : targets_i) {
     std::vector<int> hi(bufs[t.buf_idx].size());
@@ -345,6 +495,7 @@ bool DomainRunner::start() {
 #ifdef CPPWRF_HAVE_NETCDF
   if (!restart_file.empty()) {
     load_restart_file(restart_file);
+    if (wrfout_) wrfout_->set_restart_time(double(start_step) * g.dt);
   }
 #endif
 

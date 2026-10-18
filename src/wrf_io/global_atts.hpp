@@ -18,6 +18,8 @@ struct DomainAtts {
   std::string title;                  // TITLE, e.g. " OUTPUT FROM WRF V4.8.0 MODEL"
   std::string start_date;             // START_DATE (this domain's start time)
   std::string simulation_start_date;  // SIMULATION_START_DATE of history/restart files
+  std::string gmt_date;               // GMT/JULYR/JULDAY: the domain's start (empty: start_date); a
+                                      // resumed run keeps it while START_DATE is the restart time
   int ide = 0, jde = 0, kde = 0;      // staggered grid dimensions
   int grid_id = 1, parent_id = 0, i_parent_start = 1, j_parent_start = 1, parent_grid_ratio = 1;
   double dt = 0;                      // grid%dt

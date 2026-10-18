@@ -268,8 +268,14 @@ uninitialised.
 `restart.interval` (seconds) writes restart files. With `output.format = wrfout`, CPPWRF writes WRF's
 `wrfrst_d0N_<date>` files, including the restart stream, the alarm global attributes and every
 nest domain. In CPU FP64 builds these files are identical to WRF's. CPPWRF also writes its own
-`restart_<step>.nc` files, which hold the complete model state at bitwise precision. Runs resume from
-these files:
+`restart_<step>.nc` files, which hold the complete model state at bitwise precision.
+
+`run.restart_file` resumes a run from either kind of file. A WRF `wrfrst_d01_<date>` file can come
+from WRF or from CPPWRF. CPPWRF reads the restart stream (prognostic state, base state, physics
+state); fields that WRF does not restart start from WRF's initial value. A nested run reads
+`wrfrst_d0N_<date>` from the same directory for each nest. Resumed from WRF's restart files, the CPU
+FP64 results are identical to WRF's resumed run (`tests/verify/run_wrf_files_test.sh`, references
+from `tests/verify/make_resumed_refs.sh`).
 
 ```ini
 [restart]
@@ -281,7 +287,7 @@ To resume a simulation from a restart file:
 [run]
 case = real
 run_time = 7200
-restart_file = out/real/restart_000060.nc
+restart_file = out/real/restart_000060.nc   # or .../wrfrst_d01_2026-10-12_01:00:00
 ```
 
 When resuming, pre-restart rows in `diag.csv` are preserved automatically.

@@ -290,6 +290,15 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
       }
       ov.push_back("output.out_interval=" + std::to_string(parent_out_iv * sp.parent_time_step_ratio));
       ov.push_back("output.diag_interval=" + std::to_string(parent_diag_iv * sp.parent_time_step_ratio));
+      // a resumed run: this domain's restart file next to the root's (wrfrst_d01_<date> -> wrfrst_d0N_<date>)
+      const std::string rf = root_cfg.get_string("run.restart_file", "");
+      const std::string key = "wrfrst_d01_";
+      const std::size_t at = rf.rfind(key);
+      if (!rf.empty()) {
+        if (at == std::string::npos)
+          throw std::runtime_error("nested runs resume from WRF restart files (run.restart_file = wrfrst_d01_<date>)");
+        ov.push_back("run.restart_file=" + rf.substr(0, at) + "wrfrst_" + sp.tag + "_" + rf.substr(at + key.size()));
+      }
     }
 
     // Map shorthand keys in [d0N] or domains.d0N_* to standard Model/DomainRunner sections
@@ -592,6 +601,14 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
   if (!doms[0].runner->start()) return 3;
   doms[0].started = true;
   doms[0].step = doms[0].runner->start_step;
+  // a resumed run: the nests read their restart files before the first med_nest_force, which takes the
+  // nest's boundary tendencies from its current state (no initial frames are written)
+  if (doms[0].step > 0)
+    for (int i = 1; i < max_dom; ++i) {
+      if (!doms[i].runner->start()) return 3;
+      doms[i].started = true;
+      doms[i].step = doms[i].runner->start_step;
+    }
 
   // Recursive WRF integrate(dom_idx):
   //   - One step of dom_idx

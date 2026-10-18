@@ -62,7 +62,8 @@ Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8, P9, T1).
 Output files: the `wrfout_d0N` files of P1-P7, P9, mp8, R1, T1, N1 and N2 (both domains) and the
 `wrfrst_d0N` files of P1, P3, P4, P6, P7, P9, mp8 and N2 are identical to WRF v4.8.0's. This covers
 every variable, value, dimension, attribute and global attribute
-(`tests/verify/run_wrf_files_test.sh`). The one exception is RQCBLTEN / RQIBLTEN in runs without
+(`tests/verify/run_wrf_files_test.sh`). Runs of these cases resumed from WRF's
+`wrfrst` files, give the same files as WRF's resumed runs. The one exception is RQCBLTEN / RQIBLTEN in runs without
 qc / qi: WRF leaves them uninitialised. `cppwrf_real` output is identical to real.exe for 41 cases
 ([REAL.md](REAL.md)).
 

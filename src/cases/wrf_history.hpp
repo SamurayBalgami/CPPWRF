@@ -44,6 +44,8 @@ class WrfHistory {
   // med_nest_feedback for the history fields the model does not carry (Registry u= functions)
   void feedback_from(WrfHistory& child, int i_parent_start, int j_parent_start, int ratio);
   const std::string& last_file() const { return last_file_; }
+  // a run resumed from a restart file at time_sec: START_DATE is the restart time
+  void set_restart_time(double time_sec) { restart_sec_ = time_sec; }
 
  private:
   bool value(const std::string& name, const std::string& varname, const std::vector<std::size_t>& dims,
@@ -72,6 +74,7 @@ class WrfHistory {
   std::map<std::string, std::vector<double>> phy_init_;  // phy_init fields of runs without column physics
   long step_ = 0;
   long prep_step_ = -1;
+  double restart_sec_ = 0;
   double time_sec_ = 0;
   std::string last_file_, last_restart_;
 };

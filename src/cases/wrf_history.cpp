@@ -619,7 +619,8 @@ wrf_io::DomainAtts WrfHistory::domain_atts() {
   const Grid& g = m_.g;
   wrf_io::DomainAtts d;
   d.title = " OUTPUT FROM CPPWRF V4.8.0 MODEL";
-  d.start_date = start_date_;
+  d.start_date = restart_sec_ > 0 ? wrf_io::add_seconds(start_date_, std::lround(restart_sec_)) : start_date_;
+  d.gmt_date = start_date_;
   d.simulation_start_date = wc_->get("simulation_start_date").empty() ? start_date_ : start_date_;
   d.ide = g.nx + 1; d.jde = g.ny + 1; d.kde = g.nz + 1;
   d.grid_id = wc_->domain();
