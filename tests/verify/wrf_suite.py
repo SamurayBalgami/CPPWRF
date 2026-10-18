@@ -145,6 +145,24 @@ CASES = [
     ("real_p9_fp32_1h", "cuda", "configs/real_p9_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P9", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P9/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 6e-4, "W": 1e-2, "THM": 1e-5, "QV": 2e-3}),
+    # V1-V3: other regions and map projections from the global GFS of 2026-10-12 00 UTC (WPS on the low
+    # resolution global geography): V1 tropics (Bay of Bengal, Mercator, 15 km, P4 physics), V2 Arctic
+    # (Svalbard, polar stereographic, 15 km, P4 physics: sea ice, glacier land ice, polar night), V3 Alps
+    # (Lambert, 3 km, no cumulus, Thompson + MYJ + Eta + Noah-MP + RRTMG radt 5). Checked over 6 h (V1, V2)
+    # and 2 h (V3); the suite runs 2 h and 30 min.
+    ("real_v1_r8_fp64_cpu_2h", "cpu_dp", "configs/real_v1_r8.ini",
+     ["run.run_time=7200", "output.out_interval=60", "output.diag_interval=60"],
+     f"{WR}/run_V1_r8/wrfout_d01_2026-10-12_00:00:00", 7200,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0}),
+    ("real_v2_r8_fp64_cpu_2h", "cpu_dp", "configs/real_v2_r8.ini",
+     ["run.run_time=7200", "output.out_interval=60", "output.diag_interval=60"],
+     f"{WR}/run_V2_r8/wrfout_d01_2026-10-12_00:00:00", 7200,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QICE": 0.0, "QSNOW": 0.0}),
+    ("real_v3_r8_fp64_cpu_30min", "cpu_dp", "configs/real_v3_r8.ini",
+     ["run.run_time=1800", "output.out_interval=100", "output.diag_interval=100"],
+     f"{WR}/run_V3_r8/wrfout_d01_2026-10-12_00:00:00", 1800,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0,
+      "QSNOW": 0.0, "QGRAUP": 0.0, "QNICE": 0.0, "QNRAIN": 0.0}),
     # NMP1 = P1 with Noah-MP v5.1.2 (sf_surface_physics = 4) against WRF v4.8.0 real*8 and single precision.
     ("real_nmp1_r8_fp64_cpu", "cpu_dp", "configs/real_nmp1_r8.ini", [],
      f"{WR}/run_NMP1_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,

@@ -39,6 +39,9 @@ t1|configs/real_t1.ini|$R/run_T1_r8|-|--set output.wrf_namelist=$R/run_T1_r8/nam
 n1|configs/real_n1_steps.ini|$R/run_N1_r8/steps|-|
 n2|configs/real_n2_steps.ini|$R/run_N2_r8/steps|$R/rst_N2_r8|
 nmp1|configs/real_nmp1_r8.ini|$R/run_NMP1_r8/steps|$R/rst_NMP1_r8|
+v1|configs/real_v1_r8.ini|$R/run_V1_r8/steps|-|--set run.run_time=180
+v2|configs/real_v2_r8.ini|$R/run_V2_r8/steps|-|--set run.run_time=180
+v3|configs/real_v3_r8.ini|$R/run_V3_r8/steps|-|--set run.run_time=54
 "
 want=" $* "
 fail=0 n=0
