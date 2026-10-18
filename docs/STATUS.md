@@ -97,4 +97,4 @@ RRTMG runs on the GPU as a batched pipeline (docs/PHYSICS_SUITE.md section 10).
 
 ## Not yet implemented
 
-sf_sfclay_physics 91, km_opt 3, Noah-MP, moving nests, a C++ real.exe (src/init_real is partial), and parallel (MPI) runs.
+sf_sfclay_physics 91, km_opt 3, Noah-MP, moving nests, and parallel (MPI) runs.

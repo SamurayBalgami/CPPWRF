@@ -30,6 +30,13 @@ export CPPWRF_WRF_RUNS=/path/to/wrf_runs
 build/cppwrf configs/real_p4_r8.ini
 ```
 
+`cppwrf_real` makes `wrfinput` and `wrfbdy` from WPS met_em files with output identical to WRF
+v4.8.0's real.exe ([docs/REAL.md](docs/REAL.md)):
+
+```bash
+build/src/init_real/cppwrf_real --namelist namelist.input --met-dir /path/to/met_em --precision float
+```
+
 ## Verification
 
 `tests/verify/wrf_suite.py` runs every configuration that has a WRF reference and compares the output

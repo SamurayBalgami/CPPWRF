@@ -5,6 +5,7 @@
 #include <cstring>
 #include <memory>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 
 #include "init_real/met_em.hpp"
@@ -22,6 +23,8 @@ static int run(const RealOptions& o, const Namelist& nl, const WrfSchema& sc, co
   WrfConfig cfg(nl, sc.defaults(), o.dom);
   char dn[8];
   std::snprintf(dn, sizeof dn, "d%02d", o.dom);
+  for (const char* opt : {"vert_refine_method", "tracer_opt", "chem_opt"})
+    if (cfg.integer(opt) != 0) throw std::runtime_error(std::string("real: ") + opt + " is not ported");
   // setup_physics_suite (physics_suite = 'none'): unset physics options are 0
   for (const char* p : {"mp_physics", "cu_physics", "ra_lw_physics", "ra_sw_physics", "sf_sfclay_physics",
                         "sf_surface_physics", "bl_pbl_physics"})
@@ -34,6 +37,10 @@ static int run(const RealOptions& o, const Namelist& nl, const WrfSchema& sc, co
   cfg.set("fft_used", "0");
   cfg.set("cam_used", "0");
   cfg.set("use_wps_input", "1");
+  // check_nml_consistency (WRF 4.8): ghg_input is reset to 0 when a domain has no shortwave radiation
+  if (cfg.integer("ghg_input") == 1)
+    for (int id = 1; id <= o.max_dom; ++id)
+      if (cfg.integer("ra_sw_physics", id) == 0) cfg.set("ghg_input", "0");
   const Dims& d = dom.d;
   // compute_si_start_and_end
   int nsteps = 0;

@@ -180,11 +180,11 @@ class WrfBdyWriter {
     nc_.var("Times", 'c', {"Time", "DateStrLen"}, {}, 0);
     nc_.var("md___thisbdytimee_x_t_d_o_m_a_i_n_m_e_t_a_data_", 'c', {"Time", "DateStrLen"}, {}, 0);
     nc_.var("md___nextbdytimee_x_t_d_o_m_a_i_n_m_e_t_a_data_", 'c', {"Time", "DateStrLen"}, {}, 0);
-    // share/wrf_bdyout: U V W PH T MU, the moist species with boundary data, HT_SHAD, PC
+    // share/wrf_bdyout: U V W PH T MU, the moist and scalar members with boundary data, HT_SHAD, PC
     auto state = [&](const char* name, const char* varname, const char* kdim, const char* xdim, const char* ydim) {
       const SchemaVar* v = sc.find(varname);
       if (!v) throw std::runtime_error(std::string("wrfbdy: no schema entry for ") + varname);
-      specs_.push_back({name, kdim, xdim, ydim, v->desc_full, v->units, v->stagger, true});
+      specs_.push_back({name, kdim, xdim, ydim, v->desc_full, v->units, v->stagger, ""});
     };
     state("U", "u_2", "bottom_top", "south_north", "west_east_stag");
     state("V", "v_2", "bottom_top", "south_north_stag", "west_east");
@@ -192,8 +192,9 @@ class WrfBdyWriter {
     state("PH", "ph_2", "bottom_top_stag", "south_north", "west_east");
     state("T", "t_2", "bottom_top", "south_north", "west_east");
     state("MU", "mu_2", nullptr, "south_north", "west_east");
-    for (const SchemaMember* mb : sc.boundary_members("moist", c))
-      specs_.push_back({mb->dname, "bottom_top", "south_north", "west_east", mb->desc, mb->units, "", false});
+    for (const char* array : {"moist", "scalar"})
+      for (const SchemaMember* mb : sc.boundary_members(array, c))
+        specs_.push_back({mb->dname, "bottom_top", "south_north", "west_east", mb->desc, mb->units, "", array});
     state("HT_SHAD", "ht_shad", nullptr, "south_north", "west_east");
     state("PC", "pc_2", nullptr, "south_north", "west_east");
     const char ft = sizeof(T) == 8 ? 'd' : 'f';
@@ -201,12 +202,12 @@ class WrfBdyWriter {
     // write order: a state variable's 8 arrays together; for a 4-D array all members' values, then
     // all members' tendencies
     for (std::size_t k = 0; k < specs_.size();) {
-      if (specs_[k].state) {
+      if (specs_[k].state()) {
         for (int sd = 0; sd < 8; ++sd) order_.push_back({k, sd});
         ++k;
       } else {
         std::size_t e = k;
-        while (e < specs_.size() && !specs_[e].state) ++e;
+        while (e < specs_.size() && specs_[e].array == specs_[k].array) ++e;
         for (int t = 0; t < 2; ++t)
           for (std::size_t q = k; q < e; ++q)
             for (int sd = 0; sd < 4; ++sd) order_.push_back({q, t * 4 + sd});
@@ -224,8 +225,8 @@ class WrfBdyWriter {
         if (s.kdim) dims.push_back(s.kdim);
         dims.push_back(sd[0] == 'X' ? s.xdim : s.ydim);
         std::string mo = std::string(sd) + (s.kdim ? "Z" : " ");
-        std::string desc = s.state ? (tend ? "bdy tend " : "bdy ") + s.desc : s.desc;
-        std::string units = s.state && tend ? "(" + s.units + ")/dt" : s.units;
+        std::string desc = s.state() ? (tend ? "bdy tend " : "bdy ") + s.desc : s.desc;
+        std::string units = s.state() && tend ? "(" + s.units + ")/dt" : s.units;
         nc_.var(s.name + "_" + side, ft, dims,
                 {{"MemoryOrder", mo}, {"description", desc}, {"units", units}, {"stagger", s.stagger}}, fieldtype);
       }
@@ -274,7 +275,8 @@ class WrfBdyWriter {
     const char* xdim;  // dimension along the west/east sides
     const char* ydim;  // dimension along the south/north sides
     std::string desc, units, stagger;
-    bool state;  // state variable (bdy/bdy tend descriptions) or 4-D array member
+    std::string array;  // 4-D array of a member; empty for a state variable (bdy/bdy tend descriptions)
+    bool state() const { return array.empty(); }
   };
   std::vector<Spec> specs_;
   std::vector<std::pair<std::size_t, int>> order_;  // (spec, side 0..7)
