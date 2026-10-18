@@ -128,7 +128,7 @@ WRF's own idealized cases are initialized by a port of WRF v4.8.0's `ideal.exe`
 WRF `input_sounding`. In CPU FP64 they give WRF's (real*8) results bit for bit:
 - **`em_hill2d_x`:** flow over a 2-D bell-shaped hill (WRF `ideal_case = 1`; `configs/wrf_hill2d_x.ini`).
 - **`em_quarter_ss`:** 3-D supercell with Kessler microphysics (`ideal_case = 2`; `configs/wrf_quarter_ss.ini`).
-- **`em_squall2d_x`, `em_squall2d_y`:** 2-D squall line (`ideal_case = 4, 5`).
+- **`em_squall2d_x`, `em_squall2d_y`:** 2-D squall line with open lateral boundaries (`ideal_case = 4, 5`; `configs/wrf_squall2d_x.ini`).
 - **`em_grav2d_x`:** Straka density current (`ideal_case = 6`; `configs/wrf_grav2d_x.ini`).
 
 The namelist maps to `[domain] nx = e_we - 1`, `ny = e_sn - 1` (`ny = 1` for the x-z cases,
@@ -196,7 +196,7 @@ Every option supported by the CPPWRF runtime is cataloged below, along with its 
 | `[domain]` | `dx`, `dy` | double | *required (ideal)* | Horizontal grid spacing in meters | `dx`, `dy` |
 | `[domain]` | `ztop` | double | *required (ideal)* | Model top elevation in meters | `ztop` |
 | `[domain]` | `p_top` | double | Sounding $p(z_{top})$ | Pressure at top boundary in Pa | `p_top_requested` |
-| `[domain]` | `bc_x`, `bc_y` | string | `"periodic"` | Lateral boundary condition (`periodic`, `symmetric`, `specified`) | `periodic_x`, `symmetric_xs`, etc. |
+| `[domain]` | `bc_x`, `bc_y` | string | `"periodic"` | Lateral boundary condition (`periodic`, `symmetric`, `specified`, `open`) | `periodic_x`, `symmetric_xs`, `open_xs`/`open_xe`, etc. |
 | `[domain]` | `eta` | string | `"uniform_z"` | Vertical coordinate distribution (`uniform_z`, `uniform_eta`, `list`) | `eta_levels` |
 | `[domain]` | `eta_levels` | float list | `[]` | Explicit comma-separated list of full $\eta$ levels | `eta_levels` |
 | `[domain]` | `map_factor` | double | `1.0` | Constant horizontal map projection scale factor | Map scale factor ($m$) |

@@ -103,8 +103,8 @@ roundoff over an hour, which is why P2 and P4 show larger CUDA FP64 differences 
 build is the reference for bit identity.
 
 Ideal cases (CPPWRF's port of WRF's ideal.exe, `run.case = em_*`), CPU FP64 against WRF v4.8.0
-real*8: em_hill2d_x (1 h), em_grav2d_x (Straka, 900 s) and em_quarter_ss (Kessler supercell) are
-bit-identical in every field.
+real*8: em_hill2d_x (1 h), em_grav2d_x (Straka, 900 s), em_quarter_ss (Kessler supercell, 2 h) and
+em_squall2d_x (open lateral boundaries, TKE diffusion, 10 min) are bit-identical in every field.
 
 ## Performance
 
