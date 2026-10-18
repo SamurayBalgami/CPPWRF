@@ -45,7 +45,26 @@ LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu
   LanduseInit r;
   std::vector<double>&albbck = r.albbck, &albedo = r.albedo, &z0 = r.z0, &embck = r.embck, &emiss = r.emiss,
                      &mavail = r.mavail, &xland = r.xland;
-  for (auto* v : {&albbck, &albedo, &z0, &embck, &emiss, &mavail, &xland}) v->assign(n2, 0.0);
+  for (auto* v : {&albbck, &albedo, &z0, &embck, &emiss, &mavail, &xland, &r.thc}) v->assign(n2, 0.0);
+  r.isn = isn;
+  r.lucats = lt.n_cats;
+  r.luseas = lt.n_seasons;
+  {  // landuse_init's saved table (max_cats = 100, max_seas = 12)
+    r.lu_state.assign(7501, 0.0);
+    std::size_t curs = 0;
+    for (int cats = 1; cats <= 100; ++cats) {
+      const bool in = cats < phys::driver::kMaxLanduseCats && cats <= lt.n_cats;
+      // SCFX(LC) is read again for every season: the last season's value stays
+      r.lu_state[curs++] = in ? double(lt.categories[std::max(0, lt.n_seasons - 1)][cats].scfx) : 0.0;
+      for (int seas = 1; seas <= 12; ++seas) {
+        const bool ok = in && seas <= lt.n_seasons;
+        const phys::driver::LanduseCategory* c = ok ? &lt.categories[seas - 1][cats] : nullptr;
+        for (real x : {c ? c->albd : real(0), c ? c->slmo : real(0), c ? c->sfem : real(0), c ? c->sfz0 : real(0),
+                       c ? c->sfhc : real(0), c ? c->therin : real(0)})
+          r.lu_state[curs++] = double(x);
+      }
+    }
+  }
   for (std::size_t p = 0; p < n2; ++p) {
     int is = int(std::lround(lu[p]));
     if (is < 0 || is > lt.n_cats) throw std::runtime_error("real physics: LANDUSE OUTSIDE RANGE");
@@ -58,6 +77,7 @@ LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu
     embck[p] = c.sfem;
     emiss[p] = embck[p];
     mavail[p] = c.slmo;
+    r.thc[p] = double(c.therin / real(100.));
     xland[p] = is != iswater ? 1.0 : 2.0;
     if (xice[p] >= xice_threshold) {
       const auto& ci = lt.categories[isn - 1][isice];
@@ -68,6 +88,7 @@ LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu
       emiss[p] = embck[p];
       z0[p] = ci.sfz0 / 100.;
       mavail[p] = ci.slmo;
+      r.thc[p] = double(ci.therin / real(100.));
     }
   }
   return r;

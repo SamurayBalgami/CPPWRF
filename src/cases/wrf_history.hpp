@@ -14,6 +14,7 @@
 #include "phys/driver/phy_prep.hpp"
 
 namespace cppwrf::wrf_io {
+struct DomainAtts;
 class StreamFile;
 class WrfSchema;
 class WrfConfig;
@@ -30,6 +31,9 @@ class WrfHistory {
   ~WrfHistory();
   // one history frame at model time time_sec after the start (step = WRF's itimestep)
   void write(long step, double time_sec);
+  // wrfrst_d0N_<date>: the restart stream at model time time_sec (alarms from the intervals in seconds)
+  void write_restart(long step, double time_sec, double history_interval_s, double restart_interval_s);
+  const std::string& last_restart() const { return last_restart_; }
   // before step n of a frame that will be written: runs without column physics evaluate phy_prep as
   // first_rk_step_part1 does every step (P_HYD of the frame)
   void before_step(long n);
@@ -42,6 +46,8 @@ class WrfHistory {
  private:
   bool value(const std::string& name, const std::string& varname, const std::vector<std::size_t>& dims,
              std::vector<double>& out);
+  wrf_io::DomainAtts domain_atts();
+  void start_em_slopes();
   bool from_wrfinput(const std::string& name, std::size_t n, std::vector<double>& out);
 
   const Model& m_;
@@ -64,7 +70,7 @@ class WrfHistory {
   std::map<std::string, std::vector<double>> phy_init_;  // phy_init fields of runs without column physics
   long step_ = 0;
   double time_sec_ = 0;
-  std::string last_file_;
+  std::string last_file_, last_restart_;
 };
 
 }  // namespace cppwrf::cases

@@ -206,7 +206,8 @@ long eval_bound(const std::string& e0, const WrfConfig& c, int ide, int jde, int
   return atom(e);
 }
 
-void fill_out(OutVar& o, const SchemaVar& v, const WrfConfig& c, int ide, int jde, int kde, int real_bytes) {
+// false: a memory order WRF's netCDF output does not take, or a zero-length dimension (not written)
+bool fill_out(OutVar& o, const SchemaVar& v, const WrfConfig& c, int ide, int jde, int kde, int real_bytes) {
   o.type = v.type == "r" ? (real_bytes == 8 ? 'd' : 'f') : v.type == "d" ? 'd' : v.type == "i" ? 'i'
            : v.type == "l" ? 'l' : 'c';
   std::vector<std::size_t> lens;
@@ -230,12 +231,14 @@ void fill_out(OutVar& o, const SchemaVar& v, const WrfConfig& c, int ide, int jd
   } else if (mo == "Z") {
     order = {0};
     o.memorder_att = "Z  ";
-  } else if (mo == "C") {
-    order = {0};
-    o.memorder_att = "C  ";
+  } else if (mo.find('X') == std::string::npos && mo.find('Y') == std::string::npos && !mo.empty() && mo != "ZZ") {
+    for (int k = int(mo.size()) - 1; k >= 0; --k) order.push_back(k);  // C, Z, CC, CZ, ZZ, CCZ: slowest first
+    o.memorder_att = mo + std::string(3 - std::min<std::size_t>(3, mo.size()), ' ');
   } else {
-    throw std::runtime_error("schema: memory order " + mo + " of " + v.varname + " is not supported");
+    return false;
   }
+  for (std::size_t l : lens)
+    if (l == 0) return false;
   for (int p : order) {
     o.dimnames.push_back(v.dimnames[std::size_t(p)]);
     o.dimlens.push_back(lens[std::size_t(p)]);
@@ -250,25 +253,25 @@ void fill_out(OutVar& o, const SchemaVar& v, const WrfConfig& c, int ide, int jd
     else if (v.stagger == "Y") o.coordinates = "XLONG_V XLAT_V XTIME";
     else o.coordinates = "XLONG XLAT XTIME";
   }
+  return true;
 }
 
 }  // namespace
 
 std::vector<OutVar> WrfSchema::stream_vars(const WrfConfig& c, int ide, int jde, int kde, int real_bytes, int word,
-                                           int bit) const {
+                                           int bit, bool all_levels) const {
   const std::uint32_t mask = 1u << bit;
   auto on = [&](std::uint32_t s1, std::uint32_t s2) { return ((word == 0 ? s1 : s2) & mask) != 0; };
   std::vector<OutVar> out;
   for (const SchemaVar& v : vars_) {
     if (!on(v.s1, v.s2) || !in_use(v.conds, c)) continue;
-    if (v.ntl > 0 && v.ntl / 100 != v.ntl % 100) continue;
+    if (!all_levels && v.ntl > 0 && v.ntl / 100 != v.ntl % 100) continue;
     if (!v.array4d) {
       OutVar o;
       o.name = v.dataname;
-      if (v.ntl > 0) o.name = o.name.substr(0, o.name.size() - 2);
+      if (v.ntl > 0 && !all_levels) o.name = o.name.substr(0, o.name.size() - 2);
       o.desc = v.desc; o.units = v.units; o.var = &v;
-      fill_out(o, v, c, ide, jde, kde, real_bytes);
-      out.push_back(std::move(o));
+      if (fill_out(o, v, c, ide, jde, kde, real_bytes)) out.push_back(std::move(o));
     } else {
       std::set<std::string> seen;
       for (const SchemaMember& m : members_) {
@@ -277,8 +280,7 @@ std::vector<OutVar> WrfSchema::stream_vars(const WrfConfig& c, int ide, int jde,
         if (!on(m.s1, m.s2)) continue;
         OutVar o;
         o.name = m.dname; o.desc = m.desc; o.units = m.units; o.var = &v; o.member = &m;
-        fill_out(o, v, c, ide, jde, kde, real_bytes);
-        out.push_back(std::move(o));
+        if (fill_out(o, v, c, ide, jde, kde, real_bytes)) out.push_back(std::move(o));
       }
     }
   }

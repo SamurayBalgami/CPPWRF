@@ -3,6 +3,8 @@
 // in WRF's order.
 #include <map>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "wrf_io/nc_out.hpp"
 #include "wrf_io/wrf_schema.hpp"
@@ -25,6 +27,8 @@ struct DomainAtts {
   int num_land_cat = 21, iswater = 17, islake = -1, isice = 15, isurban = 13, isoilwater = 14;
   bool ideal = false;                 // SIMULATION_INITIALIZATION_TYPE
   int real_bytes = 4;                 // WRF's REAL kind (4, or 8 for -r8)
+  // restart files: FLAG_RESTART, MAX_WRF_ALARMS and the alarm state (name, value) in WRF's order
+  std::vector<std::pair<std::string, int>> restart_alarms;
 };
 
 void write_global_atts(NcOut& nc, const WrfConfig& c, const DomainAtts& d, Stream s);

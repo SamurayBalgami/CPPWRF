@@ -310,4 +310,15 @@ void DiffusionDriver::bound_tke(Field3& tke) const {
   });
 }
 
+std::vector<const Field3*> DiffusionDriver::fields() const {
+  std::vector<const Field3*> v = {&d11_, &d22_, &d33_, &d12_, &d13_, &d23_, &div_, &xkmh_, &xkmv_, &xkhh_, &xkhv_};
+  if (bn2_.layout().total > 0) v.push_back(&bn2_);
+  if (prep_)
+    for (const Field3* f : {&prep_->th_phy, &prep_->p_phy, &prep_->pi_phy, &prep_->t_phy, &prep_->rho, &prep_->u_phy,
+                            &prep_->v_phy, &prep_->z, &prep_->p_hyd, &prep_->z_at_w, &prep_->dz8w, &prep_->p8w,
+                            &prep_->t8w, &prep_->p_hyd_w})
+      v.push_back(f);
+  return v;
+}
+
 }  // namespace cppwrf::dyn

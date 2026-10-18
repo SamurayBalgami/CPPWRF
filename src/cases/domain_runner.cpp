@@ -285,6 +285,8 @@ void DomainRunner::prepare_output() {
       for (const Field2* f : m_.suite->fields2()) f2.push_back(f);
       for (const Field3* f : m_.suite->fields3()) f3.push_back(f);
     }
+    if (m_.diff)
+      for (const Field3* f : m_.diff->fields()) f3.push_back(f);
     wrfout_ = std::make_unique<WrfHistory>(cfg_, m_, out_dir_, domain_tag_, start_date_, f2, f3);
   }
 #endif
@@ -330,6 +332,7 @@ bool DomainRunner::start() {
   }
 #endif
 
+  prepare_output();  // reads the output.* keys
   for (const auto& k : cfg_.unaccessed_keys()) {
     std::fprintf(stderr, "cppwrf: warning: unaccessed config key '%s'\n", k.c_str());
   }
@@ -518,6 +521,7 @@ void DomainRunner::do_restart(long n) {
   std::snprintf(rst_name, sizeof(rst_name), "restart_%06ld.nc", n);
   std::string rst_path = out_dir_ + "/" + rst_name;
   save_restart_file(rst_path, n, n * m_.g.dt);
+  if (wrfout_) wrfout_->write_restart(n, n * m_.g.dt, double(out_iv_) * m_.g.dt, double(rst_iv_) * m_.g.dt);
 }
 #endif
 

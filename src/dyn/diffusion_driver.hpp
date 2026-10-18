@@ -59,6 +59,9 @@ class DiffusionDriver {
   void dynamics(const State& s, const BaseState& b, Tendencies& t) const;
   void scalar(const State& s, const BaseState& b, int n, Field3& tend, real dt_rk) const;
   void bound_tke(Field3& tke) const;
+  // WRF grid fields this driver holds (defor11..23, div, xkmh..xkhv, bn2, and its phy_prep fields for runs
+  // without column physics), by WRF name
+  std::vector<const Field3*> fields() const;
 
  private:
   Grid g_, gp_;  // gp_: one more level (fields on w levels at u / v points)

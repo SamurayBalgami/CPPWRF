@@ -47,11 +47,17 @@ struct KDiffMetricsZX {
   real rdx;
   int nx;
   bool periodic_x;
+  bool open_copy;  // specified / open / nested boundaries: set_physical_bc3d copies the last column
   static constexpr real Gr = real(cst::g);
 
   CPPWRF_HD void operator()(int i, int j, int k) const {
-    if (!periodic_x && (i == 0 || i == nx)) {
+    if (!periodic_x && (i == 0 || (i == nx && !open_copy))) {
       zx(i, j, k) = real(0);
+    } else if (!periodic_x && i == nx) {  // set_physical_bc3d(zx, 'e'), specified: zx(ide) = zx(ide-1)
+      const int ii = nx - 1;
+      real v = rdx * (phb(ii, j, k) - phb(ii - 1, j, k)) / Gr;
+      v += rdx * (ph(ii, j, k) - ph(ii - 1, j, k)) / Gr;
+      zx(i, j, k) = v;
     } else {
       int i0 = (i == nx) ? 0 : i;
       int im1 = (i == 0) ? nx - 1 : (i - 1);
@@ -69,11 +75,17 @@ struct KDiffMetricsZY {
   real rdy;
   int ny;
   bool periodic_y;
+  bool open_copy;
   static constexpr real Gr = real(cst::g);
 
   CPPWRF_HD void operator()(int i, int j, int k) const {
-    if (!periodic_y && (j == 0 || j == ny)) {
+    if (!periodic_y && (j == 0 || (j == ny && !open_copy))) {
       zy(i, j, k) = real(0);
+    } else if (!periodic_y && j == ny) {  // set_physical_bc3d(zy, 'f'), specified: zy(jde) = zy(jde-1)
+      const int jj = ny - 1;
+      real v = rdy * (phb(i, jj, k) - phb(i, jj - 1, k)) / Gr;
+      v += rdy * (ph(i, jj, k) - ph(i, jj - 1, k)) / Gr;
+      zy(i, j, k) = v;
     } else {
       int j0 = (j == ny) ? 0 : j;
       int jm1 = (j == 0) ? ny - 1 : (j - 1);
@@ -98,10 +110,10 @@ inline void compute_diff_metrics(const DiffusionParams& p,
   column_for(Range2D{0, nx, 0, ny}, KDiffMetricsZ{ph, phb, z, rdz, rdzw, nz});
   // zx at U points: i = 0..nx, j = 0..ny-1, k = 0..nz
   parallel_for(Range3D{0, nx + 1, 0, ny, 0, nz + 1},
-               KDiffMetricsZX{ph, phb, zx, rdx, nx, p.periodic_x});
+               KDiffMetricsZX{ph, phb, zx, rdx, nx, p.periodic_x, p.specified || p.open_xe});
   // zy at V points: i = 0..nx-1, j = 0..ny, k = 0..nz
   parallel_for(Range3D{0, nx, 0, ny + 1, 0, nz + 1},
-               KDiffMetricsZY{ph, phb, zy, rdy, ny, p.periodic_y});
+               KDiffMetricsZY{ph, phb, zy, rdy, ny, p.periodic_y, p.specified || p.open_ye});
 }
 
 }  // namespace cppwrf::dyn::diffusion

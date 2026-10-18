@@ -53,6 +53,11 @@ void write_global_atts(NcOut& nc, const WrfConfig& c, const DomainAtts& d, Strea
   nc.att("START_DATE", d.start_date);
   if (input) nc.att("SIMULATION_START_DATE", d.start_date);
   else if (restart || history) nc.att("SIMULATION_START_DATE", d.simulation_start_date);
+  if (restart) {
+    i("FLAG_RESTART", 1);
+    i("MAX_WRF_ALARMS", 55);
+    for (const auto& [n, v] : d.restart_alarms) i(n, v);
+  }
   i("WEST-EAST_GRID_DIMENSION", d.ide);
   i("SOUTH-NORTH_GRID_DIMENSION", d.jde);
   i("BOTTOM-TOP_GRID_DIMENSION", d.kde);

@@ -56,7 +56,10 @@ bool wants_column_physics(const io::Config& cfg);
 void init_real_physics(const io::Config& cfg, Model& m);
 // phy_init's landuse_init (LANDUSE.TBL for the season of julday) on the wrfinput LU_INDEX, SEAICE, SNOWC
 struct LanduseInit {
-  std::vector<double> albbck, albedo, z0, embck, emiss, mavail, xland;
+  std::vector<double> albbck, albedo, z0, embck, emiss, mavail, xland, thc;
+  int isn = 1;                  // season (1 summer, 2 winter)
+  int lucats = 0, luseas = 0;   // LANDUSE.TBL categories and seasons
+  std::vector<double> lu_state;  // WRF's LU_STATE: per category SCFX, then per season ALBD SLMO SFEM SFZ0 SFHC THERIN
 };
 LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu, int julday, double cen_lat,
                          int iswater, int isice, const std::vector<double>& lu, const std::vector<double>& xice,

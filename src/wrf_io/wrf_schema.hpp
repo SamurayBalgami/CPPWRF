@@ -83,7 +83,11 @@ class WrfSchema {
   }
   // variables of the stream whose bit is `bit` of streams word `word` (0 or 1; 31 bits per word)
   std::vector<OutVar> stream_vars(const WrfConfig& c, int ide, int jde, int kde, int real_bytes, int word,
-                                  int bit) const;
+                                  int bit, bool all_levels = false) const;
+  // restart stream (wrfrst): word 2, bit 21; every time level under its own name (U_1, U_2)
+  std::vector<OutVar> restart_vars(const WrfConfig& c, int ide, int jde, int kde, int real_bytes) const {
+    return stream_vars(c, ide, jde, kde, real_bytes, 1, 21, true);
+  }
   // 4-D array members written to wrfbdy (boundary_table true), e.g. QVAPOR, QCLOUD, ...
   std::vector<const SchemaMember*> boundary_members(const std::string& array, const WrfConfig& c) const;
   bool in_use(const std::vector<SchemaCond>& conds, const WrfConfig& c) const;
