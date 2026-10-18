@@ -2,8 +2,9 @@
 
 This document describes how the WRF v4.8.0 physics is reproduced in CPPWRF, scheme by scheme, and
 how each part is verified. Sections 1-5 cover the column-physics driver (surface layer, land surface,
-PBL); sections 6-13 add microphysics, cumulus and radiation; section 14 lists the WRF behaviours that
-had to be reproduced for bit-identical results. Case names (P1-P8) refer to the reference runs listed
+PBL); sections 6-13 add microphysics, cumulus and radiation; section 14 covers Noah-MP v5.1.2
+(`sf_surface_physics = 4`); section 15 lists the WRF behaviours that
+had to be reproduced for bit-identical results. Case names (P1-P8, NMP1) refer to the reference runs listed
 in docs/STATUS.md.
 
 ## 0. The P1 driver (sfclayrev + Noah + YSU)
@@ -454,7 +455,67 @@ W 2.0e-8, THM 1.2e-10, QV 5.4e-9; CUDA FP32 against single-precision WRF: U 4.3e
 QV 2.9e-4. `wrf_suite`: `real_p8_r8_fp64_cpu_10min`, `real_p8_r8_fp64_cpu_1h`,
 `real_p8_r8_fp64_cuda_1h`, `real_p8_fp32_1h`, `restart_p8_fp64`.
 
-## 14. WRF behaviours reproduced for bit identity (P4-P6, nesting)
+## 14. Noah-MP v5.1.2 land surface model (NMP1, `sf_surface_physics = 4`)
+
+Port: `src/phys/lsm_noahmp/` = WRF v4.8.0 Noah-MP v5.1.2 (`phys/noahmp/src/` and `phys/module_sf_noahmpdrv.F`)
+for one column, statement by statement across CPU and CUDA (`CPPWRF_HD`):
+- `noahmp_tables.{hpp,cpp}`: parses `NoahmpTable.TBL` (`noahmp_veg_parameters`, `noahmp_rad_parameters`,
+  `noahmp_global_parameters`, `noahmp_soil_parameters`, `noahmp_pedotransfer_sr2006`) and `SOILPARM.TBL` /
+  `GENPARM.TBL` once on the host (`read_noahmp_tables`) and uploads `NoahmpTables` to device memory
+  (`d_noahmp_tables_`), plus `validate_noahmp_options` to reject unported options with a clear error message.
+- `noahmp_var.hpp`: per-column state, flux, parameter, configuration, and forcing structs (`NoahmpType`
+  for soil/vegetation and `NoahmpGlacierType` for land ice).
+- `noahmp_rad_therm.hpp`, `noahmp_energy.hpp`, `noahmp_water.hpp`, `noahmp_glacier.hpp`: full canopy,
+  snow (up to 3 layers), and 4-layer soil radiation, surface energy balance, Monin-Obukhov / SFCLAY
+  stability, phase change, snow compaction/layering, infiltration, subsurface runoff, groundwater,
+  dynamic phenology (`dveg = 4`), and glacier (`opt_gla = 1`) physics.
+- `noahmp.{hpp,cpp}`: `noahmp_init_column` (`noahmp_init` cold-start initialization of snow layers, soil
+  equilibrium moisture `smoiseq`, water table `zwtxy`/`waxy`/`wtxy`, and vegetation carbon pools) and
+  `noahmp_sflx_column` (`noahmp_drv` 1D column driver including `CalcDeclin` solar zenith angle,
+  precipitation partitioning, bare-soil / vegetated / glacier dispatch, and `SFCDIAGS` 2 m / 10 m
+  diagnostics). Sea-ice columns (`XICE >= xice_threshold`) run `KSeaiceNoah` (`SFLX_SEAICE`) as in WRF's
+  `surface_driver`.
+
+**Supported options (WRF v4.8.0 defaults):**
+`dveg = 4`, `opt_crs = 1`, `opt_btr = 1`, `opt_runsrf = 3`, `opt_runsub = 3`, `opt_sfc = 1`,
+`opt_frz = 1`, `opt_inf = 1`, `opt_rad = 3`, `opt_alb = 2`, `opt_snf = 1`, `opt_tbot = 2`,
+`opt_stc = 1`, `opt_gla = 1`, `opt_rsf = 1`, `opt_soil = 1`, `opt_pedo = 1`, `opt_crop = 0`,
+`opt_irr = 0`, `opt_irrm = 0`, `opt_infdv = 1`, `opt_tdrn = 0`, `opt_tksno = 1`, `opt_compact = 1`,
+`opt_scf = 1`, `opt_wetland = 1`, `sf_urban_physics = 0`, `num_soil_layers = 4`. Any other option throws
+`std::runtime_error` in `validate_noahmp_options`.
+
+**WRF behaviours reproduced for bit identity:**
+- `CalcDeclin` evaluates `Declin = 0.409 * cos(2*pi * (JulianDay - 173) / DaysPerYear)` with `double`
+  constants (`2*pi = 6.2831853071795862`, `DaysPerYear = 365.0` or `366.0`) and sets `CosZ = max(CosZ, 0.0)`.
+- `SoilWaterEqm` (`noahmp_init`) uses `exp(-2.0)` in double precision when `bexp <= 0` and iterates the
+  100-step Newton solver for equilibrium soil moisture `SMCEQ(1:4)` identically to Fortran.
+- `SnowLayerCombine` / `SnowLayerDivide` / `SnowCompact` preserve Fortran 1-based negative snow indices
+  (`ISNOW` in `[-3, 0]`, mapped via `idx_snso(k) = k + 3` for `k in [-2, 4]`).
+- All 66 Noah-MP 2D state/flux fields, `isnowxy` (`IntField2`), and the 3D snow/soil/albedo arrays
+  (`tsnoxy`, `snicexy`, `snliqxy`, `zsnsoxy`, `smoiseq`, `albsoildirxy`, `albsoildifxy`, `acc_etranixy`)
+  are persisted in `carried2()`, `carried3()`, and `carried_int()` for exact restart.
+
+**Column differential test** (`tests/phys/lsm_noahmp`, CTest `test_phys_lsm_noahmp`):
+Links directly against WRF v4.8.0's `main/libwrflib.a` (`noahmp_sflx_1d` and `NoahmpInitMain` /
+`NoahmpReadTable`) on a 50x50 synthetic tile (2500 columns covering all 17 MODIS land/glacier/water/urban
+categories, multi-layer snow, frozen/unfrozen soil, and daytime/nighttime forcing):
+- 1-step differential test (2500 columns, 150 state & diagnostic outputs): `max|d| = 0.000000e+00`.
+- 5-step carried-state evolution test (2500 columns, 150 variables): `max|d| = 0.000000e+00`.
+
+**Real-data acceptance** (NMP1 = P1 with `sf_surface_physics = 4` against WRF v4.8.0 `run_NMP1_r8` and
+`run_NMP1`, `configs/real_nmp1_r8.ini`, `tests/verify/wrf_suite.py`):
+- `real_nmp1_r8_fp64_cpu` (3 steps, `t = 180 s`): **bit-identical** (`0.0e+00`) across all 3D and 2D fields.
+- `real_nmp1_r8_fp64_cpu_1h` (60 steps, `t = 3600 s`): **bit-identical** (`0.0e+00`) across all 46 compared
+  3D dynamical/moist/PBL fields and 2D surface/soil/snow fields (`U`, `V`, `W`, `PH`, `MU`, `P`, `THM`,
+  `QVAPOR`, `TSK`, `HFX`, `QFX`, `LH`, `GRDFLX`, `ALBEDO`, `EMISS`, `SNOW`, `SNOWH`, `SNOWC`, `ACSNOM`,
+  `TSLB`, `SMOIS`, `SH2O`, etc.).
+- `real_nmp1_r8_fp64_cuda_1h` (1 h CUDA FP64 vs WRF v4.8.0 `-r8`): `U = 4.7e-13`, `W = 7.5e-12`,
+  `THM = 1.0e-15`, `QV = 2.9e-14` relative L2.
+- `real_nmp1_fp32_1h` (1 h CUDA FP32 vs single-precision WRF v4.8.0): `U = 1.9e-4`, `W = 3.8e-3`,
+  `THM = 8.2e-7`, `QV = 3.8e-5` relative L2.
+- `restart_nmp1_fp64`: step 3 straight vs restarted after step 1 **bit-identical**.
+
+## 15. WRF behaviours reproduced for bit identity (P4-P6, nesting)
 
 Found with WRF checkpoint dumps (tests/verify/wrf_dycore_dumps) and column replays through WRF's own
 r8d8 objects (WSM6: mp_wsm6; Thompson: mp_gt_driver; Noah: SFLX with SOIL_VEG_GEN_PARM for MODIS).

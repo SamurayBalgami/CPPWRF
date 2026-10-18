@@ -251,6 +251,7 @@ SUPPORTED_OPTIONS = {
     "sf_surface_physics": {
         0: "None / off",
         2: "Unified Noah land surface model (4 soil layers)",
+        4: "Noah-MP land surface model (v5.1.2, 4 soil layers)",
     },
     "bl_pbl_physics": {
         0: "None / off",
@@ -812,6 +813,26 @@ class WrfTranslator:
                 self.check_supported("cu_physics", cu_physics)
                 self.check_supported("ra_lw_physics", ra_lw)
                 self.check_supported("ra_sw_physics", ra_sw)
+
+                if sf_surface == 4:
+                    noahmp_keys = (
+                        "dveg", "opt_crs", "opt_btr", "opt_runsrf", "opt_runsub",
+                        "opt_sfc", "opt_frz", "opt_inf", "opt_rad", "opt_alb",
+                        "opt_snf", "opt_tbot", "opt_stc", "opt_gla", "opt_rsf",
+                        "opt_soil", "opt_pedo", "opt_crop", "opt_irr", "opt_irrm",
+                        "opt_infdv", "opt_tdrn", "opt_tksno", "opt_compact",
+                        "opt_scf", "opt_wetland", "soiltstep",
+                    )
+                    for nk in noahmp_keys:
+                        if self.has_opt("noah_mp", nk):
+                            sections["phys"][nk] = self.get_opt("noah_mp", nk)
+                        elif self.has_opt("physics", nk):
+                            sections["phys"][nk] = self.get_opt("physics", nk)
+                    for grp_nm in ("noah_mp", "physics"):
+                        if self.has_opt(grp_nm, "opt_run"):
+                            opt_run_val = self.get_opt(grp_nm, "opt_run")
+                            sections["phys"].setdefault("opt_runsrf", opt_run_val)
+                            sections["phys"].setdefault("opt_runsub", opt_run_val)
 
         # 12. Output Section [output]
         sections["output"] = {}

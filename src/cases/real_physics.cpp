@@ -192,6 +192,38 @@ void init_real_physics(const io::Config& cfg, Model& m) {
     r.p_top = g.p_top;
     r.table_dir = cfg.get_string("phys.rrtmg_tables", o.table_dir);
   }
+  if (o.sf_surface_physics == 4) {
+    auto& nm = o.noahmp;
+    nm.dveg = int(cfg.get_int("phys.dveg", nm.dveg));
+    nm.opt_crs = int(cfg.get_int("phys.opt_crs", nm.opt_crs));
+    nm.opt_btr = int(cfg.get_int("phys.opt_btr", nm.opt_btr));
+    nm.opt_runsrf = int(cfg.get_int("phys.opt_runsrf", nm.opt_runsrf));
+    nm.opt_runsub = int(cfg.get_int("phys.opt_runsub", nm.opt_runsub));
+    nm.opt_sfc = int(cfg.get_int("phys.opt_sfc", nm.opt_sfc));
+    nm.opt_frz = int(cfg.get_int("phys.opt_frz", nm.opt_frz));
+    nm.opt_inf = int(cfg.get_int("phys.opt_inf", nm.opt_inf));
+    nm.opt_rad = int(cfg.get_int("phys.opt_rad", nm.opt_rad));
+    nm.opt_alb = int(cfg.get_int("phys.opt_alb", nm.opt_alb));
+    nm.opt_snf = int(cfg.get_int("phys.opt_snf", nm.opt_snf));
+    nm.opt_tbot = int(cfg.get_int("phys.opt_tbot", nm.opt_tbot));
+    nm.opt_stc = int(cfg.get_int("phys.opt_stc", nm.opt_stc));
+    nm.opt_gla = int(cfg.get_int("phys.opt_gla", nm.opt_gla));
+    nm.opt_rsf = int(cfg.get_int("phys.opt_rsf", nm.opt_rsf));
+    nm.opt_soil = int(cfg.get_int("phys.opt_soil", nm.opt_soil));
+    nm.opt_pedo = int(cfg.get_int("phys.opt_pedo", nm.opt_pedo));
+    nm.opt_crop = int(cfg.get_int("phys.opt_crop", nm.opt_crop));
+    nm.opt_irr = int(cfg.get_int("phys.opt_irr", nm.opt_irr));
+    nm.opt_irrm = int(cfg.get_int("phys.opt_irrm", nm.opt_irrm));
+    nm.opt_infdv = int(cfg.get_int("phys.opt_infdv", nm.opt_infdv));
+    nm.opt_tdrn = int(cfg.get_int("phys.opt_tdrn", nm.opt_tdrn));
+    nm.opt_tksno = int(cfg.get_int("phys.opt_tksno", nm.opt_tksno));
+    nm.opt_compact = int(cfg.get_int("phys.opt_compact", nm.opt_compact));
+    nm.opt_scf = int(cfg.get_int("phys.opt_scf", nm.opt_scf));
+    nm.opt_wetland = int(cfg.get_int("phys.opt_wetland", nm.opt_wetland));
+    nm.sf_urban_physics = int(cfg.get_int("phys.sf_urban_physics", 0));
+    nm.iz0tlnd = o.iz0tlnd;
+    nm.soiltstep = cfg.get_double("phys.soiltstep", 0.0);
+  }
   m.suite = std::make_unique<PhysicsSuite>(g, o);
   PhysicsSuite& su = *m.suite;
 
@@ -244,57 +276,73 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   put2(su.albbck, albbck); put2(su.albedo, albedo); put2(su.z0, z0); put2(su.znt, z0);
   put2(su.embck, embck); put2(su.emiss, emiss); put2(su.mavail, mavail); put2(su.xland, xland);
 
-  // ---- bl_init / LSMINIT (Noah)
-  phys::noah::NoahTables nt;
-  if (!phys::noah::read_noah_tables(o.table_dir, o.mminlu, o.mminsl, nt))
-    throw std::runtime_error("real physics: cannot read the Noah tables from " + o.table_dir);
-  if (!rdmaxalb)
-    for (std::size_t p = 0; p < n2; ++p) snoalb[p] = nt.maxalb[int(std::lround(lu[p])) - 1] * 0.01;
-  put2(su.snoalb, snoalb);
-  std::vector<double> sh2o(n2 * ns);
-  for (std::size_t p = 0; p < n2; ++p) {
-    const int st = int(std::lround(isl[p]));
-    if (st < 1) throw std::runtime_error("real physics: lsminit: out of range value of ISLTYP");
-    real bx = nt.bb[st - 1];
-    const real smcmax = nt.maxsmc[st - 1], psisat = nt.satpsi[st - 1];
-    for (int k = 0; k < ns; ++k) {
-      const std::size_t q = p + n2 * k;
-      if (bx > 0 && smcmax > 0 && psisat > 0) {
-        if (tslb[q] < 273.149) {
-          bx = nt.bb[st - 1];
-          if (bx > real(5.5)) bx = real(5.5);
-          const real t = real(tslb[q]);
-          real fk = std::pow((real(3.335e5) / (real(9.81) * (-psisat))) * ((t - real(273.15)) / t), real(-1) / bx) * smcmax;
-          if (fk < real(0.02)) fk = real(0.02);
-          real s = std::min(fk, real(smois[q]));
-          real free_w = 0;
-          phys::noah::NoahKernel::frh2o(free_w, t, real(smois[q]), s, smcmax, bx, psisat);
-          sh2o[q] = free_w;
-        } else {
-          sh2o[q] = smois[q];
-        }
-      } else {
-        sh2o[q] = smois[q];
-      }
-    }
-  }
   auto put_soil = [&](Field3& f, const std::vector<double>& a) {
     f.fill_host([&](int i, int j, int k) { return a[i + std::size_t(nx) * j + n2 * k]; });
   };
-  put_soil(su.tslb, tslb); put_soil(su.smois, smois); put_soil(su.sh2o, sh2o);
-  if (in.has("SMCREL")) put_soil(su.smcrel, in.var("SMCREL", n2 * ns));
-  if (in.has("SNOWH")) put2(su.snowh, rd2("SNOWH"));
-  else {
-    for (double& x : snow) x *= 0.005;
-    put2(su.snowh, snow);
+
+  if (o.sf_surface_physics == 2) {
+    // ---- bl_init / LSMINIT (Noah)
+    phys::noah::NoahTables nt;
+    if (!phys::noah::read_noah_tables(o.table_dir, o.mminlu, o.mminsl, nt))
+      throw std::runtime_error("real physics: cannot read the Noah tables from " + o.table_dir);
+    if (!rdmaxalb)
+      for (std::size_t p = 0; p < n2; ++p) snoalb[p] = nt.maxalb[int(std::lround(lu[p])) - 1] * 0.01;
+    put2(su.snoalb, snoalb);
+    std::vector<double> sh2o(n2 * ns);
+    for (std::size_t p = 0; p < n2; ++p) {
+      const int st = int(std::lround(isl[p]));
+      if (st < 1) throw std::runtime_error("real physics: lsminit: out of range value of ISLTYP");
+      real bx = nt.bb[st - 1];
+      const real smcmax = nt.maxsmc[st - 1], psisat = nt.satpsi[st - 1];
+      for (int k = 0; k < ns; ++k) {
+        const std::size_t q = p + n2 * k;
+        if (bx > 0 && smcmax > 0 && psisat > 0) {
+          if (tslb[q] < 273.149) {
+            bx = nt.bb[st - 1];
+            if (bx > real(5.5)) bx = real(5.5);
+            const real t = real(tslb[q]);
+            real fk = std::pow((real(3.335e5) / (real(9.81) * (-psisat))) * ((t - real(273.15)) / t), real(-1) / bx) * smcmax;
+            if (fk < real(0.02)) fk = real(0.02);
+            real s = std::min(fk, real(smois[q]));
+            real free_w = 0;
+            phys::noah::NoahKernel::frh2o(free_w, t, real(smois[q]), s, smcmax, bx, psisat);
+            sh2o[q] = free_w;
+          } else {
+            sh2o[q] = smois[q];
+          }
+        } else {
+          sh2o[q] = smois[q];
+        }
+      }
+    }
+    put_soil(su.tslb, tslb); put_soil(su.smois, smois); put_soil(su.sh2o, sh2o);
+    if (in.has("SMCREL")) put_soil(su.smcrel, in.var("SMCREL", n2 * ns));
+    if (in.has("SNOWH")) put2(su.snowh, rd2("SNOWH"));
+    else {
+      for (double& x : snow) x *= 0.005;
+      put2(su.snowh, snow);
+    }
+  } else if (o.sf_surface_physics == 4) {
+    // ---- bl_init / NoahmpWRFinit (Noah-MP)
+    put2(su.snoalb, snoalb);
+    put2(su.xlat_sfc, m.xlat);
+    put2(su.xlong_sfc, m.xlong);
+    put_soil(su.tslb, tslb);
+    put_soil(su.smois, smois);
+    if (in.has("SH2O")) put_soil(su.sh2o, in.var("SH2O", n2 * ns));
+    if (in.has("SNOWH")) put2(su.snowh, rd2("SNOWH"));
+    su.init_noahmp(in.has("SNOWH"));
   }
-  // CANWAT = 0 (lsminit), the accumulations and fluxes stay zero
+  // CANWAT = 0 (lsminit / NoahmpInitMain), the accumulations and fluxes stay zero
   su.init_radiation(m.xlat, m.xlong);
   if (auto* pc = m.rk->physics(); pc && pc->params().microp_re)
     su.set_effective_radii(&pc->re_cloud, &pc->re_ice, &pc->re_snow);
-  if (auto* pc = m.rk->physics(); pc && pc->params().mp_physics != 0)
-    su.set_microphysics_precip(&pc->rainncv,
-                               pc->params().mp_physics == 6 || pc->params().mp_physics == 8 ? &pc->sr : nullptr);
+  if (auto* pc = m.rk->physics(); pc && pc->params().mp_physics != 0) {
+    const bool has_ice_precip = pc->params().mp_physics == 6 || pc->params().mp_physics == 8;
+    su.set_microphysics_precip(&pc->rainncv, has_ice_precip ? &pc->sr : nullptr,
+                               has_ice_precip ? &pc->snowncv : nullptr,
+                               has_ice_precip ? &pc->graupelncv : nullptr);
+  }
   m.rk->set_column_physics(m.suite.get());
 }
 #endif

@@ -221,13 +221,14 @@ Every option supported by the CPPWRF runtime is cataloged below, along with its 
 | `[phys]` | `hail_opt` | integer | `0` | WSM6 6th class density (0 = graupel, 1 = hail) | `hail_opt` |
 | `[phys]` | `mp_tend_lim` | double | `10.0` | Heating rate limiter for microphysics ($K/s$) | `mp_tend_lim` |
 | `[phys]` | `sf_sfclay_physics` | integer | `1` | Surface layer formulation (0 = off, 1 = Revised MM5 / sfclayrev, 2 = Eta / MYJ) | `sf_sfclay_physics` |
-| `[phys]` | `sf_surface_physics` | integer | `2` | Land surface model (0 = off, 2 = Unified Noah LSM 4-layer) | `sf_surface_physics` |
+| `[phys]` | `sf_surface_physics` | integer | `2` | Land surface model (0 = off, 2 = Unified Noah LSM 4-layer, 4 = Noah-MP LSM v5.1.2 4-layer) | `sf_surface_physics` |
+| `[phys]` | `dveg`, `opt_*` | integer | WRF defaults | Noah-MP sub-options when `sf_surface_physics = 4` (`dveg=4`, `opt_crs=1`, `opt_btr=1`, `opt_runsrf=3`, `opt_runsub=3`, `opt_sfc=1`, `opt_frz=1`, `opt_inf=1`, `opt_rad=3`, `opt_alb=2`, `opt_snf=1`, `opt_tbot=2`, `opt_stc=1`, `opt_gla=1`, `opt_rsf=1`, `opt_soil=1`, `opt_pedo=1`, `opt_crop=0`, `opt_irr=0`, `opt_irrm=0`, `opt_infdv=1`, `opt_tdrn=0`, `opt_tksno=1`, `opt_compact=1`, `opt_scf=1`, `opt_wetland=1`) | `&noah_mp` options |
 | `[phys]` | `bl_pbl_physics` | integer | `1` | Planetary boundary layer scheme (0 = off, 1 = YSU, 2 = MYJ) | `bl_pbl_physics` |
 | `[phys]` | `cu_physics` | integer | `0` | Cumulus parameterization (0 = off, 1 = Kain-Fritsch, 3 = Grell-Freitas, 16 = New Tiedtke); GF also reads `ishallow` and `clos_choice` | `cu_physics` |
 | `[phys]` | `ra_lw_physics` | integer | `0` | Longwave radiation scheme (0 = off, 4 = RRTMG LW) | `ra_lw_physics` |
 | `[phys]` | `ra_sw_physics` | integer | `0` | Shortwave radiation scheme (0 = off, 4 = RRTMG SW) | `ra_sw_physics` |
 | `[phys]` | `radt` | double | `0.0` | Radiation physics call interval (minutes; 0 = every step) | `radt` |
-| `[phys]` | `table_dir` | string | `"."` | Path to directory containing physics tables (`LANDUSE.TBL`, etc.) | WRF run directory |
+| `[phys]` | `table_dir` | string | `"."` | Path to directory containing physics tables (`LANDUSE.TBL`, `NoahmpTable.TBL`, etc.) | WRF run directory |
 | `[output]` | `dir` | string | `"out/<case>"` | Directory for simulation output files | Output path |
 | `[output]` | `format` | string | `"native"` | Output data format (`native`, `wrfout`, `both`) | `io_form_history` |
 | `[output]` | `diag_interval` | integer | `10` | Frequency (in steps) for writing rows to `diag.csv` | Diagnostic interval |

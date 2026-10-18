@@ -59,10 +59,16 @@ std::vector<std::string> wrf_names(const std::string& n) {
   }
   static const std::map<std::string, std::string> renamed = {
       {"t_1", "THM_1"}, {"t_2", "THM_2"}, {"sfc_t1_lag", "THM_1"},  // grid%t_1 of first_rk_step_part2
-      {"sfc_xice", "SEAICE"}, {"sfc_sfcrunoff", "SFROFF"}, {"sfc_udrunoff", "UDROFF"}};
+      {"sfc_xice", "SEAICE"}, {"sfc_sfcrunoff", "SFROFF"}, {"sfc_udrunoff", "UDROFF"},
+      {"sfc_xlat_sfc", "XLAT"}, {"sfc_xlong_sfc", "XLONG"},
+      {"sfc_t2mvxy", "T2V"}, {"sfc_t2mbxy", "T2B"}, {"sfc_q2mvxy", "Q2V"}, {"sfc_q2mbxy", "Q2B"}};
   auto r = renamed.find(n);
   if (r != renamed.end()) return {r->second};
-  if (n.rfind("sfc_", 0) == 0) return {up(n.substr(4))};
+  if (n.rfind("sfc_", 0) == 0) {
+    const std::string u = up(n.substr(4));
+    if (u.size() > 2 && u.compare(u.size() - 2, 2, "XY") == 0) return {u, u.substr(0, u.size() - 2)};
+    return {u};
+  }
   return {up(n)};
 }
 
@@ -407,6 +413,20 @@ void DomainRunner::prepare_output() {
                               &su.q10, &su.pshltr, &su.u10e, &su.v10e, &su.mixht})
         extra_2d_.push_back(f);
       extra_3d_.insert(extra_3d_.end(), {&su.tke_pbl, &su.el_pbl});
+    }
+    if (su.options().sf_surface_physics == 4) {
+      for (const Field2* f : {&su.tvxy, &su.tgxy, &su.canicexy, &su.canliqxy, &su.eahxy, &su.tahxy, &su.cmxy,
+                              &su.chxy, &su.fwetxy, &su.sneqvoxy, &su.alboldxy, &su.qsnowxy, &su.qrainxy, &su.wslakexy,
+                              &su.zwtxy, &su.waxy, &su.wtxy, &su.lfmassxy, &su.rtmassxy, &su.stmassxy, &su.woodxy,
+                              &su.stblcpxy, &su.fastcpxy, &su.xsaixy, &su.taussxy, &su.smcwtdxy, &su.deeprechxy,
+                              &su.rechxy, &su.t2mvxy, &su.t2mbxy, &su.q2mvxy, &su.q2mbxy, &su.tradxy, &su.neexy,
+                              &su.gppxy, &su.nppxy, &su.fvegxy, &su.runsfxy, &su.runsbxy, &su.ecanxy, &su.edirxy,
+                              &su.etranxy, &su.fsaxy, &su.firaxy, &su.aparxy, &su.psnxy, &su.savxy, &su.sagxy,
+                              &su.rssunxy, &su.rsshaxy, &su.bgapxy, &su.wgapxy, &su.tgvxy, &su.tgbxy, &su.chvxy,
+                              &su.chbxy, &su.shgxy, &su.shcxy, &su.shbxy, &su.evgxy, &su.evbxy, &su.ghvxy, &su.ghbxy,
+                              &su.irgxy, &su.ircxy, &su.irbxy, &su.trxy, &su.evcxy, &su.chleafxy, &su.chucxy,
+                              &su.chv2xy, &su.chb2xy, &su.rs, &su.sfcrunoff, &su.udrunoff, &su.acsnow, &su.acsnom})
+        extra_2d_.push_back(f);
     }
     if (su.radiation_on()) {
       for (const Field2* f : {&su.glw, &su.gsw, &su.swdown, &su.coszen}) extra_2d_.push_back(f);

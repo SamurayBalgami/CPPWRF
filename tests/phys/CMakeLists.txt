@@ -181,4 +181,12 @@ add_test(
 )
 set_tests_properties(test_phys_bl_myj PROPERTIES LABELS diff)
 
-
+# ==============================================================================
+# Noah-MP v5.1.2 Land Surface Model (lsm_noahmp, sf_surface_physics=4)
+# ==============================================================================
+add_test(
+  NAME test_phys_lsm_noahmp
+  COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/lsm_noahmp/run_test.sh ${CMAKE_CURRENT_BINARY_DIR}/lsm_noahmp_test
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+set_tests_properties(test_phys_lsm_noahmp PROPERTIES LABELS diff)

@@ -36,6 +36,7 @@ r1|configs/real_r1.ini|$R/run_R1_r8|-|
 t1|configs/real_t1.ini|$R/run_T1_r8|-|--set output.wrf_namelist=$R/run_T1_r8/namelist.input
 n1|configs/real_n1_steps.ini|$R/run_N1_r8/steps|-|
 n2|configs/real_n2_steps.ini|$R/run_N2_r8/steps|$R/rst_N2_r8|
+nmp1|configs/real_nmp1_r8.ini|$R/run_NMP1_r8/steps|$R/rst_NMP1_r8|
 "
 want=" $* "
 fail=0 n=0
