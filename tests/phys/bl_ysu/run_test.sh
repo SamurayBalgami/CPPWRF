@@ -26,8 +26,10 @@ FORT_OUT="${RUN_DIR}/ysu_output_fortran.bin"
 CPP_OUT="${RUN_DIR}/ysu_output_cpp.bin"
 
 echo "=== Running YSU PBL Differential Test (2500 cols x 50 levels) ==="
-python3 "${SCRIPT_DIR}/generate_inputs.py" --cols 2500 --nz 50 --dt 60.0 --out "${INPUT_BIN}"
-"${HEAVY}" "${FORT_BIN}" "${INPUT_BIN}" "${FORT_OUT}"
-"${HEAVY}" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
-python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --cols 2500 --nz 50 --tol 1e-12
+for topdown in 1 0; do  # ysu_topdown_pblmix (WRF default 1)
+  python3 "${SCRIPT_DIR}/generate_inputs.py" --cols 2500 --nz 50 --dt 60.0 --topdown ${topdown} --out "${INPUT_BIN}"
+  "${HEAVY}" "${FORT_BIN}" "${INPUT_BIN}" "${FORT_OUT}"
+  "${HEAVY}" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
+  python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --cols 2500 --nz 50 --tol 0
+done
 echo "=== YSU Differential Test PASSED ==="

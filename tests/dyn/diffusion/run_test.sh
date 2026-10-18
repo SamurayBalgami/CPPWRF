@@ -80,7 +80,7 @@ echo "======================================================================"
 echo "======================================================================"
 echo " 8. Comparing Fortran vs C++ CPU Outputs (Tolerance 1e-12)"
 echo "======================================================================"
-python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 1e-12
+python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0
 
 echo "======================================================================"
 echo " 9. Comparing Fortran vs C++ CUDA Outputs (Tolerance 1e-12)"

@@ -56,25 +56,25 @@
 
       IMPLICIT NONE
 
-      LOGICAL, PARAMETER, PRIVATE:: iiwarm = .false.
-      LOGICAL, PRIVATE:: is_aerosol_aware = .false.
-      LOGICAL, PARAMETER, PRIVATE:: dustyIce = .true.
-      LOGICAL, PARAMETER, PRIVATE:: homogIce = .true.
-      LOGICAL, PRIVATE:: is_hail_aware = .false.
+      LOGICAL, PARAMETER:: iiwarm = .false.
+      LOGICAL:: is_aerosol_aware = .false.
+      LOGICAL, PARAMETER:: dustyIce = .true.
+      LOGICAL, PARAMETER:: homogIce = .true.
+      LOGICAL:: is_hail_aware = .false.
 
-      INTEGER, PARAMETER, PRIVATE:: IFDRY = 0
-      REAL, PARAMETER, PRIVATE:: T_0 = 273.15
-      REAL, PARAMETER, PRIVATE:: PI = 3.1415926536
+      INTEGER, PARAMETER:: IFDRY = 0
+      REAL, PARAMETER:: T_0 = 273.15
+      REAL, PARAMETER:: PI = 3.1415926536
 
 !..Densities of rain, snow, graupel, and cloud ice.
-      REAL, PARAMETER, PRIVATE:: rho_w = 1000.0
-      REAL, PRIVATE:: rho_s = 100.0
-      REAL, PARAMETER, PRIVATE:: rho_i = 890.0
-      INTEGER, PARAMETER, PRIVATE:: NRHG = 9
-      INTEGER, PARAMETER, PRIVATE:: NRHG1 = 1
+      REAL, PARAMETER:: rho_w = 1000.0
+      REAL:: rho_s = 100.0
+      REAL, PARAMETER:: rho_i = 890.0
+      INTEGER, PARAMETER:: NRHG = 9
+      INTEGER, PARAMETER:: NRHG1 = 1
       INTEGER :: dimNRHG
 
-      REAL, DIMENSION(NRHG), PARAMETER, PRIVATE:: &
+      REAL, DIMENSION(NRHG), PARAMETER:: &
            rho_g = (/50., 100., 200., 300., 400., 500., 600., 700., 800./)
       INTEGER, PARAMETER :: idx_bg1 = 5 ! index for rhog when mp=8 or 28
 
@@ -85,147 +85,147 @@
 !.. scheme.  In 2-moment cloud water, Nt_c represents a maximum of
 !.. droplet concentration and nu_c is also variable depending on local
 !.. droplet number concentration.
-      REAL, PARAMETER, PRIVATE:: Nt_c = 100.E6
-      REAL, PARAMETER, PRIVATE:: Nt_c_max = 1999.E6
+      REAL, PARAMETER:: Nt_c = 100.E6
+      REAL, PARAMETER:: Nt_c_max = 1999.E6
 
 !..Declaration of constants for assumed CCN/IN aerosols when none in
 !.. the input data.  Look inside the init routine for modifications
 !.. due to surface land-sea points or vegetation characteristics.
-      REAL, PARAMETER, PRIVATE:: naIN0 = 1.5E6
-      REAL, PARAMETER, PRIVATE:: naIN1 = 0.5E6
-      REAL, PARAMETER, PRIVATE:: naCCN0 = 300.0E6
-      REAL, PARAMETER, PRIVATE:: naCCN1 = 50.0E6
-      REAL, PARAMETER, PRIVATE:: naBC0 = 150.0E6
-      REAL, PARAMETER, PRIVATE:: naBC1 = 25.0E6
+      REAL, PARAMETER:: naIN0 = 1.5E6
+      REAL, PARAMETER:: naIN1 = 0.5E6
+      REAL, PARAMETER:: naCCN0 = 300.0E6
+      REAL, PARAMETER:: naCCN1 = 50.0E6
+      REAL, PARAMETER:: naBC0 = 150.0E6
+      REAL, PARAMETER:: naBC1 = 25.0E6
 
 !..Generalized gamma distributions for rain, graupel and cloud ice.
 !.. N(D) = N_0 * D**mu * exp(-lamda*D);  mu=0 is exponential.
-      REAL, PARAMETER, PRIVATE:: mu_r = 0.0
-      REAL, PARAMETER, PRIVATE:: mu_g = 0.0
-      REAL, PARAMETER, PRIVATE:: mu_i = 0.0
-      REAL, PRIVATE:: mu_c
+      REAL, PARAMETER:: mu_r = 0.0
+      REAL, PARAMETER:: mu_g = 0.0
+      REAL, PARAMETER:: mu_i = 0.0
+      REAL:: mu_c
 
 !..Sum of two gamma distrib for snow (Field et al. 2005).
 !.. N(D) = M2**4/M3**3 * [Kap0*exp(-M2*Lam0*D/M3)
 !..    + Kap1*(M2/M3)**mu_s * D**mu_s * exp(-M2*Lam1*D/M3)]
 !.. M2 and M3 are the (bm_s)th and (bm_s+1)th moments respectively
 !.. calculated as function of ice water content and temperature.
-      REAL, PARAMETER, PRIVATE:: mu_s = 0.6357
-      REAL, PARAMETER, PRIVATE:: Kap0 = 490.6
-      REAL, PARAMETER, PRIVATE:: Kap1 = 17.46
-      REAL, PARAMETER, PRIVATE:: Lam0 = 20.78
-      REAL, PARAMETER, PRIVATE:: Lam1 = 3.29
+      REAL, PARAMETER:: mu_s = 0.6357
+      REAL, PARAMETER:: Kap0 = 490.6
+      REAL, PARAMETER:: Kap1 = 17.46
+      REAL, PARAMETER:: Lam0 = 20.78
+      REAL, PARAMETER:: Lam1 = 3.29
 
 !..Y-intercept parameter for graupel is not constant and depends on
 !.. mixing ratio.  Also, when mu_g is non-zero, these become equiv
 !.. y-intercept for an exponential distrib and proper values are
 !.. computed based on same mixing ratio and total number concentration.
-      REAL, PARAMETER, PRIVATE:: gonv_min = 1.E2
-      REAL, PARAMETER, PRIVATE:: gonv_max = 1.E6
+      REAL, PARAMETER:: gonv_min = 1.E2
+      REAL, PARAMETER:: gonv_max = 1.E6
 
 !..Mass power law relations:  mass = am*D**bm
 !.. Snow from Field et al. (2005), others assume spherical form.
-      REAL, PARAMETER, PRIVATE:: am_r = PI*rho_w/6.0
-      REAL, PARAMETER, PRIVATE:: bm_r = 3.0
-      REAL, PARAMETER, PRIVATE:: am_s = 0.069
-      REAL, PARAMETER, PRIVATE:: bm_s = 2.0
-      REAL, DIMENSION(NRHG), PARAMETER,PRIVATE:: am_g = (/              &
+      REAL, PARAMETER:: am_r = PI*rho_w/6.0
+      REAL, PARAMETER:: bm_r = 3.0
+      REAL, PARAMETER:: am_s = 0.069
+      REAL, PARAMETER:: bm_s = 2.0
+      REAL, DIMENSION(NRHG), PARAMETER:: am_g = (/              &
      &            PI*rho_g(1)/6.0, PI*rho_g(2)/6.0, PI*rho_g(3)/6.0,    &
      &            PI*rho_g(4)/6.0, PI*rho_g(5)/6.0, PI*rho_g(6)/6.0,    &
      &            PI*rho_g(7)/6.0, PI*rho_g(8)/6.0, PI*rho_g(9)/6.0 /)
-      REAL, PARAMETER, PRIVATE:: bm_g = 3.0
-      REAL, PARAMETER, PRIVATE:: am_i = PI*rho_i/6.0
-      REAL, PARAMETER, PRIVATE:: bm_i = 3.0
+      REAL, PARAMETER:: bm_g = 3.0
+      REAL, PARAMETER:: am_i = PI*rho_i/6.0
+      REAL, PARAMETER:: bm_i = 3.0
 
 !..Fallspeed power laws relations:  v = (av*D**bv)*exp(-fv*D)
 !.. Rain from Ferrier (1994), ice, snow, and graupel from
 !.. Thompson et al (2008). Coefficient fv is zero for graupel/ice.
-      REAL, PARAMETER, PRIVATE:: av_r = 4854.0
-      REAL, PARAMETER, PRIVATE:: bv_r = 1.0
-      REAL, PARAMETER, PRIVATE:: fv_r = 195.0
-      REAL, PARAMETER, PRIVATE:: av_s = 40.0
-      REAL, PARAMETER, PRIVATE:: bv_s = 0.55
-      REAL, PARAMETER, PRIVATE:: fv_s = 100.0
-      REAL, PARAMETER, PRIVATE:: av_g_old = 442.0
-      REAL, PARAMETER, PRIVATE:: bv_g_old = 0.89
-      REAL, DIMENSION(NRHG), PRIVATE:: & ! Computed from A. Heymsfield: Best - Reynolds relation
+      REAL, PARAMETER:: av_r = 4854.0
+      REAL, PARAMETER:: bv_r = 1.0
+      REAL, PARAMETER:: fv_r = 195.0
+      REAL, PARAMETER:: av_s = 40.0
+      REAL, PARAMETER:: bv_s = 0.55
+      REAL, PARAMETER:: fv_s = 100.0
+      REAL, PARAMETER:: av_g_old = 442.0
+      REAL, PARAMETER:: bv_g_old = 0.89
+      REAL, DIMENSION(NRHG):: & ! Computed from A. Heymsfield: Best - Reynolds relation
      &    av_g = (/ 45.9173813, 67.0867386, 98.0158463, 122.353378,     &
      &              143.204224, 161.794724, 178.762115, 194.488785,     &
      &              209.225876/)
-      REAL, DIMENSION(NRHG), PRIVATE:: & ! Computed from A. Heymsfield: Best - Reynolds relation
+      REAL, DIMENSION(NRHG):: & ! Computed from A. Heymsfield: Best - Reynolds relation
      &    bv_g = (/0.640961647, 0.640961647, 0.640961647, 0.640961647,  &
      &             0.640961647, 0.640961647, 0.640961647, 0.640961647,  &
      &             0.640961647/)
-      REAL, PARAMETER, PRIVATE:: a_coeff = 0.47244157
-      REAL, PARAMETER, PRIVATE:: b_coeff = 0.54698726
-      REAL, PARAMETER, PRIVATE:: av_i = 1493.9
-      REAL, PARAMETER, PRIVATE:: bv_i = 1.0
-      REAL, PARAMETER, PRIVATE:: av_c = 0.316946E8
-      REAL, PARAMETER, PRIVATE:: bv_c = 2.0
+      REAL, PARAMETER:: a_coeff = 0.47244157
+      REAL, PARAMETER:: b_coeff = 0.54698726
+      REAL, PARAMETER:: av_i = 1493.9
+      REAL, PARAMETER:: bv_i = 1.0
+      REAL, PARAMETER:: av_c = 0.316946E8
+      REAL, PARAMETER:: bv_c = 2.0
 
 !..Capacitance of sphere and plates/aggregates: D**3, D**2
-      REAL, PARAMETER, PRIVATE:: C_cube = 0.5
-      REAL, PARAMETER, PRIVATE:: C_sqrd = 0.15
+      REAL, PARAMETER:: C_cube = 0.5
+      REAL, PARAMETER:: C_sqrd = 0.15
 
 !..Collection efficiencies.  Rain/snow/graupel collection of cloud
 !.. droplets use variables (Ef_rw, Ef_sw, Ef_gw respectively) and
 !.. get computed elsewhere because they are dependent on stokes
 !.. number.
-      REAL, PARAMETER, PRIVATE:: Ef_si = 0.05
-      REAL, PARAMETER, PRIVATE:: Ef_rs = 0.95
-      REAL, PARAMETER, PRIVATE:: Ef_rg = 0.75
-      REAL, PARAMETER, PRIVATE:: Ef_ri = 0.95
+      REAL, PARAMETER:: Ef_si = 0.05
+      REAL, PARAMETER:: Ef_rs = 0.95
+      REAL, PARAMETER:: Ef_rg = 0.75
+      REAL, PARAMETER:: Ef_ri = 0.95
 
 !..Minimum microphys values
 !.. R1 value, 1.E-12, cannot be set lower because of numerical
 !.. problems with Paul Field's moments and should not be set larger
 !.. because of truncation problems in snow/ice growth.
-      REAL, PARAMETER, PRIVATE:: R1 = 1.E-12
-      REAL, PARAMETER, PRIVATE:: R2 = 1.E-6
-      REAL, PARAMETER, PRIVATE:: eps = 1.E-15
+      REAL, PARAMETER:: R1 = 1.E-12
+      REAL, PARAMETER:: R2 = 1.E-6
+      REAL, PARAMETER:: eps = 1.E-15
 
 !..Constants in Cooper curve relation for cloud ice number.
-      REAL, PARAMETER, PRIVATE:: TNO = 5.0
-      REAL, PARAMETER, PRIVATE:: ATO = 0.304
+      REAL, PARAMETER:: TNO = 5.0
+      REAL, PARAMETER:: ATO = 0.304
 
 !..Rho_not used in fallspeed relations (rho_not/rho)**.5 adjustment.
-      REAL, PARAMETER, PRIVATE:: rho_not = 101325.0/(287.05*298.0)
+      REAL, PARAMETER:: rho_not = 101325.0/(287.05*298.0)
 
 !..Schmidt number
-      REAL, PARAMETER, PRIVATE:: Sc = 0.632
-      REAL, PRIVATE:: Sc3
+      REAL, PARAMETER:: Sc = 0.632
+      REAL:: Sc3
 
 !..Homogeneous freezing temperature
-      REAL, PARAMETER, PRIVATE:: HGFR = 235.16
+      REAL, PARAMETER:: HGFR = 235.16
 
 !..Water vapor and air gas constants at constant pressure
-      REAL, PARAMETER, PRIVATE:: Rv = 461.5
-      REAL, PARAMETER, PRIVATE:: oRv = 1./Rv
-      REAL, PARAMETER, PRIVATE:: R = 287.04
-      REAL, PARAMETER, PRIVATE:: Cp = 1004.0
-      REAL, PARAMETER, PRIVATE:: R_uni = 8.314                           ! J (mol K)-1
+      REAL, PARAMETER:: Rv = 461.5
+      REAL, PARAMETER:: oRv = 1./Rv
+      REAL, PARAMETER:: R = 287.04
+      REAL, PARAMETER:: Cp = 1004.0
+      REAL, PARAMETER:: R_uni = 8.314                           ! J (mol K)-1
 
-      DOUBLE PRECISION, PARAMETER, PRIVATE:: k_b = 1.38065E-23           ! Boltzmann constant [J/K]
-      DOUBLE PRECISION, PARAMETER, PRIVATE:: M_w = 18.01528E-3           ! molecular mass of water [kg/mol]
-      DOUBLE PRECISION, PARAMETER, PRIVATE:: M_a = 28.96E-3              ! molecular mass of air [kg/mol]
-      DOUBLE PRECISION, PARAMETER, PRIVATE:: N_avo = 6.022E23            ! Avogadro number [1/mol]
-      DOUBLE PRECISION, PARAMETER, PRIVATE:: ma_w = M_w / N_avo          ! mass of water molecule [kg]
-      REAL, PARAMETER, PRIVATE:: ar_volume = 4./3.*PI*(2.5e-6)**3        ! assume radius of 0.025 micrometer, 2.5e-6 cm
+      DOUBLE PRECISION, PARAMETER:: k_b = 1.38065E-23           ! Boltzmann constant [J/K]
+      DOUBLE PRECISION, PARAMETER:: M_w = 18.01528E-3           ! molecular mass of water [kg/mol]
+      DOUBLE PRECISION, PARAMETER:: M_a = 28.96E-3              ! molecular mass of air [kg/mol]
+      DOUBLE PRECISION, PARAMETER:: N_avo = 6.022E23            ! Avogadro number [1/mol]
+      DOUBLE PRECISION, PARAMETER:: ma_w = M_w / N_avo          ! mass of water molecule [kg]
+      REAL, PARAMETER:: ar_volume = 4./3.*PI*(2.5e-6)**3        ! assume radius of 0.025 micrometer, 2.5e-6 cm
 
 !..Enthalpy of sublimation, vaporization, and fusion at 0C.
-      REAL, PARAMETER, PRIVATE:: lsub = 2.834E6
-      REAL, PARAMETER, PRIVATE:: lvap0 = 2.5E6
-      REAL, PARAMETER, PRIVATE:: lfus = lsub - lvap0
-      REAL, PARAMETER, PRIVATE:: olfus = 1./lfus
+      REAL, PARAMETER:: lsub = 2.834E6
+      REAL, PARAMETER:: lvap0 = 2.5E6
+      REAL, PARAMETER:: lfus = lsub - lvap0
+      REAL, PARAMETER:: olfus = 1./lfus
 
 !..Ice initiates with this mass (kg), corresponding diameter calc.
 !..Min diameters and mass of cloud, rain, snow, and graupel (m, kg).
-      REAL, PARAMETER, PRIVATE:: xm0i = 1.E-12
-      REAL, PARAMETER, PRIVATE:: D0c = 1.E-6
-      REAL, PARAMETER, PRIVATE:: D0r = 50.E-6
-      REAL, PARAMETER, PRIVATE:: D0s = 300.E-6
-      REAL, PARAMETER, PRIVATE:: D0g = 350.E-6
-      REAL, PRIVATE:: D0i, xm0s, xm0g
+      REAL, PARAMETER:: xm0i = 1.E-12
+      REAL, PARAMETER:: D0c = 1.E-6
+      REAL, PARAMETER:: D0r = 50.E-6
+      REAL, PARAMETER:: D0s = 300.E-6
+      REAL, PARAMETER:: D0g = 350.E-6
+      REAL:: D0i, xm0s, xm0g
 
 !..Lookup table dimensions
       INTEGER, PARAMETER:: nbins = 100
@@ -370,8 +370,8 @@
 !.. and temperature array indices.  Variables beginning with t-p/c/m/n
 !.. represent lookup tables.  Save compile-time memory by making
 !.. allocatable (2009Jun12, J. Michalakes).
-      INTEGER, PARAMETER, PRIVATE:: R8SIZE = 8
-      INTEGER, PARAMETER, PRIVATE:: R4SIZE = 4
+      INTEGER, PARAMETER:: R8SIZE = 8
+      INTEGER, PARAMETER:: R4SIZE = 4
       REAL (KIND=R8SIZE), ALLOCATABLE, DIMENSION(:,:,:,:,:)::           &
                 tcg_racg, tmr_racg, tcr_gacr,                           & ! tmg_gacr
                 tnr_racg, tnr_gacr
@@ -394,17 +394,17 @@
 
 !..Variables holding a bunch of exponents and gamma values (cloud water,
 !.. cloud ice, rain, snow, then graupel).
-      REAL, DIMENSION(5,15), PRIVATE:: cce, ccg
-      REAL, DIMENSION(15), PRIVATE::  ocg1, ocg2
-      REAL, DIMENSION(7), PRIVATE:: cie, cig
-      REAL, PRIVATE:: oig1, oig2, obmi
-      REAL, DIMENSION(13), PRIVATE:: cre, crg
-      REAL, PRIVATE:: ore1, org1, org2, org3, obmr
-      REAL, DIMENSION(17), PRIVATE:: cse, csg
-      REAL, PRIVATE:: oams, obms, ocms
-      REAL, DIMENSION(12,NRHG), PRIVATE:: cge, cgg
-      REAL, PRIVATE:: oge1, ogg1, ogg2, ogg3, obmg
-      REAL, DIMENSION(NRHG), PRIVATE:: oamg, ocmg
+      REAL, DIMENSION(5,15):: cce, ccg
+      REAL, DIMENSION(15)::  ocg1, ocg2
+      REAL, DIMENSION(7):: cie, cig
+      REAL:: oig1, oig2, obmi
+      REAL, DIMENSION(13):: cre, crg
+      REAL:: ore1, org1, org2, org3, obmr
+      REAL, DIMENSION(17):: cse, csg
+      REAL:: oams, obms, ocms
+      REAL, DIMENSION(12,NRHG):: cge, cgg
+      REAL:: oge1, ogg1, ogg2, ogg3, obmg
+      REAL, DIMENSION(NRHG):: oamg, ocmg
 
 !..Declaration of precomputed constants in various rate eqns.
       REAL:: t1_qr_qc, t1_qr_qi, t2_qr_qi, t1_qg_qc, t1_qs_qc, t1_qs_qi
@@ -1627,7 +1627,6 @@
       INTEGER:: idx_tc, idx_t, idx_s, idx_g1, idx_g, idx_r1, idx_r,     &
                 idx_i1, idx_i, idx_c, idx, idx_d, idx_n, idx_in
       INTEGER, DIMENSION(kts:kte):: idx_bg
-      INTEGER:: idx_bg_tbl
 
       LOGICAL:: melti, no_micro
       LOGICAL, DIMENSION(kts:kte):: L_qc, L_qi, L_qr, L_qs, L_qg
@@ -2524,28 +2523,26 @@
 !.. or Mizuno (1990) approach so we solve the CE explicitly and store
 !.. results in lookup table.
           if (rg(k).ge. r_g(1)) then
-           idx_bg_tbl = 1
-           if (is_hail_aware) idx_bg_tbl = idx_bg(k)
            if (twet(k).lt.T_0) then
-            prg_rcg(k) = tmr_racg(idx_g1,idx_g,idx_bg_tbl,idx_r1,idx_r)  &
-                         + tcr_gacr(idx_g1,idx_g,idx_bg_tbl,idx_r1,idx_r)
+            prg_rcg(k) = tmr_racg(idx_g1,idx_g,idx_bg(k),idx_r1,idx_r)  &
+                         + tcr_gacr(idx_g1,idx_g,idx_bg(k),idx_r1,idx_r)
             prg_rcg(k) = MIN(DBLE(rr(k)*odts), prg_rcg(k))
             prr_rcg(k) = -prg_rcg(k)
-            pnr_rcg(k) = tnr_racg(idx_g1,idx_g,idx_bg_tbl,idx_r1,idx_r)  &   ! RAIN2M
-                         + tnr_gacr(idx_g1,idx_g,idx_bg_tbl,idx_r1,idx_r)
+            pnr_rcg(k) = tnr_racg(idx_g1,idx_g,idx_bg(k),idx_r1,idx_r)  &   ! RAIN2M
+                         + tnr_gacr(idx_g1,idx_g,idx_bg(k),idx_r1,idx_r)
             pnr_rcg(k) = MIN(DBLE(nr(k)*odts), pnr_rcg(k))
 !-GT        pbg_rcg(k) = prg_rcg(k)/(0.5*(rho_i+rho_g(idx_bg(k))))
             pbg_rcg(k) = prg_rcg(k)/rho_i
            else
-            prr_rcg(k) = tcg_racg(idx_g1,idx_g,idx_bg_tbl,idx_r1,idx_r)
+            prr_rcg(k) = tcg_racg(idx_g1,idx_g,idx_bg(k),idx_r1,idx_r)
             prr_rcg(k) = MIN(DBLE(rg(k)*odts), prr_rcg(k))
             prg_rcg(k) = -prr_rcg(k)
-            png_rcg(k) = tnr_racg(idx_g1,idx_g,idx_bg_tbl,idx_r1,idx_r)
-!!!                    + tnr_gacr(idx_g1,idx_g,idx_bg_tbl,idx_r1,idx_r)
+            png_rcg(k) = tnr_racg(idx_g1,idx_g,idx_bg(k),idx_r1,idx_r)
+!!!                    + tnr_gacr(idx_g1,idx_g,idx_bg(k),idx_r1,idx_r)
             png_rcg(k) = MIN(DBLE(ng(k)*odts), png_rcg(k))
             pbg_rcg(k) = prg_rcg(k)/rho_g(idx_bg(k))
 !..Put in explicit drop break-up due to collisions.
-            pnr_rcg(k) = -1.5*tnr_gacr(idx_g1,idx_g,idx_bg_tbl,idx_r1,idx_r)  ! RAIN2M
+            pnr_rcg(k) = -1.5*tnr_gacr(idx_g1,idx_g,idx_bg(k),idx_r1,idx_r)  ! RAIN2M
            endif
           endif
          endif
@@ -4211,10 +4208,6 @@
         km_e = ntb_r*ntb_r1 - 1
 #endif
 
-#ifdef THOMPSON_OMP
-!$OMP PARALLEL DO SCHEDULE(dynamic) &
-!$OMP PRIVATE(km,m,k,lam_exp,lamr,N0_r,N_r,n3,idx_bg,j,i,lamg,N0_g,N_g,n,t1,t2,z1,z2,y1,y2,n2,massr,massg,dvg,dvr)
-#endif
         do km = km_s, km_e
          m = km / ntb_r1 + 1
          k = mod( km , ntb_r1 ) + 1
@@ -4279,9 +4272,6 @@
          enddo
          enddo
         enddo
-#ifdef THOMPSON_OMP
-!$OMP END PARALLEL DO
-#endif
 
 !..Note wrf_dm_gatherv expects zero-based km_s, km_e (J. Michalakes, 2009Oct30).
 
@@ -4430,10 +4420,6 @@
         km_e = ntb_r*ntb_r1 - 1
 #endif
 
-#ifdef THOMPSON_OMP
-!$OMP PARALLEL DO SCHEDULE(dynamic) &
-!$OMP PRIVATE(km,m,k,lam_exp,lamr,N0_r,N_r,n2,j,i,M2,loga_,a_,b_,second,M3,oM3,Mrat,M0,slam1,slam2,N_s,n,t1,t2,t3,t4,z1,z2,z3,z4,y1,y2,y3,y4,massr,masss,dvs,dvr)
-#endif
         do km = km_s, km_e
          m = km / ntb_r1 + 1
          k = mod( km , ntb_r1 ) + 1
@@ -4562,9 +4548,6 @@
             enddo
          enddo
         enddo
-#ifdef THOMPSON_OMP
-!$OMP END PARALLEL DO
-#endif
 
 !..Note wrf_dm_gatherv expects zero-based km_s, km_e (J. Michalakes, 2009Oct30).
 

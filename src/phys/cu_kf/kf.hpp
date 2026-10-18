@@ -1458,10 +1458,11 @@ struct KFKernel {
         // Cloud fractions
         int k_start = (klcl - 1 < 0) ? 0 : (klcl - 1);
         int k_end = (ltop1 >= kl) ? (kl - 1) : ltop1;
+        const int n_lanes = ltop1 - k_start + 1;  // WRF's trip count NK = KLCL-1..LTOP1 (libmvec pairs)
         if (ishall == 1) {
             for (int nk = k_start; nk <= k_end; ++nk) {
                 T umf_new = umf[nk] / dxsq;
-                T xcldfra = static_cast<T>(0.07) * vm::log(static_cast<T>(1.0) + (static_cast<T>(500.0) * umf_new), nk - k_start, k_end - k_start + 1);
+                T xcldfra = static_cast<T>(0.07) * vm::log(static_cast<T>(1.0) + (static_cast<T>(500.0) * umf_new), nk - k_start, n_lanes);
                 if (xcldfra < static_cast<T>(0.01)) xcldfra = static_cast<T>(0.01);
                 if (xcldfra > static_cast<T>(0.2)) xcldfra = static_cast<T>(0.2);
                 cldfra_sh_kf(i, j, nk) = xcldfra;
@@ -1469,7 +1470,7 @@ struct KFKernel {
         } else {
             for (int nk = k_start; nk <= k_end; ++nk) {
                 T umf_new = umf[nk] / dxsq;
-                T xcldfra = static_cast<T>(0.14) * vm::log(static_cast<T>(1.0) + (static_cast<T>(500.0) * umf_new), nk - k_start, k_end - k_start + 1);
+                T xcldfra = static_cast<T>(0.14) * vm::log(static_cast<T>(1.0) + (static_cast<T>(500.0) * umf_new), nk - k_start, n_lanes);
                 if (xcldfra < static_cast<T>(0.01)) xcldfra = static_cast<T>(0.01);
                 if (xcldfra > static_cast<T>(0.6)) xcldfra = static_cast<T>(0.6);
                 cldfra_dp_kf(i, j, nk) = xcldfra;

@@ -9,7 +9,10 @@ import numpy as np
 import netCDF4 as nc
 
 def main():
-    wrfout_path = os.path.expanduser("~/wrf_real/") + "run_R0_r8/wrfout_d01_2026-10-12_00:00:00"
+    runs = os.environ.get("CPPWRF_WRF_RUNS")
+    if not runs:
+        sys.exit("set CPPWRF_WRF_RUNS to the WRF reference runs")
+    wrfout_path = os.path.join(runs, "run_R0_r8/wrfout_d01_2026-10-12_00:00:00")
     out_bin_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.environ.get("CPPWRF_SCRATCH", os.path.expanduser("~/cppwrf_scratch")), "nest_test/coarse_fields.bin")
 
     print(f"Reading {wrfout_path}...")

@@ -34,7 +34,7 @@ target_link_libraries(driver_noah_cpu PRIVATE
 )
 
 # 3. CUDA Drivers (if CUDA enabled)
-if(CMAKE_CUDA_COMPILER)
+if(CMAKE_CUDA_COMPILER AND (NOT DEFINED CPPWRF_ENABLE_CUDA OR CPPWRF_ENABLE_CUDA))
   add_executable(driver_noah_cuda_dp
     driver_noah.cpp
     ${CPPWRF_ROOT}/src/phys/lsm_noah/noah.cpp

@@ -3,7 +3,8 @@ cmake_minimum_required(VERSION 3.24)
 set(CPPWRF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 
 # Fortran flags for bit-for-bit WRF verification
-set(PHYS_FORTRAN_FLAGS "-cpp -ffree-form -fdefault-real-8 -fdefault-double-8 -O3 -march=native -ffp-contract=off -fno-tree-vectorize")
+# WRF's own r8d8 configure flags (FCOPTIM): gfortran vectorises through libmvec as in wrf.exe
+set(PHYS_FORTRAN_FLAGS "-cpp -ffree-form -fdefault-real-8 -fdefault-double-8 -O2 -ftree-vectorize -funroll-loops")
 
 # 1. Fortran Driver
 add_executable(fortran_driver_kf
@@ -34,7 +35,7 @@ target_link_libraries(driver_kf_cpu PRIVATE
 )
 
 # 3. CUDA Drivers (if CUDA enabled)
-if(CMAKE_CUDA_COMPILER)
+if(CMAKE_CUDA_COMPILER AND (NOT DEFINED CPPWRF_ENABLE_CUDA OR CPPWRF_ENABLE_CUDA))
   add_executable(driver_kf_cuda_dp
     driver_kf.cpp
     ${CPPWRF_ROOT}/src/phys/cu_kf/kf.cpp

@@ -14,6 +14,8 @@ endif()
 
 # Fortran flags for bit-for-bit WRF verification
 set(PHYS_FORTRAN_FLAGS "-ffree-form -fdefault-real-8 -DDOUBLE_PRECISION -O3 -march=native -ffp-contract=off -fno-tree-vectorize")
+# WRF's own -r8 configure flags (FCOPTIM): gfortran vectorises through libmvec as wrf.exe does
+set(WRF_FORTRAN_FLAGS "-ffree-form -fdefault-real-8 -DDOUBLE_PRECISION -O2 -ftree-vectorize -funroll-loops")
 
 set(FORTRAN_KESSLER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/fortran/module_mp_kessler.F")
 
@@ -147,7 +149,7 @@ add_executable(driver_ysu_fortran
 )
 set_target_properties(driver_ysu_fortran PROPERTIES
   Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fortran_modules_ysu"
-  COMPILE_FLAGS "${PHYS_FORTRAN_FLAGS} -ffree-line-length-none"
+  COMPILE_FLAGS "${WRF_FORTRAN_FLAGS} -ffree-line-length-none"
 )
 
 add_executable(driver_ysu_cpu
@@ -182,3 +184,10 @@ add_test(
 set_tests_properties(test_phys_bl_myj PROPERTIES LABELS diff)
 
 
+
+# ==============================================================================
+# Kain-Fritsch, Noah LSM, Thompson (own CMake projects: tables and column drivers)
+# ==============================================================================
+foreach(scheme cu_kf lsm_noah mp_thompson)
+  add_subdirectory(${scheme})
+endforeach()

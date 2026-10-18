@@ -288,7 +288,7 @@ struct KVertDiffU1 {
     real vflux[128];
     for (int k = 0; k < nz - 1; ++k) {
       real a = real(0.25) * (alt(i, j, k) + alt(i - 1, j, k) + alt(i, j, k + 1) + alt(i - 1, j, k + 1));
-      real dpert = (field(i, j, k + 1) - field(i, j, k)) - (u_base(k + 1) - u_base(k));
+      real dpert = field(i, j, k + 1) - field(i, j, k) - u_base(k + 1) + u_base(k);  // WRF's order
       vflux[k] = kvdif * rdn(k + 1) / a * dpert;
     }
     real vf0 = vflux[0];
@@ -318,7 +318,7 @@ struct KVertDiffV1 {
     real vflux[128];
     for (int k = 0; k < nz - 1; ++k) {
       real a = real(0.25) * (alt(i, j, k) + alt(i, j - 1, k) + alt(i, j, k + 1) + alt(i, j - 1, k + 1));
-      real dpert = (field(i, j, k + 1) - field(i, j, k)) - (v_base(k + 1) - v_base(k));
+      real dpert = field(i, j, k + 1) - field(i, j, k) - v_base(k + 1) + v_base(k);  // WRF's order
       vflux[k] = kvdif * rdn(k + 1) / a * dpert;
     }
     real vf0 = vflux[0];

@@ -57,7 +57,7 @@ SUBROUTINE nl_get_write_thompson_tables(id, flag)
   IMPLICIT NONE
   INTEGER, INTENT(IN) :: id
   LOGICAL, INTENT(OUT) :: flag
-  flag = .FALSE.
+  flag = .TRUE.  ! WRF's default: the .dat tables the C++ driver reads
 END SUBROUTINE nl_get_write_thompson_tables
 
 SUBROUTINE nl_get_write_thompson_mp38table(id, flag)

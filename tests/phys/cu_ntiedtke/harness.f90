@@ -32,7 +32,7 @@ program harn
     rel = max(rel, maxval(abs(t(1,:) - outc(:,3))) / max(1d-30, maxval(abs(t(1,:)))))
     rel = max(rel, maxval(abs(qv(1,:) - outc(:,4))) / max(1d-30, maxval(abs(qv(1,:)))))
     rel = max(rel, abs(rn(1) - rnc) / max(1d-30, abs(rn(1))))
-    if (rel > 1d-12) then
+    if (rel > 0d0) then
       nbad = nbad + 1
       if (nbad <= 10) write(*,'(a,i6,a,es10.3,a,2es14.6,a,2es14.6)') 'col', col, ' rel', rel, ' rn f/c', rn(1), rnc, &
         ' tbot f/c', t(1,km), outc(km,3)

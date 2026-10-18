@@ -16,5 +16,5 @@ echo "=== Running Noah LSM Differential Test ==="
 python3 "${SCRIPT_DIR}/generate_inputs.py" "${INPUT_BIN}"
 "${FORT_BIN}" "${INPUT_BIN}" "${FORT_OUT}" "${SCRIPT_DIR}"
 "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}" "${SCRIPT_DIR}"
-python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 1e-12
+python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0
 echo "=== Noah LSM Differential Test PASSED ==="

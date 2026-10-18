@@ -3,7 +3,7 @@ import argparse
 import struct
 import numpy as np
 
-def generate_ysu_inputs(num_cols=2500, nz=50, dt=60.0, out_path="ysu_input.bin", seed=42):
+def generate_ysu_inputs(num_cols=2500, nz=50, dt=60.0, out_path="ysu_input.bin", seed=42, topdown=1):
     np.random.seed(seed)
 
     # Physical constants (WRF share/module_model_constants.F)
@@ -23,7 +23,7 @@ def generate_ysu_inputs(num_cols=2500, nz=50, dt=60.0, out_path="ysu_input.bin",
     svp3 = 29.65
     svpt0 = 273.15
 
-    ysu_topdown_pblmix = 0
+    ysu_topdown_pblmix = topdown  # WRF default 1
     flag_qc = 1
     flag_qi = 1
 
@@ -245,5 +245,6 @@ if __name__ == "__main__":
     parser.add_argument("--dt", type=float, default=60.0)
     parser.add_argument("--out", type=str, default="ysu_input.bin")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--topdown", type=int, default=1, help="ysu_topdown_pblmix")
     args = parser.parse_args()
-    generate_ysu_inputs(args.cols, args.nz, args.dt, args.out, args.seed)
+    generate_ysu_inputs(args.cols, args.nz, args.dt, args.out, args.seed, args.topdown)

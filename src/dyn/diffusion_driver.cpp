@@ -92,7 +92,7 @@ void DiffusionDriver::prepare(const State& s, const BaseState& b) {
     phys::driver::run_phy_prep(s, b, *prep_, phys::driver::PhyPrepParams{s.P_QV >= 0 ? c_.use_theta_m : 0});
   }
   dif::compute_diff_metrics(p_, s.ph_2.cview(), b.phb.view(), z_.view(), rdz_.view(), rdzw_.view(), zx_.view(),
-                            zy_.view(), rdx, rdy, g.nx, g.ny, g.nz);
+                            zy_.view(), rdx, rdy, g.nx, g.ny, g.nz, true);
   fill_halos({&z_, &rdz_, &rdzw_}, g);
   fill_halo(zx_, gp_, Parity::Even, Parity::Even);
   fill_halo(zy_, gp_, Parity::Even, Parity::Even);

@@ -105,15 +105,18 @@ inline void compute_diff_metrics(const DiffusionParams& p,
                                  View3<real> zx,
                                  View3<real> zy,
                                  real rdx, real rdy,
-                                 int nx, int ny, int nz) {
+                                 int nx, int ny, int nz,
+                                 bool physical_bc = false) {
+  // physical_bc: also set_physical_bc3d(zx, 'e') / (zy, 'f'), which first_rk_step_part2 calls after
+  // compute_diff_metrics (specified / open boundaries copy the last column / row)
   // Column-wise vertical metrics
   column_for(Range2D{0, nx, 0, ny}, KDiffMetricsZ{ph, phb, z, rdz, rdzw, nz});
   // zx at U points: i = 0..nx, j = 0..ny-1, k = 0..nz
   parallel_for(Range3D{0, nx + 1, 0, ny, 0, nz + 1},
-               KDiffMetricsZX{ph, phb, zx, rdx, nx, p.periodic_x, p.specified || p.open_xe});
+               KDiffMetricsZX{ph, phb, zx, rdx, nx, p.periodic_x, physical_bc && (p.specified || p.open_xe)});
   // zy at V points: i = 0..nx-1, j = 0..ny, k = 0..nz
   parallel_for(Range3D{0, nx, 0, ny + 1, 0, nz + 1},
-               KDiffMetricsZY{ph, phb, zy, rdy, ny, p.periodic_y, p.specified || p.open_ye});
+               KDiffMetricsZY{ph, phb, zy, rdy, ny, p.periodic_y, physical_bc && (p.specified || p.open_ye)});
 }
 
 }  // namespace cppwrf::dyn::diffusion

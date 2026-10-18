@@ -17,5 +17,5 @@ echo "=== Running Kain-Fritsch Cumulus Differential Test ==="
 python3 "${SCRIPT_DIR}/generate_inputs.py"
 "${REPO_ROOT}/tools/heavy.sh" "${FORT_BIN}"
 "${REPO_ROOT}/tools/heavy.sh" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
-python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 1e-12
+python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0
 echo "=== Kain-Fritsch Cumulus Differential Test PASSED ==="

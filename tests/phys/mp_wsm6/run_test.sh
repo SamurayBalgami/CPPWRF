@@ -29,7 +29,7 @@ echo "=== Running WSM6 Microphysics Differential Test (Multi-loop dt=240s) ==="
 python3 "${SCRIPT_DIR}/generate_inputs.py" --cols 2500 --nz 50 --dt 240.0 --out "${INPUT_BIN}"
 "${HEAVY}" "${FORT_BIN}" "${INPUT_BIN}" "${FORT_OUT}"
 "${HEAVY}" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
-python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 1e-12
+python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0
 echo "=== WSM6 Multi-Loop Differential Test PASSED ==="
 
 echo "=== Running WSM6 Microphysics Differential Test (Single-loop dt=120s) ==="
@@ -39,5 +39,5 @@ CPP_OUT_120="${RUN_DIR}/wsm6_output_cpp_120.bin"
 python3 "${SCRIPT_DIR}/generate_inputs.py" --cols 2500 --nz 50 --dt 120.0 --out "${INPUT_BIN_120}"
 "${HEAVY}" "${FORT_BIN}" "${INPUT_BIN_120}" "${FORT_OUT_120}"
 "${HEAVY}" "${CPP_BIN}" "${INPUT_BIN_120}" "${CPP_OUT_120}"
-python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT_120}" "${CPP_OUT_120}" --tol 1e-12
+python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT_120}" "${CPP_OUT_120}" --tol 0
 echo "=== WSM6 Single-Loop Differential Test PASSED ==="

@@ -193,8 +193,12 @@ int main(int argc, char** argv) {
   View2<const real> v_uoce{d_uoce.get(), n_cols};
   View2<const real> v_voce{d_voce.get(), n_cols};
 
-  View2<const real> v_ctopo{nullptr, 0};
-  View2<const real> v_ctopo2{nullptr, 0};
+  // ctopo = ctopo2 = 1 as in the Fortran driver (WRF passes them; phy_init sets CTOPO = 1)
+  std::vector<real> ones(n2d, real(1.0));
+  Buffer d_ctopo(n2d), d_ctopo2(n2d);
+  copy_up(d_ctopo, ones, n2d); copy_up(d_ctopo2, ones, n2d);
+  View2<const real> v_ctopo{d_ctopo.get(), n_cols};
+  View2<const real> v_ctopo2{d_ctopo2.get(), n_cols};
 
   View3<real> v_utnp{d_utnp.get(), sj, sk};
   View3<real> v_vtnp{d_vtnp.get(), sj, sk};
@@ -229,7 +233,7 @@ int main(int argc, char** argv) {
       v_utnp, v_vtnp, v_ttnp, v_qvtnp, v_qctnp, v_qitnp, v_exch_hx, v_exch_mx,
       v_hpbl, v_kpbl1d, v_wstar, v_delta, v_dusfc, v_dvsfc, v_dtsfc, v_dqsfc,
       real(dt_in), range, nz,
-      f_qc, f_qi, ysu_topdown_pblmix, false, true,
+      f_qc, f_qi, ysu_topdown_pblmix, /*have_ctopo=*/true, true,
       real(cp), real(g), real(rovcp), real(rd), real(rovg),
       real(ep1), real(ep2), real(karman), real(xlv), real(rv));
   dev_sync();
@@ -244,7 +248,7 @@ int main(int argc, char** argv) {
           v_utnp, v_vtnp, v_ttnp, v_qvtnp, v_qctnp, v_qitnp, v_exch_hx, v_exch_mx,
           v_hpbl, v_kpbl1d, v_wstar, v_delta, v_dusfc, v_dvsfc, v_dtsfc, v_dqsfc,
           real(dt_in), range, nz,
-          f_qc, f_qi, ysu_topdown_pblmix, false, true,
+          f_qc, f_qi, ysu_topdown_pblmix, /*have_ctopo=*/true, true,
           real(cp), real(g), real(rovcp), real(rd), real(rovg),
           real(ep1), real(ep2), real(karman), real(xlv), real(rv));
     }

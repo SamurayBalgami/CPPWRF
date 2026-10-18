@@ -185,10 +185,11 @@ int main(int argc, char** argv) {
     }
 
     // Initialize/load tables
+    // As the model: WRF's table files (qr_acr_qg_V4.dat, qr_acr_qsV2.dat, freezeH2O.dat, written by the
+    // Fortran driver in the working directory), the remaining tables computed as thompson_init does
     phys::mp_thompson::ThompsonHostTables<real> h_tables;
-    if (!phys::mp_thompson::load_thompson_tables(h_tables, "tables_fortran.bin")) {
-        std::cout << "Generating Thompson tables in C++...\n";
-        phys::mp_thompson::init_thompson_tables(h_tables);
+    {
+        phys::mp_thompson::init_thompson_tables(h_tables, ".");
     }
 
     phys::mp_thompson::ThompsonDeviceTables<real> dev_tables;

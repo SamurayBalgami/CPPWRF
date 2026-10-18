@@ -29,5 +29,5 @@ echo "=== Running Kessler Microphysics Differential Test ==="
 python3 "${SCRIPT_DIR}/generate_inputs.py" --ncols 2500 --nz 50 --dt 12.0 -o "${INPUT_BIN}"
 "${HEAVY}" "${FORT_BIN}" "${INPUT_BIN}" "${FORT_OUT}"
 "${HEAVY}" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
-python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 1e-12
+python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0
 echo "=== Kessler Differential Test PASSED ==="

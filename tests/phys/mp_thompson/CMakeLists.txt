@@ -1,10 +1,15 @@
 cmake_minimum_required(VERSION 3.24)
 project(test_phys_mp_thompson LANGUAGES C CXX Fortran)
 
-include(CheckLanguage)
-check_language(CUDA)
-if(CMAKE_CUDA_COMPILER)
-  enable_language(CUDA)
+# CUDA drivers: standalone builds with a CUDA compiler, or CPPWRF builds with CPPWRF_ENABLE_CUDA
+set(THOMPSON_TEST_CUDA OFF)
+if(NOT DEFINED CPPWRF_ENABLE_CUDA OR CPPWRF_ENABLE_CUDA)
+  include(CheckLanguage)
+  check_language(CUDA)
+  if(CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+    set(THOMPSON_TEST_CUDA ON)
+  endif()
 endif()
 
 find_package(OpenMP REQUIRED)
@@ -12,7 +17,8 @@ find_package(OpenMP REQUIRED)
 set(CPPWRF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 
 # Fortran flags for bit-for-bit WRF verification
-set(PHYS_FORTRAN_FLAGS "-cpp -ffree-form -fdefault-real-8 -fdefault-double-8 -O3 -march=native -ffp-contract=off -fno-tree-vectorize -fopenmp -DTHOMPSON_OMP")
+# WRF's own r8d8 configure flags (FCOPTIM): gfortran vectorises through libmvec as in wrf.exe
+set(PHYS_FORTRAN_FLAGS "-cpp -ffree-form -fdefault-real-8 -fdefault-double-8 -O2 -ftree-vectorize -funroll-loops -fopenmp -DTHOMPSON_OMP")
 
 # 1. Fortran Driver
 add_executable(fortran_driver_thompson
@@ -27,7 +33,19 @@ set_target_properties(fortran_driver_thompson PROPERTIES
 )
 target_link_libraries(fortran_driver_thompson PRIVATE OpenMP::OpenMP_Fortran)
 
-# 2. Table Test
+# 2. Table Test: WRF's thompson_init tables (dump_tables_thompson) against thompson_tables.cpp
+add_executable(dump_tables_thompson
+  dump_tables_f.f90
+  fortran/module_mp_thompson.F
+  fortran/module_mp_radar.F
+  fortran/stubs.f90
+)
+set_target_properties(dump_tables_thompson PROPERTIES
+  Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fortran_modules_dump"
+  COMPILE_FLAGS "${PHYS_FORTRAN_FLAGS}"
+)
+target_link_libraries(dump_tables_thompson PRIVATE OpenMP::OpenMP_Fortran)
+
 add_executable(test_tables
   test_tables.cpp
   ${CPPWRF_ROOT}/src/phys/mp_thompson/thompson_tables.cpp
@@ -58,7 +76,7 @@ target_link_libraries(driver_thompson_cpu PRIVATE
 )
 
 # 4. CUDA Drivers (if CUDA enabled)
-if(CMAKE_CUDA_COMPILER)
+if(THOMPSON_TEST_CUDA)
   file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/driver_thompson_cuda.cu "#include \"${CMAKE_CURRENT_SOURCE_DIR}/driver_thompson.cpp\"\n")
   file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/thompson_cuda.cu "#include \"${CPPWRF_ROOT}/src/phys/mp_thompson/thompson.cpp\"\n")
   file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/thompson_tables_cuda.cu "#include \"${CPPWRF_ROOT}/src/phys/mp_thompson/thompson_tables.cpp\"\n")
