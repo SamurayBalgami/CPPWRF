@@ -95,7 +95,7 @@ PROGRAM driver_thompson
                     SR=sr, &
                     refl_10cm=refl_10cm, &
                     re_cloud=re_cloud, re_ice=re_ice, re_snow=re_snow, &
-                    has_reqc=0, has_reqi=0, has_reqs=0, &
+                    has_reqc=1, has_reqi=1, has_reqs=1, &
                     ids=1, ide=ncols+1, jds=1, jde=2, kds=1, kde=nlevels, &
                     ims=1, ime=ncols, jms=1, jme=1, kms=1, kme=nlevels, &
                     its=1, ite=ncols, jts=1, jte=1, kts=1, kte=nlevels)
@@ -122,6 +122,11 @@ PROGRAM driver_thompson
   WRITE(u_out) graupelnc(:, 1)
   WRITE(u_out) graupelncv(:, 1)
   WRITE(u_out) sr(:, 1)
+
+  ! 3D outputs: effective radii (has_reqc = has_reqi = has_reqs = 1)
+  WRITE(u_out) re_cloud(:, 1:nlevels, 1)
+  WRITE(u_out) re_ice(:, 1:nlevels, 1)
+  WRITE(u_out) re_snow(:, 1:nlevels, 1)
   CLOSE(u_out)
 
   PRINT *, "Fortran Thompson driver completed successfully."

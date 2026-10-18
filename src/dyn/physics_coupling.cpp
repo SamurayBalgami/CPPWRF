@@ -78,6 +78,14 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
   if (p_.mp_physics != 0 && p_.mp_physics != 1 && p_.mp_physics != 6 && p_.mp_physics != 8)
     throw std::runtime_error("phys.mp_physics must be 0, 1, 6 or 8");
   if (p_.mp_physics == 1 && g.nz > phys::kessler::kMaxLevels) throw std::runtime_error("Kessler: nz > kMaxLevels");
+  if (p_.microp_re) {  // phy_init: background values RE_QC_BG, RE_QI_BG, RE_QS_BG
+    re_cloud = Field3(g, Stagger::M, "re_cloud");
+    re_ice = Field3(g, Stagger::M, "re_ice");
+    re_snow = Field3(g, Stagger::M, "re_snow");
+    re_cloud.fill_host([](int, int, int) { return real(2.49E-6); });
+    re_ice.fill_host([](int, int, int) { return real(4.99E-6); });
+    re_snow.fill_host([](int, int, int) { return real(9.99E-6); });
+  }
   if (p_.mp_physics == 6) {
     if (g.nz > phys::wsm6::kMaxLevels) throw std::runtime_error("WSM6: nz > kMaxLevels");
     snownc = Field2(g, Stagger::M, "snownc");
@@ -90,14 +98,6 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
     wp_.rv = real(pc::r_v); wp_.t0c = real(pc::svpt0); wp_.ep1 = real(pc::ep_1); wp_.ep2 = real(pc::ep_2);
     wp_.qmin = real(1e-15); wp_.xls = real(pc::xls); wp_.xlv0 = real(pc::xlv); wp_.xlf0 = real(pc::xlf);
     wp_.cliq = real(pc::cliq); wp_.cice = real(pc::cice); wp_.psat = real(610.78);
-    if (p_.microp_re) {  // phy_init: background values RE_QC_BG, RE_QI_BG, RE_QS_BG
-      re_cloud = Field3(g, Stagger::M, "re_cloud");
-      re_ice = Field3(g, Stagger::M, "re_ice");
-      re_snow = Field3(g, Stagger::M, "re_snow");
-      re_cloud.fill_host([](int, int, int) { return real(2.49E-6); });
-      re_ice.fill_host([](int, int, int) { return real(4.99E-6); });
-      re_snow.fill_host([](int, int, int) { return real(9.99E-6); });
-    }
     // wsm6init (WRF microphysics_driver arguments); once, not every step (review P1)
     wp_.init(real(pc::rhoair0), real(pc::rhowater), real(pc::rhosnow), real(pc::cliq), real(4.0 * pc::r_v),
              p_.hail_opt);
@@ -177,7 +177,8 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
         s.q_2[s.P_QNI].view(), s.q_2[s.P_QNR].view(), pii.cview(), p_phy.cview(),
         s.w_2.cview(), dz8w.cview(), rainnc.view(), rainncv.view(), snownc.view(),
         snowncv.view(), graupelnc.view(), graupelncv.view(), sr.view(),
-        dt, mp_cols, g.nz, tp_.view());
+        dt, mp_cols, g.nz, tp_.view(), p_.microp_re ? re_cloud.view() : View3<real>{},
+        p_.microp_re ? re_ice.view() : View3<real>{}, p_.microp_re ? re_snow.view() : View3<real>{});
     vmdump::dump("vm_mp_out", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS],
                                   &s.q_2[s.P_QG], &s.q_2[s.P_QNI], &s.q_2[s.P_QNR]},
                  {&rainnc, &rainncv, &snownc, &snowncv, &graupelnc, &graupelncv, &sr});

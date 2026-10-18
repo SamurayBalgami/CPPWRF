@@ -230,6 +230,87 @@ struct ThompsonKernel {
     View2<Real> graupelncv;
     View2<Real> sr;
 
+    // mp_gt_driver with has_reqc, has_reqi, has_reqs: effective radii for the radiation (calc_effectRad)
+    bool has_re = false;
+    View3<Real> re_cloud, re_ice, re_snow;
+
+    // module_mp_thompson.F calc_effectRad (not aerosol aware: nc = Nt_c) and the driver's limits; t1d, p1d
+    // and the moist arrays are the column after mp_thompson
+    CPPWRF_HD void effect_rad(int i, int j, const Real* t1d, const Real* p1d) const {
+        constexpr Real g_ratio[15] = {24, 60, 120, 210, 336, 504, 720, 990, 1320, 1716, 2184, 2730, 3360, 4080, 4896};
+        constexpr Real re_qc_bg = Real(2.49E-6), re_qi_bg = Real(4.99E-6), re_qs_bg = Real(9.99E-6);
+        auto c_max = [](Real a, Real b) { return a > b ? a : b; };  // Fortran MAX / MIN
+        auto c_min = [](Real a, Real b) { return a < b ? a : b; };
+        const Real obmr = Real(1.0) / Real(bm_r);
+        const Real obmi = Real(1.0) / Real(bm_i);
+        const Real nc = Real(Nt_c);  // .NOT. is_aerosol_aware
+        Real rc[kMaxLevels], ri[kMaxLevels], ni_c[kMaxLevels], rs[kMaxLevels];
+        bool has_qc = false, has_qi = false, has_qs = false;
+        for (int k = 0; k < nz; ++k) {  // re_qc1d etc. live in re_cloud, re_ice, re_snow
+            re_cloud(i, j, k) = re_qc_bg;
+            re_ice(i, j, k) = re_qi_bg;
+            re_snow(i, j, k) = re_qs_bg;
+        }
+        for (int k = 0; k < nz; ++k) {
+            const Real rho = Real(0.622) * p1d[k] / (Real(R_d) * t1d[k] * (qv(i, j, k) + Real(0.622)));
+            rc[k] = c_max(Real(R1), qc(i, j, k) * rho);
+            if (rc[k] > Real(R1) && nc > Real(R2)) has_qc = true;
+            ri[k] = c_max(Real(R1), qi(i, j, k) * rho);
+            ni_c[k] = c_max(Real(R2), ni(i, j, k) * rho);
+            if (ri[k] > Real(R1) && ni_c[k] > Real(R2)) has_qi = true;
+            rs[k] = c_max(Real(R1), qs(i, j, k) * rho);
+            if (rs[k] > Real(R1)) has_qs = true;
+        }
+        if (has_qc) {
+            int inu_c;
+            if (nc < Real(100)) {
+                inu_c = 15;
+            } else if (nc > Real(1.E10)) {
+                inu_c = 2;
+            } else {
+                inu_c = int(lround(Real(1000.E6) / nc)) + 2;  // NINT
+                if (inu_c > 15) inu_c = 15;
+            }
+            for (int k = 0; k < nz; ++k) {
+                if (rc[k] <= Real(R1) || nc <= Real(R2)) continue;
+                const Real lamc = std::pow(nc * Real(am_r) * g_ratio[inu_c - 1] / rc[k], obmr);
+                re_cloud(i, j, k) = c_max(Real(2.51E-6), c_min(Real(0.5) * (Real(3.) + Real(inu_c)) / lamc, Real(50.E-6)));
+            }
+        }
+        if (has_qi) {
+            for (int k = 0; k < nz; ++k) {
+                if (ri[k] <= Real(R1) || ni_c[k] <= Real(R2)) continue;
+                const Real lami = std::pow(Real(am_i) * tables.cig[1] * tables.oig1 * ni_c[k] / ri[k], obmi);
+                re_ice(i, j, k) = c_max(Real(2.51E-6), c_min(Real(0.5) * (Real(3.) + Real(mu_i)) / lami, Real(125.E-6)));
+            }
+        }
+        if (has_qs) {
+            const Real cse1 = tables.cse[0];
+            for (int k = 0; k < nz; ++k) {
+                if (rs[k] <= Real(R1)) continue;
+                const Real tc0 = c_min(Real(-0.1), t1d[k] - Real(273.15));
+                const Real smob = rs[k] * tables.oams;
+                const Real smo2 = smob;  // bm_s = 2
+                const Real loga_ = tables.sa[0] + tables.sa[1] * tc0 + tables.sa[2] * cse1 + tables.sa[3] * tc0 * cse1 +
+                                   tables.sa[4] * tc0 * tc0 + tables.sa[5] * cse1 * cse1 +
+                                   tables.sa[6] * tc0 * tc0 * cse1 + tables.sa[7] * tc0 * cse1 * cse1 +
+                                   tables.sa[8] * tc0 * tc0 * tc0 + tables.sa[9] * cse1 * cse1 * cse1;
+                const Real a_ = std::pow(Real(10.0), loga_);
+                const Real b_ = tables.sb[0] + tables.sb[1] * tc0 + tables.sb[2] * cse1 + tables.sb[3] * tc0 * cse1 +
+                                tables.sb[4] * tc0 * tc0 + tables.sb[5] * cse1 * cse1 +
+                                tables.sb[6] * tc0 * tc0 * cse1 + tables.sb[7] * tc0 * cse1 * cse1 +
+                                tables.sb[8] * tc0 * tc0 * tc0 + tables.sb[9] * cse1 * cse1 * cse1;
+                const Real smoc = a_ * std::pow(smo2, b_);
+                re_snow(i, j, k) = c_max(Real(5.01E-6), c_min(Real(0.5) * (smoc / smob), Real(999.E-6)));
+            }
+        }
+        for (int k = 0; k < nz; ++k) {  // mp_gt_driver: MAX(RE_*_BG, MIN(re, limit))
+            re_cloud(i, j, k) = c_max(re_qc_bg, c_min(re_cloud(i, j, k), Real(50.E-6)));
+            re_ice(i, j, k) = c_max(re_qi_bg, c_min(re_ice(i, j, k), Real(125.E-6)));
+            re_snow(i, j, k) = c_max(re_qs_bg, c_min(re_snow(i, j, k), Real(999.E-6)));
+        }
+    }
+
     CPPWRF_HD void operator()(int i, int j) const {
         if (nz > kMaxLevels) return;
 
@@ -595,6 +676,7 @@ struct ThompsonKernel {
             snowncv(i, j) = Real(0.0);
             graupelncv(i, j) = Real(0.0);
             sr(i, j) = Real(0.0);
+            if (has_re) effect_rad(i, j, temp, pres);
             return;
         }
 
@@ -1995,10 +2077,11 @@ struct ThompsonKernel {
             }
         }
 
-        // Final state updates
+        // Final state updates (twet holds t1d for calc_effectRad)
         for (int k = 0; k < nz; ++k) {
             Real t_final = (th(i, j, k) * pii(i, j, k)) + tten[k] * dt;
             th(i, j, k) = t_final / pii(i, j, k);
+            twet[k] = t_final;
 
             Real qv_final = qv(i, j, k) + qvten[k] * dt;
             qv(i, j, k) = (qv_final > Real(1.0e-10)) ? qv_final : Real(1.0e-10);
@@ -2075,6 +2158,7 @@ struct ThompsonKernel {
         graupelncv(i, j) = pptgraul;
         graupelnc(i, j) += pptgraul;
         sr(i, j) = (pptsnow + pptgraul + pptice) / (rain_step + Real(1.0e-12));
+        if (has_re) effect_rad(i, j, twet, pres);
     }
 };
 
@@ -2104,6 +2188,9 @@ void run_thompson(
     Real dt,
     const Range2D& range,
     int nz,
-    const ThompsonTablesView<Real>& tables);
+    const ThompsonTablesView<Real>& tables,
+    View3<Real> re_cloud = {},  // all three or none (has_reqc, has_reqi, has_reqs)
+    View3<Real> re_ice = {},
+    View3<Real> re_snow = {});
 
 } // namespace cppwrf::phys::mp_thompson

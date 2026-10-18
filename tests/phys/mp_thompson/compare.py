@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Differential comparison script for Thompson microphysics (mp_physics = 8).
-Compares output_fortran.bin against output_cpp.bin across all 16 variables.
+Compares output_fortran.bin against output_cpp.bin across all 19 variables.
 PASS criterion: max rel diff <= 1e-12 in FP64.
 """
 
@@ -53,6 +53,9 @@ def compare_thompson(f_file="output_fortran.bin", cpp_file="output_cpp.bin", tol
         ("graupelnc", "Accumulated graupel precipitation (mm)", False, 1e-4),
         ("graupelncv", "Time-step graupel precipitation (mm)", False, 1e-4),
         ("sr", "Snow ratio (fraction)", False, 1e-6),
+        ("re_cloud", "Cloud water effective radius (m)", True, 1e-6),
+        ("re_ice", "Cloud ice effective radius (m)", True, 1e-6),
+        ("re_snow", "Snow effective radius (m)", True, 1e-6),
     ]
 
     with open(f_file, "rb") as ff, open(cpp_file, "rb") as fc:

@@ -204,6 +204,7 @@ int main(int argc, char** argv) {
     // Device buffers for 2D state
     DevBuffer<real> d_rainnc(n2d), d_rainncv(n2d), d_snownc(n2d), d_snowncv(n2d);
     DevBuffer<real> d_graupelnc(n2d), d_graupelncv(n2d), d_sr(n2d);
+    DevBuffer<real> d_re_cloud(n3d), d_re_ice(n3d), d_re_snow(n3d);
 
     auto copy_to_d = [](const std::vector<double>& h, DevBuffer<real>& d, std::size_t count) {
         h2d(d.get(), h.data(), count);
@@ -248,7 +249,8 @@ int main(int argc, char** argv) {
             v3c(d_pii), v3c(d_p), v3c(d_w), v3c(d_dz),
             v2(d_rainnc), v2(d_rainncv), v2(d_snownc), v2(d_snowncv),
             v2(d_graupelnc), v2(d_graupelncv), v2(d_sr),
-            static_cast<real>(dt_in), range, nlevels, d_tables_view
+            static_cast<real>(dt_in), range, nlevels, d_tables_view,
+            v3(d_re_cloud), v3(d_re_ice), v3(d_re_snow)
         );
     };
 
@@ -305,6 +307,10 @@ int main(int argc, char** argv) {
     copy_from_d(d_graupelnc, out_graupelnc, n2d);
     copy_from_d(d_graupelncv, out_graupelncv, n2d);
     copy_from_d(d_sr, out_sr, n2d);
+    std::vector<double> out_re_cloud(n3d), out_re_ice(n3d), out_re_snow(n3d);
+    copy_from_d(d_re_cloud, out_re_cloud, n3d);
+    copy_from_d(d_re_ice, out_re_ice, n3d);
+    copy_from_d(d_re_snow, out_re_snow, n3d);
 
     FILE* fo = std::fopen(outfile.c_str(), "wb");
     if (!fo) {
@@ -335,6 +341,11 @@ int main(int argc, char** argv) {
     write_buf(out_graupelnc);
     write_buf(out_graupelncv);
     write_buf(out_sr);
+
+    // 3D outputs: effective radii (has_reqc = has_reqi = has_reqs = 1)
+    write_buf(out_re_cloud);
+    write_buf(out_re_ice);
+    write_buf(out_re_snow);
 
     std::fclose(fo);
     std::cout << "Wrote " << outfile << " successfully for " << ncols << " columns.\n";

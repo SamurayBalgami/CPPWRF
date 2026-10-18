@@ -28,7 +28,10 @@ void run_thompson(
     Real dt,
     const Range2D& range,
     int nz,
-    const ThompsonTablesView<Real>& tables) {
+    const ThompsonTablesView<Real>& tables,
+    View3<Real> re_cloud,
+    View3<Real> re_ice,
+    View3<Real> re_snow) {
     assert(nz <= kMaxLevels);
     ThompsonKernel<Real> kernel{
         tables,
@@ -53,7 +56,11 @@ void run_thompson(
         snowncv,
         graupelnc,
         graupelncv,
-        sr
+        sr,
+        re_cloud.p != nullptr,
+        re_cloud,
+        re_ice,
+        re_snow
     };
     column_for(range, kernel);
 }
@@ -64,7 +71,7 @@ template void run_thompson<double>(
     View3<const double>, View3<const double>, View3<const double>, View3<const double>,
     View2<double>, View2<double>, View2<double>, View2<double>,
     View2<double>, View2<double>, View2<double>,
-    double, const Range2D&, int, const ThompsonTablesView<double>&);
+    double, const Range2D&, int, const ThompsonTablesView<double>&, View3<double>, View3<double>, View3<double>);
 
 template void run_thompson<float>(
     View3<float>, View3<float>, View3<float>, View3<float>, View3<float>,
@@ -72,6 +79,6 @@ template void run_thompson<float>(
     View3<const float>, View3<const float>, View3<const float>, View3<const float>,
     View2<float>, View2<float>, View2<float>, View2<float>,
     View2<float>, View2<float>, View2<float>,
-    float, const Range2D&, int, const ThompsonTablesView<float>&);
+    float, const Range2D&, int, const ThompsonTablesView<float>&, View3<float>, View3<float>, View3<float>);
 
 } // namespace cppwrf::phys::mp_thompson
