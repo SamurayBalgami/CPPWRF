@@ -5,9 +5,11 @@ nesting, written from one source for CPU (OpenMP) and GPU (CUDA), in FP32 or FP6
 `wrfinput_d0N` / `wrfbdy_d01` files and writes `wrfout_d0N` and restart files.
 
 Every routine follows WRF statement by statement and is verified against WRF itself: on the CPU in FP64,
-CPPWRF is bit-identical to WRF v4.8.0 real*8 for the real-data dynamics, the physics suites (surface
-layer, Noah LSM, YSU, Kain-Fritsch, Grell-Freitas-Li, New Tiedtke, WSM6, Thompson, RRTMG) and one- and
-two-way nesting. The GPU build agrees to roundoff in FP64. See [docs/STATUS.md](docs/STATUS.md).
+CPPWRF is bit-identical to WRF v4.8.0 real*8 for the real-data dynamics, the physics suites (revised
+MM5 and Eta surface layers, Noah and Noah-MP land surface, YSU and MYJ, Kain-Fritsch, Grell-Freitas-Li,
+New Tiedtke, Kessler, WSM6, Thompson, RRTMG), one- and two-way nesting and WRF's idealized cases, and it
+writes the same wrfout and wrfrst files. The GPU build agrees to roundoff in FP64. See
+[docs/STATUS.md](docs/STATUS.md).
 
 ## Build
 
