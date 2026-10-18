@@ -31,8 +31,10 @@ def main(wrfout, d, inner):
         pairs = {
             "U": (g("U"), sn["u"]), "V": (g("V"), sn["v"]), "W": (g("W"), sn["w"]),
             "PH": (g("PH") + g("PHB"), sn["ph"]), "MU": (g("MU") + g("MUB"), sn["mu"][0]),
-            "P": (g("P") + g("PB"), sn["p"]), "QV": (g("QVAPOR"), sn["qv"]),
+            "P": (g("P") + g("PB"), sn["p"]),
         }
+        if "qv" in sn:  # dry ideal cases carry no vapour
+            pairs["QV"] = (g("QVAPOR"), sn["qv"])
         for wn, cn in (("QCLOUD", "qc"), ("QRAIN", "qr"), ("QICE", "qi"), ("QSNOW", "qs"), ("QGRAUP", "qg"),
                        ("QNICE", "qni"), ("QNRAIN", "qnr"), ("TKE", "tke")):
             if wn in ds.variables and cn in sn:

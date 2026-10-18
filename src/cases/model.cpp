@@ -2,6 +2,7 @@
 #include "cases/hill2d.hpp"
 #include "cases/quarter_ss.hpp"
 #include "cases/squall2d_x.hpp"
+#include "cases/wrf_ideal.hpp"
 
 #include <cmath>
 #include <numbers>
@@ -174,7 +175,9 @@ Model Model::build(const io::Config& cfg) {
   Model m;
   Grid& g = m.g;
   const std::string cname = cfg.get_string("run.case");
+  const bool wrf_ideal = is_wrf_ideal_case(cname);
   if (cname == "real") init_real_case(cfg, m);
+  else if (wrf_ideal) init_wrf_ideal(cfg, m, cname);
   else init_ideal(cfg, m, cname);
   dyn::LargeStepParams& lp = m.lp;
   lp.khdif = real(cfg.get_double("dyn.khdif", 0.0));
@@ -192,7 +195,8 @@ Model Model::build(const io::Config& cfg) {
   m.ap.emdiv = real(cfg.get_double("dyn.emdiv", 0.01));
   m.ap.top_lid = lp.top_lid;
   // WRF takes hypsometric_opt from the input file: ideal.exe writes 1, real.exe 2 (namelist default)
-  if (cname != "real") m.ap.hypsometric_opt = int(cfg.get_int("dyn.hypsometric_opt", 1));  // real: from the input
+  // real and WRF ideal cases: from the input (init_*); ideal.exe writes the namelist value, default 2
+  if (cname != "real" && !wrf_ideal) m.ap.hypsometric_opt = int(cfg.get_int("dyn.hypsometric_opt", 1));
   if (m.ap.hypsometric_opt != 1 && m.ap.hypsometric_opt != 2) throw std::runtime_error("dyn.hypsometric_opt: 1 or 2");
   m.ap.damp_opt = int(cfg.get_int("dyn.damp_opt", 0));
   if (m.ap.damp_opt < 0 || m.ap.damp_opt > 3) throw std::runtime_error("dyn.damp_opt must be 0, 1, 2 or 3");
