@@ -545,7 +545,8 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
   b.alb.fill_host_halo(m3(alb));
   b.t_init.fill_host_halo(m3(t_init));
   b.phb.fill_host_halo(m3(phb));
-  b.qv_base.fill_host_halo([](int, int, int) { return 0.0; });
+  // WRF's 1D qv_base (vertical_diffusion_mp diffuses qv - qv_base)
+  b.qv_base.fill_host_halo([&](int, int, int k) { return double(b.qv_base_1d[std::clamp(k, 0, nz - 1)]); });
   for (BaseField2* f : {&b.msftx, &b.msfty, &b.msfux, &b.msfuy, &b.msfvx, &b.msfvy, &b.msfvx_inv, &b.cosa})
     f->fill_host_halo([](int, int, int) { return 1.0; });
   for (BaseField2* f : {&b.f, &b.e, &b.sina}) f->fill_host_halo([](int, int, int) { return 0.0; });

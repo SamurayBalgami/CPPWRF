@@ -260,7 +260,7 @@ struct KVertDiffMP1 {
   CPPWRF_HD void operator()(int i, int j) const {
     real vflux[128];
     for (int k = 0; k < nz - 1; ++k) {
-      real dpert = (field(i, j, k + 1) - field(i, j, k)) - (base(i, j, k + 1) - base(i, j, k));
+      real dpert = field(i, j, k + 1) - field(i, j, k) - base(i, j, k + 1) + base(i, j, k);  // WRF's order
       vflux[k] = kvdif * rdn(k + 1) / (real(0.5) * (alt(i, j, k) + alt(i, j, k + 1))) * dpert;
     }
     real vf0 = vflux[0];

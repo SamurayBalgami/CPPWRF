@@ -173,9 +173,9 @@ void DiffusionDriver::dynamics(const State& s, const BaseState& b, Tendencies& t
                                   nx, ny, nz);
       dif::vertical_diffusion('w', s.w_2.cview(), t.rw_tendf.view(), s.mut.cview(), b.c1f.view(), b.c2f.view(),
                               s.alt.cview(), b.rdn.view(), b.rdnw.view(), c_.kvdif, nx, ny, nz);
-      // vertical_diffusion_3dmp(t, t_init, kvdq = 3 kvdif)
+      // vertical_diffusion_3dmp(t, t_init, kvdq = kvdif / prandtl)
       dif::vertical_diffusion_mp(s.t_2.cview(), t.t_tendf.view(), b.t_init.view(), s.mut.cview(), b.c1h.view(),
-                                 b.c2h.view(), s.alt.cview(), b.rdn.view(), b.rdnw.view(), real(3) * c_.kvdif, nx,
+                                 b.c2h.view(), s.alt.cview(), b.rdn.view(), b.rdnw.view(), c_.kvdif / p_.prandtl, nx,
                                  ny, nz);
     }
   } else if (c_.diff_opt == 2) {
@@ -292,7 +292,7 @@ void DiffusionDriver::scalar(const State& s, const BaseState& b, int n, Field3& 
                               b.msfux.view(), b.msfuy.view(), b.msfvx.view(), b.msfvy.view(), b.msfvx_inv.view(),
                               b.c1h.view(), b.c2h.view(), xkhh_.cview(), real(b.rdx), real(b.rdy), nx, ny, nz);
     if (!c_.pbl) {
-      const real kvdq = real(3) * c_.kvdif;
+      const real kvdq = c_.kvdif / p_.prandtl;  // WRF kvdq = kvdif / prandtl
       if (moist && n == s.P_QV)
         dif::vertical_diffusion_mp(q.cview(), tend.view(), b.qv_base.view(), s.muts.cview(), b.c1h.view(),
                                    b.c2h.view(), s.alt.cview(), b.rdn.view(), b.rdnw.view(), kvdq, nx, ny, nz);
