@@ -22,3 +22,4 @@ __pycache__/
 /tests/phys/lsm_noah/fortran/test_read_tables
 /tools/regression/runs/
 /tools/regression/logs/
+/tools/regression/last_report.md

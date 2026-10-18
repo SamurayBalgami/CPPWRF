@@ -403,6 +403,13 @@ class WrfTranslator:
     def error(self, msg: str):
         self.errors.append(msg)
 
+    def check_supported(self, option: str, value: Any):
+        """Warn when a WRF option value has no CPPWRF implementation (SUPPORTED_OPTIONS)."""
+        table = SUPPORTED_OPTIONS[option]
+        if value not in table:
+            listed = ", ".join(f"{k} ({v})" for k, v in table.items() if k != 0)
+            self.warn(f"WRF {option} = {value} is not supported; CPPWRF supports 0, {listed}.")
+
     def notice(self, msg: str):
         self.notices.append(msg)
 
@@ -758,8 +765,7 @@ class WrfTranslator:
             sections["phys"] = {}
             if mp_physics != 0:
                 sections["phys"]["mp_physics"] = mp_physics
-                if mp_physics not in SUPPORTED_OPTIONS["mp_physics"]:
-                    self.warn(f"WRF mp_physics = {mp_physics} is not supported; CPPWRF supports 0, 1 (Kessler), 6 (WSM6).")
+                self.check_supported("mp_physics", mp_physics)
 
             if has_physics_suite:
                 sections["phys"]["sf_sfclay_physics"] = sf_sfclay
@@ -800,18 +806,12 @@ class WrfTranslator:
                     if tofd_factor != 0.003:
                         sections["phys"]["tofd_factor"] = tofd_factor
 
-                if sf_sfclay not in SUPPORTED_OPTIONS["sf_sfclay_physics"]:
-                    self.warn(f"WRF sf_sfclay_physics = {sf_sfclay} not supported (0 or 1 only).")
-                if sf_surface not in SUPPORTED_OPTIONS["sf_surface_physics"]:
-                    self.warn(f"WRF sf_surface_physics = {sf_surface} not supported (0 or 2 only).")
-                if bl_pbl not in SUPPORTED_OPTIONS["bl_pbl_physics"]:
-                    self.warn(f"WRF bl_pbl_physics = {bl_pbl} not supported (0 or 1 only).")
-                if cu_physics not in SUPPORTED_OPTIONS["cu_physics"]:
-                    self.warn(f"WRF cu_physics = {cu_physics} not supported (0 or 1 only).")
-                if ra_lw not in SUPPORTED_OPTIONS["ra_lw_physics"]:
-                    self.warn(f"WRF ra_lw_physics = {ra_lw} not supported (0 or 4 only).")
-                if ra_sw not in SUPPORTED_OPTIONS["ra_sw_physics"]:
-                    self.warn(f"WRF ra_sw_physics = {ra_sw} not supported (0 or 4 only).")
+                self.check_supported("sf_sfclay_physics", sf_sfclay)
+                self.check_supported("sf_surface_physics", sf_surface)
+                self.check_supported("bl_pbl_physics", bl_pbl)
+                self.check_supported("cu_physics", cu_physics)
+                self.check_supported("ra_lw_physics", ra_lw)
+                self.check_supported("ra_sw_physics", ra_sw)
 
         # 12. Output Section [output]
         sections["output"] = {}
