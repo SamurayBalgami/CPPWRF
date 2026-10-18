@@ -123,7 +123,7 @@ struct KRadOut {
     rth(i, j, k) = real(r);
     if (diag) {
       rthlw(i, j, k) = real(rlw[q]);
-      rthsw(i, j, k) = real(day ? rsw[q] : 0.0);
+      rthsw(i, j, k) = real(r) - real(rlw[q]);  // RTHRATENSW = RTHRATEN - RTHRATENLW
       rthlwc(i, j, k) = real(rlwc[q]);
       rthswc(i, j, k) = real(day ? rswc[q] : 0.0);
     }
@@ -438,7 +438,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
         rth[Lo3.index(i, j, k)] = real(r);
         if (diag) {
           rthlw[Lo3.index(i, j, k)] = real(rlw[k]);
-          rthsw[Lo3.index(i, j, k)] = real(cz > 0.0 ? rsw[k] : 0.0);
+          rthsw[Lo3.index(i, j, k)] = real(r) - real(rlw[k]);  // RTHRATENSW = RTHRATEN - RTHRATENLW
           rthlwc[Lo3.index(i, j, k)] = real(rlwc[k]);
           rthswc[Lo3.index(i, j, k)] = real(cz > 0.0 ? rswc[k] : 0.0);
         }
