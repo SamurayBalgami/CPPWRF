@@ -45,7 +45,7 @@ CPPWRF_FORCEINLINE void reftra_sw_elem(
   double denom = 1.0;
   if (zg != 1.0) {
     double ratio = zg / (1.0 - zg);
-    denom = 1.0 - (1.0 - zw) * ratio * ratio;
+    denom = 1.0 - (1.0 - zw) * (ratio * ratio);  // (zg/(1-zg))**2
   }
   if (zw > 0.0 && denom != 0.0) {
     zwo = zw / denom;

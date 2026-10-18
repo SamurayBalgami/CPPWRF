@@ -589,7 +589,7 @@ struct YSUKernel {
           cloudflg = true;
           real templ = thlix[k] * pow(p2di(i, j, k + 1) / real(100000.0), rovcp);
           real rvls = real(100.0) * real(6.112) * exp(real(17.67) * (templ - real(273.16)) / (templ - real(29.65))) * (ep2 / p2di(i, j, k + 1));
-          real temps = templ + ((qvx(i, j, k) + qcxl[k]) - rvls) / (cp / xlv + ep2 * xlv * rvls / (rd * templ * templ));
+          real temps = templ + ((qvx(i, j, k) + qcxl[k]) - rvls) / (cp / xlv + ep2 * xlv * rvls / (rd * (templ * templ)));  // rd*templ**2
           rvls = real(100.0) * real(6.112) * exp(real(17.67) * (temps - real(273.15)) / (temps - real(29.65))) * (ep2 / p2di(i, j, k + 1));
           real rcldb = max((qvx(i, j, k) + qcxl[k]) - rvls, real(0.0));
 
