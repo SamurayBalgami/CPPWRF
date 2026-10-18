@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace cppwrf::init_real {
+namespace cppwrf::wrf_io {
 
 class Namelist {
  public:
@@ -27,4 +27,4 @@ class Namelist {
   std::map<std::string, std::map<std::string, std::vector<std::string>>> g_;  // lower-case names
 };
 
-}  // namespace cppwrf::init_real
+}  // namespace cppwrf::wrf_io

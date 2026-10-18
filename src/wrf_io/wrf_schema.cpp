@@ -1,4 +1,4 @@
-#include "init_real/wrf_schema.hpp"
+#include "wrf_io/wrf_schema.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -8,7 +8,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace cppwrf::init_real {
+namespace cppwrf::wrf_io {
 
 namespace {
 
@@ -273,4 +273,4 @@ std::vector<const SchemaMember*> WrfSchema::boundary_members(const std::string& 
   return out;
 }
 
-}  // namespace cppwrf::init_real
+}  // namespace cppwrf::wrf_io

@@ -7,11 +7,12 @@
 #include <string>
 
 #include "init_real/met_em.hpp"
-#include "init_real/nc_out.hpp"
+#include "init_real/nc_order.hpp"
+#include "init_real/wrf_io_names.hpp"
+#include "wrf_io/global_atts.hpp"
 #include "init_real/real_bdy.hpp"
 #include "init_real/real_domain.hpp"
 #include "init_real/real_values.hpp"
-#include "init_real/wrf_schema.hpp"
 
 namespace cppwrf::init_real {
 
@@ -19,71 +20,24 @@ namespace cppwrf::init_real {
 template <typename T>
 void write_global_atts(NcOut& nc, const WrfConfig& c, const MetEm& m, const RealDomain<T>& dm,
                        const std::string& start_date, bool input) {
-  auto r = [&](const std::string& n, double v) {
-    if (sizeof(T) == 8) nc.att_d(n, v); else nc.att_f(n, float(v));
-  };
-  auto i = [&](const std::string& n, int v) { nc.att(n, v); };
-  const int ide = dm.d.ide, jde = dm.d.jde, kde = dm.d.kde;
-  nc.att("TITLE", std::string(" OUTPUT FROM CPPWRF REAL V4.8.0 PREPROCESSOR"));
-  nc.att("START_DATE", start_date);
-  if (input) nc.att("SIMULATION_START_DATE", start_date);
-  i("WEST-EAST_GRID_DIMENSION", ide);
-  i("SOUTH-NORTH_GRID_DIMENSION", jde);
-  i("BOTTOM-TOP_GRID_DIMENSION", kde);
-  r("DX", c.num("dx")); r("DY", c.num("dy"));
-  i("AERCU_OPT", c.integer("aercu_opt")); r("AERCU_FCT", c.num("aercu_fct"));
-  i("IDEAL_CASE", c.integer("ideal_case")); i("DIFF_6TH_SLOPEOPT", c.integer("diff_6th_slopeopt"));
-  i("AUTO_LEVELS_OPT", c.integer("auto_levels_opt")); r("DIFF_6TH_THRESH", c.num("diff_6th_thresh"));
-  r("DZBOT", c.num("dzbot")); r("DZSTRETCH_S", c.num("dzstretch_s")); r("DZSTRETCH_U", c.num("dzstretch_u"));
-  nc.att("GRIDTYPE", std::string("C"));
-  i("DIFF_OPT", c.integer("diff_opt")); i("KM_OPT", c.integer("km_opt")); i("DAMP_OPT", c.integer("damp_opt"));
-  r("DAMPCOEF", c.num("dampcoef")); r("KHDIF", c.num("khdif")); r("KVDIF", c.num("kvdif"));
-  i("MP_PHYSICS", c.integer("mp_physics")); i("RA_LW_PHYSICS", c.integer("ra_lw_physics"));
-  i("RA_SW_PHYSICS", c.integer("ra_sw_physics")); i("SF_SFCLAY_PHYSICS", c.integer("sf_sfclay_physics"));
-  i("SF_SURFACE_PHYSICS", c.integer("sf_surface_physics")); i("BL_PBL_PHYSICS", c.integer("bl_pbl_physics"));
-  i("CU_PHYSICS", c.integer("cu_physics")); i("SF_LAKE_PHYSICS", c.integer("sf_lake_physics"));
-  i("SURFACE_INPUT_SOURCE", c.integer("surface_input_source")); i("SST_UPDATE", c.integer("sst_update"));
-  i("GHG_INPUT", c.integer("ghg_input")); i("GRID_FDDA", c.integer("grid_fdda"));
-  i("GFDDA_INTERVAL_M", c.integer("auxinput10_interval_m")); i("GFDDA_END_H", c.integer("auxinput10_end_h"));
-  i("GRID_SFDDA", c.integer("grid_sfdda")); i("SGFDDA_INTERVAL_M", c.integer("auxinput9_interval_m"));
-  i("SGFDDA_END_H", c.integer("auxinput9_end_h")); i("HYPSOMETRIC_OPT", c.integer("hypsometric_opt"));
-  i("USE_THETA_M", c.integer("use_theta_m"));
-  if (input) { i("USE_MAXW_LEVEL", c.integer("use_maxw_level")); i("USE_TROP_LEVEL", c.integer("use_trop_level")); }
-  i("GWD_OPT", c.integer("gwd_opt")); i("SF_URBAN_PHYSICS", c.integer("sf_urban_physics"));
-  i("SF_SURFACE_MOSAIC", c.integer("sf_surface_mosaic")); i("SF_OCEAN_PHYSICS", c.integer("sf_ocean_physics"));
-  i("SLUCM_DISTRIBUTED_DRAG", c.logical("slucm_distributed_drag") ? 1 : 0);
-  i("DISTRIBUTED_AHE_OPT", c.integer("distributed_ahe_opt"));
-  if (input) nc.att("SIMULATION_INITIALIZATION_TYPE", std::string("REAL-DATA CASE"));
-  i("WEST-EAST_PATCH_START_UNSTAG", 1); i("WEST-EAST_PATCH_END_UNSTAG", ide - 1);
-  i("WEST-EAST_PATCH_START_STAG", 1); i("WEST-EAST_PATCH_END_STAG", ide);
-  i("SOUTH-NORTH_PATCH_START_UNSTAG", 1); i("SOUTH-NORTH_PATCH_END_UNSTAG", jde - 1);
-  i("SOUTH-NORTH_PATCH_START_STAG", 1); i("SOUTH-NORTH_PATCH_END_STAG", jde);
-  i("BOTTOM-TOP_PATCH_START_UNSTAG", 1); i("BOTTOM-TOP_PATCH_END_UNSTAG", kde - 1);
-  i("BOTTOM-TOP_PATCH_START_STAG", 1); i("BOTTOM-TOP_PATCH_END_STAG", kde);
-  i("GRID_ID", dm.o.dom); i("PARENT_ID", dm.o.parent_id); i("I_PARENT_START", dm.o.i_parent_start);
-  i("J_PARENT_START", dm.o.j_parent_start); i("PARENT_GRID_RATIO", dm.o.parent_grid_ratio);
-  {  // grid%dt: time_step divided by the parent time-step ratios down to this domain
-    double dt = c.num("time_step", 1) + c.num("time_step_fract_num", 1) / std::max(1.0, c.num("time_step_fract_den", 1));
-    for (int id = dm.o.dom; id > 1; id = c.integer("parent_id", id)) dt = dt / c.num("parent_time_step_ratio", id);
-    r("DT", dt);
-  }
+  wrf_io::DomainAtts d;
+  d.title = " OUTPUT FROM CPPWRF REAL V4.8.0 PREPROCESSOR";
+  d.start_date = start_date;
+  d.ide = dm.d.ide; d.jde = dm.d.jde; d.kde = dm.d.kde;
+  d.grid_id = dm.o.dom; d.parent_id = dm.o.parent_id; d.i_parent_start = dm.o.i_parent_start;
+  d.j_parent_start = dm.o.j_parent_start; d.parent_grid_ratio = dm.o.parent_grid_ratio;
+  // grid%dt: time_step divided by the parent time-step ratios down to this domain
+  d.dt = c.num("time_step", 1) + c.num("time_step_fract_num", 1) / std::max(1.0, c.num("time_step_fract_den", 1));
+  for (int id = dm.o.dom; id > 1; id = c.integer("parent_id", id)) d.dt = d.dt / c.num("parent_time_step_ratio", id);
   // the projection comes from the metgrid input (float attributes there)
   for (const char* a : {"CEN_LAT", "CEN_LON", "TRUELAT1", "TRUELAT2", "MOAD_CEN_LAT", "STAND_LON", "POLE_LAT", "POLE_LON"})
-    r(a, double(float(m.att_real(a))));
-  if (input) {
-    int jy, jd;
-    double gm;
-    get_julgmt(start_date, jy, jd, gm);
-    r("GMT", gm); i("JULYR", jy); i("JULDAY", jd);
-  }
-  const int mp = m.att_int("MAP_PROJ");
-  i("MAP_PROJ", mp);
-  nc.att("MAP_PROJ_CHAR", std::string(mp == 1 ? "Lambert Conformal" : mp == 2 ? "Polar Stereographic"
-                                     : mp == 3 ? "Mercator" : mp == 6 ? "Cylindrical Equidistant" : "unknown"));
-  nc.att("MMINLU", dm.mminlu);
-  i("NUM_LAND_CAT", m.att_int("NUM_LAND_CAT")); i("ISWATER", dm.iswater); i("ISLAKE", dm.islake);
-  i("ISICE", dm.isice); i("ISURBAN", dm.isurban); i("ISOILWATER", dm.isoilwater);
-  i("HYBRID_OPT", c.integer("hybrid_opt")); r("ETAC", c.integer("hybrid_opt") == 0 ? 0.0 : c.num("etac"));
+    d.proj[a] = double(float(m.att_real(a)));
+  d.map_proj = m.att_int("MAP_PROJ");
+  d.mminlu = dm.mminlu;
+  d.num_land_cat = m.att_int("NUM_LAND_CAT"); d.iswater = dm.iswater; d.islake = dm.islake;
+  d.isice = dm.isice; d.isurban = dm.isurban; d.isoilwater = dm.isoilwater;
+  d.real_bytes = int(sizeof(T));
+  wrf_io::write_global_atts(nc, c, d, input ? wrf_io::Stream::input : wrf_io::Stream::boundary);
 }
 
 // wrfinput_d01: every variable of WRF's input stream for this configuration (tools/wrf_schema), with the

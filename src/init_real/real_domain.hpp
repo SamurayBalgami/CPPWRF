@@ -9,7 +9,7 @@
 
 #include "init_real/farray.hpp"
 #include "init_real/met_em.hpp"
-#include "init_real/namelist.hpp"
+#include "init_real/wrf_io_names.hpp"
 #include "init_real/real_core.hpp"
 
 namespace cppwrf::init_real {

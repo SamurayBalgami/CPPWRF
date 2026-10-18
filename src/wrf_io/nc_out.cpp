@@ -1,11 +1,11 @@
-#include "init_real/nc_out.hpp"
+#include "wrf_io/nc_out.hpp"
 
 #include <netcdf.h>
 
 #include <cctype>
 #include <stdexcept>
 
-namespace cppwrf::init_real {
+namespace cppwrf::wrf_io {
 
 namespace {
 void ck(int st, const std::string& what) {
@@ -150,4 +150,4 @@ void NcOut::put_text(const std::string& name, const std::string& s, std::size_t 
   ck(nc_put_vara_text(nc_, id, st, ct, s.c_str()), "put " + name);
 }
 
-}  // namespace cppwrf::init_real
+}  // namespace cppwrf::wrf_io

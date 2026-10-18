@@ -1,4 +1,4 @@
-#include "init_real/namelist.hpp"
+#include "wrf_io/namelist.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -6,7 +6,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace cppwrf::init_real {
+namespace cppwrf::wrf_io {
 
 namespace {
 
@@ -198,4 +198,4 @@ std::string Namelist::get_str(const std::string& group, const std::string& key, 
   return v;
 }
 
-}  // namespace cppwrf::init_real
+}  // namespace cppwrf::wrf_io

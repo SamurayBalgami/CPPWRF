@@ -6,9 +6,9 @@
 #include <string>
 #include <vector>
 
-#include "init_real/namelist.hpp"
+#include "wrf_io/namelist.hpp"
 
-namespace cppwrf::init_real {
+namespace cppwrf::wrf_io {
 
 struct SchemaCond {
   std::string opt, op, val;
@@ -80,4 +80,4 @@ class WrfSchema {
   std::vector<SchemaMember> members_;
 };
 
-}  // namespace cppwrf::init_real
+}  // namespace cppwrf::wrf_io
