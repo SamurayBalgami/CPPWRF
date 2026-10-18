@@ -258,8 +258,10 @@ def save_inputs(data, filename="input_thompson.bin"):
     print(f"Saved {data['ncols']} columns x {data['nlevels']} levels to {filename}")
 
 if __name__ == "__main__":
-    ncols = 2500
-    if len(sys.argv) > 1 and sys.argv[1] == "--ncols":
-        ncols = int(sys.argv[2])
-    data = generate_soundings(ncols=ncols)
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--ncols", type=int, default=2500)
+    ap.add_argument("--nlevels", type=int, default=50)
+    args = ap.parse_args()
+    data = generate_soundings(ncols=args.ncols, nlevels=args.nlevels)
     save_inputs(data)

@@ -12,8 +12,6 @@ else()
   set(CPPWRF_ROOT "${CMAKE_SOURCE_DIR}")
 endif()
 
-# Fortran flags for bit-for-bit WRF verification
-set(PHYS_FORTRAN_FLAGS "-ffree-form -fdefault-real-8 -DDOUBLE_PRECISION -O3 -march=native -ffp-contract=off -fno-tree-vectorize")
 # WRF's own -r8 configure flags (FCOPTIM): gfortran vectorises through libmvec as wrf.exe does
 set(WRF_FORTRAN_FLAGS "-ffree-form -fdefault-real-8 -DDOUBLE_PRECISION -O2 -ftree-vectorize -funroll-loops")
 
@@ -51,6 +49,7 @@ add_test(
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/mp_kessler/run_test.sh ${CMAKE_CURRENT_BINARY_DIR}
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+set_tests_properties(test_phys_kessler PROPERTIES LABELS diff)
 
 # ==============================================================================
 # WSM6 Scheme
@@ -70,7 +69,7 @@ add_executable(driver_wsm6_fortran
 )
 set_target_properties(driver_wsm6_fortran PROPERTIES
   Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fortran_modules_wsm6"
-  COMPILE_FLAGS "${PHYS_FORTRAN_FLAGS}"
+  COMPILE_FLAGS "${WRF_FORTRAN_FLAGS}"
 )
 
 add_executable(driver_wsm6_cpu
@@ -93,6 +92,7 @@ add_test(
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/mp_wsm6/run_test.sh ${CMAKE_CURRENT_BINARY_DIR}
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+set_tests_properties(test_phys_wsm6 PROPERTIES LABELS diff)
 
 # ==============================================================================
 # Revised MM5 Surface Layer Scheme (sf_sfclayrev)
@@ -133,6 +133,7 @@ add_test(
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/sf_sfclayrev/run_test.sh ${CMAKE_CURRENT_BINARY_DIR}
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+set_tests_properties(test_phys_sfclayrev PROPERTIES LABELS diff)
 
 # ==============================================================================
 # YSU PBL Scheme (bl_ysu)
@@ -172,6 +173,7 @@ add_test(
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/bl_ysu/run_test.sh ${CMAKE_CURRENT_BINARY_DIR}
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+set_tests_properties(test_phys_ysu PROPERTIES LABELS diff)
 
 # ==============================================================================
 # MYJ PBL + Eta Surface Layer Scheme (bl_myj + sf_myjsfc)

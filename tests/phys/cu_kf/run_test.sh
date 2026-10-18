@@ -13,8 +13,14 @@ INPUT_BIN="${WORK_DIR}/input_kf.bin"
 FORT_OUT="${WORK_DIR}/output_fortran.bin"
 CPP_OUT="${WORK_DIR}/output_cpp.bin"
 
-echo "=== Running Kain-Fritsch Cumulus Differential Test ==="
-python3 "${SCRIPT_DIR}/generate_inputs.py"
+echo "=== Running Kain-Fritsch Cumulus Differential Test (2500 cols x 50 levels) ==="
+python3 "${SCRIPT_DIR}/generate_inputs.py" --ncols 2500 --nlevels 50
+"${REPO_ROOT}/tools/heavy.sh" "${FORT_BIN}"
+"${REPO_ROOT}/tools/heavy.sh" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
+python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0
+
+echo "=== Running Kain-Fritsch Cumulus Differential Test (2499 cols x 51 levels — odd KL tail) ==="
+python3 "${SCRIPT_DIR}/generate_inputs.py" --ncols 2499 --nlevels 51
 "${REPO_ROOT}/tools/heavy.sh" "${FORT_BIN}"
 "${REPO_ROOT}/tools/heavy.sh" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
 python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0

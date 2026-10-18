@@ -84,3 +84,4 @@ add_test(
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_test.sh ${CMAKE_CURRENT_BINARY_DIR}
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+set_tests_properties(test_phys_cu_kf PROPERTIES LABELS diff)

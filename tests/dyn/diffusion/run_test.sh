@@ -13,7 +13,7 @@ cd "${BUILD_DIR}"
 echo "======================================================================"
 echo " 1. Building Fortran Differential Driver (gfortran -fdefault-real-8)"
 echo "======================================================================"
-"${HEAVY}" gfortran -std=gnu -ffree-form -fdefault-real-8 -O3 -ffp-contract=off \
+"${HEAVY}" gfortran -std=gnu -ffree-form -fdefault-real-8 -O2 -ftree-vectorize -funroll-loops \
   -I "${WRF_R8}/dyn_em" \
   -I "${WRF_R8}/frame" \
   -I "${WRF_R8}/share" \

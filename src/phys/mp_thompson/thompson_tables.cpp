@@ -361,7 +361,7 @@ void init_thompson_constants(ThompsonHostTables<Real>& tables) {
     for (int n = 0; n < 12; ++n) cgg[n] = wgamma(cge[n]);
     double oamg = 1.0 / am_g;
     double obmg = 1.0 / bm_g;
-    double ocmg = std::pow(oamg, obmg);
+    double ocmg = vm::pow(oamg, obmg, 4, 9);
     double oge1 = 1.0 / cge[0];
     double ogg1 = 1.0 / cgg[0];
     double ogg2 = 1.0 / cgg[1];
@@ -764,7 +764,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     for (int n = 0; n < 12; ++n) cgg[n] = wgamma(cge[n]);
     double oamg = 1.0 / am_g;
     double obmg = 1.0 / bm_g;
-    double ocmg = std::pow(oamg, obmg);
+    double ocmg = vm::pow(oamg, obmg, 4, 9);
     double oge1 = 1.0 / cge[0];
     double ogg1 = 1.0 / cgg[0];
     double ogg2 = 1.0 / cgg[1];
@@ -987,7 +987,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
 
     // 3. table_dropEvap
     double massc[nbc];
-    for (int n = 0; n < nbc; ++n) massc[n] = am_r * vm::pow(Dc[n], double(bm_r), 0, 2);  // vectorised (libmvec)
+    for (int n = 0; n < nbc; ++n) massc[n] = am_r * vm::pow(Dc[n], double(bm_r), n, nbc);  // vectorised (libmvec)
 
     for (int k = 0; k < nbc; ++k) {
         int nu_c = std::min(15, static_cast<int>(std::round(1000.e6 / t_Nc[k])) + 2);
@@ -1018,7 +1018,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     }
     double vg[nbg];
     for (int n = 0; n < nbg; ++n) {
-        vg[n] = av_g * std::pow(Dg[n], bv_g);
+        vg[n] = av_g * vm::pow(Dg[n], bv_g, n, nbg);
     }
 
     std::vector<double> N_g_pre(ntb_g * ntb_g1 * nbg);
@@ -1031,7 +1031,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
             double lamg = lam_exp_g * std::pow(cgg[2] * ogg2 * ogg1, obmg);
             double N0_g = tables.N0g_exp[i] / (cgg[1] * lam_exp_g) * std::pow(lamg, cge[1]);
             for (int n = 0; n < nbg; ++n) {
-                N_g_pre[idx_ng(j, i, n)] = N0_g * std::pow(Dg[n], mu_g) * std::exp(-lamg * Dg[n]) * dtg[n];
+                N_g_pre[idx_ng(j, i, n)] = N0_g * vm::pow(Dg[n], mu_g, n, nbg) * vm::exp(-lamg * Dg[n], n, nbg) * dtg[n];
             }
         }
     }
@@ -1045,7 +1045,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
         double N0_r = tables.N0r_exp[k] / (crg[1] * lam_exp_r) * std::pow(lamr, cre[1]);
         double N_r[nbr];
         for (int n2 = 0; n2 < nbr; ++n2) {
-            N_r[n2] = N0_r * std::pow(Dr[n2], mu_r) * std::exp(-lamr * Dr[n2]) * dtr[n2];
+            N_r[n2] = N0_r * vm::pow(Dr[n2], mu_r, n2, nbr) * vm::exp(-lamr * Dr[n2], n2, nbr) * dtr[n2];
         }
 
         constexpr int n3 = 0; // dimNRHG1 = 1
@@ -1057,7 +1057,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
                 for (int n2 = 0; n2 < nbr; ++n2) {
                     double massr = am_r * std::pow(Dr[n2], bm_r);
                     for (int n = 0; n < nbg; ++n) {
-                        double massg = am_g * std::pow(Dg[n], bm_g);
+                        double massg = am_g * vm::pow(Dg[n], bm_g, n, nbg);
                         double dvg = 0.5 * ((vr[n2] - vg[n]) + std::abs(vr[n2] - vg[n]));
                         double dvr = 0.5 * ((vg[n] - vr[n2]) + std::abs(vg[n] - vr[n2]));
                         double geom = PI * 0.25 * Ef_rg * (Dg[n] + Dr[n2]) * (Dg[n] + Dr[n2]);
@@ -1087,7 +1087,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     }
     double vs[nbs];
     for (int n = 0; n < nbs; ++n) {
-        vs[n] = 1.5 * av_s * std::pow(Ds[n], bv_s) * std::exp(-fv_s * Ds[n]);
+        vs[n] = 1.5 * av_s * vm::pow(Ds[n], bv_s, n, nbs) * vm::exp(-fv_s * Ds[n], n, nbs);
     }
 
     std::vector<double> N_s_pre(ntb_t * ntb_s * nbs);
@@ -1134,8 +1134,8 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
             double slam2 = M2 * oM3 * Lam1;
 
             for (int n = 0; n < nbs; ++n) {
-                N_s_pre[idx_ns(j, i, n)] = Mrat * (Kap0 * std::exp(-slam1 * Ds[n])
-                       + Kap1 * M0 * std::pow(Ds[n], mu_s) * std::exp(-slam2 * Ds[n])) * dts[n];
+                N_s_pre[idx_ns(j, i, n)] = Mrat * (Kap0 * vm::exp(-slam1 * Ds[n], n, nbs)
+                       + Kap1 * M0 * vm::pow(Ds[n], mu_s, n, nbs) * vm::exp(-slam2 * Ds[n], n, nbs)) * dts[n];
             }
         }
     }
@@ -1149,7 +1149,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
         double N0_r = tables.N0r_exp[k] / (crg[1] * lam_exp_r) * std::pow(lamr, cre[1]);
         double N_r[nbr];
         for (int n2 = 0; n2 < nbr; ++n2) {
-            N_r[n2] = N0_r * std::pow(Dr[n2], mu_r) * std::exp(-lamr * Dr[n2]) * dtr[n2];
+            N_r[n2] = N0_r * vm::pow(Dr[n2], mu_r, n2, nbr) * vm::exp(-lamr * Dr[n2], n2, nbr) * dtr[n2];
         }
 
         for (int j = 0; j < ntb_t; ++j) {
@@ -1209,9 +1209,9 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     // 6. freezeH2O
     double orho_w = 1.0 / rho_w;
     double massr_all[nbr];
-    for (int n2 = 0; n2 < nbr; ++n2) massr_all[n2] = am_r * std::pow(Dr[n2], bm_r);
+    for (int n2 = 0; n2 < nbr; ++n2) massr_all[n2] = am_r * vm::pow(Dr[n2], bm_r, n2, nbr);
     double massc_all[nbc];
-    for (int n = 0; n < nbc; ++n) massc_all[n] = am_r * std::pow(Dc[n], bm_r);
+    for (int n = 0; n < nbc; ++n) massc_all[n] = am_r * vm::pow(Dc[n], bm_r, n, nbc);
 
     if (!have_fz) par_for_host(ntb_IN * ntb_freeze_temp, [&](int km) {
         int m = km / ntb_freeze_temp;

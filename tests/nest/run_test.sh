@@ -30,7 +30,7 @@ WRF_ROOT="${WRF_DIR:?set WRF_DIR to a WRF v4.8.0 -r8 build}"
 BRIDGE_OBJ="${OUT_DIR}/fortran_nest_bridge.o"
 if [[ ! -f "${BRIDGE_OBJ}" || "${SCRIPT_DIR}/fortran_nest_bridge.f90" -nt "${BRIDGE_OBJ}" ]]; then
   echo "Compiling Fortran nest bridge against WRF 4.8.0 libraries..."
-  "${REPO_ROOT}/tools/heavy.sh" gfortran -c -fdefault-real-8 -O3 -fPIC \
+  "${REPO_ROOT}/tools/heavy.sh" gfortran -c -fdefault-real-8 -O2 -ftree-vectorize -funroll-loops -fPIC \
     -I"${WRF_ROOT}/inc" -I"${WRF_ROOT}/main" -I"${WRF_ROOT}/frame" \
     -I"${WRF_ROOT}/share" -I"${WRF_ROOT}/dyn_em" \
     -J"${OUT_DIR}" \

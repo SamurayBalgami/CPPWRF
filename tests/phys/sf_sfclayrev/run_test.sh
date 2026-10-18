@@ -33,4 +33,10 @@ for kim in 0 1; do  # kim_tofd off / on (WRF 4.8 turbulent orographic form drag)
   CPPWRF_TEST_KIM_TOFD=${kim} "${HEAVY}" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
   python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0
 done
+
+echo "=== Running Revised MM5 Surface Layer Differential Test (2499 cols — odd i tail) ==="
+python3 "${SCRIPT_DIR}/generate_inputs.py" --cols 2499 --out "${INPUT_BIN}"
+"${HEAVY}" "${FORT_BIN}" "${INPUT_BIN}" "${FORT_OUT}"
+"${HEAVY}" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
+python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0
 echo "=== SFCLAYREV Differential Test PASSED ==="

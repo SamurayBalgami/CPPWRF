@@ -3,7 +3,8 @@ cmake_minimum_required(VERSION 3.24)
 set(CPPWRF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 
 # Fortran flags for bit-for-bit WRF verification
-set(PHYS_FORTRAN_FLAGS "-cpp -ffree-form -fdefault-real-8 -fdefault-double-8 -O3 -march=native -ffp-contract=off -fno-tree-vectorize")
+# WRF's own -r8 configure flags (FCOPTIM): gfortran vectorises through libmvec as in wrf.exe
+set(PHYS_FORTRAN_FLAGS "-cpp -ffree-form -fdefault-real-8 -fdefault-double-8 -O2 -ftree-vectorize -funroll-loops")
 
 # 1. Fortran Driver
 add_executable(driver_noah_fortran
@@ -83,3 +84,4 @@ add_test(
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_test.sh ${CMAKE_CURRENT_BINARY_DIR}
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+set_tests_properties(test_phys_noah PROPERTIES LABELS diff)

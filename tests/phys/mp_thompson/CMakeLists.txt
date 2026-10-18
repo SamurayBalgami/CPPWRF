@@ -55,7 +55,7 @@ target_include_directories(test_tables PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_compile_definitions(test_tables PRIVATE CPPWRF_DOUBLE)
-target_compile_options(test_tables PRIVATE -O3 -march=native -fopenmp)
+target_compile_options(test_tables PRIVATE -O3 -march=native -fopenmp -ffp-contract=off -fno-tree-vectorize)
 target_link_libraries(test_tables PRIVATE OpenMP::OpenMP_CXX)
 
 # 3. C++ Driver (CPU FP64)
@@ -116,3 +116,4 @@ add_test(
   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_test.sh ${CMAKE_CURRENT_BINARY_DIR}
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+set_tests_properties(test_phys_mp_thompson PROPERTIES LABELS diff)
