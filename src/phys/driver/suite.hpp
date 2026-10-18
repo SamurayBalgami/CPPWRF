@@ -138,6 +138,10 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   Field3 u_phytmp, v_phytmp;
   Field3 t1_lag_;  // WRF grid%t_1 as seen by first_rk_step_part2 (wrf_t1_lag)
   Field2 coszen;   // radiation: cosine of the solar zenith angle (middle of the radiation interval)
+  // radiation diagnostics (radiation_driver): LW/SW heating rates, fluxes and their accumulations (every step)
+  Field3 rthratenlw, rthratensw;
+  Field2 lwupt, lwuptc, lwdnt, lwdntc, lwupb, lwupbc, lwdnb, lwdnbc, olr, swupt, swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc;
+  Field2 aclwupt, aclwuptc, aclwdnt, aclwdntc, aclwupb, aclwupbc, aclwdnb, aclwdnbc, acswupt, acswuptc, acswdnt, acswdntc, acswupb, acswupbc, acswdnb, acswdnbc;
   std::unique_ptr<RadiationDriver> rad_;
   Field3 *re_cloud_ = nullptr, *re_ice_ = nullptr, *re_snow_ = nullptr;
   // radiation needs latitude/longitude (wrfinput XLAT/XLONG, i + nx*j); call before the first step

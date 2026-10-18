@@ -39,6 +39,11 @@ struct RadiationOutputs {
   Field3* rthraten;  // uncoupled theta tendency (K/s), LW + SW
   Field2 *glw, *gsw, *swdown, *coszen;
   Field3* cldfra;    // cloud fraction (icloud = 1: cal_cldfra1), may be nullptr
+  // diagnostics (may be nullptr): RTHRATLW, RTHRATSW; LWUPT, LWUPTC, LWDNT, LWDNTC, LWUPB, LWUPBC, LWDNB,
+  // LWDNBC, OLR; SWUPT, SWUPTC, SWDNT, SWDNTC, SWUPB, SWUPBC, SWDNB, SWDNBC (0 at night)
+  Field3 *rthratlw = nullptr, *rthratsw = nullptr;
+  Field2* lw[9] = {};
+  Field2* sw[8] = {};
 };
 
 // calc_coszen (module_radiation_driver.F) for one column; xtime in minutes, angles in degrees

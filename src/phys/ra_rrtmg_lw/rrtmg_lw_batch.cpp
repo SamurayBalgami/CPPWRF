@@ -101,6 +101,10 @@ struct KLwFinish {
                                           SD{out.rthraten + col, nc}, SD{nullptr, 0});
     out.glw[col] = o.glw;
     if (out.olr) out.olr[col] = o.olr;
+    if (out.diag) {
+      const double d[8] = {o.lwupt, o.lwuptc, o.lwdnt, o.lwdntc, o.lwupb, o.lwupbc, o.lwdnb, o.lwdnbc};
+      for (int q = 0; q < 8; ++q) out.diag[std::size_t(q) * nc + col] = d[q];
+    }
   }
 };
 

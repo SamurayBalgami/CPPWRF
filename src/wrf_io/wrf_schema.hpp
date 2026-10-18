@@ -23,6 +23,7 @@ struct SchemaVar {
   std::vector<std::pair<std::string, std::string>> dims;  // (lo, hi) expressions, Fortran dimension order
   std::vector<std::string> dimnames;
   std::vector<SchemaCond> conds;  // in use if empty or any holds
+  std::string nest_down, nest_up;  // Registry nest interpolation (d) / feedback (u) function, "" if none
 };
 
 struct SchemaMember {

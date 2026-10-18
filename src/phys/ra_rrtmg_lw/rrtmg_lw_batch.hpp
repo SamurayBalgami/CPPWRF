@@ -22,6 +22,8 @@ struct LwBatchOutput {
   double* rthraten;  // [nz*ncol] K/s
   double* glw;       // [ncol] W/m2
   double* olr;       // [ncol] (may be nullptr)
+  // [8*ncol] (may be nullptr): lwupt, lwuptc, lwdnt, lwdntc, lwupb, lwupbc, lwdnb, lwdnbc (d*ncol + col)
+  double* diag = nullptr;
 };
 
 class RrtmgLwBatch {

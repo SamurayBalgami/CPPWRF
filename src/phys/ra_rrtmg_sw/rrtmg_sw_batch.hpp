@@ -20,6 +20,8 @@ struct SwBatchInput {
 struct SwBatchOutput {
   double* rthraten;  // [nz*ncol] K/s (0 at night)
   double* gsw;       // [ncol] W/m2
+  // [8*ncol] (may be nullptr): swupt, swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc (d*ncol + col)
+  double* diag = nullptr;
 };
 
 class RrtmgSwBatch {

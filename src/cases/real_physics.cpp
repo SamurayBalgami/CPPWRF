@@ -30,6 +30,49 @@ bool wants_column_physics(const io::Config& cfg) {
          cfg.get_int("phys.bl_pbl_physics", 0) != 0 || cfg.get_int("phys.cu_physics", 0) != 0;
 }
 
+LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu, int julday, double cen_lat,
+                         int iswater, int isice, const std::vector<double>& lu, const std::vector<double>& xice,
+                         const std::vector<double>& snowc) {
+  phys::driver::LanduseTables lt;
+  if (!phys::driver::read_landuse_table(table_dir + "/LANDUSE.TBL", mminlu, lt))
+    throw std::runtime_error("real physics: LANDUSE.TBL lacks " + mminlu);
+  int isn = 1;
+  if (julday < 105 || julday > 288) isn = 2;
+  if (cen_lat < 0.0) isn = 3 - isn;
+  if (lt.n_seasons == 1) isn = 1;
+  const double xice_threshold = 0.5;  // fractional_seaice = 0
+  const std::size_t n2 = lu.size();
+  LanduseInit r;
+  std::vector<double>&albbck = r.albbck, &albedo = r.albedo, &z0 = r.z0, &embck = r.embck, &emiss = r.emiss,
+                     &mavail = r.mavail, &xland = r.xland;
+  for (auto* v : {&albbck, &albedo, &z0, &embck, &emiss, &mavail, &xland}) v->assign(n2, 0.0);
+  for (std::size_t p = 0; p < n2; ++p) {
+    int is = int(std::lround(lu[p]));
+    if (is < 0 || is > lt.n_cats) throw std::runtime_error("real physics: LANDUSE OUTSIDE RANGE");
+    if (is == 0) is = iswater;
+    const auto& c = lt.categories[isn - 1][is];
+    albbck[p] = c.albd / 100.;
+    albedo[p] = albbck[p];
+    if (snowc[p] > 0.5) albedo[p] = albbck[p] * (1. + c.scfx);
+    z0[p] = c.sfz0 / 100.;
+    embck[p] = c.sfem;
+    emiss[p] = embck[p];
+    mavail[p] = c.slmo;
+    xland[p] = is != iswater ? 1.0 : 2.0;
+    if (xice[p] >= xice_threshold) {
+      const auto& ci = lt.categories[isn - 1][isice];
+      xland[p] = 1.0;
+      albbck[p] = ci.albd / 100.;
+      embck[p] = ci.sfem;
+      albedo[p] = albbck[p];
+      emiss[p] = embck[p];
+      z0[p] = ci.sfz0 / 100.;
+      mavail[p] = ci.slmo;
+    }
+  }
+  return r;
+}
+
 #ifndef CPPWRF_HAVE_NETCDF
 void init_real_physics(const io::Config&, Model&) { throw std::runtime_error("column physics needs NetCDF"); }
 #else
@@ -165,41 +208,10 @@ void init_real_physics(const io::Config& cfg, Model& m) {
     su.isltyp.upload(hs);
   }
   // landuse_init
-  phys::driver::LanduseTables lt;
-  if (!phys::driver::read_landuse_table(o.table_dir + "/LANDUSE.TBL", o.mminlu, lt))
-    throw std::runtime_error("real physics: LANDUSE.TBL lacks " + o.mminlu);
-  const int julday = int(in.att_num("JULDAY", 0));
-  const double cen_lat = in.att_num("CEN_LAT", 0.0);
-  int isn = 1;
-  if (julday < 105 || julday > 288) isn = 2;
-  if (cen_lat < 0.0) isn = 3 - isn;
-  if (lt.n_seasons == 1) isn = 1;
-  const double xice_threshold = 0.5;  // fractional_seaice = 0
-  std::vector<double> albbck(n2), albedo(n2), z0(n2), embck(n2), emiss(n2), mavail(n2), xland(n2);
-  for (std::size_t p = 0; p < n2; ++p) {
-    int is = int(std::lround(lu[p]));
-    if (is < 0 || is > lt.n_cats) throw std::runtime_error("real physics: LANDUSE OUTSIDE RANGE");
-    if (is == 0) is = o.iswater;
-    const auto& c = lt.categories[isn - 1][is];
-    albbck[p] = c.albd / 100.;
-    albedo[p] = albbck[p];
-    if (snowc[p] > 0.5) albedo[p] = albbck[p] * (1. + c.scfx);
-    z0[p] = c.sfz0 / 100.;
-    embck[p] = c.sfem;
-    emiss[p] = embck[p];
-    mavail[p] = c.slmo;
-    xland[p] = is != o.iswater ? 1.0 : 2.0;
-    if (xice[p] >= xice_threshold) {
-      const auto& ci = lt.categories[isn - 1][o.isice];
-      xland[p] = 1.0;
-      albbck[p] = ci.albd / 100.;
-      embck[p] = ci.sfem;
-      albedo[p] = albbck[p];
-      emiss[p] = embck[p];
-      z0[p] = ci.sfz0 / 100.;
-      mavail[p] = ci.slmo;
-    }
-  }
+  const LanduseInit li = landuse_init(o.table_dir, o.mminlu, int(in.att_num("JULDAY", 0)), in.att_num("CEN_LAT", 0.0),
+                                      o.iswater, o.isice, lu, xice, snowc);
+  const std::vector<double>&albbck = li.albbck, &albedo = li.albedo, &z0 = li.z0, &embck = li.embck,
+                            &emiss = li.emiss, &mavail = li.mavail, &xland = li.xland;
   put2(su.albbck, albbck); put2(su.albedo, albedo); put2(su.z0, z0); put2(su.znt, z0);
   put2(su.embck, embck); put2(su.emiss, emiss); put2(su.mavail, mavail); put2(su.xland, xland);
 

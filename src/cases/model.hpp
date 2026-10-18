@@ -54,6 +54,13 @@ void init_real_case(const io::Config& cfg, Model& m);
 // initial surface state as WRF start_domain/phy_init and attaches it to m.rk (real_physics.cpp).
 bool wants_column_physics(const io::Config& cfg);
 void init_real_physics(const io::Config& cfg, Model& m);
+// phy_init's landuse_init (LANDUSE.TBL for the season of julday) on the wrfinput LU_INDEX, SEAICE, SNOWC
+struct LanduseInit {
+  std::vector<double> albbck, albedo, z0, embck, emiss, mavail, xland;
+};
+LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu, int julday, double cen_lat,
+                         int iswater, int isice, const std::vector<double>& lu, const std::vector<double>& xice,
+                         const std::vector<double>& snowc);
 
 // Comma-separated list (whitespace trimmed, empty entries dropped).
 std::vector<std::string> split_list(const std::string& s);

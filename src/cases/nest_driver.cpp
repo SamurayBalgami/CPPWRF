@@ -578,6 +578,16 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
     if (doms[i].spec.parent_id > 0) doms[i].runner->set_defer_output(true);
   }
 
+#ifdef CPPWRF_HAVE_NETCDF
+  // med_nest_initial's feedback (feedback != 0) of the history fields the model does not carry
+  for (int i = 0; i < max_dom; ++i) doms[i].runner->prepare_output();
+  for (int i = 0; i < max_dom; ++i)
+    for (int c_idx : doms[i].children)
+      if (doms[c_idx].spec.feedback != 0 && doms[i].runner->history() && doms[c_idx].runner->history())
+        doms[i].runner->history()->feedback_from(*doms[c_idx].runner->history(), doms[c_idx].spec.i_parent_start,
+                                                 doms[c_idx].spec.j_parent_start, doms[c_idx].spec.parent_grid_ratio);
+#endif
+
   // 3. Root domain (d01) writes its t=0 initial frame before its first step
   if (!doms[0].runner->start()) return 3;
   doms[0].started = true;
@@ -597,6 +607,7 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
     const long n = ++d.step;
     d.runner->before_step(n);
     d.model.rk->step(*d.model.st, *d.model.tend, *d.model.base);
+    d.runner->after_solve(n);
     dev_sync();
 
     for (int c_idx : d.children) {
@@ -618,6 +629,11 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
       if (c.spec.feedback != 0) {
         med_nest_feedback(d.model, c.model, c.spec);
         dev_sync();
+#ifdef CPPWRF_HAVE_NETCDF
+        if (d.runner->history() && c.runner->history())  // history-only fields fed back (Registry u=)
+          d.runner->history()->feedback_from(*c.runner->history(), c.spec.i_parent_start, c.spec.j_parent_start,
+                                             c.spec.parent_grid_ratio);
+#endif
       }
     }
 

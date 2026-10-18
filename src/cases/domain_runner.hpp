@@ -28,12 +28,16 @@ class DomainRunner {
 
   // Initializes domain state, loads restarts if needed, writes run.json, diag header, first diag/snap
   bool start();
+  // output field lists and the wrfout writer (idempotent; start() calls it)
+  void prepare_output();
 
   // Called before step n (1-based): boundary interval updates, start timing
   void before_step(long n);
 
   // Called after step n (1-based): step timing, diag, snapshot, wrfout, restart
   bool after_step(long n);
+  // Called right after the solve of step n, before nests run and feed back (WRF's end of solve_em)
+  void after_solve(long n);
   // Nested domains: WRF writes history in med_before_solve_io, i.e. a frame for step n at the start
   // of step n+1 (after the parent's next med_nest_force, whose couple/uncouple round trip changes
   // the state by an ulp); the last frame after the last step (med_last_solve_io).
@@ -46,10 +50,14 @@ class DomainRunner {
   double step_time = 0.0;
 
   const std::string& out_dir() const { return out_dir_; }
+#ifdef CPPWRF_HAVE_NETCDF
+  WrfHistory* history() { return wrfout_.get(); }
+#endif
   const std::string& domain_tag() const { return domain_tag_; }
 
  private:
   bool defer_output_ = false;
+  bool output_prepared_ = false;
   long pending_ = -1;  // deferred diag/snap step
   bool do_diag(long n);
   void do_snap(long n);

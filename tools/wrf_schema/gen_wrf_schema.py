@@ -36,7 +36,7 @@ def parse_conditions(inc_dir):
 
 
 def parse_allocs(inc_dir):
-    files = glob.glob(os.path.join(inc_dir, "allocs_*.f90"))
+    files = glob.glob(os.path.join(inc_dir, "allocs_*.f90")) or glob.glob(os.path.join(inc_dir, "allocs_*.F"))
     files.sort(key=lambda p: int(re.search(r"allocs_(\d+)", p).group(1)))
     out = []
     pat = re.compile(r"grid%tail_statevars%(\w+(?:\(\d\))?)\s*=\s*(.*)$")
@@ -59,6 +59,8 @@ def parse_allocs(inc_dir):
                 continue
             if val.startswith("'"):
                 val = val[1 : val.rindex("'")]
+            elif "!" in val:  # allocs_*.F: trailing "! hex" comments
+                val = val[: val.index("!")].strip()
             elif val.startswith("=>") or key.endswith("table") or key.startswith("rfield") or key.startswith("ifield"):
                 pass
             e[key] = val
@@ -84,6 +86,8 @@ def parse_scalar_tables(inc_dir):
             arr, what, mem, val = m.group(1), m.group(2), m.group(3), m.group(4).strip()
             if val.startswith("'"):
                 val = val[1 : val.rindex("'")]
+            elif "!" in val:  # allocs_*.F: trailing "! hex" comments
+                val = val[: val.index("!")].strip()
             k = (arr, mem, cond)
             cur.setdefault(k, {})[what] = val
             continue
@@ -112,6 +116,38 @@ def rconfig_defaults(reg_dir):
     return d
 
 
+def nest_specs(reg_dir):
+    """state variable (lower case) -> (down, up): the nest interpolation (d) and feedback (u) of the
+    Registry io column, "" when absent, "interp_fcn" / "copy_fcn" for the default functions."""
+    out = {}
+    files = [os.path.join(reg_dir, "Registry.EM_COMMON")] + sorted(glob.glob(os.path.join(reg_dir, "registry.*")))
+    for f in files:
+        if not os.path.exists(f):
+            continue
+        for line in open(f, errors="replace"):
+            t = line.split()
+            if len(t) < 8 or t[0].lower() != "state":
+                continue
+            io = t[7]
+            spec = {}
+            i = 0
+            while i < len(io):
+                ch = io[i]
+                if ch in "duf" and i + 1 < len(io) and io[i + 1] == "=":
+                    j = io.index(")", i)
+                    spec[ch] = io[i + 3:j]
+                    i = j + 1
+                    continue
+                if ch in "duf":
+                    spec.setdefault(ch, {"d": "interp_fcn", "u": "copy_fcn", "f": "bdy_interp"}[ch])
+                if ch == "{":
+                    i = io.index("}", i) + 1
+                    continue
+                i += 1
+            out.setdefault(t[2].lower(), (spec.get("d", ""), spec.get("u", "")))
+    return out
+
+
 def main():
     wrf, outp = sys.argv[1], sys.argv[2]
     inc = os.path.join(wrf, "inc")
@@ -119,6 +155,15 @@ def main():
     allocs = parse_allocs(inc)
     scal = parse_scalar_tables(inc)
     defaults = rconfig_defaults(os.path.join(wrf, "Registry"))
+    nests = nest_specs(os.path.join(wrf, "Registry"))
+
+    def nest_of(v):  # time-level variables (u_2) carry the Registry name (u)
+        v = v.lower()
+        if v in nests:
+            return nests[v]
+        if re.match(r".*_[12]$", v) and v[:-2] in nests:
+            return nests[v[:-2]]
+        return ("", "")
     used_opts = sorted({c[0] for v in cond.values() for c in v} | {c[2][0] for c in scal if c[2]})
     with open(outp, "w") as o:
         o.write("# WRF I/O schema extracted by tools/wrf_schema/gen_wrf_schema.py from %s\n" % os.path.basename(os.path.normpath(wrf)))
@@ -129,7 +174,7 @@ def main():
         missing = [op for op in used_opts if op.lower() not in defaults]
         for op in missing:
             o.write("RCONFIG\t%s\tinteger\tderived\t0\n" % op.lower())
-        o.write("# VAR\tvarname\tdataname\ttype\tndim\tmemorder\tstagger\tntl\tstreams1\tstreams2\tdims(sd:ed;...)\tdimnames\tdesc\tunits\tconds\n")
+        o.write("# VAR\tvarname\tdataname\ttype\tndim\tmemorder\tstagger\tntl\tstreams1\tstreams2\tdims(sd:ed;...)\tdimnames\tdesc\tunits\tconds\tnest_down\tnest_up\n")
         for e in allocs:
             v = e.get("VarName", "")
             if e.get("scalar_array", "").upper() == ".TRUE.":
@@ -143,7 +188,8 @@ def main():
             o.write("\t".join([kind, v, e.get("DataName", ""), e.get("Type", ""), e.get("Ndim", ""),
                                e.get("MemoryOrder", ""), e.get("Stagger", ""), e.get("Ntl", "0"),
                                e.get("streams(1)", "0"), e.get("streams(2)", "0"), dims, dimnames,
-                               e.get("Description", ""), e.get("Units", ""), c]) + "\n")
+                               e.get("Description", ""), e.get("Units", ""), c,
+                               nest_of(v)[0], nest_of(v)[1]]) + "\n")
         o.write("# MEMBER\tarray\tmember\tcond\tdname\tdesc\tunits\tstreams1\tstreams2\tboundary\n")
         for arr, mem, c, d in scal:
             cs = "%s.EQ.%s" % c if c else "-"

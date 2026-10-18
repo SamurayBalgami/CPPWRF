@@ -29,6 +29,7 @@ struct PhyPrepFields {
 
 struct PhyPrepParams {
   int use_theta_m = 1;
+  bool mut_from_mu = false;  // p_hyd from mub + mu_2 instead of State::mut (a call before the RK step)
 };
 
 void run_phy_prep(const dyn::State& s, const dyn::BaseState& b, PhyPrepFields& p, const PhyPrepParams& params = {});

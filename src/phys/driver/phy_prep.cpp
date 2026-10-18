@@ -18,7 +18,9 @@ struct KPhyPrep {
   BView3<const real> pb, phb;
   View3<const real> q[kMaxMoist];
   int n_moist, p_qv;
-  View2<const real> mut;
+  View2<const real> mut, mu;
+  BView2<const real> mub;
+  int mut_from_mu;  // mut = mub + mu (rk_step_prep), for a call outside the RK step
   View1<const real> c1h, c2h, fnm, fnp, dnw;
   real p_top;
   int nz, use_theta_m;
@@ -71,7 +73,8 @@ struct KPhyPrep {
     for (int k = kte - 1; k >= 0; --k) {
       real qtot = real(0.);
       for (int n = 0; n < n_moist; ++n) qtot = qtot + q[n](i, j, k);
-      p_hyd_w(i, j, k) = p_hyd_w(i, j, k + 1) - (real(1.) + qtot) * (c1h(k) * mut(i, j) + c2h(k)) * dnw(k);
+      const real mt = mut_from_mu ? mub(i, j) + mu(i, j) : mut(i, j);
+      p_hyd_w(i, j, k) = p_hyd_w(i, j, k + 1) - (real(1.) + qtot) * (c1h(k) * mt + c2h(k)) * dnw(k);
     }
     for (int k = 0; k < nz; ++k) p_hyd(i, j, k) = real(0.5) * (p_hyd_w(i, j, k) + p_hyd_w(i, j, k + 1));
   }
@@ -95,6 +98,9 @@ void run_phy_prep(const dyn::State& s, const dyn::BaseState& b, PhyPrepFields& p
   for (int n = 0; n < s.n_moist; ++n) k.q[n] = s.q_2[n].cview();
   k.n_moist = s.n_moist; k.p_qv = s.P_QV;
   k.mut = s.mut.cview();
+  k.mu = s.mu_2.cview();
+  k.mub = b.mub.view();
+  k.mut_from_mu = params.mut_from_mu ? 1 : 0;
   k.c1h = b.c1h.view(); k.c2h = b.c2h.view(); k.fnm = b.fnm.view(); k.fnp = b.fnp.view(); k.dnw = b.dnw.view();
   k.p_top = real(b.p_top);
   k.nz = s.t_2.layout().nz;

@@ -222,6 +222,74 @@ void DomainRunner::load_restart_file(const std::string& path) {
 }
 #endif
 
+// Output field lists and the wrfout writer (also called by the nest driver before start(), so that
+// the nest initialisation feedback reaches the parent's first history frame)
+void DomainRunner::prepare_output() {
+  if (output_prepared_) return;
+  output_prepared_ = true;
+  if (start_date_.empty())
+    start_date_ = cfg_.get_string("run.start_date", !m_.start_date.empty() ? m_.start_date : "2000-01-01_00:00:00");
+  if (m_.rk && m_.rk->physics()) {
+    extra_2d_ = {&m_.rk->physics()->rainnc, &m_.rk->physics()->rainncv};
+    if (m_.rk->physics()->params().mp_physics == 6 || m_.rk->physics()->params().mp_physics == 8) {
+      extra_2d_.push_back(&m_.rk->physics()->snownc);
+      extra_2d_.push_back(&m_.rk->physics()->snowncv);
+      extra_2d_.push_back(&m_.rk->physics()->graupelnc);
+      extra_2d_.push_back(&m_.rk->physics()->graupelncv);
+      extra_2d_.push_back(&m_.rk->physics()->sr);
+    }
+  }
+  if (m_.suite) {  // column physics surface and cumulus fields (WRF names in lower case)
+    const phys::driver::PhysicsSuite& su = *m_.suite;
+    for (const Field2* f : {&su.hfx, &su.qfx, &su.lh, &su.ust, &su.znt, &su.pblh, &su.tsk, &su.grdflx, &su.qsfc,
+                            &su.flhc, &su.flqc, &su.t2, &su.th2, &su.q2, &su.u10, &su.v10, &su.psfc, &su.albedo,
+                            &su.albbck, &su.emiss, &su.canwat, &su.snow, &su.snowh, &su.snowc, &su.noahres,
+                            &su.acgrdflx, &su.achfx, &su.aclhf, &su.sfcevp, &su.potevp, &su.mol, &su.rmol, &su.br,
+                            &su.wspd, &su.fm, &su.fh, &su.zol, &su.regime, &su.sfcexc, &su.lai, &su.xland,
+                            &su.rainc, &su.raincv, &su.nca, &su.pratec, &su.cutop, &su.cubot, &su.htop, &su.hbot})
+      extra_2d_.push_back(f);
+    extra_3d_.insert(extra_3d_.end(), {&su.tslb, &su.smois, &su.sh2o, &su.pt.rublten, &su.pt.rvblten, &su.pt.rthblten,
+                                       &su.pt.rqvblten, &su.exch_h});
+    if (su.options().sf_sfclay_physics == 2 || su.options().bl_pbl_physics == 2) {
+      for (const Field2* f : {&su.thz0, &su.uz0, &su.vz0, &su.akhs, &su.akms, &su.ct, &su.tshltr, &su.th10, &su.qshltr,
+                              &su.q10, &su.pshltr, &su.u10e, &su.v10e, &su.mixht})
+        extra_2d_.push_back(f);
+      extra_3d_.insert(extra_3d_.end(), {&su.tke_pbl, &su.el_pbl});
+    }
+    if (su.radiation_on()) {
+      for (const Field2* f : {&su.glw, &su.gsw, &su.swdown, &su.coszen}) extra_2d_.push_back(f);
+      extra_3d_.push_back(&su.pt.rthraten);
+      extra_3d_.push_back(&su.cldfra);
+      if (auto* pc = m_.rk->physics(); pc && pc->params().microp_re)
+        extra_3d_.insert(extra_3d_.end(), {&pc->re_cloud, &pc->re_ice, &pc->re_snow});
+    }
+    if (su.options().cu_physics != 0)
+    {
+      extra_3d_.insert(extra_3d_.end(), {&su.w0avg, &su.pt.rthcuten, &su.pt.rqvcuten, &su.pt.rqccuten});
+      if (m_.st->P_QR >= 0) extra_3d_.push_back(&su.pt.rqrcuten);
+      if (m_.st->P_QI >= 0) extra_3d_.push_back(&su.pt.rqicuten);
+      if (m_.st->P_QS >= 0) extra_3d_.push_back(&su.pt.rqscuten);
+      if (su.options().cu_physics == 16 || su.options().cu_physics == 3)
+        extra_3d_.insert(extra_3d_.end(), {&su.pt.rucuten, &su.pt.rvcuten, &su.pt.rthften, &su.pt.rqvften});
+    }
+    if (m_.st->P_QC >= 0) extra_3d_.push_back(&su.pt.rqcblten);
+    if (m_.st->P_QI >= 0) extra_3d_.push_back(&su.pt.rqiblten);
+  }
+
+#ifdef CPPWRF_HAVE_NETCDF
+  if (write_wrfout_ && !wrfout_)
+  {
+    std::vector<const Field2*> f2 = extra_2d_;
+    std::vector<const Field3*> f3 = extra_3d_;
+    if (m_.suite) {
+      for (const Field2* f : m_.suite->fields2()) f2.push_back(f);
+      for (const Field3* f : m_.suite->fields3()) f3.push_back(f);
+    }
+    wrfout_ = std::make_unique<WrfHistory>(cfg_, m_, out_dir_, domain_tag_, start_date_, f2, f3);
+  }
+#endif
+}
+
 bool DomainRunner::start() {
   const Grid& g = m_.g;
   dyn::State& st = *m_.st;
@@ -351,65 +419,7 @@ bool DomainRunner::start() {
   snap_ = std::make_unique<io::SnapshotWriter>(out_dir_);
   dg_ = std::make_unique<dyn::Diagnostics>(g);
 
-  if (m_.rk && m_.rk->physics()) {
-    extra_2d_ = {&m_.rk->physics()->rainnc, &m_.rk->physics()->rainncv};
-    if (m_.rk->physics()->params().mp_physics == 6 || m_.rk->physics()->params().mp_physics == 8) {
-      extra_2d_.push_back(&m_.rk->physics()->snownc);
-      extra_2d_.push_back(&m_.rk->physics()->snowncv);
-      extra_2d_.push_back(&m_.rk->physics()->graupelnc);
-      extra_2d_.push_back(&m_.rk->physics()->graupelncv);
-      extra_2d_.push_back(&m_.rk->physics()->sr);
-    }
-  }
-  if (m_.suite) {  // column physics surface and cumulus fields (WRF names in lower case)
-    const phys::driver::PhysicsSuite& su = *m_.suite;
-    for (const Field2* f : {&su.hfx, &su.qfx, &su.lh, &su.ust, &su.znt, &su.pblh, &su.tsk, &su.grdflx, &su.qsfc,
-                            &su.flhc, &su.flqc, &su.t2, &su.th2, &su.q2, &su.u10, &su.v10, &su.psfc, &su.albedo,
-                            &su.albbck, &su.emiss, &su.canwat, &su.snow, &su.snowh, &su.snowc, &su.noahres,
-                            &su.acgrdflx, &su.achfx, &su.aclhf, &su.sfcevp, &su.potevp, &su.mol, &su.rmol, &su.br,
-                            &su.wspd, &su.fm, &su.fh, &su.zol, &su.regime, &su.sfcexc, &su.lai, &su.xland,
-                            &su.rainc, &su.raincv, &su.nca, &su.pratec, &su.cutop, &su.cubot, &su.htop, &su.hbot})
-      extra_2d_.push_back(f);
-    extra_3d_.insert(extra_3d_.end(), {&su.tslb, &su.smois, &su.sh2o, &su.pt.rublten, &su.pt.rvblten, &su.pt.rthblten,
-                                       &su.pt.rqvblten, &su.exch_h});
-    if (su.options().sf_sfclay_physics == 2 || su.options().bl_pbl_physics == 2) {
-      for (const Field2* f : {&su.thz0, &su.uz0, &su.vz0, &su.akhs, &su.akms, &su.ct, &su.tshltr, &su.th10, &su.qshltr,
-                              &su.q10, &su.pshltr, &su.u10e, &su.v10e, &su.mixht})
-        extra_2d_.push_back(f);
-      extra_3d_.insert(extra_3d_.end(), {&su.tke_pbl, &su.el_pbl});
-    }
-    if (su.radiation_on()) {
-      for (const Field2* f : {&su.glw, &su.gsw, &su.swdown, &su.coszen}) extra_2d_.push_back(f);
-      extra_3d_.push_back(&su.pt.rthraten);
-      extra_3d_.push_back(&su.cldfra);
-      if (auto* pc = m_.rk->physics(); pc && pc->params().microp_re)
-        extra_3d_.insert(extra_3d_.end(), {&pc->re_cloud, &pc->re_ice, &pc->re_snow});
-    }
-    if (su.options().cu_physics != 0)
-    {
-      extra_3d_.insert(extra_3d_.end(), {&su.w0avg, &su.pt.rthcuten, &su.pt.rqvcuten, &su.pt.rqccuten});
-      if (m_.st->P_QR >= 0) extra_3d_.push_back(&su.pt.rqrcuten);
-      if (m_.st->P_QI >= 0) extra_3d_.push_back(&su.pt.rqicuten);
-      if (m_.st->P_QS >= 0) extra_3d_.push_back(&su.pt.rqscuten);
-      if (su.options().cu_physics == 16 || su.options().cu_physics == 3)
-        extra_3d_.insert(extra_3d_.end(), {&su.pt.rucuten, &su.pt.rvcuten, &su.pt.rthften, &su.pt.rqvften});
-    }
-    if (m_.st->P_QC >= 0) extra_3d_.push_back(&su.pt.rqcblten);
-    if (m_.st->P_QI >= 0) extra_3d_.push_back(&su.pt.rqiblten);
-  }
-
-#ifdef CPPWRF_HAVE_NETCDF
-  if (write_wrfout_)
-  {
-    std::vector<const Field2*> f2 = extra_2d_;
-    std::vector<const Field3*> f3 = extra_3d_;
-    if (m_.suite) {
-      for (const Field2* f : m_.suite->fields2()) f2.push_back(f);
-      for (const Field3* f : m_.suite->fields3()) f3.push_back(f);
-    }
-    wrfout_ = std::make_unique<WrfHistory>(cfg_, m_, out_dir_, domain_tag_, start_date_, f2, f3);
-  }
-#endif
+  prepare_output();
 
   t0_ = std::chrono::steady_clock::now();
   step_time = 0.0;
@@ -422,7 +432,18 @@ bool DomainRunner::start() {
   return true;
 }
 
+void DomainRunner::after_solve(long n) {
+#ifdef CPPWRF_HAVE_NETCDF
+  if (write_wrfout_ && wrfout_ && (n % out_iv_ == 0 || n == m_.nsteps)) wrfout_->after_solve(n);
+#else
+  (void)n;
+#endif
+}
+
 void DomainRunner::before_step(long n) {
+#ifdef CPPWRF_HAVE_NETCDF
+  if (write_wrfout_ && wrfout_ && (n % out_iv_ == 0 || n == m_.nsteps)) wrfout_->before_step(n);
+#endif
   if (pending_ >= 0) {  // deferred frame of the previous step (set_defer_output)
     const long p = pending_;
     pending_ = -1;

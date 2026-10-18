@@ -142,6 +142,7 @@ WrfSchema WrfSchema::load(const std::string& path) {
       v.desc = rtrim(t[12].substr(0, 80)); v.units = rtrim(t[13].substr(0, 80));  // CHARACTER*80 in WRF
       v.desc_full = rtrim(t[12]);
       v.conds = parse_conds(t[14]);
+      if (t.size() >= 17) { v.nest_down = t[15]; v.nest_up = rtrim(t[16]); }
       s.vars_.push_back(std::move(v));
     } else if (t[0] == "MEMBER" && t.size() >= 10) {
       SchemaMember m;
