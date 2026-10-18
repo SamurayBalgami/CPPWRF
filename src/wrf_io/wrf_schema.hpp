@@ -52,6 +52,11 @@ class WrfConfig {
   int dom_ = 1;
 };
 
+// Values WRF derives from the namelist before its I/O (setup_physics_suite with physics_suite = 'none',
+// set_physics_rconfigs, check_nml_consistency) that the Registry package conditions use. real_exe: as
+// real.exe sets them (use_wps_input = 1); otherwise as wrf.exe.
+void derive_config(WrfConfig& c, int max_dom, bool real_exe);
+
 // One variable as written to a file.
 struct OutVar {
   std::string name, desc, units, stagger, memorder_att, coordinates;
@@ -68,10 +73,23 @@ class WrfSchema {
 
   const std::map<std::string, std::pair<std::string, std::string>>& defaults() const { return defaults_; }
   // input stream (wrfinput) variables in WRF's write order. real_bytes: 4 or 8 (RWORDSIZE).
-  std::vector<OutVar> input_vars(const WrfConfig& c, int ide, int jde, int kde, int real_bytes) const;
+  std::vector<OutVar> input_vars(const WrfConfig& c, int ide, int jde, int kde, int real_bytes) const {
+    return stream_vars(c, ide, jde, kde, real_bytes, 0, 25);
+  }
+  // history stream (wrfout): word 1, bit 0
+  std::vector<OutVar> history_vars(const WrfConfig& c, int ide, int jde, int kde, int real_bytes) const {
+    return stream_vars(c, ide, jde, kde, real_bytes, 0, 0);
+  }
+  // variables of the stream whose bit is `bit` of streams word `word` (0 or 1; 31 bits per word)
+  std::vector<OutVar> stream_vars(const WrfConfig& c, int ide, int jde, int kde, int real_bytes, int word,
+                                  int bit) const;
   // 4-D array members written to wrfbdy (boundary_table true), e.g. QVAPOR, QCLOUD, ...
   std::vector<const SchemaMember*> boundary_members(const std::string& array, const WrfConfig& c) const;
   bool in_use(const std::vector<SchemaCond>& conds, const WrfConfig& c) const;
+  // namelist iofields_filename (frame/module_domain.F modify_io_masks1): lines op:stream:id:fields with op
+  // + or -, stream h (history, auxhist id) or i (input, auxinput id); fields by DataName. Returns false
+  // when the file cannot be read.
+  bool apply_iofields(const std::string& path);
   const SchemaVar* find(const std::string& varname) const;
 
  private:

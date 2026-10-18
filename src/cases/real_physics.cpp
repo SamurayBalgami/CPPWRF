@@ -137,7 +137,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   put2(su.vegfra, rd2("VEGFRA")); put2(su.shdmax, rd2("SHDMAX")); put2(su.shdmin, rd2("SHDMIN"));
   put2(su.snow, snow); put2(su.snowc, snowc); put2(su.lai, rd2("LAI"));
   put2(su.lakemask, in.has("LAKEMASK") ? rd2("LAKEMASK") : std::vector<double>(n2, 0.0));
-  if (o.kim_tofd) put2(su.var2d, rd2("VAR"));
+  if (in.has("VAR")) put2(su.var2d, rd2("VAR"));  // subgrid orography std. dev. (kim_tofd; history VAR)
   put2(su.water_depth, in.has("WATER_DEPTH") ? rd2("WATER_DEPTH") : std::vector<double>(n2, 0.0));
   const std::pair<const char*, Field2*> diag[] = {{"T2", &su.t2}, {"TH2", &su.th2}, {"Q2", &su.q2},
                                                    {"U10", &su.u10}, {"V10", &su.v10}, {"PSFC", &su.psfc}};

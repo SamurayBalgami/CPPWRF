@@ -127,6 +127,9 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   Field3 exch_h, exch_m;              // M (WRF kme-sized; levels 0..nz-1 used)
   Field3 tke_pbl, el_pbl;             // MYJ PBL 3D TKE and master length scale
   Field3 w0avg, cldfra_dp, cldfra_sh, qc_cu, qi_cu;  // cumulus 3D state and diagnostics
+  // every persistent field above, the physics tendencies and the phy_prep diagnostics (by WRF name)
+  std::vector<const Field2*> fields2() const;
+  std::vector<const Field3*> fields3() const;
   PhysicsTendencies pt;               // R*BLTEN, R*CUTEN, RTHRATEN at mass points
   PhyPrepFields prep;                 // phy_prep diagnostics (incl. t_phy, rho, u_phy, ...)
 

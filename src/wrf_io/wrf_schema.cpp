@@ -89,6 +89,33 @@ double WrfConfig::num(const std::string& name, int dom) const {
 
 bool WrfConfig::logical(const std::string& name, int dom) const { return is_true(get(name, dom)); }
 
+void derive_config(WrfConfig& c, int max_dom, bool real_exe) {
+  for (const char* p : {"mp_physics", "cu_physics", "ra_lw_physics", "ra_sw_physics", "sf_sfclay_physics",
+                        "sf_surface_physics", "bl_pbl_physics"})
+    if (c.integer(p) < 0) c.set(p, "0");
+  c.set("cu_used", c.integer("cu_physics") != 0 ? "1" : "0");
+  c.set("shcu_used", c.integer("shcu_physics") != 0 ? "1" : "0");
+  c.set("gwd_used", c.integer("gwd_opt") == 1 ? "1" : c.integer("gwd_opt") == 3 ? "3" : "0");
+  c.set("aercu_used", c.integer("aercu_opt") > 0 ? "1" : "0");
+  c.set("fft_used", "0");
+  c.set("cam_used", "0");
+  c.set("use_wps_input", real_exe ? "1" : "0");
+  // check_nml_consistency (WRF 4.8): ghg_input is reset to 0 when a domain has no shortwave radiation
+  if (c.integer("ghg_input") == 1)
+    for (int id = 1; id <= max_dom; ++id)
+      if (c.integer("ra_sw_physics", id) == 0) c.set("ghg_input", "0");
+  // MYNN EDMF options only with the MYNN PBL (bl_pbl_physics = 5)
+  if (c.integer("bl_pbl_physics") != 5) {
+    c.set("bl_mynn_edmf", "0");
+    c.set("bl_mynn_edmf_dd", "0");
+    c.set("bl_mynn_output", "0");
+  }
+  // mfshconv only with the QNSE PBL (bl_pbl_physics = 4)
+  if (c.integer("bl_pbl_physics") != 4) c.set("mfshconv", "0");
+  // wrf.exe: seed_dim from random_seed(size=...) of gfortran's runtime
+  if (!real_exe) c.set("seed_dim", "8");
+}
+
 WrfSchema WrfSchema::load(const std::string& path) {
   std::ifstream f(path);
   if (!f) throw std::runtime_error("schema: cannot open " + path);
@@ -226,11 +253,13 @@ void fill_out(OutVar& o, const SchemaVar& v, const WrfConfig& c, int ide, int jd
 
 }  // namespace
 
-std::vector<OutVar> WrfSchema::input_vars(const WrfConfig& c, int ide, int jde, int kde, int real_bytes) const {
-  constexpr std::uint32_t input_bit = 1u << 25;  // input_only = 26: word 1, bit 25 (31 bits per word)
+std::vector<OutVar> WrfSchema::stream_vars(const WrfConfig& c, int ide, int jde, int kde, int real_bytes, int word,
+                                           int bit) const {
+  const std::uint32_t mask = 1u << bit;
+  auto on = [&](std::uint32_t s1, std::uint32_t s2) { return ((word == 0 ? s1 : s2) & mask) != 0; };
   std::vector<OutVar> out;
   for (const SchemaVar& v : vars_) {
-    if (!(v.s1 & input_bit) || !in_use(v.conds, c)) continue;
+    if (!on(v.s1, v.s2) || !in_use(v.conds, c)) continue;
     if (v.ntl > 0 && v.ntl / 100 != v.ntl % 100) continue;
     if (!v.array4d) {
       OutVar o;
@@ -243,9 +272,8 @@ std::vector<OutVar> WrfSchema::input_vars(const WrfConfig& c, int ide, int jde, 
       std::set<std::string> seen;
       for (const SchemaMember& m : members_) {
         if (m.array != v.varname || seen.count(m.member) || !in_use(m.conds, c)) continue;
-        if (m.conds.empty() && false) continue;
         seen.insert(m.member);
-        if (!(m.s1 & input_bit)) continue;
+        if (!on(m.s1, m.s2)) continue;
         OutVar o;
         o.name = m.dname; o.desc = m.desc; o.units = m.units; o.var = &v; o.member = &m;
         fill_out(o, v, c, ide, jde, kde, real_bytes);
@@ -254,6 +282,41 @@ std::vector<OutVar> WrfSchema::input_vars(const WrfConfig& c, int ide, int jde, 
     }
   }
   return out;
+}
+
+bool WrfSchema::apply_iofields(const std::string& path) {
+  std::ifstream f(path);
+  if (!f) return false;
+  std::string line;
+  while (std::getline(f, line)) {
+    std::vector<std::string> t = split(line, ':');
+    if (t.size() < 4 || line[0] == '#') continue;
+    const std::string op = rtrim(t[0]), st = lower(rtrim(t[1]));
+    if ((op != "+" && op != "-") || (st != "h" && st != "i")) continue;
+    // stream numbers: history = 1, auxhist n = 1 + n, input = 26, auxinput n = 26 + n; bit = number - 1
+    const int idx = (st == "h" ? 0 : 25) + std::atoi(t[2].c_str());
+    const int word = idx / 31;
+    const std::uint32_t mask = 1u << (idx % 31);
+    auto apply = [&](std::uint32_t& s1, std::uint32_t& s2) {
+      std::uint32_t& w = word == 0 ? s1 : s2;
+      if (op == "+") w |= mask; else w &= ~mask;
+    };
+    for (std::string fld : split(t[3], ',')) {
+      std::string look;
+      for (char ch : fld)
+        if (ch != ' ' && ch != '\r') look += char(std::tolower(static_cast<unsigned char>(ch)));
+      if (look.empty()) continue;
+      for (SchemaVar& v : vars_) {
+        if (v.array4d) continue;
+        std::string dn = lower(v.dataname);
+        if (v.ntl > 0 && dn.size() > 2) dn = dn.substr(0, dn.size() - 2);
+        if (dn == look) apply(v.s1, v.s2);
+      }
+      for (SchemaMember& m : members_)
+        if (lower(m.dname) == look) apply(m.s1, m.s2);
+    }
+  }
+  return true;
 }
 
 const SchemaVar* WrfSchema::find(const std::string& varname) const {

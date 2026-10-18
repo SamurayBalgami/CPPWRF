@@ -12,7 +12,7 @@
 
 #ifdef CPPWRF_HAVE_NETCDF
 #include "io_netcdf/restart.hpp"
-#include "io_netcdf/wrfout_writer.hpp"
+#include "cases/wrf_history.hpp"
 #endif
 
 namespace cppwrf::cases {
@@ -85,7 +85,7 @@ class DomainRunner {
   std::vector<const Field3*> extra_3d_;
 
 #ifdef CPPWRF_HAVE_NETCDF
-  std::unique_ptr<io_netcdf::WrfoutWriter> wrfout_;
+  std::unique_ptr<WrfHistory> wrfout_;
 #endif
 };
 

@@ -10,6 +10,7 @@
 #include "init_real/nc_order.hpp"
 #include "init_real/wrf_io_names.hpp"
 #include "wrf_io/global_atts.hpp"
+#include "wrf_io/stream_file.hpp"
 #include "init_real/real_bdy.hpp"
 #include "init_real/real_domain.hpp"
 #include "init_real/real_values.hpp"
@@ -48,45 +49,7 @@ void write_wrfinput(const RealDomain<T>& dm, const MetEm& m, const WrfSchema& sc
   const int ide = dm.d.ide, jde = dm.d.jde, kde = dm.d.kde;
   std::vector<OutVar> vars = sc.input_vars(c, ide, jde, kde, int(sizeof(T)));
   NcOut nc(path, !c.logical("use_netcdf_classic"));
-  nc.dim("Time", 0);
-  nc.dim("DateStrLen", 19);
-  {
-    // dimensions in the order WRF defines them (Fortran order of each variable); an unnamed dimension
-    // reuses an existing one of the same length or becomes DIM<nnnn> (external/io_netcdf)
-    std::vector<std::pair<std::string, std::size_t>> defined = {{"Time", 0}, {"DateStrLen", 19}};
-    for (OutVar& v : vars)
-      for (int k = int(v.dimnames.size()) - 1; k >= 0; --k) {
-        std::string& n = v.dimnames[std::size_t(k)];
-        const std::size_t len = v.dimlens[std::size_t(k)];
-        if (n.empty()) {
-          for (auto& [dn, dl] : defined)
-            if (dl == len && dn != "Time") { n = dn; break; }
-          if (n.empty()) {
-            char b[16];
-            std::snprintf(b, sizeof b, "DIM%04d", int(defined.size()));
-            n = b;
-          }
-        }
-        bool found = false;
-        for (auto& [dn, dl] : defined) found = found || dn == n;
-        if (!found) {
-          nc.dim(n, len);
-          defined.push_back({n, len});
-        }
-      }
-  }
-  nc.var("Times", 'c', {"Time", "DateStrLen"}, {}, 0);
-  const int ftr = sizeof(T) == 8 ? 105 : 104;
-  for (const OutVar& v : vars) {
-    std::vector<std::string> dims = {"Time"};
-    for (const std::string& n : v.dimnames) dims.push_back(n);
-    std::map<std::string, std::string> at = {{"MemoryOrder", v.memorder_att}, {"description", v.desc},
-                                             {"units", v.units}, {"stagger", v.stagger}};
-    if (!v.coordinates.empty()) at["coordinates"] = v.coordinates;
-    const char t = v.type == 'l' ? 'i' : v.type;
-    const int ft = t == 'f' ? 104 : t == 'd' ? 105 : t == 'i' ? 106 : ftr;
-    nc.var(v.name, t, dims, at, ft);
-  }
+  wrf_io::define_stream_vars(nc, vars, int(sizeof(T)));
   write_global_atts(nc, c, m, dm, date, true);
   nc.enddef();
   nc.put_text("Times", date);

@@ -1,6 +1,7 @@
 #include "wrf_io/global_atts.hpp"
 
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 
 namespace cppwrf::wrf_io {
@@ -15,6 +16,28 @@ void julgmt(const std::string& date, int& julyr, int& julday, double& gmt) {
   for (int k = 1; k < m; ++k) julday += mdays[k - 1] + (k == 2 && leap ? 1 : 0);
   julyr = y;
   gmt = double(h) + double(mi) / 60.;
+}
+
+std::string add_seconds(const std::string& date, long seconds) {
+  int y = std::atoi(date.substr(0, 4).c_str()), m = std::atoi(date.substr(5, 2).c_str()),
+      d = std::atoi(date.substr(8, 2).c_str());
+  const int h = std::atoi(date.substr(11, 2).c_str()), mi = std::atoi(date.substr(14, 2).c_str()),
+            s = std::atoi(date.substr(17, 2).c_str());
+  long t = ((long(h) * 60 + mi) * 60 + s) + seconds;
+  long days = t / 86400;
+  t %= 86400;
+  if (t < 0) { t += 86400; --days; }
+  static const int mdays[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  auto ml = [&](int yy, int mm) {
+    const bool leap = (yy % 4 == 0 && yy % 100 != 0) || yy % 400 == 0;
+    return mdays[mm - 1] + (mm == 2 && leap ? 1 : 0);
+  };
+  d += int(days);
+  while (d > ml(y, m)) { d -= ml(y, m); if (++m > 12) { m = 1; ++y; } }
+  while (d < 1) { if (--m < 1) { m = 12; --y; } d += ml(y, m); }
+  char b[32];
+  std::snprintf(b, sizeof b, "%04d-%02d-%02d_%02ld:%02ld:%02ld", y, m, d, t / 3600, (t / 60) % 60, t % 60);
+  return b;
 }
 
 void write_global_atts(NcOut& nc, const WrfConfig& c, const DomainAtts& d, Stream s) {

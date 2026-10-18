@@ -112,6 +112,7 @@ if(TARGET netCDF::netcdf OR NETCDF_FOUND OR NETCDF_INCDIR)
   find_library(NETCDF_LIBRARY NAMES netcdf HINTS /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib)
   set(NETCDF_INCLUDE_DIR ${NETCDF_INCDIR})
   add_subdirectory(src/wrf_io)
+  target_link_libraries(cppwrf_core PUBLIC cppwrf_wrfio)
   add_subdirectory(src/init_real)
   # cppwrf_real against WRF real.exe output (skips without ${CPPWRF_WRF_RUNS}/real)
   add_test(NAME real_vs_wrf COMMAND bash ${CMAKE_SOURCE_DIR}/tests/init_real/run_real_test.sh ${CMAKE_BINARY_DIR}

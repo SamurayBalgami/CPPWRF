@@ -1404,4 +1404,13 @@ void PhysicsSuite::advance_ppt(const dyn::State& s) {
                                        s.P_QI >= 0, s.P_QS >= 0, o_.cu_physics == 1});
 }
 
+
+std::vector<const Field2*> PhysicsSuite::fields2() const {
+  return {&tsk, &xland, &xice, &lakemask, &water_depth, &mavail, &tmn, &vegfra, &shdmin, &shdmax, &snoalb, &albbck, &albedo, &emiss, &embck, &znt, &z0, &ust, &ustm, &mol, &rmol, &pblh, &hfx, &qfx, &lh, &grdflx, &qsfc, &flhc, &flqc, &wspd, &br, &fm, &fh, &zol, &regime, &u10, &v10, &t2, &th2, &q2, &psfc, &ch, &snow, &snowh, &snowc, &canwat, &lai, &snotime, &qz0, &rainbl, &raincv, &rainncv, &rainshv, &rainc, &rainsh, &pratec, &pratesh, &nca, &htop, &hbot, &cutop, &cubot, &cuppt, &sr, &glw, &swdown, &gsw, &smstav, &smstot, &sfcrunoff, &udrunoff, &acsnom, &acsnow, &snopcx, &potevp, &noahres, &sfcevp, &sfcexc, &achfx, &aclhf, &acgrdflx, &dx2d, &var2d, &uoce, &voce, &ctopo, &ctopo2, &ck, &cka, &cd, &cda, &wstar, &delta, &hol, &thz0, &uz0, &vz0, &akhs, &akms, &ct, &tshltr, &th10, &qshltr, &q10, &pshltr, &u10e, &v10e, &mixht};
+}
+
+std::vector<const Field3*> PhysicsSuite::fields3() const {
+  return {&tslb, &smois, &sh2o, &smcrel, &exch_h, &exch_m, &tke_pbl, &el_pbl, &w0avg, &cldfra_dp, &cldfra_sh, &qc_cu, &qi_cu, &pt.rthraten, &pt.rublten, &pt.rvblten, &pt.rthblten, &pt.rqvblten, &pt.rqcblten, &pt.rqiblten, &pt.rucuten, &pt.rvcuten, &pt.rthcuten, &pt.rqvcuten, &pt.rqccuten, &pt.rqrcuten, &pt.rqicuten, &pt.rqscuten, &pt.rthften, &pt.rqvften, &prep.th_phy, &prep.th_phy_m_t0, &prep.p_phy, &prep.pi_phy, &prep.t_phy, &prep.rho, &prep.u_phy, &prep.v_phy, &prep.z, &prep.p_hyd, &prep.z_at_w, &prep.dz8w, &prep.p8w, &prep.t8w, &prep.p_hyd_w};
+}
+
 }  // namespace cppwrf::phys::driver

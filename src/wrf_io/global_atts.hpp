@@ -31,5 +31,7 @@ void write_global_atts(NcOut& nc, const WrfConfig& c, const DomainAtts& d, Strea
 
 // geth_julgmt for a date yyyy-mm-dd_hh:mm:ss
 void julgmt(const std::string& date, int& julyr, int& julday, double& gmt);
+// date + seconds (geth_newdate), yyyy-mm-dd_hh:mm:ss
+std::string add_seconds(const std::string& date, long seconds);
 
 }  // namespace cppwrf::wrf_io

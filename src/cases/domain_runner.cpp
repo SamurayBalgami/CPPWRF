@@ -399,35 +399,15 @@ bool DomainRunner::start() {
   }
 
 #ifdef CPPWRF_HAVE_NETCDF
-  if (write_wrfout_) {
-    io_netcdf::WrfoutMeta wm;
-    wm.nx = g.nx; wm.ny = g.ny; wm.nz = g.nz;
-    wm.dx = g.dx; wm.dy = g.dy; wm.dt = g.dt;
-    wm.ztop = g.ztop; wm.p_top = g.p_top;
-    wm.start_date = start_date_;
-    wm.simulation_start_date = start_date_;
-    wm.diff_opt = m_.diff_opt;
-    wm.km_opt = m_.km_opt;
-    wm.khdif = double(lp.khdif); wm.kvdif = double(lp.kvdif);
-    wm.mp_physics = int(m_.rk && m_.rk->physics() ? m_.rk->physics()->params().mp_physics : 0);
-    wm.hybrid_opt = m_.hybrid_opt;
-    wm.hypsometric_opt = m_.ap.hypsometric_opt;
-    wm.damp_opt = m_.ap.damp_opt;
-    wm.dampcoef = double(m_.ap.dampcoef);
-    wm.use_theta_m = m_.st->P_QV >= 0 ? 1 : 0;  // t_2 holds theta_m - t0 when qv is carried
+  if (write_wrfout_)
+  {
+    std::vector<const Field2*> f2 = extra_2d_;
+    std::vector<const Field3*> f3 = extra_3d_;
     if (m_.suite) {
-      const auto& so = m_.suite->options();
-      wm.sf_sfclay_physics = so.sf_sfclay_physics;
-      wm.sf_surface_physics = so.sf_surface_physics;
-      wm.bl_pbl_physics = so.bl_pbl_physics;
-      wm.cu_physics = so.cu_physics;
+      for (const Field2* f : m_.suite->fields2()) f2.push_back(f);
+      for (const Field3* f : m_.suite->fields3()) f3.push_back(f);
     }
-    wm.map_proj = m_.map_proj;
-    wm.cen_lat = m_.cen_lat; wm.cen_lon = m_.cen_lon;
-    wm.truelat1 = m_.truelat1; wm.truelat2 = m_.truelat2;
-    wm.moad_cen_lat = m_.moad_cen_lat; wm.stand_lon = m_.stand_lon;
-    wm.is_restart = (start_step > 0);
-    wrfout_ = std::make_unique<io_netcdf::WrfoutWriter>(out_dir_, wm);
+    wrfout_ = std::make_unique<WrfHistory>(cfg_, m_, out_dir_, domain_tag_, start_date_, f2, f3);
   }
 #endif
 
@@ -507,186 +487,7 @@ void DomainRunner::do_snap(long n) {
   }
 
 #ifdef CPPWRF_HAVE_NETCDF
-  if (write_wrfout_ && wrfout_) {
-    const int nx = g.nx, ny = g.ny, nz = g.nz;
-    const int nxs_u = g.nxs(Stagger::U), nys_v = g.nys(Stagger::V);
-
-    std::vector<real> hu, hv, hw, ht, hp, hph, hmu;
-    st.u_2.download(hu); st.v_2.download(hv); st.w_2.download(hw); st.t_2.download(ht);
-    st.p.download(hp); st.ph_2.download(hph); st.mu_2.download(hmu);
-
-    std::vector<real> bpb, bphb, bmub, bht;
-    base.pb.download(bpb); base.phb.download(bphb); base.mub.download(bmub); base.ht.download(bht);
-
-    std::vector<real> hqv;
-    if (st.P_QV >= 0) st.q_2[st.P_QV].download(hqv);
-
-    const Layout &Lu = st.u_2.layout(), &Lv = st.v_2.layout(), &Lw = st.w_2.layout(), &Lm = st.t_2.layout(),
-                 &Lph = st.ph_2.layout(), &Lmu = st.mu_2.layout(), &Lpb = base.pb.layout(), &Lphb = base.phb.layout(),
-                 &Lmub = base.mub.layout(), &Lht = base.ht.layout();
-
-    auto at = [](const std::vector<real>& h, const Layout& L, int i, int j, int k) {
-      return double(h[L.index(i, j, k)]);
-    };
-
-    std::vector<float> u_buf(size_t(nxs_u) * ny * nz);
-    std::vector<float> v_buf(size_t(nx) * nys_v * nz);
-    std::vector<float> w_buf(size_t(nx) * ny * (nz + 1));
-    std::vector<float> ph_buf(size_t(nx) * ny * (nz + 1));
-    std::vector<float> phb_buf(size_t(nx) * ny * (nz + 1));
-    std::vector<float> p_buf(size_t(nx) * ny * nz);
-    std::vector<float> pb_buf(size_t(nx) * ny * nz);
-    std::vector<float> t_buf(size_t(nx) * ny * nz);
-    std::vector<float> mu_buf(size_t(nx) * ny);
-    std::vector<float> mub_buf(size_t(nx) * ny);
-    std::vector<float> hgt_buf(size_t(nx) * ny);
-
-    for (int k = 0; k < nz; ++k)
-      for (int j = 0; j < ny; ++j)
-        for (int i = 0; i < nxs_u; ++i)
-          u_buf[(size_t(k) * ny + j) * nxs_u + i] = float(at(hu, Lu, i, j, k));
-
-    for (int k = 0; k < nz; ++k)
-      for (int j = 0; j < nys_v; ++j)
-        for (int i = 0; i < nx; ++i)
-          v_buf[(size_t(k) * nys_v + j) * nx + i] = float(at(hv, Lv, i, j, k));
-
-    for (int k = 0; k <= nz; ++k)
-      for (int j = 0; j < ny; ++j)
-        for (int i = 0; i < nx; ++i) {
-          w_buf[(size_t(k) * ny + j) * nx + i] = float(at(hw, Lw, i, j, k));
-          ph_buf[(size_t(k) * ny + j) * nx + i] = float(at(hph, Lph, i, j, k));
-          phb_buf[(size_t(k) * ny + j) * nx + i] = float(at(bphb, Lphb, i, j, k));
-        }
-
-    for (int k = 0; k < nz; ++k)
-      for (int j = 0; j < ny; ++j)
-        for (int i = 0; i < nx; ++i) {
-          p_buf[(size_t(k) * ny + j) * nx + i] = float(at(hp, Lm, i, j, k));
-          pb_buf[(size_t(k) * ny + j) * nx + i] = float(at(bpb, Lpb, i, j, k));
-          double tm = at(ht, Lm, i, j, k) + cst::t0;
-          double th = hqv.empty() ? tm : tm / (1.0 + cst::rvovrd * at(hqv, Lm, i, j, k));
-          t_buf[(size_t(k) * ny + j) * nx + i] = float(th - 300.0);
-        }
-
-    for (int j = 0; j < ny; ++j)
-      for (int i = 0; i < nx; ++i) {
-        mu_buf[size_t(j) * nx + i] = float(at(hmu, Lmu, i, j, 0));
-        mub_buf[size_t(j) * nx + i] = float(at(bmub, Lmub, i, j, 0));
-        hgt_buf[size_t(j) * nx + i] = float(at(bht, Lht, i, j, 0));
-      }
-
-    std::vector<io_netcdf::VarView> nc_vars;
-    const io_netcdf::DType f32 = io_netcdf::DType::F32;
-    nc_vars.emplace_back("U", 'U', nxs_u, ny, nz, u_buf.data(), f32, nxs_u, (std::ptrdiff_t)nxs_u * ny);
-    nc_vars.emplace_back("V", 'V', nx, nys_v, nz, v_buf.data(), f32, nx, (std::ptrdiff_t)nx * nys_v);
-    nc_vars.emplace_back("W", 'W', nx, ny, nz + 1, w_buf.data(), f32, nx, (std::ptrdiff_t)nx * ny);
-    nc_vars.emplace_back("PH", 'W', nx, ny, nz + 1, ph_buf.data(), f32, nx, (std::ptrdiff_t)nx * ny);
-    nc_vars.emplace_back("PHB", 'W', nx, ny, nz + 1, phb_buf.data(), f32, nx, (std::ptrdiff_t)nx * ny);
-    nc_vars.emplace_back("P", 'M', nx, ny, nz, p_buf.data(), f32, nx, (std::ptrdiff_t)nx * ny);
-    nc_vars.emplace_back("PB", 'M', nx, ny, nz, pb_buf.data(), f32, nx, (std::ptrdiff_t)nx * ny);
-    nc_vars.emplace_back("T", 'M', nx, ny, nz, t_buf.data(), f32, nx, (std::ptrdiff_t)nx * ny);
-    nc_vars.emplace_back("MU", 'M', nx, ny, 1, mu_buf.data(), f32, nx, 0);
-    nc_vars.emplace_back("MUB", 'M', nx, ny, 1, mub_buf.data(), f32, nx, 0);
-    nc_vars.emplace_back("HGT", 'M', nx, ny, 1, hgt_buf.data(), f32, nx, 0);
-
-    std::vector<float> xlat_buf(size_t(nx) * ny, 0.0f);
-    std::vector<float> xlong_buf(size_t(nx) * ny, 0.0f);
-    if (!m_.xlat.empty() && m_.xlat.size() == size_t(nx) * ny) {
-      for (size_t idx = 0; idx < m_.xlat.size(); ++idx) xlat_buf[idx] = float(m_.xlat[idx]);
-    }
-    if (!m_.xlong.empty() && m_.xlong.size() == size_t(nx) * ny) {
-      for (size_t idx = 0; idx < m_.xlong.size(); ++idx) xlong_buf[idx] = float(m_.xlong[idx]);
-    }
-    nc_vars.emplace_back("XLAT", 'M', nx, ny, 1, xlat_buf.data(), f32, nx, 0);
-    nc_vars.emplace_back("XLONG", 'M', nx, ny, 1, xlong_buf.data(), f32, nx, 0);
-
-    std::vector<float> znu_buf(nz), znw_buf(nz + 1);
-    std::vector<float> c1h_buf(nz), c2h_buf(nz), c3h_buf(nz), c4h_buf(nz);
-    std::vector<float> c1f_buf(nz + 1), c2f_buf(nz + 1), c3f_buf(nz + 1), c4f_buf(nz + 1);
-    for (int k = 0; k < nz; ++k) {
-      znu_buf[k] = float(base.znu[k]);
-      c1h_buf[k] = float(base.c1h[k]);
-      c2h_buf[k] = float(base.c2h[k]);
-      c3h_buf[k] = float(base.c3h[k]);
-      c4h_buf[k] = float(base.c4h[k]);
-    }
-    for (int k = 0; k <= nz; ++k) {
-      znw_buf[k] = float(base.znw[k]);
-      c1f_buf[k] = float(base.c1f[k]);
-      c2f_buf[k] = float(base.c2f[k]);
-      c3f_buf[k] = float(base.c3f[k]);
-      c4f_buf[k] = float(base.c4f[k]);
-    }
-    nc_vars.emplace_back("ZNU", 'M', 1, 1, nz, znu_buf.data(), f32, 0, 1);
-    nc_vars.emplace_back("ZNW", 'W', 1, 1, nz + 1, znw_buf.data(), f32, 0, 1);
-    nc_vars.emplace_back("C1H", 'M', 1, 1, nz, c1h_buf.data(), f32, 0, 1);
-    nc_vars.emplace_back("C2H", 'M', 1, 1, nz, c2h_buf.data(), f32, 0, 1);
-    nc_vars.emplace_back("C3H", 'M', 1, 1, nz, c3h_buf.data(), f32, 0, 1);
-    nc_vars.emplace_back("C4H", 'M', 1, 1, nz, c4h_buf.data(), f32, 0, 1);
-    nc_vars.emplace_back("C1F", 'W', 1, 1, nz + 1, c1f_buf.data(), f32, 0, 1);
-    nc_vars.emplace_back("C2F", 'W', 1, 1, nz + 1, c2f_buf.data(), f32, 0, 1);
-    nc_vars.emplace_back("C3F", 'W', 1, 1, nz + 1, c3f_buf.data(), f32, 0, 1);
-    nc_vars.emplace_back("C4F", 'W', 1, 1, nz + 1, c4f_buf.data(), f32, 0, 1);
-
-    std::vector<std::vector<float>> scalar_bufs(st.n_scalars());
-    for (int s = 0; s < st.n_scalars(); ++s) {
-      std::vector<real> hq;
-      st.q_2[s].download(hq);
-      const Layout& Lq = st.q_2[s].layout();
-      scalar_bufs[s].resize(size_t(nx) * ny * nz);
-      for (int k = 0; k < nz; ++k)
-        for (int j = 0; j < ny; ++j)
-          for (int i = 0; i < nx; ++i)
-            scalar_bufs[s][(size_t(k) * ny + j) * nx + i] = float(at(hq, Lq, i, j, k));
-      std::string qname = st.q_names[s];
-      if (qname == "qv") qname = "QVAPOR";
-      else if (qname == "qc") qname = "QCLOUD";
-      else if (qname == "qr") qname = "QRAIN";
-      else if (qname == "qi") qname = "QICE";
-      else if (qname == "qs") qname = "QSNOW";
-      else if (qname == "qg") qname = "QGRAUP";
-      else if (qname == "qni") qname = "QNICE";
-      else if (qname == "qnr") qname = "QNRAIN";
-      else if (qname == "tke") qname = "TKE";
-      nc_vars.emplace_back(qname, 'M', nx, ny, nz, scalar_bufs[s].data(), f32, nx, (std::ptrdiff_t)nx * ny);
-    }
-
-    std::vector<std::vector<float>> extra_bufs(extra_2d_.size());
-    for (size_t e = 0; e < extra_2d_.size(); ++e) {
-      const Field2* f = extra_2d_[e];
-      std::vector<real> he;
-      f->download(he);
-      const Layout& Le = f->layout();
-      extra_bufs[e].resize(size_t(nx) * ny);
-      for (int j = 0; j < ny; ++j)
-        for (int i = 0; i < nx; ++i)
-          extra_bufs[e][size_t(j) * nx + i] = float(at(he, Le, i, j, 0));
-      std::string ename = f->name();
-      for (char& c : ename) c = std::toupper(c);
-      nc_vars.emplace_back(ename, 'M', nx, ny, 1, extra_bufs[e].data(), f32, nx, 0);
-    }
-
-    std::vector<std::vector<float>> extra3_bufs(extra_3d_.size());
-    for (size_t e = 0; e < extra_3d_.size(); ++e) {  // mass-point 3D extras (own level count)
-      const Field3* f = extra_3d_[e];
-      if (f->name() == "exch_h") continue;  // WRF's EXCH_H lives on w levels; ours on mass levels
-      std::vector<real> he;
-      f->download(he);
-      const Layout& Le = f->layout();
-      const int nk = Le.nz;
-      extra3_bufs[e].resize(size_t(nx) * ny * nk);
-      for (int k = 0; k < nk; ++k)
-        for (int j = 0; j < ny; ++j)
-          for (int i = 0; i < nx; ++i) extra3_bufs[e][(size_t(k) * ny + j) * nx + i] = float(at(he, Le, i, j, k));
-      std::string ename = f->name();
-      for (char& c : ename) c = std::toupper(c);
-      nc_vars.emplace_back(ename, 'M', nx, ny, nk, extra3_bufs[e].data(), f32, nx, (std::ptrdiff_t)nx * ny);
-    }
-
-    std::string target_file = out_dir_ + "/wrfout_" + domain_tag_ + "_" + start_date_;
-    wrfout_->write_frame(n, n * g.dt, nc_vars, target_file);
-  }
+  if (write_wrfout_ && wrfout_) wrfout_->write(n, n * g.dt);
 #endif
 }
 

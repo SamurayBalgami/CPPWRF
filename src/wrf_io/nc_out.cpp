@@ -96,6 +96,8 @@ void NcOut::var(const std::string& name, char type, const std::vector<std::strin
 
 void NcOut::enddef() { ck(nc_enddef(nc_), "enddef"); }
 
+void NcOut::sync() { ck(nc_sync(nc_), "sync"); }
+
 void NcOut::put(const std::string& name, const std::vector<double>& v, std::size_t rec) {
   int id = vars_.at(name);
   if (types_[name] == 'f') {
@@ -128,7 +130,7 @@ void NcOut::put(const std::string& name, const std::vector<double>& v, std::size
   }
 }
 
-void NcOut::put_int(const std::string& name, const std::vector<int>& v) {
+void NcOut::put_int(const std::string& name, const std::vector<int>& v, std::size_t rec) {
   int id = vars_.at(name);
   int nd;
   ck(nc_inq_varndims(nc_, id, &nd), "ndims");
@@ -138,7 +140,7 @@ void NcOut::put_int(const std::string& name, const std::vector<int>& v) {
   for (int d = 0; d < nd; ++d) {
     std::size_t len;
     ck(nc_inq_dimlen(nc_, dimids[std::size_t(d)], &len), "dimlen");
-    st.push_back(0);
+    st.push_back(d == 0 ? rec : 0);
     ct.push_back(d == 0 ? 1 : len);
   }
   ck(nc_put_vara_int(nc_, id, st.data(), ct.data(), v.data()), "put " + name);

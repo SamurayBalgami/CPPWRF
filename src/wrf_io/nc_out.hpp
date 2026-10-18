@@ -27,7 +27,8 @@ class NcOut {
            const std::map<std::string, std::string>& satts, int field_type);
   void enddef();
   void put(const std::string& name, const std::vector<double>& v, std::size_t rec = 0);  // converted to the type
-  void put_int(const std::string& name, const std::vector<int>& v);
+  void put_int(const std::string& name, const std::vector<int>& v, std::size_t rec = 0);
+  void sync();
   void put_text(const std::string& name, const std::string& s, std::size_t rec = 0);
 
  private:
