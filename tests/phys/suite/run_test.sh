@@ -7,7 +7,7 @@
 # 2. fortran/suite_ref.F90 is linked against the WRF objects and runs WRF's start_domain and
 #    3x (first_rk_step_part1, first_rk_step_part2, phy_prep_part2) -> suite_ref.bin
 # 3. driver_suite.cpp runs the C++ suite on the same inputs (CPU FP64)  -> suite_cpp.bin
-# 4. compare.py: every field bit-identical or <= 1e-12 relative
+# 4. compare.py: every field bit-identical (--tol 0)
 # The FP32 build of the same driver is compiled as well (it must compile; not compared).
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,4 +50,4 @@ $HEAVY g++ -std=c++20 -O3 -march=native -ffp-contract=off -fopenmp -DCPPWRF_DATA
 ./driver_suite_fp64 suite_ref.bin suite_cpp.bin .
 
 echo "== 4. compare"
-python3 -I "$SCRIPT_DIR/compare.py" suite_ref.bin suite_cpp.bin "$@"
+python3 -I "$SCRIPT_DIR/compare.py" suite_ref.bin suite_cpp.bin --tol 0 "$@"

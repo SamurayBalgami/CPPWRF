@@ -12,7 +12,7 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 | Diffusion | diff_opt 1 with km_opt 1 (constant K) and 4 (2-D Smagorinsky); diff_opt 2 with km_opt 2 (1.5-order TKE, advected TKE); 6th-order diffusion |
 | Microphysics | Kessler (1), WSM6 (6, with effective radii), Thompson (8) |
 | Cumulus | Kain-Fritsch (1), Grell-Freitas-Li (3, deep and shallow), New Tiedtke (16) |
-| PBL, surface layer, land surface | YSU (1), MYJ (2), revised MM5 surface layer (1), Eta surface layer (2), Noah LSM (2, including glacial and sea-ice points) |
+| PBL, surface layer, land surface | YSU (1), MYJ (2), revised MM5 surface layer (1), Eta surface layer (2), Noah LSM (2, including glacial and sea-ice points), Noah-MP v5.1.2 (4, default options) |
 | Radiation | RRTMG LW and SW (4), CAM ozone and greenhouse gases, cal_cldfra1, McICA |
 | Nesting | static one-way and two-way nests (interp_fcn_sint, bdy_interp1, copy_fcn feedback, sm121/smdsm smoothers, blend_terrain, adjust_tempqv) |
 | I/O | reads wrfinput_d0N / wrfbdy_d01; writes WRF v4.8.0 wrfout_d0N and wrfrst_d0N files (WRF I/O schema, iofields_filename) and its own restart files; native binary output; cppwrf_real (real.exe) |
@@ -20,13 +20,26 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 
 ## Verification method
 
-1. **Column and kernel tests** (`tests/phys`, `tests/dyn`, `tests/nest`): each scheme and kernel is
-   driven with identical inputs in C++ and in the WRF Fortran (compiled with WRF's own flags) and the
-   outputs are compared. Most of these tests require bit-for-bit agreement.
+1. **Column and kernel tests** (`tests/phys`, `tests/dyn`, `tests/bdy`, `tests/nest`): each scheme and
+   kernel runs on the same inputs in C++ and in WRF v4.8.0's own Fortran (unmodified source or
+   WRF's compiled objects, built with WRF's configure flags), and every output must be bit-identical
+   in CPU FP64 (tolerance 0). This covers Kessler, WSM6, Thompson (with WRF's table files), YSU
+   (ysu_topdown_pblmix 0 and 1), MYJ and the Eta surface layer, revised MM5 surface layer, Noah,
+   Noah-MP, Kain-Fritsch, the diffusion and damping kernels (km_opt 1-4), the lateral boundary and
+   nest numerics, and the physics suite driver. Grell-Freitas-Li and New Tiedtke are checked by
+   replaying the model's own column inputs through WRF's objects. Run them with
+   `cmake -DCPPWRF_DOUBLE=ON -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_DIFF_TESTS=ON` and `ctest -L diff`,
+   with `WRF_DIR` (a WRF -r8 build), `WRF_R8D8_DIR` (-r8 -double-8), `NETCDF` and
+   `CPPWRF_WRF_RUNS` set.
 2. **Model runs against WRF** (`tests/verify/wrf_suite.py`): WRF v4.8.0 and CPPWRF are run from the same
    wrfinput/wrfbdy files (119 x 89 x 44, 15 km, dt 60 s; nests 120 x 90 x 44 at 5 km) and the wrfout
    files are compared field by field (relative L2 over the domain).
-3. **Checkpoint dumps** (`tests/verify/wrf_dycore_dumps`): a WRF build that writes intermediate arrays
+3. **WRF output files** (`tests/verify/run_wrf_files_test.sh`, ctest `wrf_files_vs_wrf`): the
+   wrfout and wrfrst files of the CPU FP64 runs, and the runs resumed from WRF's restart files,
+   compared with WRF's files at tolerance 0 (values, variables, attributes, global attributes).
+   With `CPPWRF_FILES_TRANSLATED=1` the CPPWRF configuration is generated from the WRF run's
+   `namelist.input` by `tools/wrf2cppwrf.py`.
+4. **Checkpoint dumps** (`tests/verify/wrf_dycore_dumps`): a WRF build that writes intermediate arrays
    inside solve_em and the physics drivers, used to locate the first differing operation.
 
 Bit identity on the CPU requires reproducing WRF's arithmetic exactly: the order of every sum and
@@ -53,14 +66,15 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | P7 | P2 with New Tiedtke | 1 h |
 | P8 | P2 with Grell-Freitas-Li (deep and shallow) | 1 h |
 | P9 | P1 with MYJ PBL and the Eta surface layer | 1 h |
+| NMP1 | P1 with Noah-MP | 1 h |
 | T1 | R1 with diff_opt 2 / km_opt 2 (TKE) | 5 steps |
 | N1 | one-way nest (both domains) | 3 parent steps |
 | N2 | two-way nest (both domains) | 1 h |
 
 Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8, P9, T1).
 
-Output files: the `wrfout_d0N` files of P1-P7, P9, mp8, R1, T1, N1 and N2 (both domains) and the
-`wrfrst_d0N` files of P1, P3, P4, P6, P7, P9, mp8 and N2 are identical to WRF v4.8.0's. This covers
+Output files: the `wrfout_d0N` files of P1-P9, NMP1, mp8, R1, T1, N1 and N2 (both domains) and the
+`wrfrst_d0N` files of P1, P3, P4, P6, P7, P8, P9, NMP1, mp8 and N2 are identical to WRF v4.8.0's. This covers
 every variable, value, dimension, attribute and global attribute
 (`tests/verify/run_wrf_files_test.sh`). Runs of these cases resumed from WRF's
 `wrfrst` files, give the same files as WRF's resumed runs. The one exception is RQCBLTEN / RQIBLTEN in runs without
@@ -105,4 +119,6 @@ RRTMG runs on the GPU as a batched pipeline (docs/PHYSICS_SUITE.md section 10).
 
 ## Not yet implemented
 
-sf_sfclay_physics 91, km_opt 3, Noah-MP, moving nests, and parallel (MPI) runs.
+sf_sfclay_physics 91, km_opt 3 and 5, Noah-MP options other than the defaults (and crop/irrigation/
+tile drainage), moving nests, and parallel (MPI) runs. Options without a port are rejected by
+`tools/wrf2cppwrf.py` and by the model with an error.

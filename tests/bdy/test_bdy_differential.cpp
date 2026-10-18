@@ -97,8 +97,8 @@ void bridge_set_physical_bc2d(
     int nx, int ny, int halo);
 }
 
-// Tolerance for PASS: FP64 bit-exact or <= 1e-12 relative
-constexpr double TOL = 1e-12;
+// Tolerance for PASS: FP64 bit-exact
+constexpr double TOL = 0.0;
 
 struct DiffStats {
   double max_abs = 0.0;
@@ -113,12 +113,12 @@ struct DiffStats {
     double denom = std::max(std::abs(cpp_val), std::abs(ftn_val));
     double rel = (denom > 1e-14) ? (d / denom) : d;
     if (rel > max_rel) max_rel = rel;
-    if (rel > TOL && d > 1e-14) {
+    if (d > TOL) {
       diff_count++;
     }
   }
 
-  bool pass() const { return max_rel <= TOL || max_abs <= 1e-14; }
+  bool pass() const { return max_abs <= TOL; }
 };
 
 // Check NetCDF helper
@@ -139,7 +139,7 @@ bool test_lbc_fcx_gcx() {
   for (double dt : {6.0, 12.0, 24.0, 60.0}) {
     for (double spec_exp : {0.0, 0.1, 0.25}) {
       double fcx_c[5], gcx_c[5];
-      double fcx_f[5], gcx_f[5];
+      double fcx_f[5] = {}, gcx_f[5] = {};  // grid%fcx starts at 0; lbc_fcx_gcx sets loop > spec_zone
       calc_lbc_fcx_gcx<double>(fcx_c, gcx_c, 5, 1, 4, dt, spec_exp);
       bridge_lbc_fcx_gcx(fcx_f, gcx_f, 5, 1, 4, dt, spec_exp);
       for (int b = 0; b < 5; ++b) {

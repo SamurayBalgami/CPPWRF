@@ -174,7 +174,7 @@ class TestRealCasesReproduction(unittest.TestCase):
     """Test suite comparing generated INI against configs/real_*.ini key by key."""
 
     def _compare_configs(self, nml_rel_path: str, ref_ini_rel_path: str,
-                          ignore_keys: Optional[dict] = None):
+                          ignore_keys: Optional[dict] = None, sections: Optional[tuple] = None):
         nml_path = wrf_runs_path(nml_rel_path)
         ref_path = os.path.join(REPO_ROOT, ref_ini_rel_path)
         if not os.path.exists(nml_path):
@@ -189,6 +189,8 @@ class TestRealCasesReproduction(unittest.TestCase):
         ref = load_ini_dict(ref_path)
 
         all_secs = sorted(set(list(gen.keys()) + list(ref.keys())))
+        if sections:  # only these sections (the hand-written configs add run/output settings)
+            all_secs = [x for x in all_secs if x in sections]
         for s in all_secs:
             self.assertIn(s, gen, f"[{s}] missing in generated config")
             self.assertIn(s, ref, f"[{s}] extra in generated config")
@@ -197,6 +199,8 @@ class TestRealCasesReproduction(unittest.TestCase):
             for k in all_keys:
                 if ignore_keys and s in ignore_keys and k in ignore_keys[s]:
                     continue
+                if sections and (k not in ref[s] or k not in gen[s]):
+                    continue  # default values written by one side only
                 self.assertIn(k, gen[s], f"[{s}].{k} missing in generated config")
                 self.assertIn(k, ref[s], f"[{s}].{k} extra in generated config")
 
@@ -221,13 +225,13 @@ class TestRealCasesReproduction(unittest.TestCase):
         self._compare_configs("run_mp6/namelist.input", "configs/real_mp6.ini")
 
     def test_real_p1_key_by_key(self):
-        self._compare_configs("run_P1/namelist.input", "configs/real_p1.ini")
+        self._compare_configs("run_P1_r8/steps/namelist.input", "configs/real_p1_r8.ini", sections=("phys", "dyn"))
 
     def test_real_p2_key_by_key(self):
-        self._compare_configs("run_P2/namelist.input", "configs/real_p2.ini")
+        self._compare_configs("run_P2_r8/steps/namelist.input", "configs/real_p2_r8.ini", sections=("phys", "dyn"))
 
     def test_real_p3_key_by_key(self):
-        self._compare_configs("run_P3/namelist.input", "configs/real_p3.ini")
+        self._compare_configs("run_P3_r8/steps/namelist.input", "configs/real_p3_r8.ini", sections=("phys", "dyn"))
 
     def test_real_p4_diff_opt_mapped(self):
         # run_P4 namelist specifies diff_opt = 1, km_opt = 4
@@ -247,7 +251,7 @@ class TestIdealCases(unittest.TestCase):
     """Test suite for ideal cases translation."""
 
     def test_hill2d_mapping(self):
-        nml_path = os.path.expanduser("~/wrf_ref/run_hill_p0/namelist.input")
+        nml_path = os.path.join(os.environ.get("CPPWRF_WRF_REF", ""), "run_hill_p0/namelist.input")
         if not os.path.exists(nml_path):
             self.skipTest(f"Namelist not found: {nml_path}")
         with open(nml_path) as f:
@@ -263,7 +267,7 @@ class TestIdealCases(unittest.TestCase):
         self.assertEqual(gen["time"]["time_step_sound"], 6)
 
     def test_quarter_ss_mapping(self):
-        nml_path = os.path.expanduser("~/wrf_ref/run_qss/namelist.input")
+        nml_path = os.path.join(os.environ.get("CPPWRF_WRF_REF", ""), "run_qss/namelist.input")
         if not os.path.exists(nml_path):
             self.skipTest(f"Namelist not found: {nml_path}")
         with open(nml_path) as f:
@@ -278,7 +282,7 @@ class TestIdealCases(unittest.TestCase):
         self.assertEqual(gen["time"]["time_step_sound"], 6)
 
     def test_straka_mapping(self):
-        nml_path = os.path.expanduser("~/wrf_ref/run_straka_d1/namelist.input")
+        nml_path = os.path.join(os.environ.get("CPPWRF_WRF_REF", ""), "run_straka_d1/namelist.input")
         if not os.path.exists(nml_path):
             self.skipTest(f"Namelist not found: {nml_path}")
         with open(nml_path) as f:
@@ -349,12 +353,12 @@ class TestValidationAndWarnings(unittest.TestCase):
 
 
 class TestExecution2Steps(unittest.TestCase):
-    """Verify that generated INI executes for 2 steps with build-a0-cpu/cppwrf."""
+    """Verify that generated INI executes for 2 steps (binary: $CPPWRF_BIN, default build/cppwrf)."""
 
     def test_run_r0_2steps(self):
-        exe = os.path.join(REPO_ROOT, "build-a0-cpu", "cppwrf")
+        exe = os.environ.get("CPPWRF_BIN", os.path.join(REPO_ROOT, "build", "cppwrf"))
         if not os.path.exists(exe):
-            self.skipTest("build-a0-cpu/cppwrf binary not found")
+            self.skipTest(f"{exe} not found (set CPPWRF_BIN)")
 
         nml_path = wrf_runs_path("run_R0_r8/namelist.input")
         if not os.path.exists(nml_path):

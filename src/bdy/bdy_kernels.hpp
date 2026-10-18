@@ -24,11 +24,14 @@ void calc_lbc_fcx_gcx(Real* fcx, Real* gcx, int spec_bdy_width, int spec_zone,
     gcx[b] = Real(0);
   }
   // b in C++ is 0-indexed (b=0 is spec_zone; b=1..relax_zone-1 are relaxation cells)
-  for (int b = spec_zone; b < spec_zone + relax_zone; ++b) {
-    Real factor = Real(spec_zone + relax_zone - 1 - b) / Real(relax_zone - 1);
-    Real spongeweight = std::exp(-Real(b - spec_zone) * spec_exp);
-    fcx[b] = (Real(0.1) / dt) * factor * spongeweight;
-    gcx[b] = (Real(1.0) / (Real(50.0) * dt)) * factor * spongeweight;
+  for (int b = spec_zone; b < spec_zone + relax_zone; ++b) {  // WRF's loop = b + 1, left to right
+    const Real num = Real(spec_zone + relax_zone - 1 - b), den = Real(relax_zone - 1);
+    // the loop over loop = spec_zone+1..spec_zone+relax_zone is vectorised: libmvec exp lanes
+    const Real spongeweight = cppwrf::vm::exp(-Real(b - spec_zone) * spec_exp, b - spec_zone, relax_zone);
+    fcx[b] = Real(0.1) / dt * num / den;
+    gcx[b] = Real(1.0) / dt / Real(50.) * num / den;
+    fcx[b] = fcx[b] * spongeweight;
+    gcx[b] = gcx[b] * spongeweight;
   }
 }
 
@@ -76,7 +79,7 @@ void relax_bdytend_core_3d(
         Real fls2 = (bys(ip1, k, b_dist) + dtbc * btys(ip1, k, b_dist)) - field(ip1, j, k);
         Real fls3 = (bys(i, k, b_dist - 1) + dtbc * btys(i, k, b_dist - 1)) - field(i, j - 1, k);
         Real fls4 = (bys(i, k, b_dist + 1) + dtbc * btys(i, k, b_dist + 1)) - field(i, j + 1, k);
-        field_tend(i, j, k) += fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
+        field_tend(i, j, k) = field_tend(i, j, k) + fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
       }
     }
   }
@@ -96,7 +99,7 @@ void relax_bdytend_core_3d(
         Real fls2 = (bye(ip1, k, b_dist) + dtbc * btye(ip1, k, b_dist)) - field(ip1, j, k);
         Real fls3 = (bye(i, k, b_dist - 1) + dtbc * btye(i, k, b_dist - 1)) - field(i, j + 1, k);
         Real fls4 = (bye(i, k, b_dist + 1) + dtbc * btye(i, k, b_dist + 1)) - field(i, j - 1, k);
-        field_tend(i, j, k) += fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
+        field_tend(i, j, k) = field_tend(i, j, k) + fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
       }
     }
   }
@@ -113,7 +116,7 @@ void relax_bdytend_core_3d(
         Real fls2 = (bxs(j + 1, k, b_dist) + dtbc * btxs(j + 1, k, b_dist)) - field(i, j + 1, k);
         Real fls3 = (bxs(j, k, b_dist - 1) + dtbc * btxs(j, k, b_dist - 1)) - field(i - 1, j, k);
         Real fls4 = (bxs(j, k, b_dist + 1) + dtbc * btxs(j, k, b_dist + 1)) - field(i + 1, j, k);
-        field_tend(i, j, k) += fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
+        field_tend(i, j, k) = field_tend(i, j, k) + fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
       }
     }
   }
@@ -130,7 +133,7 @@ void relax_bdytend_core_3d(
         Real fls2 = (bxe(j + 1, k, b_dist) + dtbc * btxe(j + 1, k, b_dist)) - field(i, j + 1, k);
         Real fls3 = (bxe(j, k, b_dist - 1) + dtbc * btxe(j, k, b_dist - 1)) - field(i + 1, j, k);
         Real fls4 = (bxe(j, k, b_dist + 1) + dtbc * btxe(j, k, b_dist + 1)) - field(i - 1, j, k);
-        field_tend(i, j, k) += fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
+        field_tend(i, j, k) = field_tend(i, j, k) + fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
       }
     }
   }
@@ -174,7 +177,7 @@ void relax_bdytend_core_2d(
       Real fls2 = (bys(ip1, k, b_dist) + dtbc * btys(ip1, k, b_dist)) - field(ip1, j);
       Real fls3 = (bys(i, k, b_dist - 1) + dtbc * btys(i, k, b_dist - 1)) - field(i, j - 1);
       Real fls4 = (bys(i, k, b_dist + 1) + dtbc * btys(i, k, b_dist + 1)) - field(i, j + 1);
-      field_tend(i, j) += fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
+      field_tend(i, j) = field_tend(i, j) + fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
     }
   }
 
@@ -192,7 +195,7 @@ void relax_bdytend_core_2d(
       Real fls2 = (bye(ip1, k, b_dist) + dtbc * btye(ip1, k, b_dist)) - field(ip1, j);
       Real fls3 = (bye(i, k, b_dist - 1) + dtbc * btye(i, k, b_dist - 1)) - field(i, j + 1);
       Real fls4 = (bye(i, k, b_dist + 1) + dtbc * btye(i, k, b_dist + 1)) - field(i, j - 1);
-      field_tend(i, j) += fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
+      field_tend(i, j) = field_tend(i, j) + fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
     }
   }
 
@@ -207,7 +210,7 @@ void relax_bdytend_core_2d(
       Real fls2 = (bxs(j + 1, k, b_dist) + dtbc * btxs(j + 1, k, b_dist)) - field(i, j + 1);
       Real fls3 = (bxs(j, k, b_dist - 1) + dtbc * btxs(j, k, b_dist - 1)) - field(i - 1, j);
       Real fls4 = (bxs(j, k, b_dist + 1) + dtbc * btxs(j, k, b_dist + 1)) - field(i + 1, j);
-      field_tend(i, j) += fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
+      field_tend(i, j) = field_tend(i, j) + fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
     }
   }
 
@@ -222,7 +225,7 @@ void relax_bdytend_core_2d(
       Real fls2 = (bxe(j + 1, k, b_dist) + dtbc * btxe(j + 1, k, b_dist)) - field(i, j + 1);
       Real fls3 = (bxe(j, k, b_dist - 1) + dtbc * btxe(j, k, b_dist - 1)) - field(i + 1, j);
       Real fls4 = (bxe(j, k, b_dist + 1) + dtbc * btxe(j, k, b_dist + 1)) - field(i - 1, j);
-      field_tend(i, j) += fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
+      field_tend(i, j) = field_tend(i, j) + fc * fls0 - gc * (fls1 + fls2 + fls3 + fls4 - Real(4) * fls0);
     }
   }
 }
@@ -604,7 +607,7 @@ void spec_bdyupdate_ph(
       Real m_old = c1f[k] * mu_old + c2f[k];
       Real m_new = c1f[k] * muts(i, j) + c2f[k];
       Real ratio = m_old / m_new;
-      ph(i, j, k) = ph(i, j, k) * ratio + dt * ph_tend(i, j, k) / m_new +
+      ph(i, j, k) = ph(i, j, k) * m_old / m_new + dt * ph_tend(i, j, k) / m_new +  // WRF's order
                     ph_save(i, j, k) * (ratio - Real(1));
     }
   };

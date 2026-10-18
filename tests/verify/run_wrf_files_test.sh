@@ -2,6 +2,8 @@
 # CPPWRF wrfout_d0N and wrfrst_d0N files against WRF v4.8.0's (CPU FP64 build, WRF real*8 runs):
 # every variable, value (tolerance 0), dimension, attribute and global attribute must be identical.
 #   usage: run_wrf_files_test.sh [BUILD_DIR] [case ...]
+# CPPWRF_FILES_TRANSLATED=1: the CPPWRF configuration is made from the WRF run's namelist.input by
+# tools/wrf2cppwrf.py instead of configs/ (the user's path from a WRF run directory).
 # References: ${CPPWRF_WRF_RUNS}/run_<C>_r8[/steps] (history every step) and
 # ${CPPWRF_WRF_RUNS}/rst_<C>_r8 (tests/verify/make_restart_refs.sh: restart every minute) and
 # ${CPPWRF_WRF_RUNS}/rsm_<C>_r8 (make_resumed_refs.sh: WRF resumed from rst_<C>_r8 at minute 1; CPPWRF
@@ -51,6 +53,13 @@ while IFS='|' read -r name cfg ref rst extra; do
   # shellcheck disable=SC2206
   [ -n "$extra" ] && sets+=($extra)
   rm -rf "${WORK:?}/$name"; mkdir -p "$WORK/$name"
+  if [ "${CPPWRF_FILES_TRANSLATED:-0}" = 1 ]; then
+    if ! python3 "$REPO_ROOT/tools/wrf2cppwrf.py" "$ref/namelist.input" -o "$WORK/$name/translated.ini" \
+         --format wrfout > "$WORK/$name/translate.log" 2>&1; then
+      echo "FAIL $name: wrf2cppwrf failed"; tail -3 "$WORK/$name/translate.log"; fail=1; continue
+    fi
+    cfg=$WORK/$name/translated.ini
+  fi
   if ! "$EXE" "$cfg" "${sets[@]}" > "$WORK/$name/run.log" 2>&1; then
     echo "FAIL $name: cppwrf failed"; tail -3 "$WORK/$name/run.log"; fail=1; continue
   fi

@@ -582,6 +582,7 @@ PROGRAM driver_diffusion
   CALL write_chunk(out_unit, "xkhh_kmopt2_iso1_damp1", xkhh(1:nx, 1:nz, 1:ny), nx*nz*ny)
   CALL write_chunk(out_unit, "xkhv_kmopt2_iso1_damp1", xkhv(1:nx, 1:nz, 1:ny), nx*nz*ny)
 
+
   ! ============================================================================
   ! TEST 9: tke_rhs (tke_shear + tke_buoyancy + tke_dissip + lower limit)
   ! ============================================================================
@@ -715,6 +716,40 @@ PROGRAM driver_diffusion
   CALL write_chunk(out_unit, "w_rayleigh_damp", rw_tend(1:nx, 1:nz+1, 1:ny), nx*(nz+1)*ny)
   CALL write_chunk(out_unit, "t_rayleigh_damp", rt_tend(1:nx, 1:nz, 1:ny), nx*nz*ny)
 
+  ! Case C: km_opt = 3 (3-D Smagorinsky, smag_km), diff_opt = 2, isotropic = 1, no damping
+  config_flags%km_opt = 3
+  config_flags%damp_opt = 0
+  xkmh = 0.0_8; xkmv = 0.0_8; xkhh = 0.0_8; xkhv = 0.0_8; bn2 = 0.0_8
+
+  CALL calculate_km_kh(config_flags, dt, 0.05_8, 5000.0_8, 0, xkmh, xkmv, xkhh, xkhv, bn2, &
+                       12.0_8, 6.0_8, div, defor11, defor22, defor33, defor12, defor13, defor23, &
+                       tke, p8w, t8w, theta, t, p, moist, dn, dnw, dx, dy, rdz, rdzw, &
+                       1, 3, cf1, cf2, cf3, .FALSE., 10.0_8, msftx, msfty, zx, zy, &
+                       dummy_hpbl, dummy_dlk, dummy_meso, &
+                       ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+
+  CALL write_chunk(out_unit, "bn2_kmopt3", bn2(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkmh_kmopt3", xkmh(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkmv_kmopt3", xkmv(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkhh_kmopt3", xkhh(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkhv_kmopt3", xkhv(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  ! Case D: km_opt = 3, isotropic = 0
+  config_flags%km_opt = 3
+  config_flags%damp_opt = 0
+  xkmh = 0.0_8; xkmv = 0.0_8; xkhh = 0.0_8; xkhv = 0.0_8; bn2 = 0.0_8
+
+  CALL calculate_km_kh(config_flags, dt, 0.05_8, 5000.0_8, 0, xkmh, xkmv, xkhh, xkhv, bn2, &
+                       12.0_8, 6.0_8, div, defor11, defor22, defor33, defor12, defor13, defor23, &
+                       tke, p8w, t8w, theta, t, p, moist, dn, dnw, dx, dy, rdz, rdzw, &
+                       0, 3, cf1, cf2, cf3, .FALSE., 10.0_8, msftx, msfty, zx, zy, &
+                       dummy_hpbl, dummy_dlk, dummy_meso, &
+                       ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+
+  CALL write_chunk(out_unit, "bn2_kmopt3_iso0", bn2(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkmh_kmopt3_iso0", xkmh(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkmv_kmopt3_iso0", xkmv(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkhh_kmopt3_iso0", xkhh(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "xkhv_kmopt3_iso0", xkhv(1:nx, 1:nz, 1:ny), nx*nz*ny)
   CLOSE(out_unit)
   PRINT *, "Fortran driver finished successfully."
 

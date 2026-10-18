@@ -1127,6 +1127,7 @@ int main(int argc, char* argv[]) {
     write_field(out, "xkmv_kmopt2_iso1_damp1", xkmv);
     write_field(out, "xkhh_kmopt2_iso1_damp1", xkhh);
     write_field(out, "xkhv_kmopt2_iso1_damp1", xkhv);
+
   }
 
   // ============================================================================
@@ -1375,6 +1376,111 @@ int main(int argc, char* argv[]) {
     write_field(out, "v_rayleigh_damp", rv_tend);
     write_field(out, "w_rayleigh_damp", rw_tend);
     write_field(out, "t_rayleigh_damp", rt_tend);
+  }
+
+  // ============================================================================
+  // TEST 12: calculate_km_kh with km_opt = 3 (3-D Smagorinsky, smag_km), diff_opt = 2, isotropic = 1
+  // ============================================================================
+  {
+    DiffusionParams p_cfg;
+    p_cfg.diff_opt = 2;
+    p_cfg.c_k = 0.15;
+    p_cfg.c_s = 0.25;
+    p_cfg.mix_upper_bound = 10.0;
+    p_cfg.bl_pbl_physics = 0;
+    p_cfg.specified = true;
+    p_cfg.periodic_x = false;
+    p_cfg.periodic_y = false;
+    View3<const double> empty3{};
+    // Case C: km_opt = 3 (3-D Smagorinsky, smag_km), diff_opt = 2, isotropic = 1, no damping
+    p_cfg.km_opt = 3;
+    p_cfg.isotropic = 1;
+    p_cfg.damp_opt = 0;
+    xkmh.fill(0.0);
+    xkmv.fill(0.0);
+    xkhh.fill(0.0);
+    xkhv.fill(0.0);
+    bn2.fill(0.0);
+
+    calculate_km_kh(p_cfg, dx, dy, dt, cf1, cf2, cf3,
+                    make_const_view3(defor11.data(), nx, nz),
+                    make_const_view3(defor22.data(), nx, nz),
+                    make_const_view3(defor33.data(), nx, nz),
+                    make_const_view3(defor12.data(), nx + 1, nz),
+                    make_const_view3(defor13.data(), nx + 1, nz + 1),
+                    make_const_view3(defor23.data(), nx, nz + 1),
+                    make_const_view3(tke.data(), nx, nz),
+                    make_const_view3(p8w.data(), nx, nz + 1),
+                    make_const_view3(t8w.data(), nx, nz + 1),
+                    make_const_view3(theta.data(), nx, nz),
+                    make_const_view3(t.data(), nx, nz),
+                    make_const_view3(p.data(), nx, nz),
+                    make_const_view3(moist.data(), nx, nz), true,
+                    empty3, false,
+                    empty3, false,
+                    make_const_view3(rdz.data(), nx, nz),
+                    make_const_view3(rdzw.data(), nx, nz),
+                    make_const_view3(zx.data(), nx + 1, nz + 1),
+                    make_const_view3(zy.data(), nx, nz + 1),
+                    make_bview2(msftx.data(), nx),
+                    make_bview2(msfty.data(), nx),
+                    make_view3(bn2.data(), nx, nz),
+                    make_view3(xkmh.data(), nx, nz),
+                    make_view3(xkmv.data(), nx, nz),
+                    make_view3(xkhh.data(), nx, nz),
+                    make_view3(xkhv.data(), nx, nz),
+                    nx, ny, nz);
+
+    write_field(out, "bn2_kmopt3", bn2);
+    write_field(out, "xkmh_kmopt3", xkmh);
+    write_field(out, "xkmv_kmopt3", xkmv);
+    write_field(out, "xkhh_kmopt3", xkhh);
+    write_field(out, "xkhv_kmopt3", xkhv);
+
+    // Case D: km_opt = 3, isotropic = 0
+    p_cfg.km_opt = 3;
+    p_cfg.isotropic = 0;
+    p_cfg.damp_opt = 0;
+    xkmh.fill(0.0);
+    xkmv.fill(0.0);
+    xkhh.fill(0.0);
+    xkhv.fill(0.0);
+    bn2.fill(0.0);
+
+    calculate_km_kh(p_cfg, dx, dy, dt, cf1, cf2, cf3,
+                    make_const_view3(defor11.data(), nx, nz),
+                    make_const_view3(defor22.data(), nx, nz),
+                    make_const_view3(defor33.data(), nx, nz),
+                    make_const_view3(defor12.data(), nx + 1, nz),
+                    make_const_view3(defor13.data(), nx + 1, nz + 1),
+                    make_const_view3(defor23.data(), nx, nz + 1),
+                    make_const_view3(tke.data(), nx, nz),
+                    make_const_view3(p8w.data(), nx, nz + 1),
+                    make_const_view3(t8w.data(), nx, nz + 1),
+                    make_const_view3(theta.data(), nx, nz),
+                    make_const_view3(t.data(), nx, nz),
+                    make_const_view3(p.data(), nx, nz),
+                    make_const_view3(moist.data(), nx, nz), true,
+                    empty3, false,
+                    empty3, false,
+                    make_const_view3(rdz.data(), nx, nz),
+                    make_const_view3(rdzw.data(), nx, nz),
+                    make_const_view3(zx.data(), nx + 1, nz + 1),
+                    make_const_view3(zy.data(), nx, nz + 1),
+                    make_bview2(msftx.data(), nx),
+                    make_bview2(msfty.data(), nx),
+                    make_view3(bn2.data(), nx, nz),
+                    make_view3(xkmh.data(), nx, nz),
+                    make_view3(xkmv.data(), nx, nz),
+                    make_view3(xkhh.data(), nx, nz),
+                    make_view3(xkhv.data(), nx, nz),
+                    nx, ny, nz);
+
+    write_field(out, "bn2_kmopt3_iso0", bn2);
+    write_field(out, "xkmh_kmopt3_iso0", xkmh);
+    write_field(out, "xkmv_kmopt3_iso0", xkmv);
+    write_field(out, "xkhh_kmopt3_iso0", xkhh);
+    write_field(out, "xkhv_kmopt3_iso0", xkhv);
   }
 
   out.close();

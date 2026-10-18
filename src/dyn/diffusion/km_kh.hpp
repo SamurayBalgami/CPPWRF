@@ -425,7 +425,10 @@ struct KSmagKm {
 
     real pr  = prandtl;
     real arg = def2 - bn2(i, j, k) / pr;
-    real tmp = rpow(arg > real(0.0) ? arg : real(0.0), real(0.5));
+    // tmp**0.5 in smag_km's vectorised i loops: gfortran turns it into sqrtpd for the iteration
+    // pairs and keeps pow for an odd remainder iteration (module_diffusion_em.o)
+    const real tmp0 = arg > real(0.0) ? arg : real(0.0);
+    real tmp = cppwrf::vm::lane(lane_i, ni) ? std::sqrt(tmp0) : rpow(tmp0, real(0.5));
 
     if (isotropic == 0) {
       real mlen_h  = std::sqrt(dx / msftx(i, j) * dy / msfty(i, j));

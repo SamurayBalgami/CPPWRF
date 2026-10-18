@@ -280,6 +280,7 @@ SUPPORTED_OPTIONS = {
     "km_opt": {
         1: "Constant eddy viscosity (khdif / kvdif)",
         2: "1.5-order prognostic TKE",
+        3: "3D Smagorinsky",
         4: "2D horizontal Smagorinsky",
     },
     "damp_opt": {
@@ -335,11 +336,8 @@ IGNORED_WRF_OPTIONS = {
     "dx": "Real case grid spacing read directly from wrfinput_d01",
     "dy": "Real case grid spacing read directly from wrfinput_d01",
     # &physics
-    "isfflx": "Surface heat/moisture fluxes flag",
-    "ifsnow": "Snow effects flag",
-    "icloud": "Cloud fractions for radiation",
-    "num_soil_layers": "Fixed at 4 for Noah LSM in CPPWRF",
-    "sf_urban_physics": "Urban canopy model",
+    "ifsnow": "Snow effects flag (used by the slab LSM only)",
+    "num_soil_layers": "4 soil layers (Noah, Noah-MP)",
     # &dynamics
     "base_temp": "Base potential temperature (read from sounding or wrfinput)",
     "mix_full_fields": "Diffusion on full fields",
@@ -669,11 +667,17 @@ class WrfTranslator:
             if km_opt not in (0, 1):
                 sections["dyn"]["km_opt"] = km_opt
             if km_opt not in SUPPORTED_OPTIONS["km_opt"] and km_opt != 0:
-                self.warn(f"WRF km_opt = {km_opt} is not supported; CPPWRF supports km_opt 1, 2 and 4.")
+                self.warn(f"WRF km_opt = {km_opt} is not supported; CPPWRF supports km_opt "
+                          + ", ".join(str(k) for k in sorted(SUPPORTED_OPTIONS["km_opt"])) + ".")
 
         c_s = self.get_opt("dynamics", "c_s", None)
-        if km_opt == 4 and c_s is not None:
+        if km_opt in (3, 4) and c_s is not None:
             sections["dyn"]["c_s"] = c_s
+        if diff_opt != 0:  # mix_isotropic / mix_upper_bound (calculate_km_kh)
+            for key in ("mix_isotropic", "mix_upper_bound"):
+                val = self.get_opt("dynamics", key, None)
+                if val is not None:
+                    sections["dyn"][key] = val
 
         diff_6th_opt = self.get_opt("dynamics", "diff_6th_opt", 0)
         if diff_6th_opt != 0:
@@ -748,7 +752,9 @@ class WrfTranslator:
         # 10. Moisture Species [moist]
         if case_name == "real":
             sections["moist"] = {}
-            if mp_physics == 6:
+            if mp_physics == 8:  # Thompson: two-moment ice and rain (QNICE, QNRAIN)
+                sections["moist"]["species"] = "qv,qc,qr,qi,qs,qg,qni,qnr"
+            elif mp_physics == 6:
                 sections["moist"]["species"] = "qv, qc, qr, qi, qs, qg" if not has_physics_suite else "qv,qc,qr,qi,qs,qg"
             elif mp_physics == 1:
                 sections["moist"]["species"] = "qv, qc, qr"
@@ -756,7 +762,9 @@ class WrfTranslator:
                 sections["moist"]["species"] = "qv"
         elif mp_physics > 0 or case_name in ("quarter_ss", "squall2d"):
             sections["moist"] = {}
-            if mp_physics == 6:
+            if mp_physics == 8:
+                sections["moist"]["species"] = "qv,qc,qr,qi,qs,qg,qni,qnr"
+            elif mp_physics == 6:
                 sections["moist"]["species"] = "qv, qc, qr, qi, qs, qg"
             else:
                 sections["moist"]["species"] = "qv, qc, qr"
@@ -777,7 +785,8 @@ class WrfTranslator:
                 sections["phys"]["ra_sw_physics"] = ra_sw
 
                 if ra_lw != 0 or ra_sw != 0 or radt != 0:
-                    sections["phys"]["radt"] = 0 if radt <= 1 else radt
+                    # as given: stepra = nint(radt*60/dt) and calc_coszen at xtime + radt/2 use it
+                    sections["phys"]["radt"] = radt
                 if bldt > 0:
                     sections["phys"]["bldt"] = bldt
                 if cudt > 0:
@@ -833,6 +842,20 @@ class WrfTranslator:
                             opt_run_val = self.get_opt(grp_nm, "opt_run")
                             sections["phys"].setdefault("opt_runsrf", opt_run_val)
                             sections["phys"].setdefault("opt_runsub", opt_run_val)
+
+        # surface fluxes (surface layer, LSM and the diffusion's surface flux), cloud fractions in RRTMG
+        isfflx = self.get_opt("physics", "isfflx", 1)
+        if isfflx != 1 and (has_physics_suite or diff_opt == 2):  # used by these only
+            sections.setdefault("phys", {})["isfflx"] = isfflx
+        icloud = self.get_opt("physics", "icloud", 1)
+        if ra_lw != 0 or ra_sw != 0:
+            if icloud not in (0, 1):
+                self.error(f"WRF icloud = {icloud} is not supported; CPPWRF supports icloud 0 and 1.")
+            elif icloud != 1:
+                sections.setdefault("phys", {})["icloud"] = icloud
+        sf_urban = self.get_opt("physics", "sf_urban_physics", 0)
+        if sf_urban != 0:
+            self.error(f"WRF sf_urban_physics = {sf_urban} (urban canopy) is not supported by CPPWRF.")
 
         # 12. Output Section [output]
         sections["output"] = {}
