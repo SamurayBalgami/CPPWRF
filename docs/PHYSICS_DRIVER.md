@@ -123,7 +123,7 @@ rate `h_diabatic`.
 
 ## 5. Initialisation for real data
 
-`src/phys/driver/physics_init.cpp` and `src/cases/real_physics.cpp` follow `phy_init`
+`src/cases/real_physics.cpp` and the PhysicsSuite constructor follow `phy_init`
 (phys/module_physics_init.F): `landuse_init` with `LANDUSE.TBL` (season from the date and latitude,
 sea-ice overrides), the Noah tables (`SOILPARM.TBL`, `VEGPARM.TBL`, `GENPARM.TBL`) and `lsminit`
 (liquid soil water from `FRH2O`), the surface layer tables (`sf_sfclayrev_init`, `myjsfcinit`),

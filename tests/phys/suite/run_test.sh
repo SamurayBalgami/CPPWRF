@@ -41,7 +41,7 @@ tail -1 suite_ref.log
 
 echo "== 3. C++ suite (CPU FP64, and FP32 compile check)"
 # the physics sources of cppwrf_core (CMakeLists.txt) + the core pieces the driver uses
-mapfile -t PHYS_SRC < <(find "$REPO/src/phys" -name '*.cpp' ! -name physics_init.cpp ! -name kessler.cpp \
+mapfile -t PHYS_SRC < <(find "$REPO/src/phys" -name '*.cpp' ! -name kessler.cpp \
                          ! -name wsm6.cpp | sort)
 SRC=("$SCRIPT_DIR/driver_suite.cpp" "${PHYS_SRC[@]}" "$REPO/src/core/backend.cpp" "$REPO/src/core/halo.cpp"
      "$REPO/src/dyn/state.cpp")
