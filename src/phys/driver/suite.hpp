@@ -62,10 +62,10 @@ struct SuiteOptions {
   int sf_sfclay_physics = 1;     // 1 = SFCLAYREVSCHEME, 2 = MYJSFCSCHEME
   int sf_surface_physics = 2;    // LSMSCHEME (Noah)
   int bl_pbl_physics = 1;        // 1 = YSUSCHEME, 2 = MYJPBLSCHEME
-  int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME, 3 = GFSCHEME, 16 = NTIEDTKESCHEME
-  int ishallow = 0;              // Grell-Freitas shallow convection (WRF ishallow)
-  int gf_ichoice = 0;            // Grell-Freitas closure (WRF clos_choice)
-  double gf_sec2 = 1.e9;         // value WRF's get_inversion_layers finds in its unset sec_deriv(2)
+  int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME, 3 = GFLSCHEME, 16 = NTIEDTKESCHEME
+  int ishallow = 0;              // Grell-Freitas-Li shallow convection (WRF ishallow)
+  int gf_ichoice = 0;            // Grell-Freitas-Li closure (WRF clos_choice)
+  double gf_sec2 = 1.e9;         // retained for config compatibility (unused in GFL v4.8.0)
   int num_soil_layers = 4;
   double bldt = 0;               // minutes; 0 = every step
   double cudt = 0;               // minutes; 0 = every step
@@ -167,7 +167,6 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   sfclayrev::SFClayRevTables<real>* d_sfclay_tables_ = nullptr;  // device copy, uploaded once
   sf_myjsfc::MYJSFCTableManager myjsfc_tables_;                  // host/device copy, uploaded once
   cu_kf::KFTables<real>* d_kf_tables_ = nullptr;                 // device copy, uploaded once
-  void* d_gfinv_ = nullptr;  // Grell-Freitas: per-column inversion-layer info for the row scan
   // Noah driver scratch (inputs/outputs of SFLX per point)
   Field2 n_lwdn, n_soldn, n_solnet, n_sfcprs, n_prcp, n_sfctmp, n_th2, n_q2, n_q2sat, n_dqsdt2, n_ffrozp,
       n_shdfac, n_shmin, n_shmax, n_albbrd, n_snoalb1, n_tbot, n_z0brd, n_emissi, n_embrd, n_cmc, n_t1,

@@ -9,7 +9,7 @@
 
 #include "phys/bl_myj/myjpbl.hpp"
 #include "phys/bl_ysu/ysu.hpp"
-#include "phys/cu_gf/gf_driver.hpp"
+#include "phys/cu_gfl/gfl_driver.hpp"
 #include "phys/cu_ntiedtke/ntiedtke.hpp"
 #include "phys/driver/noah_ice.hpp"
 #include "phys/driver/wrf_constants.hpp"
@@ -547,13 +547,11 @@ struct KPblPrep {
   }
 };
 
-// ---------------------------------------------------------------- Grell-Freitas
-// module_cu_gf_wrfdrv.F GFDRV. Three passes because get_inversion_layers carries scratch from column
-// to column along a row (see phys/cu_gf/gf_shallow.hpp): phase 0 = shallow scheme up to the inversion
-// layers per column, phase 1 = the row scan, phase 2 = shallow + deep + outputs per column.
+// ------------------------------------------------------------ Grell-Freitas-Li
+// module_cu_gfl_wrf.F90 cu_grell_freitas_li (GFLSCHEME, cu_physics = 3).
 struct KGrellFreitas {
-  int phase, nx, ny, nz, ishallow, ichoice, ibeg, iend, jbeg, jend, dbg_i, dbg_j;
-  real dt, dx, sec2;
+  int nz, ishallow, ichoice;
+  real dt, dx, xlv, cp, g, r_v;
   C3 u, v, w, t, pi, rho, dz8w, pcps, p8w, qv;
   C2 xland, hfx, qfx;
   CI2 kpbl;
@@ -562,11 +560,11 @@ struct KGrellFreitas {
   V2 raincv, pratec, htop, hbot;
   V3 rthcuten, rqvcuten, rqccuten, rqicuten, rucuten, rvcuten;
   bool flag_qc, flag_qi;
-  cu_gf::GfInvInfo<real>* inv;
-  CPPWRF_HD void column(int i, int j, cu_gf::GfDrvColumn<real>& c) const {
+  CPPWRF_HD void column(int i, int j, cu_gfl::GflDrvColumn<real>& c) const {
     c.nz = nz; c.dt = dt; c.dx = dx; c.ht = ht(i, j); c.hfx = hfx(i, j); c.qfx = qfx(i, j); c.xland = xland(i, j);
+    c.xlv = xlv; c.cp = cp; c.g = g; c.r_v = r_v;
     c.kpbl = kpbl(i, j);
-    for (int k = 0; k < cu_gf::KM; ++k) {
+    for (int k = 0; k < cu_gfl::KM; ++k) {
       c.u[k] = 0; c.v[k] = 0; c.t[k] = 0; c.q[k] = 0; c.p[k] = 0; c.pi[k] = 0; c.rho[k] = 0; c.dz8w[k] = 0;
       c.w[k] = 0; c.p8w[k] = 0; c.rthften[k] = 0; c.rthraten[k] = 0; c.rthblten[k] = 0; c.rqvften[k] = 0;
       c.rqvblten[k] = 0;
@@ -583,28 +581,10 @@ struct KGrellFreitas {
     }
   }
   CPPWRF_HD void operator()(int i, int j) const {
-    if (phase == 1) {  // one row, columns in i order
-      if (ishallow == 1) cu_gf::gf_inversion_row(inv + std::size_t(j) * nx, nx, nz);
-      return;
-    }
-    cu_gf::GfDrvColumn<real> c;
+    cu_gfl::GflDrvColumn<real> c;
     column(i, j, c);
-    cu_gf::GfInvInfo<real>& iv = inv[std::size_t(j) * nx + i];
-    if (phase == 0) {
-      iv.valid = 0;
-      if (ishallow != 1) return;
-      cu_gf::GfPrep<real> p;
-      cu_gf::gf_prep(c, p);
-      const cu_gf::GfShallowIn<real> s = cu_gf::gf_shallow_in(c, p);
-      real zus[cu_gf::KM] = {}, outts[cu_gf::KM] = {}, outqs[cu_gf::KM] = {}, outqcs[cu_gf::KM] = {};
-      real cnvwt[cu_gf::KM] = {}, cupclw[cu_gf::KM] = {};
-      real xmbs = 0, prets = 0;
-      cu_gf::cup_gf_sh(s, 0, iv, sec2, zus, xmbs, outts, outqs, outqcs, cnvwt, prets, cupclw);
-      return;
-    }
-    const bool active = i >= ibeg && i <= iend && j >= jbeg && j <= jend;
-    cu_gf::GfDrvOut<real> o;
-    cu_gf::gf_column(c, ishallow, ichoice, iv, sec2, active, o, i == dbg_i && j == dbg_j);
+    cu_gfl::GflDrvOut<real> o;
+    cu_gfl::gfl_column(c, ishallow, ichoice, o);
     raincv(i, j) = o.raincv;
     pratec(i, j) = o.pratec;
     htop(i, j) = o.htop;
@@ -612,10 +592,12 @@ struct KGrellFreitas {
     for (int k = 0; k < nz; ++k) {
       rthcuten(i, j, k) = o.rthcuten[k];
       rqvcuten(i, j, k) = o.rqvcuten[k];
-      if (flag_qc) rqccuten(i, j, k) = o.rqccuten[k];
-      if (flag_qi) rqicuten(i, j, k) = o.rqicuten[k];
+      rqccuten(i, j, k) = o.rqccuten[k];
+      rqicuten(i, j, k) = o.rqicuten[k];
       rucuten(i, j, k) = o.rucuten[k];
       rvcuten(i, j, k) = o.rvcuten[k];
+      (void)flag_qc;
+      (void)flag_qi;
     }
   }
 };
@@ -786,9 +768,9 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       (o.bl_pbl_physics != 1 && o.bl_pbl_physics != 2))
     throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1|2, sf_surface_physics=2, bl_pbl_physics=1|2");
   if (o.cu_physics != 0 && o.cu_physics != 1 && o.cu_physics != 3 && o.cu_physics != 16)
-    throw std::runtime_error("PhysicsSuite: only cu_physics=0, 1 (Kain-Fritsch), 3 (Grell-Freitas) or 16 (New Tiedtke)");
-  if (o.cu_physics == 3 && g.nz > cu_gf::kMaxLevels)
-    throw std::runtime_error("PhysicsSuite: nz exceeds the Grell-Freitas column limit");
+    throw std::runtime_error("PhysicsSuite: only cu_physics=0, 1 (Kain-Fritsch), 3 (Grell-Freitas-Li) or 16 (New Tiedtke)");
+  if (o.cu_physics == 3 && g.nz > cu_gfl::kMaxLevels)
+    throw std::runtime_error("PhysicsSuite: nz exceeds the Grell-Freitas-Li column limit");
   if (o.cu_physics == 3 && o.ishallow != 0 && o.ishallow != 1)
     throw std::runtime_error("PhysicsSuite: ishallow must be 0 or 1");
   if (o.cu_physics == 16 && g.nz > cu_ntiedtke::kMaxLevels)
@@ -851,8 +833,6 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
     copy_to_dev(d_kf_tables_, &h_kf, sizeof(h_kf));
     nca.fill_host([](int, int, int) { return -100.0; });  // kf_eta_init default for non-restart
   }
-  if (o.cu_physics == 3)
-    d_gfinv_ = dev_alloc(sizeof(cu_gf::GfInvInfo<real>) * std::size_t(g.nx) * std::size_t(g.ny));
   // bldt = 0: every step; otherwise WRF stepbl = nint(bldt*60/dt), at least 1
   stepbl = o.bldt == 0 ? 1 : int(std::lround(o.bldt * 60. / g.dt));
   if (stepbl < 1) stepbl = 1;
@@ -869,7 +849,6 @@ void PhysicsSuite::init_radiation(const std::vector<double>& xlat, const std::ve
 PhysicsSuite::~PhysicsSuite() {
   if (d_sfclay_tables_) dev_free(d_sfclay_tables_);
   if (d_kf_tables_) dev_free(d_kf_tables_);
-  if (d_gfinv_) dev_free(d_gfinv_);
 }
 
 std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
@@ -1254,11 +1233,9 @@ void PhysicsSuite::cumulus_driver(const dyn::State& s, const dyn::BaseState& b) 
   using namespace wrfc;
   if (o_.cu_physics == 3) {
     KGrellFreitas k{};
-    k.nx = g_.nx; k.ny = g_.ny; k.nz = g_.nz; k.ishallow = o_.ishallow; k.ichoice = o_.gf_ichoice;
-    // ibegc..iendc, jbegc..jendc: 4 rows in from a non-periodic boundary
-    k.ibeg = g_.bc_x == BC::Periodic ? 0 : 4; k.iend = g_.bc_x == BC::Periodic ? g_.nx - 1 : g_.nx - 5;
-    k.jbeg = g_.bc_y == BC::Periodic ? 0 : 4; k.jend = g_.bc_y == BC::Periodic ? g_.ny - 1 : g_.ny - 5;
-    k.dt = real(g_.dt); k.dx = real(g_.dx); k.sec2 = real(o_.gf_sec2);
+    k.nz = g_.nz; k.ishallow = o_.ishallow; k.ichoice = o_.gf_ichoice;
+    k.dt = real(g_.dt); k.dx = real(g_.dx);
+    k.xlv = xlv; k.cp = cp; k.g = g; k.r_v = r_v;
     k.u = prep.u_phy.cview(); k.v = prep.v_phy.cview(); k.w = s.w_2.cview(); k.t = prep.t_phy.cview();
     k.pi = prep.pi_phy.cview(); k.rho = prep.rho.cview(); k.dz8w = prep.dz8w.cview(); k.pcps = prep.p_hyd.cview();
     k.p8w = prep.p_hyd_w.cview(); k.qv = s.q_2[s.P_QV].cview();
@@ -1269,19 +1246,14 @@ void PhysicsSuite::cumulus_driver(const dyn::State& s, const dyn::BaseState& b) 
     k.rthcuten = pt.rthcuten.view(); k.rqvcuten = pt.rqvcuten.view(); k.rqccuten = pt.rqccuten.view();
     k.rqicuten = pt.rqicuten.view(); k.rucuten = pt.rucuten.view(); k.rvcuten = pt.rvcuten.view();
     k.flag_qc = s.P_QC >= 0; k.flag_qi = s.P_QI >= 0;
-    k.inv = static_cast<cu_gf::GfInvInfo<real>*>(d_gfinv_);
-    k.dbg_i = -1; k.dbg_j = -1;
-    if (const char* e = std::getenv("CPPWRF_GF_DBG")) std::sscanf(e, "%d,%d", &k.dbg_i, &k.dbg_j);  // debug print
-    k.phase = 0;
     column_for(g_.columns(), k);
-    k.phase = 1;
-    column_for(Range2D{0, 1, 0, g_.ny}, k);
-    k.phase = 2;
-    column_for(g_.columns(), k);
-    // debug: CPPWRF_GF_DUMP=file CPPWRF_GF_DUMP_STEP=n writes GFDRV's inputs and outputs of step n
-    // (tests/phys/cu_gf/harness.f90 runs WRF's GFDRV on them)
-    const char* d = std::getenv("CPPWRF_GF_DUMP");
-    const char* ds = std::getenv("CPPWRF_GF_DUMP_STEP");
+    // debug: CPPWRF_GFL_DUMP=file CPPWRF_GFL_DUMP_STEP=n (or CPPWRF_GF_DUMP / CPPWRF_GF_DUMP_STEP)
+    // writes cu_grell_freitas_li's inputs and outputs of step n
+    // (tests/phys/cu_gfl/harness.f90 runs WRF's cu_grell_freitas_li on them)
+    const char* d = std::getenv("CPPWRF_GFL_DUMP");
+    if (!d) d = std::getenv("CPPWRF_GF_DUMP");
+    const char* ds = std::getenv("CPPWRF_GFL_DUMP_STEP");
+    if (!ds) ds = std::getenv("CPPWRF_GF_DUMP_STEP");
     if (d && ds && itimestep == std::atol(ds)) {
       std::FILE* f = std::fopen(d, "wb");
       const int hdr[3] = {g_.nx, g_.ny, g_.nz};
@@ -1332,8 +1304,9 @@ void PhysicsSuite::cumulus_driver(const dyn::State& s, const dyn::BaseState& b) 
             std::fwrite(&v, sizeof(double), 1, f);
           }
       }
-      w3(pt.rthcuten, nz); w3(pt.rqvcuten, nz); w3(pt.rucuten, nz); w3(pt.rvcuten, nz);
-      w2(raincv); w2(pratec);
+      w3(pt.rthcuten, nz); w3(pt.rqvcuten, nz); w3(pt.rqccuten, nz); w3(pt.rqicuten, nz);
+      w3(pt.rucuten, nz); w3(pt.rvcuten, nz);
+      w2(raincv); w2(pratec); w2(htop); w2(hbot);
       std::fclose(f);
     }
     return;

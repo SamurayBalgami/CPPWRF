@@ -71,7 +71,9 @@ list(APPEND CPPWRF_SOURCES
   ${CMAKE_SOURCE_DIR}/src/phys/cu_kf/kf_tables.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/mp_thompson/thompson.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/mp_thompson/thompson_tables.cpp)
-set_source_files_properties(${CMAKE_SOURCE_DIR}/src/phys/mp_thompson/thompson.cpp
+set_source_files_properties(
+  ${CMAKE_SOURCE_DIR}/src/phys/mp_thompson/thompson.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/driver/suite.cpp
   PROPERTIES COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>")
 
 add_library(cppwrf_core STATIC ${CPPWRF_SOURCES})
@@ -79,7 +81,7 @@ add_library(cppwrf_core STATIC ${CPPWRF_SOURCES})
 target_compile_definitions(cppwrf_core PRIVATE CPPWRF_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
 target_include_directories(cppwrf_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cppwrf_core PUBLIC cppwrf_io)
-# glibc libmvec: Grell-Freitas uses the 2-lane vector pow where WRF's gfortran build vectorises (cu_gf)
+# glibc libmvec: Grell-Freitas-Li uses the 2-lane vector pow where WRF's gfortran build vectorises (cu_gfl)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
   target_link_libraries(cppwrf_core PUBLIC mvec)
 endif()
