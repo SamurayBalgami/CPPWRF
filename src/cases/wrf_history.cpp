@@ -145,6 +145,29 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
     c.set("isftcflx", std::to_string(o.isftcflx)); c.set("iz0tlnd", std::to_string(o.iz0tlnd));
     c.set("ysu_topdown_pblmix", std::to_string(o.ysu_topdown_pblmix));
     c.set("kim_tofd", o.kim_tofd ? ".true." : ".false.");
+    if (o.sf_surface_physics == 4) {
+      c.set("dveg", std::to_string(o.noahmp.dveg));
+      c.set("opt_crs", std::to_string(o.noahmp.opt_crs));
+      c.set("opt_btr", std::to_string(o.noahmp.opt_btr));
+      c.set("opt_run", std::to_string(o.noahmp.opt_runsub));
+      c.set("opt_sfc", std::to_string(o.noahmp.opt_sfc));
+      c.set("opt_frz", std::to_string(o.noahmp.opt_frz));
+      c.set("opt_inf", std::to_string(o.noahmp.opt_inf));
+      c.set("opt_rad", std::to_string(o.noahmp.opt_rad));
+      c.set("opt_alb", std::to_string(o.noahmp.opt_alb));
+      c.set("opt_snf", std::to_string(o.noahmp.opt_snf));
+      c.set("opt_tbot", std::to_string(o.noahmp.opt_tbot));
+      c.set("opt_stc", std::to_string(o.noahmp.opt_stc));
+      c.set("opt_gla", std::to_string(o.noahmp.opt_gla));
+      c.set("opt_rsf", std::to_string(o.noahmp.opt_rsf));
+      c.set("opt_soil", std::to_string(o.noahmp.opt_soil));
+      c.set("opt_pedo", std::to_string(o.noahmp.opt_pedo));
+      c.set("opt_crop", std::to_string(o.noahmp.opt_crop));
+      c.set("opt_irr", std::to_string(o.noahmp.opt_irr));
+      c.set("opt_irrm", std::to_string(o.noahmp.opt_irrm));
+      c.set("opt_infdv", std::to_string(o.noahmp.opt_infdv));
+      c.set("opt_tdrn", std::to_string(o.noahmp.opt_tdrn));
+    }
   } else {
     for (const char* p : {"sf_sfclay_physics", "sf_surface_physics", "bl_pbl_physics", "cu_physics", "ra_lw_physics",
                           "ra_sw_physics"})
@@ -400,14 +423,25 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     });
   }
   if (name == "ITIMESTEP") { out.assign(1, double(step_)); return true; }
-  if (name == "KPBL" && m_.suite && dims.size() == 2) {  // integer PBL top level
-    std::vector<int> h;
-    m_.suite->kpbl.download(h);
-    const Layout& L = m_.suite->kpbl.layout();
-    out.resize(n);
-    for (std::size_t j = 0; j < dims[0]; ++j)
-      for (std::size_t i = 0; i < dims[1]; ++i) out[j * dims[1] + i] = double(h[L.index(int(i), int(j), 0)]);
-    return true;
+  if (m_.suite && dims.size() == 2) {
+    const phys::driver::IntField2* fi = nullptr;
+    if (name == "KPBL") fi = &m_.suite->kpbl;
+    else if (name == "IVGTYP") fi = &m_.suite->ivgtyp;
+    else if (name == "ISLTYP") fi = &m_.suite->isltyp;
+    else if (m_.suite->options().sf_surface_physics == 4) {
+      if (name == "ISNOW" || name == "ISNOWXY") fi = &m_.suite->isnowxy;
+      else if (name == "CROPCAT") fi = &m_.suite->cropcat;
+      else if (name == "PGS" || name == "PGSXY") fi = &m_.suite->pgsxy;
+    }
+    if (fi) {
+      std::vector<int> h;
+      fi->download(h);
+      const Layout& L = fi->layout();
+      out.resize(n);
+      for (std::size_t j = 0; j < dims[0]; ++j)
+        for (std::size_t i = 0; i < dims[1]; ++i) out[j * dims[1] + i] = double(h[L.index(int(i), int(j), 0)]);
+      return true;
+    }
   }
   {  // base state (the model's: blend_terrain and nest feedback change it)
     const Grid& g = m_.g;

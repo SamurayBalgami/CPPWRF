@@ -542,6 +542,50 @@ struct KLsmDiag {
   }
 };
 
+// NOAHMPSCHEME tail of surface_driver (module_surface_driver.F:3431-3481)
+struct KNoahmpDiag {
+  CI2 ivgtyp;
+  C2 xice, qfx, chs, hfx, lh, grdflx, tsk, qsfc, chs2, cqs2, psfc, fvegxy, t2mvxy, t2mbxy, q2mvxy, q2mbxy;
+  V2 chklowq, sfcevp, sfcexc, achfx, aclhf, acgrdflx, q2, t2, th2;
+  real dtbl, dt, xice_threshold;
+  int iswater, isice, isurban;
+  int lcz[11];
+  CPPWRF_HD void operator()(int i, int j) const {
+    using namespace wrfc;
+    chklowq(i, j) = real(1.0);
+    sfcevp(i, j) = sfcevp(i, j) + qfx(i, j) * dtbl;
+    sfcexc(i, j) = chs(i, j);
+    achfx(i, j) = achfx(i, j) + hfx(i, j) * dt;
+    aclhf(i, j) = aclhf(i, j) + lh(i, j) * dt;
+    acgrdflx(i, j) = acgrdflx(i, j) + grdflx(i, j) * dt;
+    const int vt = ivgtyp(i, j);
+    bool is_lcz = false;
+    for (int n = 0; n < 11; ++n) is_lcz = is_lcz || (vt == lcz[n]);
+    if (vt == iswater || (vt == isice && xice(i, j) >= xice_threshold)) {
+      real rho = psfc(i, j) / (r_d * tsk(i, j));
+      if (cqs2(i, j) < real(1.e-5)) {
+        q2(i, j) = qsfc(i, j);
+      } else {
+        q2(i, j) = qsfc(i, j) - qfx(i, j) / (rho * cqs2(i, j));
+      }
+      if (chs2(i, j) < real(1.e-5)) {
+        t2(i, j) = tsk(i, j);
+      } else {
+        t2(i, j) = tsk(i, j) - hfx(i, j) / (rho * cp * chs2(i, j));
+      }
+      th2(i, j) = t2(i, j) * rpow(real(1.e5) / psfc(i, j), rcp);
+    } else if (vt == isurban || is_lcz || (vt == isice && xice(i, j) < xice_threshold)) {
+      q2(i, j) = q2mbxy(i, j);
+      t2(i, j) = t2mbxy(i, j);
+      th2(i, j) = t2(i, j) * rpow(real(1.e5) / psfc(i, j), rcp);
+    } else {
+      t2(i, j) = fvegxy(i, j) * t2mvxy(i, j) + (real(1.) - fvegxy(i, j)) * t2mbxy(i, j);
+      q2(i, j) = fvegxy(i, j) * q2mvxy(i, j) + (real(1.) - fvegxy(i, j)) * q2mbxy(i, j);
+      th2(i, j) = t2(i, j) * rpow(real(1.e5) / psfc(i, j), rcp);
+    }
+  }
+};
+
 // end of surface_driver: RAINBL reset, Q2 limited over land
 struct KSfcEnd {
   V2 rainbl, q2;
@@ -884,9 +928,10 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       chklowq(g, Stagger::M, "chklowq"), qgh(g, Stagger::M, "qgh"), chs(g, Stagger::M, "chs"),
       chs2(g, Stagger::M, "chs2"), cqs2(g, Stagger::M, "cqs2"), cpm(g, Stagger::M, "cpm"),
       u_phytmp(g, Stagger::M, "u_phytmp"), v_phytmp(g, Stagger::M, "v_phytmp"), t1_lag_(g, Stagger::M, "t1_lag"), coszen(g, Stagger::M, "coszen"), rthratenlw(g, Stagger::M, "rthratenlw"), rthratensw(g, Stagger::M, "rthratensw"), rthratenlwc(g, Stagger::M, "rthratenlwc"), rthratenswc(g, Stagger::M, "rthratenswc"), o3rad(g, Stagger::M, "o3rad"), lwcf(g, Stagger::M, "lwcf"), swcf(g, Stagger::M, "swcf"), hrang(g, Stagger::M, "hrang"), uratx(g, Stagger::M, "uratx"), vratx(g, Stagger::M, "vratx"), tratx(g, Stagger::M, "tratx"), ra(g, Stagger::M, "ra"), rs(g, Stagger::M, "rs"), shall(g, Stagger::M, "shall"), lwupt(g, Stagger::M, "lwupt"), lwuptc(g, Stagger::M, "lwuptc"), lwdnt(g, Stagger::M, "lwdnt"), lwdntc(g, Stagger::M, "lwdntc"), lwupb(g, Stagger::M, "lwupb"), lwupbc(g, Stagger::M, "lwupbc"), lwdnb(g, Stagger::M, "lwdnb"), lwdnbc(g, Stagger::M, "lwdnbc"), olr(g, Stagger::M, "olr"), swupt(g, Stagger::M, "swupt"), swuptc(g, Stagger::M, "swuptc"), swdnt(g, Stagger::M, "swdnt"), swdntc(g, Stagger::M, "swdntc"), swupb(g, Stagger::M, "swupb"), swupbc(g, Stagger::M, "swupbc"), swdnb(g, Stagger::M, "swdnb"), swdnbc(g, Stagger::M, "swdnbc"), aclwupt(g, Stagger::M, "aclwupt"), aclwuptc(g, Stagger::M, "aclwuptc"), aclwdnt(g, Stagger::M, "aclwdnt"), aclwdntc(g, Stagger::M, "aclwdntc"), aclwupb(g, Stagger::M, "aclwupb"), aclwupbc(g, Stagger::M, "aclwupbc"), aclwdnb(g, Stagger::M, "aclwdnb"), aclwdnbc(g, Stagger::M, "aclwdnbc"), acswupt(g, Stagger::M, "acswupt"), acswuptc(g, Stagger::M, "acswuptc"), acswdnt(g, Stagger::M, "acswdnt"), acswdntc(g, Stagger::M, "acswdntc"), acswupb(g, Stagger::M, "acswupb"), acswupbc(g, Stagger::M, "acswupbc"), acswdnb(g, Stagger::M, "acswdnb"), acswdnbc(g, Stagger::M, "acswdnbc"), g_(g), gs_(g), o_(o) {
-  if ((o.sf_sfclay_physics != 1 && o.sf_sfclay_physics != 2) || o.sf_surface_physics != 2 ||
+  if ((o.sf_sfclay_physics != 1 && o.sf_sfclay_physics != 2) ||
+      (o.sf_surface_physics != 2 && o.sf_surface_physics != 4) ||
       (o.bl_pbl_physics != 1 && o.bl_pbl_physics != 2))
-    throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1|2, sf_surface_physics=2, bl_pbl_physics=1|2");
+    throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1|2, sf_surface_physics=2|4, bl_pbl_physics=1|2");
   if (o.cu_physics != 0 && o.cu_physics != 1 && o.cu_physics != 3 && o.cu_physics != 16)
     throw std::runtime_error("PhysicsSuite: only cu_physics=0, 1 (Kain-Fritsch), 3 (Grell-Freitas-Li) or 16 (New Tiedtke)");
   if (o.cu_physics == 3 && g.nz > cu_gfl::kMaxLevels)
@@ -901,6 +946,11 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   if (o.seaice_thickness_opt != 0 || o.seaice_snowdepth_opt != 0)
     throw std::runtime_error("PhysicsSuite: seaice_thickness_opt/seaice_snowdepth_opt 1 need ICEDEPTH/SNOWSI input");
   if (o.num_soil_layers > noah::kMaxSoilLevels) throw std::runtime_error("PhysicsSuite: too many soil layers");
+  if (o.sf_surface_physics == 4) {
+    if (o.num_soil_layers != 4) throw std::runtime_error("PhysicsSuite: Noah-MP requires num_soil_layers=4");
+    if (o.mminlu == "NLCD40") throw std::runtime_error("PhysicsSuite: Noah-MP does not support NLCD40 landuse");
+    noahmp::validate_noahmp_options(o.noahmp);
+  }
   if (o.bl_pbl_physics == 1 && g.nz > ysu::kMaxLevels)
     throw std::runtime_error("PhysicsSuite: nz exceeds the YSU column limit");
   if (o.bl_pbl_physics == 2 && g.nz > myjpbl::kMaxLevels)
@@ -919,21 +969,67 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   mk3(gd_cloud, g, "gd_cloud"); mk3(gd_cloud2, g, "gd_cloud2");
   mk3(gd_cloud_a, g, "gd_cloud_a"); mk3(gd_cloud2_a, g, "gd_cloud2_a");
   mk3(gd_cldfr, g, "gd_cldfr");
-  mk3(n_stc, gs_, "n_stc"); mk3(n_smc, gs_, "n_smc"); mk3(n_swc, gs_, "n_swc"); mk3(n_et, gs_, "n_et");
-  mk3(n_smav, gs_, "n_smav"); mk3(zero3_, g, "zero3");
-  for (Field2* f : {&n_lwdn, &n_soldn, &n_solnet, &n_sfcprs, &n_prcp, &n_sfctmp, &n_th2, &n_q2, &n_q2sat, &n_dqsdt2,
-                    &n_ffrozp, &n_shdfac, &n_shmin, &n_shmax, &n_albbrd, &n_snoalb1, &n_tbot, &n_z0brd, &n_emissi,
-                    &n_embrd, &n_cmc, &n_t1, &n_snowhk, &n_sneqv, &n_chk, &n_cm, &n_albedok, &n_z0k, &n_xlai,
-                    &n_snotime1, &n_ribb, &n_eta, &n_sheat, &n_eta_kin, &n_fdown, &n_ec, &n_edir, &n_ett, &n_esnow,
-                    &n_drip, &n_dew, &n_beta, &n_etp, &n_ssoil, &n_flx1, &n_flx2, &n_flx3, &n_snomlt, &n_sncovr,
-                    &n_runoff1, &n_runoff2, &n_runoff3, &n_rc, &n_pc, &n_rsmin, &n_soilw, &n_soilm, &n_q1})
-    *f = Field2(g, Stagger::M, "noah_scratch");
-  n_vegtyp = IntField2(g, "n_vegtyp"); n_soiltyp = IntField2(g, "n_soiltyp"); n_slopetyp = IntField2(g, "n_slopetyp");
-  n_ice = IntField2(g, "n_ice"); n_active = IntField2(g, "n_active");
+  mk3(zero3_, g, "zero3");
   dzs.assign(o.num_soil_layers, 0.0);
-  // tables: read once (SOIL_VEG_GEN_PARM), sfclayrev / myjsfc psi tables built once
-  if (!noah::read_noah_tables(o.table_dir, o.mminlu, o.mminsl, noah_tables_))
-    throw std::runtime_error("PhysicsSuite: cannot read the Noah tables from " + o.table_dir);
+  if (o.sf_surface_physics == 2) {
+    mk3(n_stc, gs_, "n_stc"); mk3(n_smc, gs_, "n_smc"); mk3(n_swc, gs_, "n_swc"); mk3(n_et, gs_, "n_et");
+    mk3(n_smav, gs_, "n_smav");
+    for (Field2* f : {&n_lwdn, &n_soldn, &n_solnet, &n_sfcprs, &n_prcp, &n_sfctmp, &n_th2, &n_q2, &n_q2sat, &n_dqsdt2,
+                      &n_ffrozp, &n_shdfac, &n_shmin, &n_shmax, &n_albbrd, &n_snoalb1, &n_tbot, &n_z0brd, &n_emissi,
+                      &n_embrd, &n_cmc, &n_t1, &n_snowhk, &n_sneqv, &n_chk, &n_cm, &n_albedok, &n_z0k, &n_xlai,
+                      &n_snotime1, &n_ribb, &n_eta, &n_sheat, &n_eta_kin, &n_fdown, &n_ec, &n_edir, &n_ett, &n_esnow,
+                      &n_drip, &n_dew, &n_beta, &n_etp, &n_ssoil, &n_flx1, &n_flx2, &n_flx3, &n_snomlt, &n_sncovr,
+                      &n_runoff1, &n_runoff2, &n_runoff3, &n_rc, &n_pc, &n_rsmin, &n_soilw, &n_soilm, &n_q1})
+      *f = Field2(g, Stagger::M, "noah_scratch");
+    n_vegtyp = IntField2(g, "n_vegtyp"); n_soiltyp = IntField2(g, "n_soiltyp"); n_slopetyp = IntField2(g, "n_slopetyp");
+    n_ice = IntField2(g, "n_ice"); n_active = IntField2(g, "n_active");
+    if (!noah::read_noah_tables(o.table_dir, o.mminlu, o.mminsl, noah_tables_))
+      throw std::runtime_error("PhysicsSuite: cannot read the Noah tables from " + o.table_dir);
+  } else if (o.sf_surface_physics == 4) {
+    auto mk2 = [&](Field2& f, const char* n) { f = Field2(g, Stagger::M, n); };
+    mk2(xlat_sfc, "xlat_sfc"); mk2(xlong_sfc, "xlong_sfc");
+    mk2(tvxy, "tvxy"); mk2(tgxy, "tgxy"); mk2(canicexy, "canicexy"); mk2(canliqxy, "canliqxy");
+    mk2(eahxy, "eahxy"); mk2(tahxy, "tahxy"); mk2(cmxy, "cmxy"); mk2(chxy, "chxy");
+    mk2(fwetxy, "fwetxy"); mk2(sneqvoxy, "sneqvoxy"); mk2(alboldxy, "alboldxy");
+    mk2(qsnowxy, "qsnowxy"); mk2(qrainxy, "qrainxy"); mk2(wslakexy, "wslakexy");
+    mk2(zwtxy, "zwtxy"); mk2(waxy, "waxy"); mk2(wtxy, "wtxy");
+    mk2(lfmassxy, "lfmassxy"); mk2(rtmassxy, "rtmassxy"); mk2(stmassxy, "stmassxy");
+    mk2(woodxy, "woodxy"); mk2(stblcpxy, "stblcpxy"); mk2(fastcpxy, "fastcpxy");
+    mk2(xsaixy, "xsaixy"); mk2(taussxy, "taussxy"); mk2(smcwtdxy, "smcwtdxy");
+    mk2(deeprechxy, "deeprechxy"); mk2(rechxy, "rechxy"); mk2(grainxy, "grainxy");
+    mk2(gddxy, "gddxy"); mk2(qtdrain, "qtdrain");
+    mk2(t2mvxy, "t2mvxy"); mk2(t2mbxy, "t2mbxy"); mk2(q2mvxy, "q2mvxy"); mk2(q2mbxy, "q2mbxy");
+    mk2(tradxy, "tradxy"); mk2(neexy, "neexy"); mk2(gppxy, "gppxy"); mk2(nppxy, "nppxy");
+    mk2(fvegxy, "fvegxy"); mk2(runsfxy, "runsfxy"); mk2(runsbxy, "runsbxy");
+    mk2(ecanxy, "ecanxy"); mk2(edirxy, "edirxy"); mk2(etranxy, "etranxy");
+    mk2(fsaxy, "fsaxy"); mk2(firaxy, "firaxy"); mk2(aparxy, "aparxy"); mk2(psnxy, "psnxy");
+    mk2(savxy, "savxy"); mk2(sagxy, "sagxy"); mk2(rssunxy, "rssunxy"); mk2(rsshaxy, "rsshaxy");
+    mk2(bgapxy, "bgapxy"); mk2(wgapxy, "wgapxy"); mk2(tgvxy, "tgvxy"); mk2(tgbxy, "tgbxy");
+    mk2(chvxy, "chvxy"); mk2(chbxy, "chbxy"); mk2(shgxy, "shgxy"); mk2(shcxy, "shcxy");
+    mk2(shbxy, "shbxy"); mk2(evgxy, "evgxy"); mk2(evbxy, "evbxy"); mk2(ghvxy, "ghvxy");
+    mk2(ghbxy, "ghbxy"); mk2(irgxy, "irgxy"); mk2(ircxy, "ircxy"); mk2(irbxy, "irbxy");
+    mk2(trxy, "trxy"); mk2(evcxy, "evcxy"); mk2(chleafxy, "chleafxy"); mk2(chucxy, "chucxy");
+    mk2(chv2xy, "chv2xy"); mk2(chb2xy, "chb2xy"); mk2(chstarxy, "chstarxy");
+    mk2(acc_ssoilxy, "acc_ssoil"); mk2(acc_qinsurxy, "acc_qinsur"); mk2(acc_qsevaxy, "acc_qseva");
+    mk2(eflxbxy, "eflxbxy");
+    mk2(acc_dwaterxy, "acc_dwaterxy"); mk2(acc_prcpxy, "acc_prcpxy"); mk2(acc_ecanxy, "acc_ecanxy");
+    mk2(acc_etranxy, "acc_etranxy"); mk2(acc_edirxy, "acc_edirxy"); mk2(acc_glaflwxy, "acc_glaflwxy");
+    isnowxy = IntField2(g, "isnowxy"); cropcat = IntField2(g, "cropcat"); pgsxy = IntField2(g, "pgsxy");
+    isnowxy.upload(std::vector<int>(isnowxy.layout().total, 0));
+    cropcat.upload(std::vector<int>(cropcat.layout().total, 0));
+    pgsxy.upload(std::vector<int>(pgsxy.layout().total, 0));
+    Grid gsno = g; gsno.nz = noahmp::kMaxSnowLayers;
+    Grid gsnso = g; gsnso.nz = noahmp::kMaxSnowLayers + o.num_soil_layers;
+    Grid gband = g; gband.nz = noahmp::kNumRadBands;
+    mk3(tsnoxy, gsno, "tsnoxy"); mk3(snicexy, gsno, "snicexy"); mk3(snliqxy, gsno, "snliqxy");
+    mk3(zsnsoxy, gsnso, "zsnsoxy");
+    mk3(albsoildirxy, gband, "albsoildirxy"); mk3(albsoildifxy, gband, "albsoildifxy");
+    mk3(smoiseq, gs_, "smoiseq"); mk3(acc_etranixy, gs_, "acc_etrani");
+    if (!noahmp::read_noahmp_tables(o.table_dir, o.mminlu, noahmp_tables_))
+      throw std::runtime_error("PhysicsSuite: cannot read NoahmpTable.TBL from " + o.table_dir);
+    d_noahmp_tables_ = static_cast<noahmp::NoahmpTables*>(dev_alloc(sizeof(noahmp_tables_)));
+    copy_to_dev(d_noahmp_tables_, &noahmp_tables_, sizeof(noahmp_tables_));
+  }
   if (o.sf_sfclay_physics == 1) {
     sfclayrev::SFClayRevTables<real> h{};
     sfclayrev::init_sfclayrev_tables(h);
@@ -969,7 +1065,73 @@ void PhysicsSuite::init_radiation(const std::vector<double>& xlat, const std::ve
   rad_ = std::make_unique<RadiationDriver>(g_, o_.rad, xlat, xlong);
 }
 
+void PhysicsSuite::init_noahmp(bool fndsnowh) {
+  if (o_.sf_surface_physics != 4) return;
+  noahmp::NoahmpInitKernel k{};
+  k.ivgtyp = ivgtyp.cview();
+  k.isltyp = isltyp.cview();
+  k.tsk = tsk.cview();
+  k.xice = xice.cview();
+  k.tmn = tmn.view();
+  k.snow = snow.view();
+  k.snowh = snowh.view();
+  k.canwat = canwat.view();
+  k.tslb = tslb.view();
+  k.smois = smois.view();
+  k.sh2o = sh2o.view();
+  k.isnowxy = isnowxy.view();
+  k.tvxy = tvxy.view();
+  k.tgxy = tgxy.view();
+  k.canicexy = canicexy.view();
+  k.canliqxy = canliqxy.view();
+  k.eahxy = eahxy.view();
+  k.tahxy = tahxy.view();
+  k.cmxy = cmxy.view();
+  k.chxy = chxy.view();
+  k.fwetxy = fwetxy.view();
+  k.sneqvoxy = sneqvoxy.view();
+  k.alboldxy = alboldxy.view();
+  k.qsnowxy = qsnowxy.view();
+  k.qrainxy = qrainxy.view();
+  k.wslakexy = wslakexy.view();
+  k.zwtxy = zwtxy.view();
+  k.waxy = waxy.view();
+  k.wtxy = wtxy.view();
+  k.lfmassxy = lfmassxy.view();
+  k.rtmassxy = rtmassxy.view();
+  k.stmassxy = stmassxy.view();
+  k.woodxy = woodxy.view();
+  k.stblcpxy = stblcpxy.view();
+  k.fastcpxy = fastcpxy.view();
+  k.xsaixy = xsaixy.view();
+  k.lai = lai.view();
+  k.grainxy = grainxy.view();
+  k.gddxy = gddxy.view();
+  k.cropcat = cropcat.view();
+  k.t2mvxy = t2mvxy.view();
+  k.t2mbxy = t2mbxy.view();
+  k.chstarxy = chstarxy.view();
+  k.qtdrain = qtdrain.view();
+  k.tsnoxy = tsnoxy.view();
+  k.snicexy = snicexy.view();
+  k.snliqxy = snliqxy.view();
+  k.zsnsoxy = zsnsoxy.view();
+  k.albsoildirxy = albsoildirxy.view();
+  k.albsoildifxy = albsoildifxy.view();
+  k.tables = d_noahmp_tables_;
+  k.nsoil = o_.num_soil_layers;
+  k.nsnow = noahmp::kMaxSnowLayers;
+  for (int ns = 0; ns < o_.num_soil_layers; ++ns) k.dzs[ns] = real(dzs[ns]);
+  k.fndsnowh = fndsnowh;
+  k.restart = false;
+  k.iopt_runsub = o_.noahmp.opt_runsub;
+  k.iopt_crop = o_.noahmp.opt_crop;
+  k.sf_urban_physics = o_.noahmp.sf_urban_physics;
+  noahmp::run_noahmp_init(k, g_.columns());
+}
+
 PhysicsSuite::~PhysicsSuite() {
+  if (d_noahmp_tables_) dev_free(d_noahmp_tables_);
   if (d_sfclay_tables_) dev_free(d_sfclay_tables_);
   if (d_kf_tables_) dev_free(d_kf_tables_);
 }
@@ -993,6 +1155,18 @@ std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
   if (rad_)  // radiation diagnostics and their accumulations
     for (Field2* f : {&lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &olr, &swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc, &aclwupt, &aclwuptc, &aclwdnt, &aclwdntc, &aclwupb, &aclwupbc, &aclwdnb, &aclwdnbc, &acswupt, &acswuptc, &acswdnt, &acswdntc, &acswupb, &acswupbc, &acswdnb, &acswdnbc})
       v.emplace_back("sfc_" + f->name(), f);
+  if (o_.sf_surface_physics == 4) {
+    for (Field2* f : {&xlat_sfc, &xlong_sfc, &tvxy, &tgxy, &canicexy, &canliqxy, &eahxy, &tahxy, &cmxy, &chxy,
+                      &fwetxy, &sneqvoxy, &alboldxy, &qsnowxy, &qrainxy, &wslakexy, &zwtxy, &waxy, &wtxy, &lfmassxy,
+                      &rtmassxy, &stmassxy, &woodxy, &stblcpxy, &fastcpxy, &xsaixy, &taussxy, &smcwtdxy, &deeprechxy,
+                      &rechxy, &grainxy, &gddxy, &qtdrain, &t2mvxy, &t2mbxy, &q2mvxy, &q2mbxy, &tradxy, &neexy,
+                      &gppxy, &nppxy, &fvegxy, &runsfxy, &runsbxy, &ecanxy, &edirxy, &etranxy, &fsaxy, &firaxy,
+                      &aparxy, &psnxy, &savxy, &sagxy, &rssunxy, &rsshaxy, &bgapxy, &wgapxy, &tgvxy, &tgbxy, &chvxy,
+                      &chbxy, &shgxy, &shcxy, &shbxy, &evgxy, &evbxy, &ghvxy, &ghbxy, &irgxy, &ircxy, &irbxy, &trxy,
+                      &evcxy, &chleafxy, &chucxy, &chv2xy, &chb2xy, &chstarxy, &rs, &acc_ssoilxy, &acc_qinsurxy,
+                      &acc_qsevaxy, &eflxbxy, &acc_dwaterxy, &acc_prcpxy, &acc_ecanxy, &acc_etranxy, &acc_edirxy, &acc_glaflwxy})
+      v.emplace_back("sfc_" + f->name(), f);
+  }
   return v;
 }
 
@@ -1007,6 +1181,10 @@ std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
   if (o_.sf_sfclay_physics == 2 || o_.bl_pbl_physics == 2) {
     v.emplace_back("sfc_tke_pbl", &tke_pbl);
     v.emplace_back("sfc_el_pbl", &el_pbl);
+  }
+  if (o_.sf_surface_physics == 4) {
+    for (Field3* f : {&tsnoxy, &snicexy, &snliqxy, &zsnsoxy, &albsoildirxy, &albsoildifxy, &smoiseq, &acc_etranixy})
+      v.emplace_back("sfc_" + f->name(), f);
   }
   if (rad_) {
     v.emplace_back("sfc_cldfra", &cldfra);
@@ -1025,6 +1203,11 @@ std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
 std::vector<std::pair<std::string, IntField2*>> PhysicsSuite::carried_int() {
   std::vector<std::pair<std::string, IntField2*>> v = {{"sfc_ivgtyp", &ivgtyp}, {"sfc_isltyp", &isltyp}, {"sfc_kpbl", &kpbl}};
   if (o_.sf_sfclay_physics == 2 || o_.bl_pbl_physics == 2) v.emplace_back("sfc_lowlyr", &lowlyr);
+  if (o_.sf_surface_physics == 4) {
+    v.emplace_back("sfc_isnowxy", &isnowxy);
+    v.emplace_back("sfc_cropcat", &cropcat);
+    v.emplace_back("sfc_pgsxy", &pgsxy);
+  }
   return v;
 }
 
@@ -1088,7 +1271,7 @@ void PhysicsSuite::after_rk(const dyn::State& s, const dyn::BaseState& b) {
   phy_prep_part2(pt, s, b, g_, CouplingFlags{radiation_on(), true, o_.cu_physics, o_.use_theta_m == 1});
 }
 
-// module_surface_driver.F surface_driver for SFCLAYREVSCHEME / MYJSFCSCHEME + LSMSCHEME
+// module_surface_driver.F surface_driver for SFCLAYREVSCHEME / MYJSFCSCHEME + LSMSCHEME / NOAHMPSCHEME
 void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) {
   const Range2D cols = g_.columns();
   const int nz = g_.nz;
@@ -1140,190 +1323,400 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
   if (o_.isfflx != 0) {
     const int nsoil = o_.num_soil_layers;
     column_for(cols, KNoahRa{wspd.cview(), ust.cview(), ra.view()});
-    // ---- lsm (module_sf_noahdrv.F) ----
-    KLsmPre pre{};
-    pre.dz8w = prep.dz8w.cview(); pre.qv3d = s.q_2[s.P_QV].cview(); pre.p8w3d = prep.p_hyd_w.cview();
-    pre.t3d = prep.t_phy.cview();
-    pre.qgh = qgh.cview(); pre.glw = glw.cview(); pre.swdown = swdown.cview(); pre.rainbl = rainbl.cview();
-    pre.vegfra = vegfra.cview(); pre.shdmin = shdmin.cview(); pre.shdmax = shdmax.cview(); pre.snoalb = snoalb.cview();
-    pre.tmn = tmn.cview(); pre.xice = xice.cview(); pre.chs = chs.cview(); pre.rib = br.cview(); pre.sr = sr.cview();
-    pre.qz0 = qz0.cview();
-    pre.ivgtyp = ivgtyp.cview(); pre.isltyp = isltyp.cview();
-    pre.tsk = tsk.view(); pre.albedo = albedo.view(); pre.albbck = albbck.view(); pre.z0 = z0.view();
-    pre.emiss = emiss.view(); pre.embck = embck.view(); pre.snow = snow.view(); pre.snowh = snowh.view();
-    pre.snowc = snowc.view(); pre.canwat = canwat.view(); pre.snotime = snotime.view(); pre.lai = lai.view();
-    pre.smstav = smstav.view(); pre.smstot = smstot.view(); pre.chklowq = chklowq.view(); pre.xland = xland.view();
-    pre.smois = smois.view(); pre.tslb = tslb.view(); pre.sh2o = sh2o.view(); pre.smcrel = smcrel.view();
-    pre.lwdn = n_lwdn.view(); pre.soldn = n_soldn.view(); pre.solnet = n_solnet.view(); pre.sfcprs = n_sfcprs.view();
-    pre.prcp = n_prcp.view(); pre.sfctmp = n_sfctmp.view(); pre.th2 = n_th2.view(); pre.q2k = n_q2.view();
-    pre.q2sat = n_q2sat.view(); pre.dqsdt2 = n_dqsdt2.view(); pre.ffrozp = n_ffrozp.view();
-    pre.shdfac = n_shdfac.view(); pre.shmin = n_shmin.view(); pre.shmax = n_shmax.view();
-    pre.albbrd = n_albbrd.view(); pre.snoalb1 = n_snoalb1.view(); pre.tbot = n_tbot.view();
-    pre.z0brd = n_z0brd.view(); pre.emissi = n_emissi.view(); pre.embrd = n_embrd.view(); pre.cmc = n_cmc.view();
-    pre.t1 = n_t1.view(); pre.snowhk = n_snowhk.view(); pre.sneqv = n_sneqv.view(); pre.chk = n_chk.view();
-    pre.snotime1 = n_snotime1.view(); pre.ribb = n_ribb.view(); pre.xlai = n_xlai.view(); pre.soilw = n_soilw.view();
-    pre.sncovr = n_sncovr.view();
-    pre.stc = n_stc.view(); pre.smc = n_smc.view(); pre.swc = n_swc.view();
-    pre.vegtyp = n_vegtyp.view(); pre.soiltyp = n_soiltyp.view(); pre.slopetyp = n_slopetyp.view();
-    pre.ice = n_ice.view(); pre.active = n_active.view();
-    pre.nsoil = nsoil; pre.itimestep = int(itimestep); pre.isurban = o_.isurban; pre.isice = o_.isice;
-    pre.sf_urban_physics = 0;
-    for (int n = 0; n < 11; ++n) pre.lcz[n] = noah_tables_.lcz[n];
-    pre.myj = (o_.sf_sfclay_physics == 2); pre.frpcpn = true;  // SR is passed by first_rk_step_part1
-    pre.rdlai2d = o_.rdlai2d; pre.dt = dtbl; pre.xice_threshold = xice_threshold;
-    column_for(cols, pre);
-
-    // SFLX on the land points (ICE == 0)
-    noah::NoahKernel nk{};
-    nk.lwdn = n_lwdn.cview(); nk.soldn = n_soldn.cview(); nk.solnet = n_solnet.cview(); nk.sfcprs = n_sfcprs.cview();
-    nk.prcp = n_prcp.cview(); nk.sfctmp = n_sfctmp.cview(); nk.th2 = n_th2.cview(); nk.q2 = n_q2.cview();
-    nk.sfcspd = n_q2.cview();  // SFCSPD: DUMMY in lsm (not used by SFLX)
-    nk.q2sat = n_q2sat.cview(); nk.dqsdt2 = n_dqsdt2.cview(); nk.ffrozp = n_ffrozp.cview();
-    nk.vegtyp = n_vegtyp.cview(); nk.soiltyp = n_soiltyp.cview(); nk.slopetyp = n_slopetyp.cview();
-    nk.shdfac = n_shdfac.cview(); nk.shdmin = n_shmin.cview(); nk.shdmax = n_shmax.cview();
-    nk.alb = n_albbrd.cview(); nk.snoalb = n_snoalb1.cview(); nk.tbot = n_tbot.cview();
-    nk.z0brd = n_z0brd.view(); nk.embrd = n_embrd.view();
-    nk.cmc = n_cmc.view(); nk.t1 = n_t1.view(); nk.stc = n_stc.view(); nk.smc = n_smc.view(); nk.sh2o = n_swc.view();
-    nk.snowh = n_snowhk.view(); nk.sneqv = n_sneqv.view(); nk.albedo = n_albedok.view(); nk.ch = n_chk.view();
-    nk.cm = n_cm.view(); nk.emissi = n_emissi.view(); nk.z0 = n_z0k.view(); nk.xlai = n_xlai.view();
-    nk.snotime1 = n_snotime1.view(); nk.ribb = n_ribb.view();
-    nk.eta = n_eta.view(); nk.sheat = n_sheat.view(); nk.eta_kinematic = n_eta_kin.view(); nk.fdown = n_fdown.view();
-    nk.ec = n_ec.view(); nk.edir = n_edir.view(); nk.et = n_et.view(); nk.ett = n_ett.view(); nk.esnow = n_esnow.view();
-    nk.drip = n_drip.view(); nk.dew = n_dew.view(); nk.beta = n_beta.view(); nk.etp = n_etp.view();
-    nk.ssoil = n_ssoil.view(); nk.flx1 = n_flx1.view(); nk.flx2 = n_flx2.view(); nk.flx3 = n_flx3.view();
-    nk.snomlt = n_snomlt.view(); nk.sncovr = n_sncovr.view(); nk.runoff1 = n_runoff1.view();
-    nk.runoff2 = n_runoff2.view(); nk.runoff3 = n_runoff3.view(); nk.rc = n_rc.view(); nk.pc = n_pc.view();
-    nk.rsmin = n_rsmin.view(); nk.soilw = n_soilw.view(); nk.soilm = n_soilm.view(); nk.q1 = n_q1.view();
-    nk.smav = n_smav.view();
-    nk.dt = dtbl; nk.zlvl = real(0); nk.nsoil = nsoil;
-    for (int k = 0; k < nsoil; ++k) nk.sldpth[k] = real(dzs[k]);
-    nk.isurban = o_.isurban;
-    nk.tables = noah_tables_;
-    nk.rdlai2d = o_.rdlai2d; nk.usemonalb = o_.usemonalb;
-    nk.active = n_active.cview(); nk.alb_out = n_albbrd.view();
-    // debug: CPPWRF_NOAH_DUMP=dir, CPPWRF_NOAH_DUMP_STEP=n: SFLX inputs/outputs of the land columns at step n
-    // in the stream format of tests/phys/lsm_noah/fortran/driver_noah.f90 (replay through WRF's SFLX)
-    const char* ndump = std::getenv("CPPWRF_NOAH_DUMP");
-    const char* nstep = std::getenv("CPPWRF_NOAH_DUMP_STEP");
-    const bool do_ndump = ndump && nstep && itimestep == std::atol(nstep);
-    std::vector<std::pair<int, int>> ncol;
-    auto L2 = n_lwdn.layout();
-    auto h2 = [&](const Field2& f) { std::vector<real> h; f.download(h); return h; };
-    auto hi = [&](const IntField2& f) { std::vector<int> h; f.download(h); return h; };
-    auto h3 = [&](const Field3& f) { std::vector<real> h; f.download(h); return h; };
-    auto write_cols = [&](std::FILE* fp, bool out) {
-      auto wr2 = [&](const Field2& f) { auto h = h2(f); for (auto [i, j] : ncol) { double v = h[L2.index(i, j, 0)]; std::fwrite(&v, 8, 1, fp); } };
-      auto wr3 = [&](const Field3& f) { auto h = h3(f); const Layout& L = f.layout();
-        for (int k = 0; k < nsoil; ++k) for (auto [i, j] : ncol) { double v = h[L.index(i, j, k)]; std::fwrite(&v, 8, 1, fp); } };
-      if (!out) {
-        for (const IntField2* f : {&n_vegtyp, &n_soiltyp, &n_slopetyp}) { auto h = hi(*f); for (auto [i, j] : ncol) { int v = h[L2.index(i, j, 0)]; std::fwrite(&v, 4, 1, fp); } }
-        for (const Field2* f : {&n_shdfac, &n_shmin, &n_shmax, &n_albbrd, &n_snoalb1, &n_tbot, &n_z0brd, &n_embrd, &n_lwdn, &n_soldn,
-                                &n_solnet, &n_sfcprs, &n_prcp, &n_sfctmp, &n_th2, &n_q2, &n_q2, &n_q2sat, &n_dqsdt2, &n_ffrozp,
-                                &n_cmc, &n_t1, &n_snowhk, &n_sneqv, &n_albedok, &n_chk, &n_cm, &n_emissi, &n_z0k, &n_xlai,
-                                &n_snotime1, &n_ribb}) wr2(*f);
-        wr3(n_stc); wr3(n_smc); wr3(n_swc);
-      } else {
-        for (const Field2* f : {&n_eta, &n_sheat, &n_eta_kin, &n_fdown, &n_ec, &n_edir, &n_ett, &n_esnow, &n_drip, &n_dew,
-                                &n_beta, &n_etp, &n_ssoil, &n_flx1, &n_flx2, &n_flx3, &n_snomlt, &n_sncovr, &n_runoff1,
-                                &n_runoff2, &n_runoff3, &n_rc, &n_pc, &n_rsmin, &n_soilw, &n_soilm, &n_q1, &n_cmc, &n_t1,
-                                &n_snowhk, &n_sneqv, &n_albedok, &n_emissi, &n_z0k, &n_xlai, &n_snotime1, &n_ribb}) wr2(*f);
-        wr3(n_stc); wr3(n_smc); wr3(n_swc); wr3(n_et); wr3(n_smav);
-      }
+    auto run_seaice = [&]() {
+      // ---- seaice_noah (module_sf_noah_seaice_drv.F), DT = model time step ----
+      KSeaiceNoah si{};
+      si.t3d = prep.t_phy.cview(); si.qv3d = s.q_2[s.P_QV].cview(); si.p8w3d = prep.p_hyd_w.cview();
+      si.dz8w = prep.dz8w.cview();
+      si.glw = glw.cview(); si.swdown = swdown.cview(); si.rainbl = rainbl.cview(); si.snoalb2d = snoalb.cview();
+      si.qgh = qgh.cview(); si.xice = xice.cview(); si.rib = br.cview(); si.sr = sr.cview();
+      si.emiss = emiss.view(); si.albedo = albedo.view(); si.z02d = z0.view(); si.tsk = tsk.view();
+      si.snow = snow.view(); si.snowc = snowc.view(); si.snowh2d = snowh.view(); si.chs = chs.view();
+      si.chs2 = chs2.view(); si.cqs2 = cqs2.view(); si.znt = znt.view(); si.lh = lh.view(); si.hfx = hfx.view();
+      si.qfx = qfx.view(); si.potevp = potevp.view(); si.grdflx = grdflx.view(); si.qsfc = qsfc.view();
+      si.acsnow = acsnow.view(); si.acsnom = acsnom.view(); si.snopcx = snopcx.view();
+      si.sfcrunoff = sfcrunoff.view(); si.noahres = noahres.view(); si.tslb = tslb.view();
+      si.op.albedo_opt = o_.seaice_albedo_opt; si.op.albedo_default = real(o_.seaice_albedo_default);
+      si.op.snowdepth_opt = o_.seaice_snowdepth_opt; si.op.snowdepth_max = real(o_.seaice_snowdepth_max);
+      si.op.snowdepth_min = real(o_.seaice_snowdepth_min);
+      si.thickness_opt = o_.seaice_thickness_opt; si.thickness_default = real(o_.seaice_thickness_default);
+      si.dt = dt; si.xice_threshold = xice_threshold; si.nsoil = nsoil; si.frpcpn = true;
+      column_for(cols, si);
     };
-    if (do_ndump) {
-      auto act = hi(n_active);
-      for (int j = cols.j0; j < cols.j1; ++j)
-        for (int i = cols.i0; i < cols.i1; ++i)
-          if (act[L2.index(i, j, 0)]) ncol.emplace_back(i, j);
-      std::FILE* fp = std::fopen((std::string(ndump) + "/noah_in.bin").c_str(), "wb");
-      const int hdr[2] = {int(ncol.size()), nsoil};
-      std::fwrite(hdr, 4, 2, fp);
-      const double dd[2] = {double(dtbl), 0.0};
-      std::fwrite(dd, 8, 2, fp);
-      std::fwrite(&o_.isurban, 4, 1, fp);
-      for (int k = 0; k < nsoil; ++k) { double v = dzs[k]; std::fwrite(&v, 8, 1, fp); }
-      write_cols(fp, false);
-      std::fclose(fp);
-      fp = std::fopen((std::string(ndump) + "/noah_cols.txt").c_str(), "w");
-      for (auto [i, j] : ncol) std::fprintf(fp, "%d %d\n", i, j);
-      std::fclose(fp);
+
+    if (o_.sf_surface_physics == 2) {
+      // ---- lsm (module_sf_noahdrv.F) ----
+      KLsmPre pre{};
+      pre.dz8w = prep.dz8w.cview(); pre.qv3d = s.q_2[s.P_QV].cview(); pre.p8w3d = prep.p_hyd_w.cview();
+      pre.t3d = prep.t_phy.cview();
+      pre.qgh = qgh.cview(); pre.glw = glw.cview(); pre.swdown = swdown.cview(); pre.rainbl = rainbl.cview();
+      pre.vegfra = vegfra.cview(); pre.shdmin = shdmin.cview(); pre.shdmax = shdmax.cview(); pre.snoalb = snoalb.cview();
+      pre.tmn = tmn.cview(); pre.xice = xice.cview(); pre.chs = chs.cview(); pre.rib = br.cview(); pre.sr = sr.cview();
+      pre.qz0 = qz0.cview();
+      pre.ivgtyp = ivgtyp.cview(); pre.isltyp = isltyp.cview();
+      pre.tsk = tsk.view(); pre.albedo = albedo.view(); pre.albbck = albbck.view(); pre.z0 = z0.view();
+      pre.emiss = emiss.view(); pre.embck = embck.view(); pre.snow = snow.view(); pre.snowh = snowh.view();
+      pre.snowc = snowc.view(); pre.canwat = canwat.view(); pre.snotime = snotime.view(); pre.lai = lai.view();
+      pre.smstav = smstav.view(); pre.smstot = smstot.view(); pre.chklowq = chklowq.view(); pre.xland = xland.view();
+      pre.smois = smois.view(); pre.tslb = tslb.view(); pre.sh2o = sh2o.view(); pre.smcrel = smcrel.view();
+      pre.lwdn = n_lwdn.view(); pre.soldn = n_soldn.view(); pre.solnet = n_solnet.view(); pre.sfcprs = n_sfcprs.view();
+      pre.prcp = n_prcp.view(); pre.sfctmp = n_sfctmp.view(); pre.th2 = n_th2.view(); pre.q2k = n_q2.view();
+      pre.q2sat = n_q2sat.view(); pre.dqsdt2 = n_dqsdt2.view(); pre.ffrozp = n_ffrozp.view();
+      pre.shdfac = n_shdfac.view(); pre.shmin = n_shmin.view(); pre.shmax = n_shmax.view();
+      pre.albbrd = n_albbrd.view(); pre.snoalb1 = n_snoalb1.view(); pre.tbot = n_tbot.view();
+      pre.z0brd = n_z0brd.view(); pre.emissi = n_emissi.view(); pre.embrd = n_embrd.view(); pre.cmc = n_cmc.view();
+      pre.t1 = n_t1.view(); pre.snowhk = n_snowhk.view(); pre.sneqv = n_sneqv.view(); pre.chk = n_chk.view();
+      pre.snotime1 = n_snotime1.view(); pre.ribb = n_ribb.view(); pre.xlai = n_xlai.view(); pre.soilw = n_soilw.view();
+      pre.sncovr = n_sncovr.view();
+      pre.stc = n_stc.view(); pre.smc = n_smc.view(); pre.swc = n_swc.view();
+      pre.vegtyp = n_vegtyp.view(); pre.soiltyp = n_soiltyp.view(); pre.slopetyp = n_slopetyp.view();
+      pre.ice = n_ice.view(); pre.active = n_active.view();
+      pre.nsoil = nsoil; pre.itimestep = int(itimestep); pre.isurban = o_.isurban; pre.isice = o_.isice;
+      pre.sf_urban_physics = 0;
+      for (int n = 0; n < 11; ++n) pre.lcz[n] = noah_tables_.lcz[n];
+      pre.myj = (o_.sf_sfclay_physics == 2); pre.frpcpn = true;  // SR is passed by first_rk_step_part1
+      pre.rdlai2d = o_.rdlai2d; pre.dt = dtbl; pre.xice_threshold = xice_threshold;
+      column_for(cols, pre);
+
+      // SFLX on the land points (ICE == 0)
+      noah::NoahKernel nk{};
+      nk.lwdn = n_lwdn.cview(); nk.soldn = n_soldn.cview(); nk.solnet = n_solnet.cview(); nk.sfcprs = n_sfcprs.cview();
+      nk.prcp = n_prcp.cview(); nk.sfctmp = n_sfctmp.cview(); nk.th2 = n_th2.cview(); nk.q2 = n_q2.cview();
+      nk.sfcspd = n_q2.cview();  // SFCSPD: DUMMY in lsm (not used by SFLX)
+      nk.q2sat = n_q2sat.cview(); nk.dqsdt2 = n_dqsdt2.cview(); nk.ffrozp = n_ffrozp.cview();
+      nk.vegtyp = n_vegtyp.cview(); nk.soiltyp = n_soiltyp.cview(); nk.slopetyp = n_slopetyp.cview();
+      nk.shdfac = n_shdfac.cview(); nk.shdmin = n_shmin.cview(); nk.shdmax = n_shmax.cview();
+      nk.alb = n_albbrd.cview(); nk.snoalb = n_snoalb1.cview(); nk.tbot = n_tbot.cview();
+      nk.z0brd = n_z0brd.view(); nk.embrd = n_embrd.view();
+      nk.cmc = n_cmc.view(); nk.t1 = n_t1.view(); nk.stc = n_stc.view(); nk.smc = n_smc.view(); nk.sh2o = n_swc.view();
+      nk.snowh = n_snowhk.view(); nk.sneqv = n_sneqv.view(); nk.albedo = n_albedok.view(); nk.ch = n_chk.view();
+      nk.cm = n_cm.view(); nk.emissi = n_emissi.view(); nk.z0 = n_z0k.view(); nk.xlai = n_xlai.view();
+      nk.snotime1 = n_snotime1.view(); nk.ribb = n_ribb.view();
+      nk.eta = n_eta.view(); nk.sheat = n_sheat.view(); nk.eta_kinematic = n_eta_kin.view(); nk.fdown = n_fdown.view();
+      nk.ec = n_ec.view(); nk.edir = n_edir.view(); nk.et = n_et.view(); nk.ett = n_ett.view(); nk.esnow = n_esnow.view();
+      nk.drip = n_drip.view(); nk.dew = n_dew.view(); nk.beta = n_beta.view(); nk.etp = n_etp.view();
+      nk.ssoil = n_ssoil.view(); nk.flx1 = n_flx1.view(); nk.flx2 = n_flx2.view(); nk.flx3 = n_flx3.view();
+      nk.snomlt = n_snomlt.view(); nk.sncovr = n_sncovr.view(); nk.runoff1 = n_runoff1.view();
+      nk.runoff2 = n_runoff2.view(); nk.runoff3 = n_runoff3.view(); nk.rc = n_rc.view(); nk.pc = n_pc.view();
+      nk.rsmin = n_rsmin.view(); nk.soilw = n_soilw.view(); nk.soilm = n_soilm.view(); nk.q1 = n_q1.view();
+      nk.smav = n_smav.view();
+      nk.dt = dtbl; nk.zlvl = real(0); nk.nsoil = nsoil;
+      for (int k = 0; k < nsoil; ++k) nk.sldpth[k] = real(dzs[k]);
+      nk.isurban = o_.isurban;
+      nk.tables = noah_tables_;
+      nk.rdlai2d = o_.rdlai2d; nk.usemonalb = o_.usemonalb;
+      nk.active = n_active.cview(); nk.alb_out = n_albbrd.view();
+      // debug: CPPWRF_NOAH_DUMP=dir, CPPWRF_NOAH_DUMP_STEP=n: SFLX inputs/outputs of the land columns at step n
+      // in the stream format of tests/phys/lsm_noah/fortran/driver_noah.f90 (replay through WRF's SFLX)
+      const char* ndump = std::getenv("CPPWRF_NOAH_DUMP");
+      const char* nstep = std::getenv("CPPWRF_NOAH_DUMP_STEP");
+      const bool do_ndump = ndump && nstep && itimestep == std::atol(nstep);
+      std::vector<std::pair<int, int>> ncol;
+      auto L2 = n_lwdn.layout();
+      auto h2 = [&](const Field2& f) { std::vector<real> h; f.download(h); return h; };
+      auto hi = [&](const IntField2& f) { std::vector<int> h; f.download(h); return h; };
+      auto h3 = [&](const Field3& f) { std::vector<real> h; f.download(h); return h; };
+      auto write_cols = [&](std::FILE* fp, bool out) {
+        auto wr2 = [&](const Field2& f) { auto h = h2(f); for (auto [i, j] : ncol) { double v = h[L2.index(i, j, 0)]; std::fwrite(&v, 8, 1, fp); } };
+        auto wr3 = [&](const Field3& f) { auto h = h3(f); const Layout& L = f.layout();
+          for (int k = 0; k < nsoil; ++k) for (auto [i, j] : ncol) { double v = h[L.index(i, j, k)]; std::fwrite(&v, 8, 1, fp); } };
+        if (!out) {
+          for (const IntField2* f : {&n_vegtyp, &n_soiltyp, &n_slopetyp}) { auto h = hi(*f); for (auto [i, j] : ncol) { int v = h[L2.index(i, j, 0)]; std::fwrite(&v, 4, 1, fp); } }
+          for (const Field2* f : {&n_shdfac, &n_shmin, &n_shmax, &n_albbrd, &n_snoalb1, &n_tbot, &n_z0brd, &n_embrd, &n_lwdn, &n_soldn,
+                                  &n_solnet, &n_sfcprs, &n_prcp, &n_sfctmp, &n_th2, &n_q2, &n_q2, &n_q2sat, &n_dqsdt2, &n_ffrozp,
+                                  &n_cmc, &n_t1, &n_snowhk, &n_sneqv, &n_albedok, &n_chk, &n_cm, &n_emissi, &n_z0k, &n_xlai,
+                                  &n_snotime1, &n_ribb}) wr2(*f);
+          wr3(n_stc); wr3(n_smc); wr3(n_swc);
+        } else {
+          for (const Field2* f : {&n_eta, &n_sheat, &n_eta_kin, &n_fdown, &n_ec, &n_edir, &n_ett, &n_esnow, &n_drip, &n_dew,
+                                  &n_beta, &n_etp, &n_ssoil, &n_flx1, &n_flx2, &n_flx3, &n_snomlt, &n_sncovr, &n_runoff1,
+                                  &n_runoff2, &n_runoff3, &n_rc, &n_pc, &n_rsmin, &n_soilw, &n_soilm, &n_q1, &n_cmc, &n_t1,
+                                  &n_snowhk, &n_sneqv, &n_albedok, &n_emissi, &n_z0k, &n_xlai, &n_snotime1, &n_ribb}) wr2(*f);
+          wr3(n_stc); wr3(n_smc); wr3(n_swc); wr3(n_et); wr3(n_smav);
+        }
+      };
+      if (do_ndump) {
+        auto act = hi(n_active);
+        for (int j = cols.j0; j < cols.j1; ++j)
+          for (int i = cols.i0; i < cols.i1; ++i)
+            if (act[L2.index(i, j, 0)]) ncol.emplace_back(i, j);
+        std::FILE* fp = std::fopen((std::string(ndump) + "/noah_in.bin").c_str(), "wb");
+        const int hdr[2] = {int(ncol.size()), nsoil};
+        std::fwrite(hdr, 4, 2, fp);
+        const double dd[2] = {double(dtbl), 0.0};
+        std::fwrite(dd, 8, 2, fp);
+        std::fwrite(&o_.isurban, 4, 1, fp);
+        for (int k = 0; k < nsoil; ++k) { double v = dzs[k]; std::fwrite(&v, 8, 1, fp); }
+        write_cols(fp, false);
+        std::fclose(fp);
+        fp = std::fopen((std::string(ndump) + "/noah_cols.txt").c_str(), "w");
+        for (auto [i, j] : ncol) std::fprintf(fp, "%d %d\n", i, j);
+        std::fclose(fp);
+      }
+      noah::run_noah(nk, cols);
+      column_for(cols, KNoahRs{n_rc.cview(), n_active.cview(), rs.view()});
+      if (do_ndump) {
+        std::FILE* fp = std::fopen((std::string(ndump) + "/noah_out_c.bin").c_str(), "wb");
+        const int hdr[2] = {int(ncol.size()), nsoil};
+        std::fwrite(hdr, 4, 2, fp);
+        write_cols(fp, true);
+        std::fclose(fp);
+      }
+
+      // SFLX_GLACIAL on the land-ice points (ICE == -1)
+      KLsmGlacial gl{};
+      gl.ice = n_ice.cview(); gl.lwdn = n_lwdn.view(); gl.solnet = n_solnet.view(); gl.sfcprs = n_sfcprs.view();
+      gl.prcp = n_prcp.view(); gl.sfctmp = n_sfctmp.view(); gl.th2 = n_th2.view(); gl.q2k = n_q2.view();
+      gl.q2sat = n_q2sat.view(); gl.dqsdt2 = n_dqsdt2.view(); gl.ffrozp = n_ffrozp.view(); gl.albbrd = n_albbrd.view();
+      gl.snoalb1 = n_snoalb1.view(); gl.tbot = n_tbot.view(); gl.z0brd = n_z0brd.view(); gl.emissi = n_emissi.view();
+      gl.embrd = n_embrd.view(); gl.t1 = n_t1.view(); gl.snowhk = n_snowhk.view(); gl.sneqv = n_sneqv.view();
+      gl.chk = n_chk.view(); gl.snotime1 = n_snotime1.view(); gl.ribb = n_ribb.view(); gl.xlai = n_xlai.view();
+      gl.soilw = n_soilw.view(); gl.soilm = n_soilm.view(); gl.runoff1 = n_runoff1.view(); gl.runoff2 = n_runoff2.view();
+      gl.runoff3 = n_runoff3.view(); gl.eta = n_eta.view(); gl.sheat = n_sheat.view(); gl.eta_kin = n_eta_kin.view();
+      gl.etp = n_etp.view(); gl.ssoil = n_ssoil.view(); gl.flx1 = n_flx1.view(); gl.flx2 = n_flx2.view();
+      gl.flx3 = n_flx3.view(); gl.snomlt = n_snomlt.view(); gl.sncovr = n_sncovr.view(); gl.q1 = n_q1.view();
+      gl.albedok = n_albedok.view(); gl.z0k = n_z0k.view();
+      gl.stc = n_stc.view(); gl.smc = n_smc.view(); gl.swc = n_swc.view(); gl.smav = n_smav.view();
+      gl.dt = dtbl; gl.lvcoef = noah_tables_.lvcoef_data; gl.nsoil = nsoil;
+      for (int k = 0; k < nsoil; ++k) gl.sldpth[k] = real(dzs[k]);
+      column_for(cols, gl);
+
+      KLsmPost post{};
+      post.ice = n_ice.cview(); post.xland = xland.cview();
+      post.lwdn = n_lwdn.cview(); post.solnet = n_solnet.cview(); post.prcp = n_prcp.cview();
+      post.ffrozp = n_ffrozp.cview(); post.cmc = n_cmc.cview(); post.sneqv = n_sneqv.cview();
+      post.snowhk = n_snowhk.cview(); post.albedok = n_albedok.cview(); post.albbrd = n_albbrd.cview();
+      post.z0brd = n_z0brd.cview(); post.emissi = n_emissi.cview(); post.z0k = n_z0k.cview(); post.t1 = n_t1.cview();
+      post.sheat = n_sheat.cview(); post.etp = n_etp.cview(); post.eta_kin = n_eta_kin.cview(); post.eta = n_eta.cview();
+      post.ssoil = n_ssoil.cview(); post.sncovr = n_sncovr.cview(); post.snotime1 = n_snotime1.cview();
+      post.q1 = n_q1.cview(); post.flx1 = n_flx1.cview(); post.flx2 = n_flx2.cview(); post.flx3 = n_flx3.cview();
+      post.soilw = n_soilw.cview(); post.soilm = n_soilm.cview(); post.runoff1 = n_runoff1.cview();
+      post.runoff2 = n_runoff2.cview(); post.snomlt = n_snomlt.cview(); post.xlai = n_xlai.cview();
+      post.cqs2 = cqs2.cview();
+      post.smc = n_smc.cview(); post.stc = n_stc.cview(); post.swc = n_swc.cview(); post.smav = n_smav.cview();
+      post.lai = lai.view(); post.canwat = canwat.view(); post.snow = snow.view(); post.snowh = snowh.view();
+      post.albedo = albedo.view(); post.albbck = albbck.view(); post.z0 = z0.view(); post.emiss = emiss.view();
+      post.znt = znt.view(); post.tsk = tsk.view(); post.hfx = hfx.view(); post.potevp = potevp.view();
+      post.qfx = qfx.view(); post.lh = lh.view(); post.grdflx = grdflx.view(); post.snowc = snowc.view();
+      post.chs2 = chs2.view(); post.snotime = snotime.view(); post.qsfc = qsfc.view(); post.noahres = noahres.view();
+      post.smstav = smstav.view(); post.smstot = smstot.view(); post.sfcrunoff = sfcrunoff.view();
+      post.udrunoff = udrunoff.view(); post.acsnow = acsnow.view(); post.acsnom = acsnom.view();
+      post.snopcx = snopcx.view();
+      post.smois = smois.view(); post.tslb = tslb.view(); post.sh2o = sh2o.view(); post.smcrel = smcrel.view();
+      post.dt = dtbl; post.nsoil = nsoil;
+      column_for(cols, post);
+
+      run_seaice();
+
+      column_for(cols, KLsmDiag{qfx.cview(), chs.cview(), hfx.cview(), lh.cview(), grdflx.cview(), tsk.cview(),
+                                qsfc.cview(), chs2.cview(), cqs2.cview(), psfc.cview(), prep.t_phy.cview(),
+                                s.q_2[s.P_QV].cview(), sfcevp.view(), sfcexc.view(), achfx.view(), aclhf.view(),
+                                acgrdflx.view(), q2.view(), t2.view(), th2.view(), dtbl, dt});
+    } else if (o_.sf_surface_physics == 4) {
+      // ---- Noah-MP (NoahmpWRFmain -> NoahmpDriverMain, module_surface_driver.F:3134-3481) ----
+      const double rsec = double(o_.rad.julday - 1) * 86400.0 + o_.rad.gmt * 3600.0 + double(itimestep - 1) * g_.dt;
+      const real julian_in = real(rsec / 86400.0 + 1.0) - real(1.0);
+      noahmp::NoahmpKernel nmp{};
+      nmp.ivgtyp = ivgtyp.cview();
+      nmp.isltyp = isltyp.cview();
+      nmp.cropcat = cropcat.cview();
+      nmp.coszen = coszen.cview();
+      nmp.xlat = xlat_sfc.cview();
+      nmp.xlong = xlong_sfc.cview();
+      nmp.dz8w = prep.dz8w.cview();
+      nmp.vegfra = vegfra.cview();
+      nmp.shdmax = shdmax.cview();
+      nmp.tmn = tmn.cview();
+      nmp.xland = xland.cview();
+      nmp.xice = xice.cview();
+      nmp.t_phy = prep.t_phy.cview();
+      nmp.qv_curr = s.q_2[s.P_QV].cview();
+      nmp.u_phy = prep.u_phy.cview();
+      nmp.v_phy = prep.v_phy.cview();
+      nmp.swdown = swdown.cview();
+      nmp.glw = glw.cview();
+      nmp.p8w = prep.p_hyd_w.cview();
+      nmp.rainbl = rainbl.cview();
+      nmp.sr = sr.cview();
+      nmp.raincv = raincv.cview();
+      nmp.rainncv = rainncv.cview();
+      nmp.rainshv = rainshv.cview();
+      nmp.snowncv = snowncv_mp_ ? snowncv_mp_->cview() : C2{};
+      nmp.graupelncv = graupelncv_mp_ ? graupelncv_mp_->cview() : C2{};
+      nmp.tsk = tsk.view();
+      nmp.hfx = hfx.view();
+      nmp.qfx = qfx.view();
+      nmp.lh = lh.view();
+      nmp.grdflx = grdflx.view();
+      nmp.smstav = smstav.view();
+      nmp.smstot = smstot.view();
+      nmp.sfcrunoff = sfcrunoff.view();
+      nmp.udrunoff = udrunoff.view();
+      nmp.albedo = albedo.view();
+      nmp.snowc = snowc.view();
+      nmp.snow = snow.view();
+      nmp.snowh = snowh.view();
+      nmp.canwat = canwat.view();
+      nmp.acsnom = acsnom.view();
+      nmp.acsnow = acsnow.view();
+      nmp.emiss = emiss.view();
+      nmp.qsfc = qsfc.view();
+      nmp.z0 = z0.view();
+      nmp.znt = znt.view();
+      nmp.isnowxy = isnowxy.view();
+      nmp.tvxy = tvxy.view();
+      nmp.tgxy = tgxy.view();
+      nmp.canicexy = canicexy.view();
+      nmp.canliqxy = canliqxy.view();
+      nmp.eahxy = eahxy.view();
+      nmp.tahxy = tahxy.view();
+      nmp.cmxy = cmxy.view();
+      nmp.chxy = chxy.view();
+      nmp.fwetxy = fwetxy.view();
+      nmp.sneqvoxy = sneqvoxy.view();
+      nmp.alboldxy = alboldxy.view();
+      nmp.qsnowxy = qsnowxy.view();
+      nmp.qrainxy = qrainxy.view();
+      nmp.wslakexy = wslakexy.view();
+      nmp.zwtxy = zwtxy.view();
+      nmp.waxy = waxy.view();
+      nmp.wtxy = wtxy.view();
+      nmp.lfmassxy = lfmassxy.view();
+      nmp.rtmassxy = rtmassxy.view();
+      nmp.stmassxy = stmassxy.view();
+      nmp.woodxy = woodxy.view();
+      nmp.stblcpxy = stblcpxy.view();
+      nmp.fastcpxy = fastcpxy.view();
+      nmp.lai = lai.view();
+      nmp.xsaixy = xsaixy.view();
+      nmp.taussxy = taussxy.view();
+      nmp.smcwtdxy = smcwtdxy.view();
+      nmp.deeprechxy = deeprechxy.view();
+      nmp.rechxy = rechxy.view();
+      nmp.grainxy = grainxy.view();
+      nmp.gddxy = gddxy.view();
+      nmp.pgsxy = pgsxy.view();
+      nmp.qtdrain = qtdrain.view();
+      nmp.smois = smois.view();
+      nmp.sh2o = sh2o.view();
+      nmp.tslb = tslb.view();
+      nmp.smoiseq = smoiseq.view();
+      nmp.tsnoxy = tsnoxy.view();
+      nmp.zsnsoxy = zsnsoxy.view();
+      nmp.snicexy = snicexy.view();
+      nmp.snliqxy = snliqxy.view();
+      nmp.albsoildirxy = albsoildirxy.view();
+      nmp.albsoildifxy = albsoildifxy.view();
+      nmp.acc_etranixy = acc_etranixy.view();
+      nmp.t2mvxy = t2mvxy.view();
+      nmp.t2mbxy = t2mbxy.view();
+      nmp.q2mvxy = q2mvxy.view();
+      nmp.q2mbxy = q2mbxy.view();
+      nmp.tradxy = tradxy.view();
+      nmp.neexy = neexy.view();
+      nmp.gppxy = gppxy.view();
+      nmp.nppxy = nppxy.view();
+      nmp.fvegxy = fvegxy.view();
+      nmp.runsfxy = runsfxy.view();
+      nmp.runsbxy = runsbxy.view();
+      nmp.ecanxy = ecanxy.view();
+      nmp.edirxy = edirxy.view();
+      nmp.etranxy = etranxy.view();
+      nmp.fsaxy = fsaxy.view();
+      nmp.firaxy = firaxy.view();
+      nmp.aparxy = aparxy.view();
+      nmp.psnxy = psnxy.view();
+      nmp.savxy = savxy.view();
+      nmp.sagxy = sagxy.view();
+      nmp.rssunxy = rssunxy.view();
+      nmp.rsshaxy = rsshaxy.view();
+      nmp.bgapxy = bgapxy.view();
+      nmp.wgapxy = wgapxy.view();
+      nmp.tgvxy = tgvxy.view();
+      nmp.tgbxy = tgbxy.view();
+      nmp.chvxy = chvxy.view();
+      nmp.chbxy = chbxy.view();
+      nmp.shgxy = shgxy.view();
+      nmp.shcxy = shcxy.view();
+      nmp.shbxy = shbxy.view();
+      nmp.evgxy = evgxy.view();
+      nmp.evbxy = evbxy.view();
+      nmp.ghvxy = ghvxy.view();
+      nmp.ghbxy = ghbxy.view();
+      nmp.irgxy = irgxy.view();
+      nmp.ircxy = ircxy.view();
+      nmp.irbxy = irbxy.view();
+      nmp.trxy = trxy.view();
+      nmp.evcxy = evcxy.view();
+      nmp.chleafxy = chleafxy.view();
+      nmp.chucxy = chucxy.view();
+      nmp.chv2xy = chv2xy.view();
+      nmp.chb2xy = chb2xy.view();
+      nmp.rs = rs.view();
+      nmp.acc_ssoilxy = acc_ssoilxy.view();
+      nmp.acc_qinsurxy = acc_qinsurxy.view();
+      nmp.acc_qsevaxy = acc_qsevaxy.view();
+      nmp.eflxbxy = eflxbxy.view();
+      nmp.acc_dwaterxy = acc_dwaterxy.view();
+      nmp.acc_prcpxy = acc_prcpxy.view();
+      nmp.acc_ecanxy = acc_ecanxy.view();
+      nmp.acc_etranxy = acc_etranxy.view();
+      nmp.acc_edirxy = acc_edirxy.view();
+      nmp.acc_glaflwxy = acc_glaflwxy.view();
+      nmp.tables = d_noahmp_tables_;
+      nmp.opts = o_.noahmp;
+      nmp.itimestep = int(itimestep);
+      nmp.yr = o_.rad.julyr > 0 ? o_.rad.julyr : 2000;
+      nmp.julian_in = julian_in;
+      nmp.dtbl = dtbl;
+      nmp.dx = real(g_.dx);
+      nmp.xice_threshold = xice_threshold;
+      nmp.nsoil = nsoil;
+      nmp.nsnow = noahmp::kMaxSnowLayers;
+      for (int k = 0; k < nsoil; ++k) nmp.dzs[k] = real(dzs[k]);
+      noahmp::run_noahmp(nmp, cols);
+
+      run_seaice();
+
+      KNoahmpDiag nd{};
+      nd.ivgtyp = ivgtyp.cview();
+      nd.xice = xice.cview();
+      nd.qfx = qfx.cview();
+      nd.chs = chs.cview();
+      nd.hfx = hfx.cview();
+      nd.lh = lh.cview();
+      nd.grdflx = grdflx.cview();
+      nd.tsk = tsk.cview();
+      nd.qsfc = qsfc.cview();
+      nd.chs2 = chs2.cview();
+      nd.cqs2 = cqs2.cview();
+      nd.psfc = psfc.cview();
+      nd.fvegxy = fvegxy.cview();
+      nd.t2mvxy = t2mvxy.cview();
+      nd.t2mbxy = t2mbxy.cview();
+      nd.q2mvxy = q2mvxy.cview();
+      nd.q2mbxy = q2mbxy.cview();
+      nd.chklowq = chklowq.view();
+      nd.sfcevp = sfcevp.view();
+      nd.sfcexc = sfcexc.view();
+      nd.achfx = achfx.view();
+      nd.aclhf = aclhf.view();
+      nd.acgrdflx = acgrdflx.view();
+      nd.q2 = q2.view();
+      nd.t2 = t2.view();
+      nd.th2 = th2.view();
+      nd.dtbl = dtbl;
+      nd.dt = dt;
+      nd.xice_threshold = xice_threshold;
+      nd.iswater = o_.iswater;
+      nd.isice = o_.isice;
+      nd.isurban = o_.isurban;
+      const int lcz_arr[11] = {noahmp_tables_.lcz_1, noahmp_tables_.lcz_2, noahmp_tables_.lcz_3, noahmp_tables_.lcz_4,
+                               noahmp_tables_.lcz_5, noahmp_tables_.lcz_6, noahmp_tables_.lcz_7, noahmp_tables_.lcz_8,
+                               noahmp_tables_.lcz_9, noahmp_tables_.lcz_10, noahmp_tables_.lcz_11};
+      for (int n = 0; n < 11; ++n) nd.lcz[n] = lcz_arr[n];
+      column_for(cols, nd);
     }
-    noah::run_noah(nk, cols);
-    column_for(cols, KNoahRs{n_rc.cview(), n_active.cview(), rs.view()});
-    if (do_ndump) {
-      std::FILE* fp = std::fopen((std::string(ndump) + "/noah_out_c.bin").c_str(), "wb");
-      const int hdr[2] = {int(ncol.size()), nsoil};
-      std::fwrite(hdr, 4, 2, fp);
-      write_cols(fp, true);
-      std::fclose(fp);
-    }
-
-    // SFLX_GLACIAL on the land-ice points (ICE == -1)
-    KLsmGlacial gl{};
-    gl.ice = n_ice.cview(); gl.lwdn = n_lwdn.view(); gl.solnet = n_solnet.view(); gl.sfcprs = n_sfcprs.view();
-    gl.prcp = n_prcp.view(); gl.sfctmp = n_sfctmp.view(); gl.th2 = n_th2.view(); gl.q2k = n_q2.view();
-    gl.q2sat = n_q2sat.view(); gl.dqsdt2 = n_dqsdt2.view(); gl.ffrozp = n_ffrozp.view(); gl.albbrd = n_albbrd.view();
-    gl.snoalb1 = n_snoalb1.view(); gl.tbot = n_tbot.view(); gl.z0brd = n_z0brd.view(); gl.emissi = n_emissi.view();
-    gl.embrd = n_embrd.view(); gl.t1 = n_t1.view(); gl.snowhk = n_snowhk.view(); gl.sneqv = n_sneqv.view();
-    gl.chk = n_chk.view(); gl.snotime1 = n_snotime1.view(); gl.ribb = n_ribb.view(); gl.xlai = n_xlai.view();
-    gl.soilw = n_soilw.view(); gl.soilm = n_soilm.view(); gl.runoff1 = n_runoff1.view(); gl.runoff2 = n_runoff2.view();
-    gl.runoff3 = n_runoff3.view(); gl.eta = n_eta.view(); gl.sheat = n_sheat.view(); gl.eta_kin = n_eta_kin.view();
-    gl.etp = n_etp.view(); gl.ssoil = n_ssoil.view(); gl.flx1 = n_flx1.view(); gl.flx2 = n_flx2.view();
-    gl.flx3 = n_flx3.view(); gl.snomlt = n_snomlt.view(); gl.sncovr = n_sncovr.view(); gl.q1 = n_q1.view();
-    gl.albedok = n_albedok.view(); gl.z0k = n_z0k.view();
-    gl.stc = n_stc.view(); gl.smc = n_smc.view(); gl.swc = n_swc.view(); gl.smav = n_smav.view();
-    gl.dt = dtbl; gl.lvcoef = noah_tables_.lvcoef_data; gl.nsoil = nsoil;
-    for (int k = 0; k < nsoil; ++k) gl.sldpth[k] = real(dzs[k]);
-    column_for(cols, gl);
-
-    KLsmPost post{};
-    post.ice = n_ice.cview(); post.xland = xland.cview();
-    post.lwdn = n_lwdn.cview(); post.solnet = n_solnet.cview(); post.prcp = n_prcp.cview();
-    post.ffrozp = n_ffrozp.cview(); post.cmc = n_cmc.cview(); post.sneqv = n_sneqv.cview();
-    post.snowhk = n_snowhk.cview(); post.albedok = n_albedok.cview(); post.albbrd = n_albbrd.cview();
-    post.z0brd = n_z0brd.cview(); post.emissi = n_emissi.cview(); post.z0k = n_z0k.cview(); post.t1 = n_t1.cview();
-    post.sheat = n_sheat.cview(); post.etp = n_etp.cview(); post.eta_kin = n_eta_kin.cview(); post.eta = n_eta.cview();
-    post.ssoil = n_ssoil.cview(); post.sncovr = n_sncovr.cview(); post.snotime1 = n_snotime1.cview();
-    post.q1 = n_q1.cview(); post.flx1 = n_flx1.cview(); post.flx2 = n_flx2.cview(); post.flx3 = n_flx3.cview();
-    post.soilw = n_soilw.cview(); post.soilm = n_soilm.cview(); post.runoff1 = n_runoff1.cview();
-    post.runoff2 = n_runoff2.cview(); post.snomlt = n_snomlt.cview(); post.xlai = n_xlai.cview();
-    post.cqs2 = cqs2.cview();
-    post.smc = n_smc.cview(); post.stc = n_stc.cview(); post.swc = n_swc.cview(); post.smav = n_smav.cview();
-    post.lai = lai.view(); post.canwat = canwat.view(); post.snow = snow.view(); post.snowh = snowh.view();
-    post.albedo = albedo.view(); post.albbck = albbck.view(); post.z0 = z0.view(); post.emiss = emiss.view();
-    post.znt = znt.view(); post.tsk = tsk.view(); post.hfx = hfx.view(); post.potevp = potevp.view();
-    post.qfx = qfx.view(); post.lh = lh.view(); post.grdflx = grdflx.view(); post.snowc = snowc.view();
-    post.chs2 = chs2.view(); post.snotime = snotime.view(); post.qsfc = qsfc.view(); post.noahres = noahres.view();
-    post.smstav = smstav.view(); post.smstot = smstot.view(); post.sfcrunoff = sfcrunoff.view();
-    post.udrunoff = udrunoff.view(); post.acsnow = acsnow.view(); post.acsnom = acsnom.view();
-    post.snopcx = snopcx.view();
-    post.smois = smois.view(); post.tslb = tslb.view(); post.sh2o = sh2o.view(); post.smcrel = smcrel.view();
-    post.dt = dtbl; post.nsoil = nsoil;
-    column_for(cols, post);
-
-    // ---- seaice_noah (module_sf_noah_seaice_drv.F), DT = model time step ----
-    KSeaiceNoah si{};
-    si.t3d = prep.t_phy.cview(); si.qv3d = s.q_2[s.P_QV].cview(); si.p8w3d = prep.p_hyd_w.cview();
-    si.dz8w = prep.dz8w.cview();
-    si.glw = glw.cview(); si.swdown = swdown.cview(); si.rainbl = rainbl.cview(); si.snoalb2d = snoalb.cview();
-    si.qgh = qgh.cview(); si.xice = xice.cview(); si.rib = br.cview(); si.sr = sr.cview();
-    si.emiss = emiss.view(); si.albedo = albedo.view(); si.z02d = z0.view(); si.tsk = tsk.view();
-    si.snow = snow.view(); si.snowc = snowc.view(); si.snowh2d = snowh.view(); si.chs = chs.view();
-    si.chs2 = chs2.view(); si.cqs2 = cqs2.view(); si.znt = znt.view(); si.lh = lh.view(); si.hfx = hfx.view();
-    si.qfx = qfx.view(); si.potevp = potevp.view(); si.grdflx = grdflx.view(); si.qsfc = qsfc.view();
-    si.acsnow = acsnow.view(); si.acsnom = acsnom.view(); si.snopcx = snopcx.view();
-    si.sfcrunoff = sfcrunoff.view(); si.noahres = noahres.view(); si.tslb = tslb.view();
-    si.op.albedo_opt = o_.seaice_albedo_opt; si.op.albedo_default = real(o_.seaice_albedo_default);
-    si.op.snowdepth_opt = o_.seaice_snowdepth_opt; si.op.snowdepth_max = real(o_.seaice_snowdepth_max);
-    si.op.snowdepth_min = real(o_.seaice_snowdepth_min);
-    si.thickness_opt = o_.seaice_thickness_opt; si.thickness_default = real(o_.seaice_thickness_default);
-    si.dt = dt; si.xice_threshold = xice_threshold; si.nsoil = nsoil; si.frpcpn = true;
-    column_for(cols, si);
-
-    column_for(cols, KLsmDiag{qfx.cview(), chs.cview(), hfx.cview(), lh.cview(), grdflx.cview(), tsk.cview(),
-                              qsfc.cview(), chs2.cview(), cqs2.cview(), psfc.cview(), prep.t_phy.cview(),
-                              s.q_2[s.P_QV].cview(), sfcevp.view(), sfcexc.view(), achfx.view(), aclhf.view(),
-                              acgrdflx.view(), q2.view(), t2.view(), th2.view(), dtbl, dt});
   }
   column_for(cols, KSfcEnd{rainbl.view(), q2.view(), xland.cview(), s.q_2[s.P_QV].cview()});
 }
@@ -1554,11 +1947,27 @@ void PhysicsSuite::advance_ppt(const dyn::State& s) {
 
 
 std::vector<const Field2*> PhysicsSuite::fields2() const {
-  return {&lwcf, &swcf, &hrang, &uratx, &vratx, &tratx, &ra, &rs, &shall, &lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc, &aclwupt, &aclwuptc, &aclwdnt, &aclwdntc, &aclwupb, &aclwupbc, &aclwdnb, &aclwdnbc, &acswupt, &acswuptc, &acswdnt, &acswdntc, &acswupb, &acswupbc, &acswdnb, &acswdnbc, &olr, &tsk, &xland, &xice, &lakemask, &water_depth, &mavail, &tmn, &vegfra, &shdmin, &shdmax, &snoalb, &albbck, &albedo, &emiss, &embck, &znt, &z0, &ust, &ustm, &mol, &rmol, &pblh, &hfx, &qfx, &lh, &grdflx, &qsfc, &flhc, &flqc, &wspd, &br, &fm, &fh, &zol, &regime, &u10, &v10, &t2, &th2, &q2, &psfc, &ch, &snow, &snowh, &snowc, &canwat, &lai, &snotime, &qz0, &rainbl, &raincv, &raincv_a, &raincv_b, &rainncv, &rainshv, &rainc, &rainsh, &pratec, &pratesh, &nca, &htop, &hbot, &cutop, &cubot, &cuppt, &sr, &glw, &swdown, &gsw, &smstav, &smstot, &sfcrunoff, &udrunoff, &acsnom, &acsnow, &snopcx, &potevp, &noahres, &sfcevp, &sfcexc, &achfx, &aclhf, &acgrdflx, &dx2d, &var2d, &uoce, &voce, &ctopo, &ctopo2, &ck, &cka, &cd, &cda, &wstar, &delta, &hol, &thz0, &uz0, &vz0, &akhs, &akms, &ct, &tshltr, &th10, &qshltr, &q10, &pshltr, &u10e, &v10e, &mixht};
+  std::vector<const Field2*> v = {&lwcf, &swcf, &hrang, &uratx, &vratx, &tratx, &ra, &rs, &shall, &lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc, &aclwupt, &aclwuptc, &aclwdnt, &aclwdntc, &aclwupb, &aclwupbc, &aclwdnb, &aclwdnbc, &acswupt, &acswuptc, &acswdnt, &acswdntc, &acswupb, &acswupbc, &acswdnb, &acswdnbc, &olr, &tsk, &xland, &xice, &lakemask, &water_depth, &mavail, &tmn, &vegfra, &shdmin, &shdmax, &snoalb, &albbck, &albedo, &emiss, &embck, &znt, &z0, &ust, &ustm, &mol, &rmol, &pblh, &hfx, &qfx, &lh, &grdflx, &qsfc, &flhc, &flqc, &wspd, &br, &fm, &fh, &zol, &regime, &u10, &v10, &t2, &th2, &q2, &psfc, &ch, &snow, &snowh, &snowc, &canwat, &lai, &snotime, &qz0, &rainbl, &raincv, &raincv_a, &raincv_b, &rainncv, &rainshv, &rainc, &rainsh, &pratec, &pratesh, &nca, &htop, &hbot, &cutop, &cubot, &cuppt, &sr, &glw, &swdown, &gsw, &smstav, &smstot, &sfcrunoff, &udrunoff, &acsnom, &acsnow, &snopcx, &potevp, &noahres, &sfcevp, &sfcexc, &achfx, &aclhf, &acgrdflx, &dx2d, &var2d, &uoce, &voce, &ctopo, &ctopo2, &ck, &cka, &cd, &cda, &wstar, &delta, &hol, &thz0, &uz0, &vz0, &akhs, &akms, &ct, &tshltr, &th10, &qshltr, &q10, &pshltr, &u10e, &v10e, &mixht};
+  if (o_.sf_surface_physics == 4) {
+    v.insert(v.end(), {&xlat_sfc, &xlong_sfc, &tvxy, &tgxy, &canicexy, &canliqxy, &eahxy, &tahxy, &cmxy, &chxy,
+                       &fwetxy, &sneqvoxy, &alboldxy, &qsnowxy, &qrainxy, &wslakexy, &zwtxy, &waxy, &wtxy, &lfmassxy,
+                       &rtmassxy, &stmassxy, &woodxy, &stblcpxy, &fastcpxy, &xsaixy, &taussxy, &smcwtdxy, &deeprechxy,
+                       &rechxy, &grainxy, &gddxy, &qtdrain, &t2mvxy, &t2mbxy, &q2mvxy, &q2mbxy, &tradxy, &neexy,
+                       &gppxy, &nppxy, &fvegxy, &runsfxy, &runsbxy, &ecanxy, &edirxy, &etranxy, &fsaxy, &firaxy,
+                       &aparxy, &psnxy, &savxy, &sagxy, &rssunxy, &rsshaxy, &bgapxy, &wgapxy, &tgvxy, &tgbxy, &chvxy,
+                       &chbxy, &shgxy, &shcxy, &shbxy, &evgxy, &evbxy, &ghvxy, &ghbxy, &irgxy, &ircxy, &irbxy, &trxy,
+                       &evcxy, &chleafxy, &chucxy, &chv2xy, &chb2xy, &chstarxy, &acc_ssoilxy, &acc_qinsurxy,
+                       &acc_qsevaxy, &eflxbxy, &acc_dwaterxy, &acc_prcpxy, &acc_ecanxy, &acc_etranxy, &acc_edirxy, &acc_glaflwxy});
+  }
+  return v;
 }
 
 std::vector<const Field3*> PhysicsSuite::fields3() const {
-  return {&rthratenlw, &rthratensw, &rthratenlwc, &rthratenswc, &o3rad, &tslb, &smois, &sh2o, &smcrel, &exch_h, &exch_m, &tke_pbl, &el_pbl, &w0avg, &cldfra_dp, &cldfra_sh, &qc_cu, &qi_cu, &gd_cloud, &gd_cloud2, &gd_cloud_a, &gd_cloud2_a, &gd_cldfr, &pt.rthraten, &pt.rublten, &pt.rvblten, &pt.rthblten, &pt.rqvblten, &pt.rqcblten, &pt.rqiblten, &pt.rucuten, &pt.rvcuten, &pt.rthcuten, &pt.rqvcuten, &pt.rqccuten, &pt.rqrcuten, &pt.rqicuten, &pt.rqscuten, &pt.rthften, &pt.rqvften, &prep.th_phy, &prep.th_phy_m_t0, &prep.p_phy, &prep.pi_phy, &prep.t_phy, &prep.rho, &prep.u_phy, &prep.v_phy, &prep.z, &prep.p_hyd, &prep.z_at_w, &prep.dz8w, &prep.p8w, &prep.t8w, &prep.p_hyd_w};
+  std::vector<const Field3*> v = {&rthratenlw, &rthratensw, &rthratenlwc, &rthratenswc, &o3rad, &tslb, &smois, &sh2o, &smcrel, &exch_h, &exch_m, &tke_pbl, &el_pbl, &w0avg, &cldfra_dp, &cldfra_sh, &qc_cu, &qi_cu, &gd_cloud, &gd_cloud2, &gd_cloud_a, &gd_cloud2_a, &gd_cldfr, &pt.rthraten, &pt.rublten, &pt.rvblten, &pt.rthblten, &pt.rqvblten, &pt.rqcblten, &pt.rqiblten, &pt.rucuten, &pt.rvcuten, &pt.rthcuten, &pt.rqvcuten, &pt.rqccuten, &pt.rqrcuten, &pt.rqicuten, &pt.rqscuten, &pt.rthften, &pt.rqvften, &prep.th_phy, &prep.th_phy_m_t0, &prep.p_phy, &prep.pi_phy, &prep.t_phy, &prep.rho, &prep.u_phy, &prep.v_phy, &prep.z, &prep.p_hyd, &prep.z_at_w, &prep.dz8w, &prep.p8w, &prep.t8w, &prep.p_hyd_w};
+  if (o_.sf_surface_physics == 4) {
+    v.insert(v.end(), {&tsnoxy, &snicexy, &snliqxy, &zsnsoxy, &albsoildirxy, &albsoildifxy, &smoiseq, &acc_etranixy});
+  }
+  return v;
 }
 
 }  // namespace cppwrf::phys::driver

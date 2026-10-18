@@ -145,6 +145,19 @@ CASES = [
     ("real_p9_fp32_1h", "cuda", "configs/real_p9_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P9", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P9/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 6e-4, "W": 1e-2, "THM": 1e-5, "QV": 2e-3}),
+    # NMP1 = P1 with Noah-MP v5.1.2 (sf_surface_physics = 4) against WRF v4.8.0 real*8 and single precision.
+    ("real_nmp1_r8_fp64_cpu", "cpu_dp", "configs/real_nmp1_r8.ini", [],
+     f"{WR}/run_NMP1_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
+    ("real_nmp1_r8_fp64_cpu_1h", "cpu_dp", "configs/real_nmp1_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_NMP1_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_NMP1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    ("real_nmp1_r8_fp64_cuda_1h", "cuda_dp", "configs/real_nmp1_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_NMP1_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_NMP1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-9, "W": 1e-7, "THM": 1e-9, "QV": 1e-8}),
+    ("real_nmp1_fp32_1h", "cuda", "configs/real_nmp1_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_NMP1", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_NMP1/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-4, "W": 1e-2, "THM": 2e-6, "QV": 1e-4}),
     # Nesting: one-way (N1) and two-way (N2, feedback) vs WRF r8, bit-identical on the CPU (both domains;
     # N2 for 1 h)
     ("real_n1_r8_fp64_cpu", "cpu_dp", "configs/real_n1_steps.ini", ["real.dir=" + f"{WR}/run_N1_r8/steps"],
@@ -271,6 +284,7 @@ def main():
                              ("p7", "configs/real_p7_r8.ini", "run_P7_r8"),
                              ("p8", "configs/real_p8_r8.ini", "run_P8_r8"),
                              ("p9", "configs/real_p9_r8.ini", "run_P9_r8"),
+                             ("nmp1", "configs/real_nmp1_r8.ini", "run_NMP1_r8"),
                              ("t1", "configs/real_t1.ini", "run_R1_r8")):
             rname = f"restart_{tag}_fp64"
             if a.only and a.only not in rname:

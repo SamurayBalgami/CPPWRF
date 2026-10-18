@@ -67,6 +67,8 @@ list(APPEND CPPWRF_SOURCES
   ${CMAKE_SOURCE_DIR}/src/phys/bl_myj/myjpbl.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/lsm_noah/noah.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/lsm_noah/noah_tables.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/lsm_noahmp/noahmp.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/lsm_noahmp/noahmp_tables.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/cu_kf/kf.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/cu_kf/kf_tables.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/mp_thompson/thompson.cpp

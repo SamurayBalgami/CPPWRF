@@ -330,6 +330,23 @@ class TestValidationAndWarnings(unittest.TestCase):
         t.translate()
         self.assertTrue(any("non_hydrostatic = .false." in e for e in t.errors))
 
+    def test_noahmp_mapping(self):
+        text = """
+        &time_control /
+        &domains time_step = 60 /
+        &physics sf_sfclay_physics = 1, sf_surface_physics = 4, bl_pbl_physics = 1 /
+        &noah_mp dveg = 4, opt_runsrf = 3, opt_runsub = 3 /
+        &dynamics /
+        """
+        nml = parse_namelist(text)
+        t = WrfTranslator(nml)
+        gen = t.translate()
+        self.assertEqual(t.warnings, [])
+        self.assertEqual(gen["phys"]["sf_surface_physics"], 4)
+        self.assertEqual(gen["phys"]["dveg"], 4)
+        self.assertEqual(gen["phys"]["opt_runsrf"], 3)
+        self.assertEqual(gen["phys"]["opt_runsub"], 3)
+
 
 class TestExecution2Steps(unittest.TestCase):
     """Verify that generated INI executes for 2 steps with build-a0-cpu/cppwrf."""

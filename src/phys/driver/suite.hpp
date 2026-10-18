@@ -28,6 +28,8 @@
 #include "phys/driver/radiation.hpp"
 #include "phys/driver/tendency_coupling.hpp"
 #include "phys/lsm_noah/noah_tables.hpp"
+#include "phys/lsm_noahmp/noahmp.hpp"
+#include "phys/lsm_noahmp/noahmp_tables.hpp"
 #include "phys/sf_myjsfc/myjsfc.hpp"
 #include "phys/sf_sfclayrev/sfclayrev.hpp"
 
@@ -60,7 +62,7 @@ class IntField2 {
 // Namelist options of the P1/P2 suite (WRF Registry defaults unless noted).
 struct SuiteOptions {
   int sf_sfclay_physics = 1;     // 1 = SFCLAYREVSCHEME, 2 = MYJSFCSCHEME
-  int sf_surface_physics = 2;    // LSMSCHEME (Noah)
+  int sf_surface_physics = 2;    // 2 = LSMSCHEME (Noah), 4 = NOAHMPSCHEME (Noah-MP v5.1.2)
   int bl_pbl_physics = 1;        // 1 = YSUSCHEME, 2 = MYJPBLSCHEME
   int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME, 3 = GFLSCHEME, 16 = NTIEDTKESCHEME
   int ishallow = 0;              // Grell-Freitas-Li shallow convection (WRF ishallow)
@@ -72,6 +74,7 @@ struct SuiteOptions {
   int kfeta_trigger = 1;         // 1 = default KF trigger, 3 = RH perturbation
   bool warm_rain = false;        // mp_init: true for mp_physics == 1 (Kessler)
   RadiationOptions rad;          // rad.ra_lw_physics/ra_sw_physics = 0: no radiation
+  noahmp::NoahmpOptions noahmp;  // Noah-MP options (sf_surface_physics == 4)
   int isfflx = 1;
   int ifsnow = 1;
   int fractional_seaice = 0;
@@ -91,7 +94,7 @@ struct SuiteOptions {
   std::string mminlu = "MODIFIED_IGBP_MODIS_NOAH";
   std::string mminsl = "STAS";
   int iswater = 17, isice = 15, isurban = 13;
-  std::string table_dir = ".";   // VEGPARM.TBL, SOILPARM.TBL, GENPARM.TBL
+  std::string table_dir = ".";   // VEGPARM.TBL, SOILPARM.TBL, GENPARM.TBL, NoahmpTable.TBL
 };
 
 class PhysicsSuite : public dyn::ColumnPhysics {
@@ -128,6 +131,16 @@ class PhysicsSuite : public dyn::ColumnPhysics {
       thz0, uz0, vz0, akhs, akms, ct, tshltr, th10, qshltr, q10, pshltr, u10e, v10e, mixht;
   IntField2 ivgtyp, isltyp, kpbl, lowlyr;
   Field3 tslb, smois, sh2o, smcrel;  // (i, j, soil layer)
+  // ---- Noah-MP persistent state and diagnostics (allocated when sf_surface_physics == 4) ----
+  Field2 xlat_sfc, xlong_sfc, tvxy, tgxy, canicexy, canliqxy, eahxy, tahxy, cmxy, chxy, fwetxy, sneqvoxy, alboldxy,
+      qsnowxy, qrainxy, wslakexy, zwtxy, waxy, wtxy, lfmassxy, rtmassxy, stmassxy, woodxy, stblcpxy, fastcpxy,
+      xsaixy, taussxy, smcwtdxy, deeprechxy, rechxy, grainxy, gddxy, qtdrain, t2mvxy, t2mbxy, q2mvxy, q2mbxy,
+      tradxy, neexy, gppxy, nppxy, fvegxy, runsfxy, runsbxy, ecanxy, edirxy, etranxy, fsaxy, firaxy, aparxy, psnxy,
+      savxy, sagxy, rssunxy, rsshaxy, bgapxy, wgapxy, tgvxy, tgbxy, chvxy, chbxy, shgxy, shcxy, shbxy, evgxy, evbxy,
+      ghvxy, ghbxy, irgxy, ircxy, irbxy, trxy, evcxy, chleafxy, chucxy, chv2xy, chb2xy, chstarxy, acc_ssoilxy,
+      acc_qinsurxy, acc_qsevaxy, eflxbxy, acc_dwaterxy, acc_prcpxy, acc_ecanxy, acc_etranxy, acc_edirxy, acc_glaflwxy;
+  IntField2 isnowxy, cropcat, pgsxy;
+  Field3 tsnoxy, snicexy, snliqxy, zsnsoxy, albsoildirxy, albsoildifxy, smoiseq, acc_etranixy;
   std::vector<double> dzs;            // soil layer thicknesses (m)
   Field3 exch_h, exch_m;              // M (WRF kme-sized; levels 0..nz-1 used)
   Field3 tke_pbl, el_pbl;             // MYJ PBL 3D TKE and master length scale
@@ -155,16 +168,20 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   Field3 *re_cloud_ = nullptr, *re_ice_ = nullptr, *re_snow_ = nullptr;
   // radiation needs latitude/longitude (wrfinput XLAT/XLONG, i + nx*j); call before the first step
   void init_radiation(const std::vector<double>& xlat, const std::vector<double>& xlong);
+  // Noah-MP initialization (NoahmpWRFinit -> NoahmpInitMain + NoahmpSnowInitMain)
+  void init_noahmp(bool fndsnowh);
   // WSM6 effective radii (PhysicsCoupling, has_reqc = has_reqi = has_reqs = 1) seen by the radiation
   void set_effective_radii(Field3* re_cloud, Field3* re_ice, Field3* re_snow) {
     re_cloud_ = re_cloud; re_ice_ = re_ice; re_snow_ = re_snow;
   }
   // grid-scale precipitation of the last step (PhysicsCoupling): WRF's grid%rainncv and grid%sr, read by
   // surface_driver (RAINBL) and the Noah LSM (FFROZP = SR); sr = nullptr for schemes without it (WRF: 0)
-  void set_microphysics_precip(const Field2* rainncv_mp, const Field2* sr_mp) {
+  void set_microphysics_precip(const Field2* rainncv_mp, const Field2* sr_mp,
+                               const Field2* snowncv_mp = nullptr, const Field2* graupelncv_mp = nullptr) {
     rainncv_mp_ = rainncv_mp; sr_mp_ = sr_mp;
+    snowncv_mp_ = snowncv_mp; graupelncv_mp_ = graupelncv_mp;
   }
-  const Field2 *rainncv_mp_ = nullptr, *sr_mp_ = nullptr;
+  const Field2 *rainncv_mp_ = nullptr, *sr_mp_ = nullptr, *snowncv_mp_ = nullptr, *graupelncv_mp_ = nullptr;
   Field3 cldfra;  // radiation cloud fraction (WRF CLDFRA)
   const RadiationDriver* radiation() const { return rad_.get(); }
   bool radiation_on() const { return o_.rad.ra_lw_physics != 0 || o_.rad.ra_sw_physics != 0; }
@@ -188,6 +205,8 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   Grid g_, gs_;
   SuiteOptions o_;
   noah::NoahTables noah_tables_;
+  noahmp::NoahmpTables noahmp_tables_;
+  noahmp::NoahmpTables* d_noahmp_tables_ = nullptr;              // device copy, uploaded once
   sfclayrev::SFClayRevTables<real>* d_sfclay_tables_ = nullptr;  // device copy, uploaded once
   sf_myjsfc::MYJSFCTableManager myjsfc_tables_;                  // host/device copy, uploaded once
   cu_kf::KFTables<real>* d_kf_tables_ = nullptr;                 // device copy, uploaded once
