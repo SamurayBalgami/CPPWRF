@@ -6,7 +6,7 @@ nesting, written from one source for CPU (OpenMP) and GPU (CUDA), in FP32 or FP6
 
 Every routine follows WRF statement by statement and is verified against WRF itself: on the CPU in FP64,
 CPPWRF is bit-identical to WRF v4.8.0 real*8 for the real-data dynamics, the physics suites (surface
-layer, Noah LSM, YSU, Kain-Fritsch, Grell-Freitas, New Tiedtke, WSM6, Thompson, RRTMG) and one- and
+layer, Noah LSM, YSU, Kain-Fritsch, Grell-Freitas-Li, New Tiedtke, WSM6, Thompson, RRTMG) and one- and
 two-way nesting. The GPU build agrees to roundoff in FP64. See [docs/STATUS.md](docs/STATUS.md).
 
 ## Build

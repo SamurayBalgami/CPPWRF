@@ -20,7 +20,7 @@ WRF `solve_em` (dyn_em/solve_em.F) and CPPWRF `RK3::step` (src/dyn/rk3.cpp) run 
 | 6 | `cumulus_driver` (every `stepcu` steps) | `PhysicsSuite::cumulus_driver` | RK stage 1 |
 | 7 | `first_rk_step_part2`: diffusion metrics and eddy viscosities, `calculate_phy_tend`, `update_phy_ten`, `conv_t_tendf_to_moist` (use_theta_m = 1) | `DiffusionDriver::prepare`, `PhysicsSuite::part2` | RK stage 1 |
 | 8 | `rk_tendency`, acoustic steps, scalar transport | `LargeStep`, `SmallStep`, `ScalarTransport` | RK stages 1-3 |
-| 9 | `advance_ppt`, `phy_prep_part2` (advective forcing for New Tiedtke / Grell-Freitas) | `PhysicsSuite::after_rk` | after RK3 |
+| 9 | `advance_ppt`, `phy_prep_part2` (advective forcing for New Tiedtke / Grell-Freitas-Li) | `PhysicsSuite::after_rk` | after RK3 |
 | 10 | `moist_physics_prep_em`, `microphysics_driver`, `moist_physics_finish_em` | `PhysicsCoupling::step` | after RK3 |
 | 11 | `calc_p_rho_phi` (tile without the specified zone), `spec_bdy_final`, `set_w_surface` | `SmallStep`, `LateralBC::final` | end of step |
 
@@ -84,9 +84,9 @@ the accumulated budget fields.
 
 ### 3.4 Cumulus (module_cumulus_driver.F)
 
-Kain-Fritsch (`cu_physics = 1`), Grell-Freitas (`3`, deep and shallow) and New Tiedtke (`16`) read
+Kain-Fritsch (`cu_physics = 1`), Grell-Freitas-Li (`3`, deep and shallow) and New Tiedtke (`16`) read
 `t_phy`, `qv`, the condensates, `p_hyd`, `p_hyd_w`, `pi_phy`, `dz8w`, `rho`, `u_phy`, `v_phy` and
-`w`; New Tiedtke and Grell-Freitas also use the advective forcing `rthften`, `rqvften` from
+`w`; New Tiedtke and Grell-Freitas-Li also use the advective forcing `rthften`, `rqvften` from
 `phy_prep_part2` of the previous step. Outputs: `rthcuten`, `rqvcuten`, `rqccuten`, `rqicuten`
 (KF also `rqrcuten`, `rqscuten`; New Tiedtke also the momentum tendencies `rucuten`, `rvcuten`),
 `raincv`, `pratec`, `nca` (KF), `cutop`, `cubot`.
