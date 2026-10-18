@@ -1,7 +1,4 @@
 #include "cases/model.hpp"
-#include "cases/hill2d.hpp"
-#include "cases/quarter_ss.hpp"
-#include "cases/squall2d_x.hpp"
 #include "cases/wrf_ideal.hpp"
 
 #include <cmath>
@@ -95,8 +92,7 @@ static void init_ideal(const io::Config& cfg, Model& m, const std::string& cname
   // interpolates p_top linearly between input-sounding levels)
   g.p_top = cfg.get_double("domain.p_top", snd.p(g.ztop));
   m.eta = make_eta_levels(cfg, g, snd);
-  const bool flat = (cname != "hill2d");
-  m.base = std::make_unique<dyn::BaseState>(g, flat);
+  m.base = std::make_unique<dyn::BaseState>(g, true);
   if (mapf != 1.0) {
     for (BaseField2* f : {&m.base->msftx, &m.base->msfty, &m.base->msfux, &m.base->msfuy, &m.base->msfvx,
                           &m.base->msfvy})
@@ -134,18 +130,7 @@ static void init_ideal(const io::Config& cfg, Model& m, const std::string& cname
   gp = g;  // now with p_top
   gp.dx /= mapf;
   gp.dy /= mapf;
-  if (cname == "hill2d") {
-    init_hill2d(cfg, m.eta, gp, *m.base, *m.st);
-    gp.p_top = g.p_top = m.base->p_top;
-  } else if (cname == "quarter_ss") {
-    init_quarter_ss(cfg, m.eta, gp, *m.base, *m.st);
-    gp.p_top = g.p_top = m.base->p_top;
-  } else if (cname == "squall2d_x") {
-    init_squall2d_x(cfg, m.eta, gp, *m.base, *m.st);
-    gp.p_top = g.p_top = m.base->p_top;
-  } else {
-    initialize(m.cd, snd, m.eta, gp, *m.base, *m.st, moist.get());
-  }
+  initialize(m.cd, snd, m.eta, gp, *m.base, *m.st, moist.get());
   if (!m.base->ht.uniform()) {  // start_em: kinematic surface w, filled up with znw^2 (no input w)
     dyn::set_w_surface(m.st->w_1, m.st->u_1, m.st->v_1, *m.base, g, true);
     dyn::set_w_surface(m.st->w_2, m.st->u_2, m.st->v_2, *m.base, g, true);

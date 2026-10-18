@@ -33,13 +33,15 @@ struct KesslerKernel {
   real svpt0;
   real rhowater;
   int nz;
+  // WRF's i loop of the microphysics part (its..ite = i0..i0+ni-1): gfortran vectorises it through
+  // libmvec (cppwrf::vm lanes); the fall-speed pow of the k loops stays scalar in WRF's object
+  // (strided qr(i,k,j), checked against WRF -r8 flags with odd and even trip counts)
+  int i0 = 0, ni = 1;
 
   CPPWRF_HD void operator()(int i, int j) const {
     using std::max;
     using std::min;
     using std::sqrt;
-    using std::pow;
-    using std::exp;
     using std::round;
 
     // Fixed-size local arrays per column (Fortran module_mp_kessler.F lines 65)
@@ -69,7 +71,7 @@ struct KesslerKernel {
       rhok[k] = rho(i, j, k);
       real qrr = max(real(0), qr(i, j, k) * real(0.001) * rhok[k]);
       vtden[k] = sqrt(rhok[0] / rhok[k]);
-      vt[k] = real(36.34) * pow(qrr, real(0.1364)) * vtden[k];
+      vt[k] = real(36.34) * rpow(qrr, real(0.1364)) * vtden[k];
       rdzw[k] = real(1) / dz8w(i, j, k);
       crmax = max(vt[k] * dt * rdzw[k], crmax);
     }
@@ -107,7 +109,7 @@ struct KesslerKernel {
         crmax = real(0);
         for (int k = 0; k < nz; ++k) {
           real qrr = max(real(0), prodk[k] * real(0.001) * rhok[k]);
-          vt[k] = real(36.34) * pow(qrr, real(0.1364)) * vtden[k];
+          vt[k] = real(36.34) * rpow(qrr, real(0.1364)) * vtden[k];
           crmax = max(vt[k] * time_sediment * rdzw[k], crmax);
         }
         int nfall_new = max(1, int(round(real(0.5) + crmax / max_cr_sedimentation)));
@@ -124,8 +126,9 @@ struct KesslerKernel {
     }
 
     // Fortran lines 203-236: Microphysics production & evaporation
+    const int li = i - i0;
     for (int k = 0; k < nz; ++k) {
-      real factorn = real(1.0) / (real(1.0) + c3 * dt * pow(max(real(0.0), qr(i, j, k)), c4));
+      real factorn = real(1.0) / (real(1.0) + c3 * dt * vm::pow(max(real(0.0), qr(i, j, k)), c4, li, ni));
       real qrprod = qc(i, j, k) * (real(1.0) - factorn) + factorn * c1 * dt * max(qc(i, j, k) - c2, real(0.0));
       real rcgs = real(0.001) * rho(i, j, k);
 
@@ -134,13 +137,13 @@ struct KesslerKernel {
       qr(i, j, k) = max(qr(i, j, k) + qrprod, real(0.0));
 
       real temp = pii(i, j, k) * t(i, j, k);
-      real pressure = real(1.000e+05) * pow(pii(i, j, k), real(1004.0 / 287.0));
+      real pressure = real(1.000e+05) * vm::pow(pii(i, j, k), real(1004.0 / 287.0), li, ni);
       real gam = real(2.5e+06) / (real(1004.0) * pii(i, j, k));
-      real es = real(1000.0) * svp1 * exp(svp2 * (temp - svpt0) / (temp - svp3));
+      real es = real(1000.0) * svp1 * vm::exp(svp2 * (temp - svpt0) / (temp - svp3), li, ni);
       real qvs = ep2 * es / (pressure - es);
       prod[k] = (qv(i, j, k) - qvs) / (real(1.0) + pressure / (pressure - es) * qvs * f5 / ((temp - svp3) * (temp - svp3)));
       real dim_qvs_qv = max(real(0.0), qvs - qv(i, j, k));
-      real ern_num = (real(1.6) + real(124.9) * pow(rcgs * qr(i, j, k), real(0.2046))) * pow(rcgs * qr(i, j, k), real(0.525));
+      real ern_num = (real(1.6) + real(124.9) * vm::pow(rcgs * qr(i, j, k), real(0.2046), li, ni)) * vm::pow(rcgs * qr(i, j, k), real(0.525), li, ni);
       real ern_den = real(2.55e8) / (pressure * qvs) + real(5.4e5);
       real ern_term1 = dt * (ern_num / ern_den) * (dim_qvs_qv / (rcgs * qvs));
       real ern_term2 = max(-prod[k] - qc(i, j, k), real(0.0));

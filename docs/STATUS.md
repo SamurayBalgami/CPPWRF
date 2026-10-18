@@ -102,8 +102,9 @@ with thresholds (the Kain-Fritsch trigger, WSM6 and Thompson saturation adjustme
 roundoff over an hour, which is why P2 and P4 show larger CUDA FP64 differences than P1. The CPU
 build is the reference for bit identity.
 
-Ideal cases: Straka density current against WRF em_grav2d_x, theta' RMS difference 7.4e-6 K at 900 s;
-2-D hill flow against em_hill2d_x, w RMS difference 8e-5 m/s at 1 h.
+Ideal cases (CPPWRF's port of WRF's ideal.exe, `run.case = em_*`), CPU FP64 against WRF v4.8.0
+real*8: em_hill2d_x (1 h), em_grav2d_x (Straka, 900 s) and em_quarter_ss (Kessler supercell) are
+bit-identical in every field.
 
 ## Performance
 

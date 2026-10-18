@@ -26,7 +26,7 @@ add_executable(driver_kessler_fortran
 )
 set_target_properties(driver_kessler_fortran PROPERTIES
   Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fortran_modules"
-  COMPILE_FLAGS "${PHYS_FORTRAN_FLAGS}"
+  COMPILE_FLAGS "${WRF_FORTRAN_FLAGS}"
 )
 
 # 2. C++ Driver (CPU FP64)

@@ -27,7 +27,7 @@ void run_kessler(
   assert(nz <= kMaxLevels);
   KesslerKernel kernel{
       t, qv, qc, qr, rho, pii, dz8w, z, rainnc, rainncv,
-      dt, xlv, cp, ep2, svp1, svp2, svp3, svpt0, rhowater, nz};
+      dt, xlv, cp, ep2, svp1, svp2, svp3, svpt0, rhowater, nz, range.i0, range.i1 - range.i0};
   column_for(range, kernel);
 }
 

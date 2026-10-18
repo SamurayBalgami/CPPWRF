@@ -187,7 +187,7 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
                                             rho.cview(), pii.cview(), dz8w.cview(), z.cview(), rainnc.view(),
                                             rainncv.view(), dt, real(pc::xlv), real(pc::cp), real(pc::ep_2),
                                             real(pc::svp1), real(pc::svp2), real(pc::svp3), real(pc::svpt0),
-                                            real(pc::rhowater), g.nz});
+                                            real(pc::rhowater), g.nz, mp_cols.i0, mp_cols.i1 - mp_cols.i0});
   }
   parallel_for(g.mass_cells(), KFinish{s.t_2.view(), s.h_diabatic.view(), th_phy.cview(), qv.cview(),
                                        qv_diabatic.view(), s.P_QC >= 0 ? s.q_2[s.P_QC].cview() : qv.cview(),

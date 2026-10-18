@@ -123,18 +123,29 @@ Key translator features:
 - **Non-Silent Diagnostics:** Reports clear warnings on unsupported schemes (e.g. `diff_opt=3`, `mp_physics=2`) and informational notices for ignored WPS/quilt metadata.
 
 ### Idealized Cases
-CPPWRF supports standard ARW idealized benchmarks:
+WRF's own idealized cases are initialized by a port of WRF v4.8.0's `ideal.exe`
+(`dyn_em/module_initialize_ideal.F`, then what `start_em` does with its output), from the case's
+WRF `input_sounding`. In CPU FP64 they give WRF's (real*8) results bit for bit:
+- **`em_hill2d_x`:** flow over a 2-D bell-shaped hill (WRF `ideal_case = 1`; `configs/wrf_hill2d_x.ini`).
+- **`em_quarter_ss`:** 3-D supercell with Kessler microphysics (`ideal_case = 2`; `configs/wrf_quarter_ss.ini`).
+- **`em_squall2d_x`, `em_squall2d_y`:** 2-D squall line (`ideal_case = 4, 5`).
+- **`em_grav2d_x`:** Straka density current (`ideal_case = 6`; `configs/wrf_grav2d_x.ini`).
+
+The namelist maps to `[domain] nx = e_we - 1`, `ny = e_sn - 1` (`ny = 1` for the x-z cases,
+WRF `e_sn = 3`), `nz = e_vert - 1`, `dx`, `dy`, `ztop`, `bc_x`/`bc_y` (`&bdy_control`),
+`[dyn] hybrid_opt`, `etac` and `[case] sounding_file`. As in WRF, ideal runs always use
+`hypsometric_opt = 1`.
+
+CPPWRF also has analytic test cases of its own (not WRF initializations):
 - **`rest_state`:** Stably stratified atmosphere at rest testing hydrostatic balance.
 - **`warm_bubble`:** Bryan & Fritsch (2002) dry rising thermal bubble in neutral atmosphere.
 - **`straka`:** Straka et al. (1993) cold density current benchmark.
 - **`igw`:** Skamarock & Klemp (1994) inertia-gravity wave.
 - **`squall2d`:** Weisman & Klemp (1982) squall line with Kessler or WSM6 microphysics.
-- **`hill2d`:** Flow over a 2D bell-shaped mountain from WRF `input_sounding`.
-- **`quarter_ss`:** 3D supercell storm case from `input_sounding`.
 
 Run an idealized case:
 ```bash
-./build-cpu/cppwrf configs/straka_wrf.ini
+./build-cpu/cppwrf configs/wrf_grav2d_x.ini
 ```
 
 ### Real-Data Simulations (WPS + real.exe)
@@ -173,7 +184,7 @@ Every option supported by the CPPWRF runtime is cataloged below, along with its 
 
 | Section | Key | Type | Default | Description | WRF Equivalent |
 |---|---|---|---|---|---|
-| `[run]` | `case` | string | *required* | Simulation case (`real`, `hill2d`, `quarter_ss`, `straka`, `squall2d`, `warm_bubble`, `rest_state`, `igw`) | `ideal_case` |
+| `[run]` | `case` | string | *required* | Simulation case (`real`, `em_hill2d_x`, `em_quarter_ss`, `em_squall2d_x`, `em_squall2d_y`, `em_grav2d_x`, `straka`, `squall2d`, `warm_bubble`, `rest_state`, `igw`) | `ideal_case` |
 | `[run]` | `run_time` | double | `0.0` | Total simulation duration in seconds | `run_days/hours/minutes/seconds` |
 | `[run]` | `restart_file` | string | `""` | Path to NetCDF restart file (`restart_*.nc`) to resume execution | `restart` / restart filename |
 | `[run]` | `start_date` | string | `"2000-01-01_00:00:00"` | UTC start timestamp string | `start_year/month/day/hour/etc` |
@@ -190,11 +201,9 @@ Every option supported by the CPPWRF runtime is cataloged below, along with its 
 | `[domain]` | `eta_levels` | float list | `[]` | Explicit comma-separated list of full $\eta$ levels | `eta_levels` |
 | `[domain]` | `map_factor` | double | `1.0` | Constant horizontal map projection scale factor | Map scale factor ($m$) |
 | `[domain]` | `f0`, `e0` | double | `0.0` | Coriolis parameters $f$ and $e$ in $s^{-1}$ ($f$-plane) | Coriolis parameters |
-| `[case]` | `sounding_file` | string | `""` | Path to WRF format sounding file | `input_sounding` |
-| `[case]` | `hm` | double | `100.0` | Mountain height in meters (for `hill2d`) | Hill height |
-| `[case]` | `xa` | double | `5.0` | Mountain half-width in km (for `hill2d`) | Hill half-width |
-| `[case]` | `u0` | double | `10.0` | Uniform inflow wind speed in m/s | Mean wind |
-| `[case]` | `delt` | double | `3.0` | Thermal perturbation magnitude in K (for `quarter_ss`) | Bubble perturbation |
+| `[case]` | `sounding_file` | string | `"input_sounding"` | WRF `input_sounding` of an `em_*` case | `input_sounding` |
+| `[case]` | `hm` | double | `100.0` | Hill height in m (`em_hill2d_x`; WRF hard-codes 100) | `hm` |
+| `[case]` | `xa` | double | `5.0` | Hill half-width in grid points (`em_hill2d_x`; WRF hard-codes 5) | `xa` |
 | `[time]` | `dt` | double | *required* | Large time step in seconds ($\Delta t$) | `time_step` |
 | `[time]` | `time_step_sound` | integer | `0` (auto) | Acoustic small steps per RK stage (0 = auto-computed CFL rule) | `time_step_sound` |
 | `[dyn]` | `khdif`, `kvdif` | double | `0.0` | Constant horizontal/vertical eddy diffusion in $m^2/s$ | `khdif`, `kvdif` |

@@ -176,17 +176,8 @@ CaseDef make_case(const std::string& name, const io::Config& cfg, const Grid& G)
     c.params = {{"theta0", th0}, {"theta_tr", thtr}, {"z_tr", ztr}, {"t_tr", ttr}, {"qv_max", qvmax},
                 {"u_shear", us}, {"u_shift", ushift}, {"xc", xc}, {"zc", zc}, {"xr", xr}, {"zr", zr},
                 {"dtheta", dth}};
-  } else if (name == "hill2d") {
-    double th0 = 288.0, N = 0.01;
-    c.theta_env = [=](double z) { return th0 * std::exp(N * N * z / g); };
-    c.u_env = [=](double) { return 10.0; };
-    c.params = {{"hm", cfg.get_double("case.hm", 100.0)}, {"xa", cfg.get_double("case.xa", 5.0)}};
-  } else if (name == "quarter_ss" || name == "squall2d_x") {
-    c.theta_env = [=](double) { return 300.0; };
-    c.p_surf = cfg.get_double("case.p_surf", 1.0e5);
-    c.params = {{"delt", cfg.get_double("case.delt", 3.0)}};
   } else {
-    throw std::runtime_error("unknown case: " + name);
+    throw std::runtime_error("unknown case: " + name + " (WRF ideal cases: em_hill2d_x, em_quarter_ss, em_squall2d_x, em_squall2d_y, em_grav2d_x)");
   }
   c.p_surf = cfg.get_double("case.p_surf", 1.0e5);
   // optional unsaturated vapour profile qv(z) = qv0 exp(-z / qv_hscale) for any case
@@ -200,11 +191,7 @@ CaseDef make_case(const std::string& name, const io::Config& cfg, const Grid& G)
 }
 
 std::vector<double> make_eta_levels(const io::Config& cfg, const Grid& G, const Sounding& snd) {
-  std::string default_mode = "uniform_z";
-  if (cfg.has("run.case") && (cfg.get_string("run.case") == "squall2d_x" || cfg.get_string("run.case") == "quarter_ss")) {
-    default_mode = "stretched";
-  }
-  std::string mode = cfg.get_string("domain.eta", default_mode);
+  std::string mode = cfg.get_string("domain.eta", "uniform_z");
   std::vector<double> e(G.nz + 1);
   if (mode == "uniform_z") {
     double ps = snd.p(0.0), pt = snd.p(G.ztop);
