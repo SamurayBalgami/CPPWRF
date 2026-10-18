@@ -79,12 +79,25 @@ struct Fluxes {
   }
   // spec zone of a specified boundary: WRF advect_scalar(_pd) does not compute it (tendency 0)
   CPPWRF_HD bool spec_cell(int i, int j) const {
+    return (sp.sx() && (i == 0 || i == sp.nx - 1)) || (sp.sy() && (j == 0 || j == sp.ny - 1));
+  }
+  // outermost row of a specified or open boundary (advect_scalar_pd does not limit it)
+  CPPWRF_HD bool edge_cell(int i, int j) const {
     return (sp.x && (i == 0 || i == sp.nx - 1)) || (sp.y && (j == 0 || j == sp.ny - 1));
+  }
+  CPPWRF_HD bool open_col(int i) const { return sp.ox && (i == 0 || i == sp.nx - 1); }
+  CPPWRF_HD bool open_row(int j) const { return sp.oy && (j == 0 || j == sp.ny - 1); }
+  // open boundaries: WRF adds the open terms (x, then y) to the advection tendency; field_old is
+  // scalar_old in advect_scalar_pd, scalar itself in advect_scalar
+  CPPWRF_HD real open_terms(real r, int i, int j, int k, C3 fo) const {
+    if (open_col(i)) r = r - kern::open_x_scalar(q, fo, ru, rdx, i, j, k, sp.nx);
+    if (open_row(j)) r = r - kern::open_y_scalar(q, fo, rv, rdy, i, j, k, sp.ny);
+    return r;
   }
   // advect_scalar's tendency in a spec-zone cell (set_tend only): the x flux divergence is skipped
   // in the outer columns, the y one in the outer rows, the vertical term is kept
   CPPWRF_HD real adv_spec(int i, int j, int k) const {
-    const bool ocol = sp.x && (i == 0 || i == sp.nx - 1), orow = sp.y && (j == 0 || j == sp.ny - 1);
+    const bool ocol = sp.sx() && (i == 0 || i == sp.nx - 1), orow = sp.sy() && (j == 0 || j == sp.ny - 1);
     real r = real(0);
     if (!ocol) r = -(msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
     if (do_y && !orow) r -= (msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
@@ -92,8 +105,16 @@ struct Fluxes {
   }
   CPPWRF_HD real adv(int i, int j, int k) const {  // advect_scalar: horizontal terms times msftx
     if (spec_cell(i, j)) return 0;
-    real r = -(msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
-    if (do_y) r -= (msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+    real r;
+    if (open_col(i) || open_row(j)) {  // WRF order: y flux, x flux, open x, open y, vertical
+      r = real(0);
+      if (do_y && !open_row(j)) r = r - (msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+      if (!open_col(i)) r = r - (msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
+      r = open_terms(r, i, j, k, q);
+    } else {
+      r = -(msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
+      if (do_y) r -= (msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+    }
     return r - c.rdnw(k) * (fz(i, j, k + 1) - fz(i, j, k));
   }
 };
@@ -158,7 +179,7 @@ struct FacesPD {
 struct KScalePD {
   Fluxes f; FacesPD a; C2 mu_old; B2 mub; V3 scale;
   CPPWRF_HD void operator()(int i, int j, int k) const {
-    if (f.spec_cell(i, j)) { scale(i, j, k) = 1; return; }  // WRF limits interior cells only
+    if (f.edge_cell(i, j)) { scale(i, j, k) = 1; return; }  // WRF limits interior cells only
     const VCoef& c = f.c;
     const real mxy = f.msftx(i, j) * f.msfty(i, j);
     real hlow = f.rdx * (a.lox(i + 1, j, k) - a.lox(i, j, k));
@@ -204,7 +225,7 @@ struct KUpdatePD {
   CPPWRF_HD void operator()(int i, int j, int k) const {  // WRF advect_scalar_pd final tendency
     if (f.spec_cell(i, j)) {
       if (want_ften) {  // WRF still forms the tendency here: x term off in outer columns, y off in outer rows
-        const bool ocol = f.sp.x && (i == 0 || i == f.sp.nx - 1), orow = f.sp.y && (j == 0 || j == f.sp.ny - 1);
+        const bool ocol = f.sp.sx() && (i == 0 || i == f.sp.nx - 1), orow = f.sp.sy() && (j == 0 || j == f.sp.ny - 1);
         real tend = -f.c.rdnw(k) * (dz(i, j, k + 1) - dz(i, j, k) + a.loz(i, j, k + 1) - a.loz(i, j, k));
         if (!ocol) tend -= f.msftx(i, j) * (f.rdx * (dx(i + 1, j, k) - dx(i, j, k) + a.lox(i + 1, j, k) - a.lox(i, j, k)));
         if (f.do_y && !orow)
@@ -214,9 +235,19 @@ struct KUpdatePD {
       qn(i, j, k) = m_full(f.c, k, mub(i, j), mu1(i, j)) * q1(i, j, k) / m_full(f.c, k, mub(i, j), mu2(i, j));
       return;
     }
-    real tend = -f.c.rdnw(k) * (dz(i, j, k + 1) - dz(i, j, k) + a.loz(i, j, k + 1) - a.loz(i, j, k));
-    tend -= f.msftx(i, j) * (f.rdx * (dx(i + 1, j, k) - dx(i, j, k) + a.lox(i + 1, j, k) - a.lox(i, j, k)));
-    if (f.do_y) tend -= f.msftx(i, j) * (f.rdy * (dy(i, j + 1, k) - dy(i, j, k) + a.loy(i, j + 1, k) - a.loy(i, j, k)));
+    real tend;
+    if (f.open_col(i) || f.open_row(j)) {  // open boundary: open terms, vertical, x (not outer columns), y
+      tend = f.open_terms(real(0), i, j, k, f.qo);
+      tend = tend - f.c.rdnw(k) * (dz(i, j, k + 1) - dz(i, j, k) + a.loz(i, j, k + 1) - a.loz(i, j, k));
+      if (!f.open_col(i))
+        tend -= f.msftx(i, j) * (f.rdx * (dx(i + 1, j, k) - dx(i, j, k) + a.lox(i + 1, j, k) - a.lox(i, j, k)));
+      if (f.do_y && !f.open_row(j))
+        tend -= f.msftx(i, j) * (f.rdy * (dy(i, j + 1, k) - dy(i, j, k) + a.loy(i, j + 1, k) - a.loy(i, j, k)));
+    } else {
+      tend = -f.c.rdnw(k) * (dz(i, j, k + 1) - dz(i, j, k) + a.loz(i, j, k + 1) - a.loz(i, j, k));
+      tend -= f.msftx(i, j) * (f.rdx * (dx(i + 1, j, k) - dx(i, j, k) + a.lox(i + 1, j, k) - a.lox(i, j, k)));
+      if (f.do_y) tend -= f.msftx(i, j) * (f.rdy * (dy(i, j + 1, k) - dy(i, j, k) + a.loy(i, j + 1, k) - a.loy(i, j, k)));
+    }
     if (want_ften) ften(i, j, k) = tend * f.msfty(i, j);
     qn(i, j, k) = (m_full(f.c, k, mub(i, j), mu1(i, j)) * q1(i, j, k) + dt_rk * (tend * f.msfty(i, j))) /
                   m_full(f.c, k, mub(i, j), mu2(i, j));
@@ -265,7 +296,7 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
     if (bc_) bc_->spec_scalar(n, tf);  // spec_bdy_scalar (every stage)
     Fluxes fl{q2.cview(), q1.cview(), s.ru_m.cview(), s.rv_m.cview(), s.ww_m.cview(), s.muts.cview(), c,
               real(b.rdx), real(b.rdy), dt_rk, hup, vup, g.nz, do_y, b.msftx.view(), b.msfty.view(),
-              kern::Spec{g.bc_x == BC::Specified, g.bc_y == BC::Specified, g.nx, g.ny}};
+              kern::Spec::of(g)};
     fl.pd = pd;
     if (!pd) {
       parallel_for(mr, KUpdate{fl, q1.cview(), tf.cview(), s.mu_1.cview(), s.mu_2.cview(), b.mub.view(),

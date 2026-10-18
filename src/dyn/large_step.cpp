@@ -139,14 +139,15 @@ struct KTendU {
   C3 u, ru, rv, ww, p, ph, alt, al, php, tendf; C2 mu, muu; B3 pb; VCoef c; kern::MoistCoef mc;
   V3 out; real rdx, rdy; int nz; bool do_y, top_lid, use_tendf; real hup, vup;
   C3 v, rw; MapC m; kern::Spec sp;
+  C2 mut;  // open boundaries: radiation phase speed cb times the column mass
   CPPWRF_HD real fx(int i, int j, int k) const {
     const int o = kern::ord_mass(i, sp.nx, sp.x);
-    if (o == 2) {  // next to the boundary: upstream normal velocity at the boundary face
+    if (o == 2) {  // next to the boundary: specified uses the upstream normal velocity at the boundary face
       if (i <= 1) {
-        const real ub = u(i, j, k) < real(0) ? u(i, j, k) : u(i - 1, j, k);
+        const real ub = (sp.sx() && u(i, j, k) < real(0)) ? u(i, j, k) : u(i - 1, j, k);
         return Q * (ru(i, j, k) + ru(i - 1, j, k)) * (u(i, j, k) + ub);
       }
-      const real ub = u(i - 1, j, k) > real(0) ? u(i - 1, j, k) : u(i, j, k);
+      const real ub = (sp.sx() && u(i - 1, j, k) > real(0)) ? u(i - 1, j, k) : u(i, j, k);
       return Q * (ru(i, j, k) + ru(i - 1, j, k)) * (u(i - 1, j, k) + ub);
     }
     real vel = H * (ru(i, j, k) + ru(i - 1, j, k));
@@ -172,11 +173,52 @@ struct KTendU {
     if (k == nz) return top_lid ? H * (c.cfn * pu(i, j, nz - 1) + c.cfn1 * pu(i, j, nz - 2)) : real(0);
     return H * (c.fnm(k) * pu(i, j, k) + c.fnp(k) * pu(i, j, k - 1));
   }
+  // advect_u open_ys / open_ye: v-flux terms of the outermost rows (i over WRF's i_start..i_end)
+  CPPWRF_HD real open_y_term(int i, int j, int k) const {
+    const int imin = 0, imax = sp.nx - 1;
+    const int ip = i < imax ? i : imax, im = i - 1 > imin ? i - 1 : imin;
+    const real mrdy = m.msfux(i, j) * rdy;
+    if (j == 0) {
+      const real vw = H * (rv(ip, 0, k) + rv(im, 0, k));
+      const real vb = vw < real(0) ? vw : real(0);
+      const real dvm = rv(ip, 1, k) - rv(ip, 0, k), dvp = rv(im, 1, k) - rv(im, 0, k);
+      return mrdy * (vb * (u(i, 1, k) - u(i, 0, k)) + H * u(i, 0, k) * (dvm + dvp));
+    }
+    const int je = sp.ny;  // v face of the north boundary
+    const real vw = H * (rv(ip, je, k) + rv(im, je, k));
+    const real vb = vw > real(0) ? vw : real(0);
+    const real dvm = rv(ip, je, k) - rv(ip, je - 1, k), dvp = rv(im, je, k) - rv(im, je - 1, k);
+    return mrdy * (vb * (u(i, je - 1, k) - u(i, je - 2, k)) + H * u(i, je - 1, k) * (dvm + dvp));
+  }
   CPPWRF_HD void operator()(int i, int j, int k) const {
+    if (sp.ox && (i == 0 || i == sp.nx)) {
+      // open x boundary face: no horizontal flux divergence, no pressure gradient, Coriolis or
+      // curvature; the radiation condition with phase speed cb (module_advect_em advect_u) and,
+      // unless open_ys/ye (WRF's i range of the vertical term), the vertical advection
+      real t;
+      if (i == 0) {
+        real ub = ru(0, j, k) - real(cst::cb) * (c.c1h(k) * mut(0, j) + c.c2h(k));
+        ub = ub < real(0) ? ub : real(0);
+        t = real(0) - rdx * ub * (u(1, j, k) - u(0, j, k));
+      } else {
+        real ub = ru(i, j, k) + real(cst::cb) * (c.c1h(k) * mut(i - 1, j) + c.c2h(k));
+        ub = ub > real(0) ? ub : real(0);
+        t = real(0) - rdx * ub * (u(i, j, k) - u(i - 1, j, k));
+      }
+      if (!sp.oy) t -= c.rdnw(k) * (fz(i, j, k + 1) - fz(i, j, k));
+      if (use_tendf) t += tendf(i, j, k) / m.msfuy(i, j);  // rk_addtend_dry
+      out(i, j, k) = t;
+      return;
+    }
     // advect_u: horizontal terms times msfux (ADT eq. 44), vertical term without
     real t = -(m.msfux(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
-    if (do_y) t -= (m.msfux(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
-    t -= c.rdnw(k) * (fz(i, j, k + 1) - fz(i, j, k));
+    if (do_y) {
+      // open_ys/ye: the y flux divergence skips the outermost rows, which take the open terms
+      const bool orow = sp.oy && (j == 0 || j == sp.ny - 1);
+      if (!orow) t -= (m.msfux(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+      else t -= open_y_term(i, j, k);
+    }
+    if (!(sp.oy && sp.x && (i == 0 || i == sp.nx))) t -= c.rdnw(k) * (fz(i, j, k + 1) - fz(i, j, k));
     // horizontal_pressure_gradient (non-hydrostatic)
     const real rm = m.msfux(i, j) / m.msfuy(i, j);
     real dpx = rm * H * rdx * (c.c1h(k) * muu(i, j) + c.c2h(k)) *
@@ -217,12 +259,12 @@ struct KTendV {
   }
   CPPWRF_HD real fy(int i, int j, int k) const {
     const int o = kern::ord_mass(j, sp.ny, sp.y);
-    if (o == 2) {
+    if (o == 2) {  // specified: upstream normal velocity at the boundary face
       if (j <= 1) {
-        const real vb = v(i, j, k) < real(0) ? v(i, j, k) : v(i, j - 1, k);
+        const real vb = (sp.sy() && v(i, j, k) < real(0)) ? v(i, j, k) : v(i, j - 1, k);
         return Q * (rv(i, j, k) + rv(i, j - 1, k)) * (v(i, j, k) + vb);
       }
-      const real vb = v(i, j - 1, k) > real(0) ? v(i, j - 1, k) : v(i, j, k);
+      const real vb = (sp.sy() && v(i, j - 1, k) > real(0)) ? v(i, j - 1, k) : v(i, j, k);
       return Q * (rv(i, j, k) + rv(i, j - 1, k)) * (vb + v(i, j - 1, k));
     }
     real vel = H * (rv(i, j, k) + rv(i, j - 1, k));
@@ -241,11 +283,51 @@ struct KTendV {
     if (k == nz) return top_lid ? H * (c.cfn * pv(i, j, nz - 1) + c.cfn1 * pv(i, j, nz - 2)) : real(0);
     return H * (c.fnm(k) * pv(i, j, k) + c.fnp(k) * pv(i, j, k - 1));
   }
+  // advect_v open_xs / open_xe: u-flux terms of the outermost columns
+  CPPWRF_HD real open_x_term(int i, int j, int k) const {
+    const int jmin = 0, jmax = sp.ny - 1;
+    const int jp = j < jmax ? j : jmax, jm = j - 1 > jmin ? j - 1 : jmin;
+    if (i == 0) {
+      const real mrdx = m.msfvy(0, j) * rdx;
+      const real uw = H * (ru(0, jp, k) + ru(0, jm, k));
+      const real ub = uw < real(0) ? uw : real(0);
+      const real dup = ru(1, jp, k) - ru(0, jp, k), dum = ru(1, jm, k) - ru(0, jm, k);
+      return mrdx * (ub * (v(1, j, k) - v(0, j, k)) + H * v(0, j, k) * (dup + dum));
+    }
+    const int ie = sp.nx;  // u face of the east boundary
+    const real mrdx = m.msfvy(ie - 1, j) * rdx;
+    const real uw = H * (ru(ie, jp, k) + ru(ie, jm, k));
+    const real ub = uw > real(0) ? uw : real(0);
+    const real dup = ru(ie, jp, k) - ru(ie - 1, jp, k), dum = ru(ie, jm, k) - ru(ie - 1, jm, k);
+    return mrdx * (ub * (v(ie - 1, j, k) - v(ie - 2, j, k)) + H * v(ie - 1, j, k) * (dup + dum));
+  }
+  C2 mut;  // open boundaries: radiation phase speed cb times the column mass
   CPPWRF_HD void operator()(int i, int j, int k) const {
+    if (sp.oy && (j == 0 || j == sp.ny)) {  // open y boundary face: radiation only (advect_v)
+      real t;
+      if (j == 0) {
+        real vb = rv(i, 0, k) - real(cst::cb) * (c.c1h(k) * mut(i, 0) + c.c2h(k));
+        vb = vb < real(0) ? vb : real(0);
+        t = real(0) - rdy * vb * (v(i, 1, k) - v(i, 0, k));
+      } else {
+        real vb = rv(i, j, k) + real(cst::cb) * (c.c1h(k) * mut(i, j - 1) + c.c2h(k));
+        vb = vb > real(0) ? vb : real(0);
+        t = real(0) - rdy * vb * (v(i, j, k) - v(i, j - 1, k));
+      }
+      if (use_tendf) t += tendf(i, j, k) * m.msfvx_inv(i, j);  // rk_addtend_dry
+      out(i, j, k) = t;
+      return;
+    }
     // advect_v: horizontal terms times msfvy, vertical times msfvy/msfvx (ADT eq. 45)
     const real rm = m.msfvy(i, j) / m.msfvx(i, j);
-    real t = -(m.msfvy(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
-    t -= (m.msfvy(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+    real t;
+    if (sp.ox && (i == 0 || i == sp.nx - 1)) {  // open x: y flux, then the open term instead of the x flux
+      t = -(m.msfvy(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+      t -= open_x_term(i, j, k);
+    } else {
+      t = -(m.msfvy(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
+      t -= (m.msfvy(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+    }
     t -= rm * c.rdnw(k) * (fz(i, j, k + 1) - fz(i, j, k));
     real dpy = rm * H * rdy * (c.c1h(k) * muv(i, j) + c.c2h(k)) *
                ((ph(i, j, k + 1) - ph(i, j - 1, k + 1) + ph(i, j, k) - ph(i, j - 1, k)) +
@@ -304,10 +386,58 @@ struct KTendW {
     real vel = H * (ww(i, j, m + 1) + ww(i, j, m));
     return vel * flux3(w(i, j, m - 1), w(i, j, m), w(i, j, m + 1), w(i, j, m + 2), -vel, vup);
   }
+  // advect_w open_xs/xe (open_ys/ye) terms of the outermost columns (rows); WRF's 2nd-order forms
+  // of fzm/fzp-interpolated ru (rv), extrapolated at the lid
+  CPPWRF_HD real open_x_term(int i, int j, int k) const {
+    const int a = i == 0 ? 0 : sp.nx - 1, b = i == 0 ? 1 : sp.nx;  // faces: inner (b) / outer (a) side
+    real uw, dru;
+    if (k < nz) {
+      uw = H * (c.fnm(k) * (ru(a, j, k) + ru(b, j, k)) + c.fnp(k) * (ru(a, j, k - 1) + ru(b, j, k - 1)));
+      dru = c.fnm(k) * (ru(b, j, k) - ru(a, j, k)) + c.fnp(k) * (ru(b, j, k - 1) - ru(a, j, k - 1));
+    } else {
+      const real fm = real(2) - c.fnm(nz - 1), fp = c.fnp(nz - 1);
+      uw = H * (fm * (ru(a, j, nz - 1) + ru(b, j, nz - 1)) - fp * (ru(a, j, nz - 2) + ru(b, j, nz - 2)));
+      dru = fm * (ru(b, j, nz - 1) - ru(a, j, nz - 1)) - fp * (ru(b, j, nz - 2) - ru(a, j, nz - 2));
+    }
+    if (i == 0) {
+      const real ub = uw < real(0) ? uw : real(0);
+      return rdx * (ub * (w(1, j, k) - w(0, j, k)) + w(0, j, k) * dru);
+    }
+    const real ub = uw > real(0) ? uw : real(0);
+    return rdx * (ub * (w(i, j, k) - w(i - 1, j, k)) + w(i, j, k) * dru);
+  }
+  CPPWRF_HD real open_y_term(int i, int j, int k) const {
+    const int a = j == 0 ? 0 : sp.ny - 1, b = j == 0 ? 1 : sp.ny;
+    real vw, drv;
+    if (k < nz) {
+      vw = H * (c.fnm(k) * (rv(i, a, k) + rv(i, b, k)) + c.fnp(k) * (rv(i, a, k - 1) + rv(i, b, k - 1)));
+      drv = c.fnm(k) * (rv(i, b, k) - rv(i, a, k)) + c.fnp(k) * (rv(i, b, k - 1) - rv(i, a, k - 1));
+    } else {
+      const real fm = real(2) - c.fnm(nz - 1), fp = c.fnp(nz - 1);
+      vw = H * (fm * (rv(i, a, nz - 1) + rv(i, b, nz - 1)) - fp * (rv(i, a, nz - 2) + rv(i, b, nz - 2)));
+      drv = fm * (rv(i, b, nz - 1) - rv(i, a, nz - 1)) - fp * (rv(i, b, nz - 2) - rv(i, a, nz - 2));
+    }
+    if (j == 0) {
+      const real vb = vw < real(0) ? vw : real(0);
+      return rdy * (vb * (w(i, 1, k) - w(i, 0, k)) + w(i, 0, k) * drv);
+    }
+    const real vb = vw > real(0) ? vw : real(0);
+    return rdy * (vb * (w(i, j, k) - w(i, j - 1, k)) + w(i, j, k) * drv);
+  }
   CPPWRF_HD void operator()(int i, int j, int k) const {
     // advect_w: horizontal terms times msftx (ADT eq. 46 / my)
-    real t = -(m.msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
-    if (do_y) t -= (m.msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+    real t;
+    const bool ocol = sp.ox && (i == 0 || i == sp.nx - 1), orow = sp.oy && (j == 0 || j == sp.ny - 1);
+    if (ocol || orow) {  // WRF order: y flux, x flux, open x terms, open y terms
+      t = real(0);
+      if (do_y && !orow) t = t - (m.msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+      if (!ocol) t = t - (m.msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
+      if (ocol) t = t - open_x_term(i, j, k);
+      if (orow) t = t - open_y_term(i, j, k);
+    } else {
+      t = -(m.msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
+      if (do_y) t -= (m.msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+    }
     const real rmsft = real(1) / m.msfty(i, j);
     if (k < nz) {
       t -= c.rdn(k) * (fz(i, j, k) - fz(i, j, k - 1));
@@ -369,19 +499,29 @@ struct KTendT {
   }
   CPPWRF_HD void operator()(int i, int j, int k) const {
     // advect_scalar: horizontal terms times msftx (ADT eq. 48 / my)
-    real r = -(msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
-    if (do_y) r -= (msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+    real r;
+    const bool ocol = sp.ox && (i == 0 || i == sp.nx - 1), orow = sp.oy && (j == 0 || j == sp.ny - 1);
+    if (ocol || orow) {  // open boundary: WRF order y flux, x flux, open x terms, open y terms, vertical
+      r = real(0);
+      if (do_y && !orow) r = r - (msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+      if (!ocol) r = r - (msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
+      if (ocol) r = r - kern::open_x_scalar(t, t, ru, rdx, i, j, k, sp.nx);
+      if (orow) r = r - kern::open_y_scalar(t, t, rv, rdy, i, j, k, sp.ny);
+    } else {
+      r = -(msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
+      if (do_y) r -= (msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+    }
     r -= c.rdnw(k) * (fz(i, j, k + 1) - fz(i, j, k));
     if (want_thf) {
       // WRF advect_scalar on a specified boundary: the x flux divergence is skipped in the outer
       // columns, the y one in the outer rows (degrade_xs/xe, ys/ye); the vertical term is everywhere
-      const bool ocol = sp.x && (i == 0 || i == sp.nx - 1), orow = sp.y && (j == 0 || j == sp.ny - 1);
-      if (!ocol && !orow) {
+      const bool scol = sp.sx() && (i == 0 || i == sp.nx - 1), srow = sp.sy() && (j == 0 || j == sp.ny - 1);
+      if (!scol && !srow) {
         thf(i, j, k) = r * msfty(i, j);
       } else {
         real q = real(0);
-        if (!ocol) q = -(msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
-        if (do_y && !orow) q -= (msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
+        if (!scol) q = -(msftx(i, j) * rdx) * (fx(i + 1, j, k) - fx(i, j, k));
+        if (do_y && !srow) q -= (msftx(i, j) * rdy) * (fy(i, j + 1, k) - fy(i, j, k));
         q -= c.rdnw(k) * (fz(i, j, k + 1) - fz(i, j, k));
         thf(i, j, k) = q * msfty(i, j);
       }
@@ -399,6 +539,7 @@ struct KTendPh {
   C3 u, v, w, ww, ph; C2 mut, muu, muv; B3 phb; VCoef c;
   V3 out; real rdx, rdy; int nz; bool do_y;
   B2 msfty, msfux, msfvy; kern::Spec sp; C3 tendf; bool use_tendf;
+  B2 msftx;
   CPPWRF_HD real wdwn(int i, int j, int m) const {
     return H * (ww(i, j, m + 1) + ww(i, j, m)) * c.rdnw(m) *
            (ph(i, j, m + 1) - ph(i, j, m) + phb(i, j, m + 1) - phb(i, j, m));
@@ -427,7 +568,7 @@ struct KTendPh {
     if (!on) return 6;
     if (i <= 0 || i >= n - 1) return 0;
     if (i == 1 || i == n - 2) return 2;
-    if (i == 2 || i == n - 3) return is_x ? 0 : 4;
+    if (i == 2 || i == n - 3) return (is_x && !sp.ox) ? 0 : 4;  // open x: 4th order (open_xs/xe only)
     return 6;
   }
   CPPWRF_HD void operator()(int i, int j, int k) const {
@@ -458,6 +599,37 @@ struct KTendPh {
       t = t - cx * ((mup * up * msfux(i + 1, j) + mum * um * msfux(i, j)) * r60 * grad6<1, 0>(i, j, k));
     else if (o == 2)
       t = t - cx * (mup * up * msfux(i + 1, j) * dfwd<1, 0>(i, j, k) + mum * um * msfux(i, j) * dfwd<1, 0>(i - 1, j, k));
+    else if (o == 4)
+      t = t - cx * ((mup * up * msfux(i + 1, j) + mum * um * msfux(i, j)) * r12 * grad4<1, 0>(i, j, k));
+    // open boundaries (after the advection, south/north then west/east): inflow advection of ph by
+    // the normal wind interpolated to the w level (top: kz = kde-1, except WRF's west lid level,
+    // whose kz = kde reads fnm/fnp(kde) = 0 and adds nothing)
+    if (sp.oy && (j == 0 || j == sp.ny - 1)) {
+      const int kz = k < nz - 1 ? k : nz - 1;
+      const int a = j == 0 ? 0 : sp.ny - 1, b = j == 0 ? 1 : sp.ny;  // v faces: outer side a, inner b
+      const real vb = H * (c.fnm(kz) * (v(i, b, kz) + v(i, a, kz)) + c.fnp(kz) * (v(i, b, kz - 1) + v(i, a, kz - 1)));
+      const real muf = c.c1f(k) * mut(i, j) + c.c2f(k);
+      if (j == 0) {
+        const real vl = vb < real(0) ? vb : real(0);
+        t = t - rdy * muf * (vl * (ph(i, 1, k) - ph(i, 0, k)));
+      } else {
+        const real vr = vb > real(0) ? vb : real(0);
+        t = t - rdy * muf * (vr * (ph(i, j, k) - ph(i, j - 1, k)));
+      }
+    }
+    if (sp.ox && (i == 0 || i == sp.nx - 1) && !(i == 0 && k == nz)) {
+      const int kz = k < nz ? k : nz - 1;
+      const int a = i == 0 ? 0 : sp.nx - 1, b = i == 0 ? 1 : sp.nx;  // u faces
+      const real ub = H * (c.fnm(kz) * (u(b, j, kz) + u(a, j, kz)) + c.fnp(kz) * (u(b, j, kz - 1) + u(a, j, kz - 1)));
+      const real muf = c.c1f(k) * mut(i, j) + c.c2f(k);
+      if (i == 0) {
+        const real ul = ub < real(0) ? ub : real(0);
+        t = t - (msftx(i, j) / msfty(i, j)) * rdx * muf * (ul * (ph(1, j, k) - ph(0, j, k)));
+      } else {
+        const real ur = ub > real(0) ? ub : real(0);
+        t = t - (msftx(i, j) / msfty(i, j)) * rdx * muf * (ur * (ph(i, j, k) - ph(i - 1, j, k)));
+      }
+    }
     if (use_tendf) t = t + tendf(i, j, k) / msfty(i, j);  // rk_addtend_dry: ph_tend += ph_tendf/msfty
     out(i, j, k) = t;
   }
@@ -550,7 +722,7 @@ void LargeStep::prep(State& s, const BaseState& b) const {
   VCoef c = VCoef::from(b);
   parallel_for(Range3D{0, g.nx + 1, 0, nyv, 0, 1},
                KMu{s.mu_2.cview(), b.mub.view(), s.mut.view(), s.muu.view(), s.muv.view(), g.nx, g.ny, nyv,
-                   g.bc_x == BC::Specified, g.bc_y == BC::Specified && !g.two_d()});
+                   g.flat_x(), g.flat_y() && !g.two_d()});
   fill_halos({&s.mut, &s.muu, &s.muv}, g);
   parallel_for(Range3D{0, g.nx + 1, 0, nyv, 0, g.nz + 1},
                KPrep3{s.u_2.cview(), s.v_2.cview(), s.w_2.cview(), s.al.cview(), s.ph_2.cview(), s.muu.cview(),
@@ -583,8 +755,9 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
   const bool do_y = !g.two_d();
   const bool diff = !dd_ && (p_.khdif > 0 || p_.kvdif > 0);  // legacy constant-K kernels
   const int nz = g.nz;
-  const Range3D ur{g.u_i0(), g.u_i1(), 0, g.ny, 0, nz};
-  const Range3D vr{0, g.nx, g.v_j0(), g.v_j1(), 0, nz};
+  // open boundaries: the boundary faces are advanced too (radiation condition)
+  const Range3D ur{g.open_x() ? 0 : g.u_i0(), g.open_x() ? g.nx + 1 : g.u_i1(), 0, g.ny, 0, nz};
+  const Range3D vr{0, g.nx, g.open_y() ? 0 : g.v_j0(), g.open_y() ? g.ny + 1 : g.v_j1(), 0, nz};
   const Range3D wr{0, g.nx, 0, g.ny, 1, nz + 1};
   const Range3D wri{0, g.nx, 0, g.ny, 1, nz};
   const Range3D mr = g.mass_cells();
@@ -592,7 +765,7 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
   // even orders (6 / 4) = the same fluxes without the upwind dissipation term (WRF flux6/flux4)
   const real hup = p_.h_adv_order == 5 ? real(1) : real(0), vup = p_.v_adv_order == 3 ? real(1) : real(0);
   const MapC m = MapC::from(b, b.mapped || b.coriolis);
-  const kern::Spec sp{g.bc_x == BC::Specified, g.bc_y == BC::Specified, g.nx, g.ny};
+  const kern::Spec sp = kern::Spec::of(g);
   if (b.mapped && diff) throw std::runtime_error("diffusion with map factors is not implemented yet");
   // init_zero_tendency at stage 1 (with column physics the RK driver did it before part1)
   if (rk_step == 1 && !cp_) zero_tendf(t);
@@ -627,12 +800,12 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
   parallel_for(ur, KTendU{s.u_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), s.ph_2.cview(),
                           s.alt.cview(), s.al.cview(), s.php.cview(), t.ru_tendf.cview(), s.mu_2.cview(),
                           s.muu.cview(), b.pb.view(), c, moist_coef(s), t.ru_tend.view(), rdx, rdy, nz, do_y, p_.top_lid, tendf, hup, vup,
-                          s.v_2.cview(), s.rw.cview(), m, sp});
+                          s.v_2.cview(), s.rw.cview(), m, sp, s.mut.cview()});
   if (do_y)
     parallel_for(vr, KTendV{s.v_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), s.ph_2.cview(),
                             s.alt.cview(), s.al.cview(), s.php.cview(), t.rv_tendf.cview(), s.mu_2.cview(),
                             s.muv.cview(), b.pb.view(), c, moist_coef(s), t.rv_tend.view(), rdx, rdy, nz, p_.top_lid, tendf, hup, vup,
-                            s.u_2.cview(), s.rw.cview(), m, sp});
+                            s.u_2.cview(), s.rw.cview(), m, sp, s.mut.cview()});
   parallel_for(wr, KTendW{s.w_2.cview(), s.ru.cview(), s.rv.cview(), s.ww.cview(), s.p.cview(), t.rw_tendf.cview(),
                           s.mu_2.cview(), b.mub.view(), c, moist_coef(s), t.rw_tend.view(), rdx, rdy, nz, do_y, tendf, hup, vup,
                           s.u_2.cview(), s.v_2.cview(), m, sp, s.mut.cview(),
@@ -642,7 +815,8 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
                           s.n_moist > 0, b.msftx.view(), b.msfty.view(), sp, thf, thf_on});
   parallel_for(wr, KTendPh{s.u_2.cview(), s.v_2.cview(), s.w_2.cview(), s.ww.cview(), s.ph_2.cview(), s.mut.cview(),
                            s.muu.cview(), s.muv.cview(), b.phb.view(), c, t.ph_tend.view(), rdx, rdy, nz, do_y,
-                           b.msfty.view(), b.msfux.view(), b.msfvy.view(), sp, t.ph_tendf.cview(), bc_ != nullptr});
+                           b.msfty.view(), b.msfux.view(), b.msfvy.view(), sp, t.ph_tendf.cview(), bc_ != nullptr,
+                           b.msftx.view()});
   if (bc_) bc_->spec_dry(t);  // spec_bdy_dry: spec-zone tendencies from the boundary file
   // mu_tend stays 0 (dry, no physics); allocated zero.
 }

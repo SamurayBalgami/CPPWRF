@@ -13,7 +13,9 @@ namespace cppwrf {
 enum class Stagger : char { M = 'M', U = 'U', V = 'V', W = 'W' };
 // Specified: real-data lateral boundaries (WRF specified = .true.); halos are filled by copying
 // the outermost row outward (set_physical_bc*), boundary rows are set by src/bdy.
-enum class BC { Periodic, Symmetric, Specified };
+// Open: WRF open_xs/xe (open_ys/ye) on both sides of the direction: the same outward halo copy as
+// specified, radiative normal velocity and flow-dependent (inflow zero-gradient) scalars at the edges.
+enum class BC { Periodic, Symmetric, Specified, Open };
 
 struct Grid {
   int nx = 1, ny = 1, nz = 1;  // number of mass points
@@ -38,6 +40,12 @@ struct Grid {
   int u_i1() const { return nx; }
   int v_j0() const { return (bc_y != BC::Periodic && !two_d()) ? 1 : 0; }
   bool specified() const { return bc_x == BC::Specified || bc_y == BC::Specified; }
+  bool open_x() const { return bc_x == BC::Open; }
+  bool open_y() const { return bc_y == BC::Open && !two_d(); }
+  bool open() const { return open_x() || open_y(); }
+  // halo by outward copy of the outermost row (WRF set_physical_bc*: open, specified, nested)
+  bool flat_x() const { return bc_x == BC::Specified || bc_x == BC::Open; }
+  bool flat_y() const { return bc_y == BC::Specified || bc_y == BC::Open; }
   int v_j1() const { return ny; }
 };
 

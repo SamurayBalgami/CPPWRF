@@ -17,4 +17,5 @@ inline constexpr double cpv = 4.0 * r_v, cvv = cpv - r_v, cliq = 4190.0;
 inline constexpr double xlv = 2.5e6;           // latent heat of vaporisation at 0 C
 inline constexpr double ep_2 = r_d / r_v;
 inline constexpr double svp1 = 0.6112, svp2 = 17.67, svp3 = 29.65, svpt0 = 273.15;  // Bolton-type e_s
+inline constexpr double cb = 25.;              // phase speed of the open (radiative) lateral boundaries
 }  // namespace cppwrf::cst

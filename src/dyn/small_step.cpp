@@ -33,8 +33,11 @@ constexpr real T0 = real(cst::t0);
 
 // Specified lateral boundaries: WRF advance_uv / advance_mu_t / advance_w leave the outermost
 // row (spec zone) to spec_bdyupdate*, zero_grad_bdy. True for mass point (i,j) in that row.
+// Open boundaries (ox, oy): every cell is advanced; the boundary faces take only the large-step
+// tendency (advance_uv: no pressure gradient or divergence damping on them).
 struct Edge {
   bool x = false, y = false; int nx = 0, ny = 0;
+  bool ox = false, oy = false;
   CPPWRF_HD bool mass(int i, int j) const { return (x && (i == 0 || i == nx - 1)) || (y && (j == 0 || j == ny - 1)); }
   CPPWRF_HD bool uface(int i, int j) const { return (x && (i <= 0 || i >= nx)) || (y && (j == 0 || j == ny - 1)); }
   CPPWRF_HD bool vface(int i, int j) const { return (x && (i == 0 || i == nx - 1)) || (y && (j <= 0 || j >= ny)); }
@@ -168,12 +171,16 @@ struct KUV {
     return d;
   }
   CPPWRF_HD void operator()(int i, int j, int k) const {
-    if (i >= ui0 && i < ui1 && !ed.uface(i, j)) {
+    if (ed.ox && (i == 0 || i == ed.nx) && j < ed.ny) {  // open x boundary face
+      u(i, j, k) = u(i, j, k) + dts * ru_tend(i, j, k);
+    } else if (i >= ui0 && i < ui1 && !ed.uface(i, j) && j < ed.ny) {
       const real mudf_x = -emdx * (mudf(i, j) - mudf(i - 1, j)) / msfuy(i, j);
       u(i, j, k) = u(i, j, k) + dts * ru_tend(i, j, k) -
                    dts * mc.cqu(i, j, k) * dp<1, 0>(i, j, k, muu(i, j), rdx, msfux(i, j) / msfuy(i, j)) + c.c1h(k) * mudf_x;
     }
-    if (do_y && j >= vj0 && j < vj1 && !ed.vface(i, j)) {
+    if (do_y && ed.oy && (j == 0 || j == ed.ny) && i < ed.nx) {  // open y boundary face
+      v(i, j, k) = v(i, j, k) + dts * rv_tend(i, j, k);
+    } else if (do_y && j >= vj0 && j < vj1 && !ed.vface(i, j) && i < ed.nx) {
       const real mudf_y = -emdy * (mudf(i, j) - mudf(i, j - 1)) * msfvx_inv(i, j);
       v(i, j, k) = v(i, j, k) + dts * rv_tend(i, j, k) -
                    dts * mc.cqv(i, j, k) * dp<0, 1>(i, j, k, muv(i, j), rdy, msfvy(i, j) / msfvx(i, j)) + c.c1h(k) * mudf_y;
@@ -487,7 +494,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
   const bool do_y = !g.two_d();
   const VCoef c = VCoef::from(b);
   const kern::MoistCoef mc = moist_coef(s);  // calc_cq from the stage state (rk_step_prep)
-  const Edge ed{g.bc_x == BC::Specified, g.bc_y == BC::Specified && do_y, nx, ny};
+  const Edge ed{g.bc_x == BC::Specified, g.bc_y == BC::Specified && do_y, nx, ny, g.open_x(), g.open_y()};
   stage_ = rk_step > 0 ? rk_step : stage_ % 3 + 1;
 
   if (stage_ == 1) {  // WRF small_step_prep (rk_step == 1): reset the external-mode filter
@@ -517,7 +524,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
   vmdump::dump("vm_s0_rk", stage_, {&s.p, &s.al, &t_save, &u_save, &v_save, &s.ph_2, &s.php, &s.alt, &s.cqu},
                {&s.muu, &s.mu_2}, {&b.pb});
 
-  const Range3D uv_range{0, nx, 0, ny, 0, nz};
+  const Range3D uv_range{0, nx + (ed.ox ? 1 : 0), 0, ny + (ed.oy ? 1 : 0), 0, nz};
   for (int it = 1; it <= n_small; ++it) {
     parallel_for(uv_range, KUV{s.u_2.view(), s.v_2.view(), tend.ru_tend.cview(), tend.rv_tend.cview(), s.p.cview(),
                                s.al.cview(), s.alt.cview(), s.ph_2.cview(), s.php.cview(), s.mu_2.cview(),
@@ -541,10 +548,10 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                            t_2save.view(), s.ru_m.view(), s.rv_m.view(), s.muu.cview(), s.muv.cview(),
                                            c, dts, real(b.rdx), real(b.rdy), nz, it, n_small, do_y, b.msftx.view(),
                                            b.msfty.view(), b.msfuy.view(), b.msfvx_inv.view(), ed});
-    if (ed.x)
+    if (ed.x || ed.ox)
       parallel_for(Range3D{0, ny, 0, nz, 0, 1}, KSumEdge{s.ru_m.view(), s.u_2.cview(), u_save.cview(), s.muu.cview(), c,
                                                        b.msfuy.view(), true, nx, ny, it, n_small});
-    if (ed.y)
+    if (ed.y || ed.oy)
       parallel_for(Range3D{0, nx, 0, nz, 0, 1}, KSumEdge{s.rv_m.view(), s.v_2.cview(), v_save.cview(), s.muv.cview(), c,
                                                        b.msfvx_inv.view(), false, nx, ny, it, n_small});
     if (bc_) bc_->update_mu_t(s, tend, dts);  // spec_bdyupdate t, mu, muts

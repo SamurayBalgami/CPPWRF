@@ -40,7 +40,8 @@ BC parse_bc(const std::string& s) {
   if (s == "periodic") return BC::Periodic;
   if (s == "symmetric") return BC::Symmetric;
   if (s == "specified") return BC::Specified;
-  throw std::runtime_error("unknown boundary condition '" + s + "' (periodic|symmetric|specified)");
+  if (s == "open") return BC::Open;
+  throw std::runtime_error("unknown boundary condition '" + s + "' (periodic|symmetric|specified|open)");
 }
 
 // 1-based Fortran-style vector: v(1..n)

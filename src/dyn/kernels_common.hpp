@@ -29,11 +29,18 @@ CPPWRF_HD inline real flux3_pd(real qm2, real qm1, real q0, real qp1, real ua, r
   const real f4 = (real(7.) / real(12.)) * (q0 + qm1) - (real(1.) / real(12.)) * (qp1 + qm2);
   return f4 + up * sgn1(ua) * (real(1.) / real(12.)) * ((qp1 - qm2) - real(3.) * (q0 - qm1));
 }
-// Specified (real-data) lateral boundaries: WRF degrades the horizontal advection near the edges
-// (module_advect_em.F, degrade_xs/xe/ys/ye): 2nd order next to the boundary, 3rd one further in.
+// Specified (real-data) and open lateral boundaries: WRF degrades the horizontal advection near the
+// edges (module_advect_em.F, degrade_xs/xe/ys/ye): 2nd order next to the boundary, 3rd one further in.
 struct Spec {
-  bool x = false, y = false;  // specified in x / y
+  bool x = false, y = false;  // degraded in x / y (specified or open)
   int nx = 0, ny = 0;         // mass points
+  bool ox = false, oy = false;  // open in x / y (WRF open_xs/xe, open_ys/ye): boundary cells are advected
+  // specified only: the outermost row is set from the boundary data (no advection tendency)
+  CPPWRF_HD bool sx() const { return x && !ox; }
+  CPPWRF_HD bool sy() const { return y && !oy; }
+  static Spec of(const Grid& g) {
+    return Spec{g.flat_x(), g.flat_y() && !g.two_d(), g.nx, g.ny, g.open_x(), g.open_y()};
+  }
 };
 // Order of a flux between mass points f-1 and f (field not staggered in this direction).
 CPPWRF_HD inline int ord_face(int f, int n, bool on) {
@@ -48,6 +55,32 @@ CPPWRF_HD inline int ord_mass(int f, int n, bool on) {
   if (f <= 1 || f >= n) return 2;
   if (f == 2 || f == n - 1) return 3;
   return 5;
+}
+
+// Open boundaries, advect_scalar / advect_scalar_pd (module_advect_em.F): the outermost column
+// (row) takes, instead of the flux divergence, rdx*(ub*(q_old(inner)-q_old(outer)) + q*(ru(b)-ru(a)))
+// with the inflow (ub < 0 west, > 0 east) mean normal mass flux of the cell. Returned without sign.
+CPPWRF_HD inline real open_x_scalar(View3<const real> q, View3<const real> qo, View3<const real> ru, real rdx,
+                                    int i, int j, int k, int nx) {
+  if (i == 0) {
+    real ub = real(0.5) * (ru(0, j, k) + ru(1, j, k));
+    ub = ub < real(0) ? ub : real(0);
+    return rdx * (ub * (qo(1, j, k) - qo(0, j, k)) + q(0, j, k) * (ru(1, j, k) - ru(0, j, k)));
+  }
+  real ub = real(0.5) * (ru(nx - 1, j, k) + ru(nx, j, k));
+  ub = ub > real(0) ? ub : real(0);
+  return rdx * (ub * (qo(nx - 1, j, k) - qo(nx - 2, j, k)) + q(nx - 1, j, k) * (ru(nx, j, k) - ru(nx - 1, j, k)));
+}
+CPPWRF_HD inline real open_y_scalar(View3<const real> q, View3<const real> qo, View3<const real> rv, real rdy,
+                                    int i, int j, int k, int ny) {
+  if (j == 0) {
+    real vb = real(0.5) * (rv(i, 0, k) + rv(i, 1, k));
+    vb = vb < real(0) ? vb : real(0);
+    return rdy * (vb * (qo(i, 1, k) - qo(i, 0, k)) + q(i, 0, k) * (rv(i, 1, k) - rv(i, 0, k)));
+  }
+  real vb = real(0.5) * (rv(i, ny - 1, k) + rv(i, ny, k));
+  vb = vb > real(0) ? vb : real(0);
+  return rdy * (vb * (qo(i, ny - 1, k) - qo(i, ny - 2, k)) + q(i, ny - 1, k) * (rv(i, ny, k) - rv(i, ny - 1, k)));
 }
 
 // first-order upwind flux with Courant number cr (advect_scalar_pd flux_upwind)

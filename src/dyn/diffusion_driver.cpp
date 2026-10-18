@@ -61,6 +61,8 @@ DiffusionDriver::DiffusionDriver(const Grid& g, const DiffusionConfig& c)
   p_.periodic_x = g.bc_x == BC::Periodic;
   p_.periodic_y = g.bc_y == BC::Periodic;
   p_.specified = g.specified();
+  p_.open_xs = p_.open_xe = g.open_x();
+  p_.open_ys = p_.open_ye = g.open_y();
 
   if (c.km_opt == 2 || c.km_opt == 3 || (c.n2_diagnostic && c.diff_opt != 0)) {
     bn2_ = Field3(g, S::M, "bn2");

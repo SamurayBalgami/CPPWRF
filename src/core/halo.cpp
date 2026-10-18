@@ -95,12 +95,12 @@ struct HaloMulti {
 void fill_impl(real* p, const Layout& L, const Grid& g, bool ux, bool vy, Parity px, Parity py) {
   const int nk = L.nz;
   {  // x direction over interior rows
-    HaloLine h{p, 1, L.sj, L.sk, g.nx, ux, g.bc_x == BC::Periodic, px == Parity::Odd, g.bc_x == BC::Specified};
+    HaloLine h{p, 1, L.sj, L.sk, g.nx, ux, g.bc_x == BC::Periodic, px == Parity::Odd, g.flat_x()};
     int na = ux ? 8 : 6;
     parallel_for(Range3D{0, L.ny, 0, na, 0, nk}, HaloLineT{h});  // rows as the fastest thread index
   }
   if (!g.two_d()) {  // y direction over full x extent incl. halos -> corners
-    HaloLine h{p, L.sj, 1, L.sk, g.ny, vy, g.bc_y == BC::Periodic, py == Parity::Odd, g.bc_y == BC::Specified};
+    HaloLine h{p, L.sj, 1, L.sk, g.ny, vy, g.bc_y == BC::Periodic, py == Parity::Odd, g.flat_y()};
     int na = vy ? 8 : 6;
     parallel_for(Range3D{0, na, -Grid::halo, L.nx + Grid::halo, 0, nk}, h);
   }
@@ -131,8 +131,8 @@ template <class F> static void fill_many(const std::vector<F*>& v, const Grid& g
     }
     hx.nf = hy.nf = nf;
     hx.nkmax = hy.nkmax = nkmax;
-    hx.n = g.nx; hx.periodic = g.bc_x == BC::Periodic; hx.ydir = false; hx.flat = g.bc_x == BC::Specified;
-    hy.n = g.ny; hy.periodic = g.bc_y == BC::Periodic; hy.ydir = true; hy.flat = g.bc_y == BC::Specified;
+    hx.n = g.nx; hx.periodic = g.bc_x == BC::Periodic; hx.ydir = false; hx.flat = g.flat_x();
+    hy.n = g.ny; hy.periodic = g.bc_y == BC::Periodic; hy.ydir = true; hy.flat = g.flat_y();
     parallel_for(Range3D{0, ntx, 0, 8, 0, nf * nkmax}, hx);
     if (!g.two_d()) parallel_for(Range3D{-Grid::halo, nty + Grid::halo, 0, 8, 0, nf * nkmax}, hy);
   }
