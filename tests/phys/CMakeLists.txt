@@ -183,17 +183,13 @@ add_test(
 )
 set_tests_properties(test_phys_bl_myj PROPERTIES LABELS diff)
 
-
-
-# 
-
-======================================================================
+# ==============================================================================
 # Kain-Fritsch, Noah LSM, Thompson (own CMake projects: tables and column drivers)
 # ==============================================================================
 foreach(scheme cu_kf lsm_noah mp_thompson)
   add_subdirectory(${scheme})
 endforeach()
-=======
+
 # ==============================================================================
 # Noah-MP v5.1.2 Land Surface Model (lsm_noahmp, sf_surface_physics=4)
 # ==============================================================================
