@@ -48,7 +48,7 @@ struct HaloLine {
       const int last = face ? n : n - 1;
       src = i < 0 ? 0 : (i > last ? last : i);
     } else if (periodic) {
-      src = i < 0 ? i + n : (i >= n ? i - n : i);
+      src = ((i % n) + n) % n;  // modular: also for n < halo width (WRF's sequential copy wraps the same way)
     } else if (face) {
       src = i <= 0 ? -i : 2 * n - i;
     } else {
