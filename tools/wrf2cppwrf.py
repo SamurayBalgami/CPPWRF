@@ -3,7 +3,7 @@
 
 Converts WRF namelist.input into CPPWRF-compatible INI configuration files.
 Implements a pure Python (f90nml-free) Fortran namelist parser.
-Supports single-domain execution (maps domain 1, warns on multiple domains).
+Supports single-domain and nested multi-domain (max_dom > 1) execution.
 Categorizes and warns/errors on unsupported or non-standard WRF options.
 
 """
@@ -293,12 +293,64 @@ SUPPORTED_OPTIONS = {
     "v_adv_order": {3: "3rd-order upwind", 4: "4th-order centered"},
 }
 
+SUPPORTED_NOAHMP_OPTIONS = {
+    "dveg": (1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
+    "opt_crs": (1, 2),
+    "opt_btr": (1, 2, 3),
+    "opt_runsrf": (1, 2, 3, 4),
+    "opt_runsub": (1, 2, 3, 4),
+    "opt_sfc": (1, 2),
+    "opt_frz": (1, 2),
+    "opt_inf": (1, 2),
+    "opt_rad": (1, 2, 3),
+    "opt_alb": (1, 2),
+    "opt_snf": (1, 2, 3, 4),
+    "opt_tbot": (1, 2),
+    "opt_stc": (1, 2, 3),
+    "opt_gla": (1, 2),
+    "opt_rsf": (1, 2, 3, 4),
+    "opt_soil": (1,),
+    "opt_pedo": (1,),
+    "opt_crop": (0,),
+    "opt_irr": (0,),
+    "opt_irrm": (0,),
+    "opt_infdv": (0,),
+    "opt_tdrn": (0,),
+    "opt_tksno": (1, 2, 3, 4, 5),
+    "opt_compact": (1, 2),
+    "opt_scf": (1, 2, 3, 4, 5),
+    "opt_wetland": (0, 1, 2),
+}
+
+UNSUPPORTED_PHYSICS_SWITCHES = {
+    "cu_rad_feedback": "Cumulus-radiation feedback",
+    "shcu_physics": "Separate shallow cumulus scheme",
+    "sf_lake_physics": "Lake physics model",
+    "topo_wind": "Topographic wind correction",
+    "slope_rad": "Slope-dependent radiation",
+    "topo_shading": "Topographic shading",
+    "swint_opt": "Shortwave radiation interpolation between radt calls",
+    "fractional_seaice": "Fractional sea-ice treatment",
+    "seaice_thickness_opt": "Variable sea-ice thickness option",
+    "seaice_snowdepth_opt": "Sea-ice snow depth option",
+    "seaice_albedo_opt": "Sea-ice albedo option",
+    "sst_update": "Time-varying SST update",
+    "grav_settling": "Fog/droplet gravitational settling",
+    "ra_call_offset": "Radiation call offset",
+    "isftcflx": "Alternative tropical cyclone surface flux formulation",
+    "iz0tlnd": "Alternative thermal roughness length over land",
+    "shalwater_z0": "Shallow-water roughness formulation",
+    "scm_force_flux": "Single-column model prescribed surface flux",
+    "rdlai2d": "2D LAI read from input (only applicable via Noah-MP dveg)",
+    "usemonalb": "Monthly surface albedo from geogrid",
+}
+
 IGNORED_WRF_OPTIONS = {
     # &time_control
     "frames_per_outfile": "Frame count per NetCDF file handled by output format",
     "debug_level": "WRF internal logging verbosity",
     "input_from_file": "Real case initialization always reads wrfinput",
-    "iofields_filename": "Custom NetCDF field selection",
+    "iofields_filename": "Custom NetCDF field selection (handled by WrfHistory via output.wrf_namelist)",
     "io_form_history": "History output format specified in [output] format",
     "io_form_restart": "Restart format handled via NetCDF",
     "io_form_input": "Input format handled via NetCDF",
@@ -319,7 +371,7 @@ IGNORED_WRF_OPTIONS = {
     # &domains
     "time_step_fract_num": "Combined into time.dt if non-zero",
     "time_step_fract_den": "Combined into time.dt if non-zero",
-    "grid_id": "Domain grid hierarchy identifier (domain 1 only)",
+    "grid_id": "Domain grid hierarchy identifier",
     "parent_id": "Domain nesting parent identifier",
     "i_parent_start": "Domain nesting starting index",
     "j_parent_start": "Domain nesting starting index",
@@ -329,18 +381,20 @@ IGNORED_WRF_OPTIONS = {
     "smooth_option": "Nesting boundary smoothing",
     "num_metgrid_levels": "Metgrid vertical levels used by real.exe",
     "num_metgrid_soil_levels": "Metgrid soil levels used by real.exe",
-    "e_we": "Real case grid dimension read directly from wrfinput_d01",
-    "e_sn": "Real case grid dimension read directly from wrfinput_d01",
-    "e_vert": "Real case grid dimension read directly from wrfinput_d01",
+    "e_we": "Real case grid dimension read directly from wrfinput",
+    "e_sn": "Real case grid dimension read directly from wrfinput",
+    "e_vert": "Real case grid dimension read directly from wrfinput",
+    "s_we": "Domain starting index in X (always 1)",
+    "s_sn": "Domain starting index in Y (always 1)",
+    "s_vert": "Domain starting index in Z (always 1)",
     "p_top_requested": "Real case p_top read directly from wrfinput_d01",
-    "dx": "Real case grid spacing read directly from wrfinput_d01",
-    "dy": "Real case grid spacing read directly from wrfinput_d01",
+    "dx": "Real case grid spacing read directly from wrfinput",
+    "dy": "Real case grid spacing read directly from wrfinput",
     # &physics
     "ifsnow": "Snow effects flag (used by the slab LSM only)",
     "num_soil_layers": "4 soil layers (Noah, Noah-MP)",
     # &dynamics
     "base_temp": "Base potential temperature (read from sounding or wrfinput)",
-    "mix_full_fields": "Diffusion on full fields",
     "hybrid_opt": "Real case hybrid coordinate flag read directly from wrfinput_d01 global attribute",
     "h_sca_adv_order": "Scalar horizontal advection order (coupled with h_mom_adv_order in CPPWRF)",
     "v_sca_adv_order": "Scalar vertical advection order (coupled with v_mom_adv_order in CPPWRF)",
@@ -350,6 +404,7 @@ IGNORED_WRF_OPTIONS = {
     "diff_6th_factor": "Sixth-order diffusion factor (default 0.12)",
     # &bdy_control
     "spec_bdy_width": "Real case lateral boundary width (must be 5; read from wrfbdy_d01)",
+    "nested": "Child domain nested lateral boundary flag (handled automatically for [d02]..[d0N])",
     # &fdda, &grib2, &namelist_quilt
     "nio_tasks_per_group": "WRF quilt I/O server",
     "nio_groups": "WRF quilt I/O server",
@@ -395,6 +450,7 @@ class WrfTranslator:
         self.errors: List[str] = []
         self.notices: List[str] = []
         self.used_keys: Set[Tuple[str, str]] = set()
+        self._max_dom: int = 1
 
     def warn(self, msg: str):
         self.warnings.append(msg)
@@ -412,13 +468,29 @@ class WrfTranslator:
     def notice(self, msg: str):
         self.notices.append(msg)
 
+    def get_opt_list(self, group: str, key: str) -> List[Any]:
+        grp = self.nml.get(group, {})
+        self.used_keys.add((group, key))
+        return grp.get(key, [])
+
+    def get_dom_opt(self, group: str, key: str, dom_idx: int, default: Any = None,
+                    fallback_d0: bool = True) -> Any:
+        vals = self.get_opt_list(group, key)
+        if not vals:
+            return default
+        if dom_idx < len(vals):
+            return vals[dom_idx]
+        if fallback_d0:
+            return vals[0]
+        return default
+
     def get_opt(self, group: str, key: str, default: Any = None) -> Any:
         grp = self.nml.get(group, {})
         self.used_keys.add((group, key))
         vals = grp.get(key, [])
         if not vals:
             return default
-        if len(vals) > 1:
+        if len(vals) > 1 and self._max_dom == 1:
             self.warn(f"Option &{group}.{key} has {len(vals)} values {vals}; selecting domain 1 value ({vals[0]}).")
         return vals[0]
 
@@ -432,13 +504,16 @@ class WrfTranslator:
             "run": {},
         }
 
-        # 1. Check for multiple domains in &domains
-        max_dom = self.get_opt("domains", "max_dom", 1)
-        if isinstance(max_dom, int) and max_dom > 1:
-            self.warn(f"Multiple domains specified in namelist (max_dom = {max_dom}). CPPWRF supports domain 1 only.")
+        # 1. Determine max_dom in &domains
+        max_dom_raw = self.get_dom_opt("domains", "max_dom", 0, 1)
+        if not isinstance(max_dom_raw, int) or max_dom_raw < 1:
+            self.error(f"WRF max_dom = {max_dom_raw} is invalid; max_dom must be >= 1.")
+            max_dom = 1
+        else:
+            max_dom = max_dom_raw
+        self._max_dom = max_dom
 
         # 2. Determine Case
-        ideal_grp = self.nml.get("ideal", {})
         ideal_case = self.get_opt("ideal", "ideal_case", None)
         specified = self.get_opt("bdy_control", "specified", False)
 
@@ -542,8 +617,8 @@ class WrfTranslator:
             else:
                 sections["real"]["dir"] = r_dir_abs
 
-            # In configs/real_p1..p4, wrfinput/wrfbdy were written explicitly
-            if self.explicit_files or has_physics_suite:
+            # In configs/real_p1..p4 and nested configs, wrfinput/wrfbdy are written explicitly
+            if self.explicit_files or has_physics_suite or max_dom > 1:
                 sections["real"]["wrfinput"] = "wrfinput_d01"
                 sections["real"]["wrfbdy"] = "wrfbdy_d01"
 
@@ -641,8 +716,17 @@ class WrfTranslator:
         sections["dyn"]["kvdif"] = int(kvdif) if isinstance(kvdif, (int, float)) and float(kvdif).is_integer() else kvdif
 
         w_damping = self.get_opt("dynamics", "w_damping", 0)
-        if w_damping != 0:
+        if w_damping not in (0, 1):
+            self.error(f"WRF w_damping = {w_damping} is not supported; CPPWRF supports 0 and 1.")
+        elif w_damping != 0:
             sections["dyn"]["w_damping"] = w_damping
+
+        if self.has_opt("dynamics", "w_crit_cfl"):
+            w_crit_cfl = self.get_opt("dynamics", "w_crit_cfl", 1.0)
+            if float(w_crit_cfl) <= 0.0:
+                self.error(f"WRF w_crit_cfl = {w_crit_cfl} must be > 0.")
+            elif float(w_crit_cfl) != 1.0:
+                sections["dyn"]["w_crit_cfl"] = w_crit_cfl
 
         damp_opt = self.get_opt("dynamics", "damp_opt", 0)
         if damp_opt != 0:
@@ -671,27 +755,66 @@ class WrfTranslator:
                           + ", ".join(str(k) for k in sorted(SUPPORTED_OPTIONS["km_opt"])) + ".")
 
         c_s = self.get_opt("dynamics", "c_s", None)
-        if km_opt in (3, 4) and c_s is not None:
+        if c_s is not None and (km_opt in (3, 4) or float(c_s) != 0.25):
             sections["dyn"]["c_s"] = c_s
-        if diff_opt != 0:  # mix_isotropic / mix_upper_bound (calculate_km_kh)
-            for key in ("mix_isotropic", "mix_upper_bound"):
+
+        c_k = self.get_opt("dynamics", "c_k", None)
+        if c_k is not None and (km_opt == 2 or float(c_k) != 0.15):
+            sections["dyn"]["c_k"] = c_k
+
+        for key in ("mix_isotropic", "mix_upper_bound"):
+            if self.has_opt("dynamics", key):
                 val = self.get_opt("dynamics", key, None)
-                if val is not None:
+                if key == "mix_isotropic" and val not in (0, 1):
+                    self.error(f"WRF mix_isotropic = {val} is not supported; CPPWRF supports 0 and 1.")
+                elif key == "mix_upper_bound" and float(val) <= 0.0:
+                    self.error(f"WRF mix_upper_bound = {val} must be > 0.")
+                elif diff_opt != 0 or (key == "mix_isotropic" and val != 0) or (key == "mix_upper_bound" and float(val) != 0.1):
                     sections["dyn"][key] = val
 
+        if self.has_opt("dynamics", "mix_full_fields"):
+            mix_ff = self.get_opt("dynamics", "mix_full_fields", False)
+            if bool(mix_ff):
+                sections["dyn"]["mix_full_fields"] = True
+
+        for tke_key, def_v in (("tke_drag_coefficient", 0.0), ("tke_heat_flux", 0.0), ("tke_upper_bound", 1000.0)):
+            if self.has_opt("dynamics", tke_key):
+                val = self.get_opt("dynamics", tke_key, def_v)
+                if tke_key == "tke_upper_bound" and float(val) <= 0.0:
+                    self.error(f"WRF tke_upper_bound = {val} must be > 0.")
+                elif float(val) != def_v:
+                    sections["dyn"][tke_key] = val
+
+        for mix_off_key in ("moist_mix2_off", "scalar_mix2_off", "tke_mix2_off",
+                            "moist_mix6_off", "scalar_mix6_off", "tke_mix6_off"):
+            if self.has_opt("dynamics", mix_off_key):
+                val = self.get_opt("dynamics", mix_off_key, False)
+                if bool(val):
+                    sections["dyn"][mix_off_key] = True
+
         diff_6th_opt = self.get_opt("dynamics", "diff_6th_opt", 0)
-        if diff_6th_opt != 0:
+        if diff_6th_opt not in (0, 1, 2):
+            self.error(f"WRF diff_6th_opt = {diff_6th_opt} is not supported; CPPWRF supports 0, 1, and 2.")
+        elif diff_6th_opt != 0:
             sections["dyn"]["diff_6th_opt"] = diff_6th_opt
             diff_6th_factor = self.get_opt("dynamics", "diff_6th_factor", 0.12)
+            if float(diff_6th_factor) <= 0.0:
+                self.error(f"WRF diff_6th_factor = {diff_6th_factor} must be > 0.")
             sections["dyn"]["diff_6th_factor"] = diff_6th_factor
 
         moist_adv_opt = self.get_opt("dynamics", "moist_adv_opt", 1)
-        if moist_adv_opt is not None and case_name != "hill2d":
+        if moist_adv_opt not in (0, 1):
+            self.error(f"WRF moist_adv_opt = {moist_adv_opt} is not supported; CPPWRF supports 0 (simple) and 1 (positive-definite).")
+        elif moist_adv_opt is not None and case_name != "hill2d":
             sections["dyn"]["moist_adv_opt"] = moist_adv_opt
 
-        # scalar_adv_opt: included when physics suite is enabled, or when != 0 for non-dry runs
+        # scalar_adv_opt: included when physics suite is enabled, when explicitly 0, or when != 0 for non-dry ideal runs
         scalar_adv_opt = self.get_opt("dynamics", "scalar_adv_opt", 0)
-        if has_physics_suite or (scalar_adv_opt != 0 and case_name in ("quarter_ss",)):
+        if scalar_adv_opt not in (0, 1):
+            self.error(f"WRF scalar_adv_opt = {scalar_adv_opt} is not supported; CPPWRF supports 0 (simple) and 1 (positive-definite).")
+        elif self.has_opt("dynamics", "scalar_adv_opt") and scalar_adv_opt == 0:
+            sections["dyn"]["scalar_adv_opt"] = 0
+        elif has_physics_suite or (scalar_adv_opt != 0 and case_name in ("quarter_ss",)):
             sections["dyn"]["scalar_adv_opt"] = scalar_adv_opt if scalar_adv_opt != 0 else 1
 
         prandtl = self.get_opt("dynamics", "prandtl", None)
@@ -711,12 +834,51 @@ class WrfTranslator:
             sections["dyn"]["h_adv_order"] = h_adv
             if h_adv not in SUPPORTED_OPTIONS["h_adv_order"]:
                 self.error(f"WRF h_mom_adv_order = {h_adv} is not supported (5 or 6 only).")
+        if self.has_opt("dynamics", "h_sca_adv_order"):
+            h_sca = self.get_opt("dynamics", "h_sca_adv_order", h_adv)
+            if h_sca != h_adv:
+                self.error(f"WRF h_sca_adv_order = {h_sca} differs from h_mom_adv_order = {h_adv}; "
+                           "CPPWRF uses a single horizontal advection order (h_adv_order).")
 
         v_adv = self.get_opt("dynamics", "v_mom_adv_order", 3)
         if v_adv != 3 or case_name in ("quarter_ss",):
             sections["dyn"]["v_adv_order"] = v_adv
             if v_adv not in SUPPORTED_OPTIONS["v_adv_order"]:
                 self.error(f"WRF v_mom_adv_order = {v_adv} is not supported (3 or 4 only).")
+        if self.has_opt("dynamics", "v_sca_adv_order"):
+            v_sca = self.get_opt("dynamics", "v_sca_adv_order", v_adv)
+            if v_sca != v_adv:
+                self.error(f"WRF v_sca_adv_order = {v_sca} differs from v_mom_adv_order = {v_adv}; "
+                           "CPPWRF uses a single vertical advection order (v_adv_order).")
+
+        for ac_key, def_v in (("epssm", 0.1), ("smdiv", 0.1), ("emdiv", 0.01)):
+            if self.has_opt("dynamics", ac_key):
+                val = self.get_opt("dynamics", ac_key, def_v)
+                if float(val) != def_v:
+                    sections["dyn"][ac_key] = val
+
+        if self.has_opt("dynamics", "etac"):
+            etac = self.get_opt("dynamics", "etac", 0.2)
+            if float(etac) <= 0.0 or float(etac) >= 1.0:
+                self.error(f"WRF etac = {etac} must satisfy 0 < etac < 1.")
+            elif float(etac) != 0.2:
+                sections["dyn"]["etac"] = etac
+
+        if self.has_opt("dynamics", "hybrid_opt"):
+            hybrid_opt = self.get_opt("dynamics", "hybrid_opt", 0)
+            if hybrid_opt not in (0, 1, 2):
+                self.error(f"WRF hybrid_opt = {hybrid_opt} is not supported; CPPWRF supports 0, 1, and 2.")
+            elif case_name != "real" and hybrid_opt != 0:
+                sections["dyn"]["hybrid_opt"] = hybrid_opt
+
+        if self.has_opt("dynamics", "hypsometric_opt"):
+            hypso = self.get_opt("dynamics", "hypsometric_opt", 2 if case_name == "real" else 1)
+            if hypso not in (1, 2):
+                self.error(f"WRF hypsometric_opt = {hypso} is not supported; CPPWRF supports 1 and 2.")
+            elif case_name != "real" and hypso != 1:
+                sections["dyn"]["hypsometric_opt"] = hypso
+            elif case_name == "real" and hypso != 2:
+                self.error(f"WRF hypsometric_opt = {hypso} is not supported for real-data runs (real.exe uses 2).")
 
         # WRF 4.8 options without a CPPWRF implementation
         if self.get_opt("time_control", "iau", 0):
@@ -746,8 +908,11 @@ class WrfTranslator:
             self.warn("WRF chemistry advection (chem_adv_opt) is not supported.")
 
         tke_adv = self.get_opt("dynamics", "tke_adv_opt", None)
-        if tke_adv is not None and km_opt == 2:
-            sections["dyn"]["tke_adv_opt"] = tke_adv
+        if tke_adv is not None:
+            if tke_adv not in (0, 1):
+                self.error(f"WRF tke_adv_opt = {tke_adv} is not supported; CPPWRF supports 0 and 1.")
+            elif km_opt == 2 or tke_adv != 1:
+                sections["dyn"]["tke_adv_opt"] = tke_adv
 
         # 10. Moisture Species [moist]
         if case_name == "real":
@@ -784,6 +949,10 @@ class WrfTranslator:
                 sections["phys"]["ra_lw_physics"] = ra_lw
                 sections["phys"]["ra_sw_physics"] = ra_sw
 
+                if (ra_lw == 4 or ra_sw == 4) and (ra_lw != 4 or ra_sw != 4):
+                    self.error(f"CPPWRF RRTMG requires both ra_lw_physics = 4 and ra_sw_physics = 4 "
+                               f"(got ra_lw_physics = {ra_lw}, ra_sw_physics = {ra_sw}).")
+
                 if ra_lw != 0 or ra_sw != 0 or radt != 0:
                     # as given: stepra = nint(radt*60/dt) and calc_coszen at xtime + radt/2 use it
                     sections["phys"]["radt"] = radt
@@ -791,6 +960,14 @@ class WrfTranslator:
                     sections["phys"]["bldt"] = bldt
                 if cudt > 0:
                     sections["phys"]["cudt"] = cudt
+
+                if sf_surface != 0:
+                    num_soil = self.get_opt("physics", "num_soil_layers", 4)
+                    if num_soil != 4:
+                        self.error(f"WRF num_soil_layers = {num_soil} is not supported with "
+                                   f"sf_surface_physics = {sf_surface}; CPPWRF requires 4 soil layers.")
+                    else:
+                        sections["phys"]["num_soil_layers"] = 4
 
                 tbl_dir = self.table_dir
                 if not tbl_dir:
@@ -801,8 +978,11 @@ class WrfTranslator:
                     if self.namelist_path:
                         candidates.append(os.path.join(os.path.dirname(self.namelist_path), "wrf_run"))
                         candidates.append(os.path.dirname(self.namelist_path))
+                    req_tbls = ["LANDUSE.TBL"]
+                    if sf_surface == 4:
+                        req_tbls.append("NoahmpTable.TBL")
                     for cand in candidates:
-                        if cand and os.path.exists(os.path.join(cand, "LANDUSE.TBL")):
+                        if cand and all(os.path.exists(os.path.join(cand, t)) for t in req_tbls):
                             tbl_dir = cand
                             break
                     if not tbl_dir:
@@ -812,6 +992,10 @@ class WrfTranslator:
                 # WRF 4.8 turbulent orographic form drag of sfclayrev (needs VAR in wrfinput)
                 if self.get_opt("physics", "kim_tofd", False):
                     sections["phys"]["kim_tofd"] = True
+                    tofd_factor = self.get_opt("physics", "tofd_factor", 0.003)
+                    if tofd_factor != 0.003:
+                        sections["phys"]["tofd_factor"] = tofd_factor
+                elif self.has_opt("physics", "tofd_factor"):
                     tofd_factor = self.get_opt("physics", "tofd_factor", 0.003)
                     if tofd_factor != 0.003:
                         sections["phys"]["tofd_factor"] = tofd_factor
@@ -842,20 +1026,137 @@ class WrfTranslator:
                             opt_run_val = self.get_opt(grp_nm, "opt_run")
                             sections["phys"].setdefault("opt_runsrf", opt_run_val)
                             sections["phys"].setdefault("opt_runsub", opt_run_val)
+                    for nk, allowed in SUPPORTED_NOAHMP_OPTIONS.items():
+                        if nk in sections["phys"] and sections["phys"][nk] not in allowed:
+                            self.error(f"WRF Noah-MP {nk} = {sections['phys'][nk]} is not supported; "
+                                       f"CPPWRF supports {list(allowed)}.")
+                    if "soiltstep" in sections["phys"] and float(sections["phys"]["soiltstep"]) < 0.0:
+                        self.error(f"WRF Noah-MP soiltstep = {sections['phys']['soiltstep']} must be >= 0.")
+
+        # Additional microphysics / cumulus / PBL / surface / radiation options in [phys]
+        if self.has_opt("physics", "mp_tend_lim"):
+            mp_tend_lim = self.get_opt("physics", "mp_tend_lim", 10.0)
+            if float(mp_tend_lim) <= 0.0:
+                self.error(f"WRF mp_tend_lim = {mp_tend_lim} must be > 0.")
+            elif float(mp_tend_lim) != 10.0:
+                sections.setdefault("phys", {})["mp_tend_lim"] = mp_tend_lim
+
+        if self.has_opt("physics", "hail_opt"):
+            hail_opt = self.get_opt("physics", "hail_opt", 0)
+            if hail_opt not in (0, 1):
+                self.error(f"WRF hail_opt = {hail_opt} is not supported; CPPWRF supports 0 and 1.")
+            elif hail_opt != 0:
+                sections.setdefault("phys", {})["hail_opt"] = hail_opt
+
+        if self.has_opt("physics", "use_mp_re"):
+            use_mp_re = self.get_opt("physics", "use_mp_re", 1)
+            if use_mp_re not in (0, 1):
+                self.error(f"WRF use_mp_re = {use_mp_re} is not supported; CPPWRF supports 0 and 1.")
+            elif use_mp_re != 1:
+                sections.setdefault("phys", {})["use_mp_re"] = use_mp_re
+
+        if self.has_opt("physics", "ishallow"):
+            ishallow = self.get_opt("physics", "ishallow", 0)
+            if ishallow not in (0, 1):
+                self.error(f"WRF ishallow = {ishallow} is not supported; CPPWRF supports 0 and 1.")
+            elif ishallow == 1:
+                if cu_physics != 3:
+                    self.error(f"WRF ishallow = 1 requires cu_physics = 3 (Grell-Freitas); got cu_physics = {cu_physics}.")
+                sections.setdefault("phys", {})["ishallow"] = 1
+
+        if self.has_opt("physics", "clos_choice"):
+            clos_choice = self.get_opt("physics", "clos_choice", 0)
+            if not isinstance(clos_choice, int) or clos_choice < 0 or clos_choice > 16:
+                self.error(f"WRF clos_choice = {clos_choice} is not supported; CPPWRF supports 0..16.")
+            elif clos_choice != 0:
+                sections.setdefault("phys", {})["clos_choice"] = clos_choice
+
+        if self.has_opt("physics", "kfeta_trigger"):
+            kfeta_trigger = self.get_opt("physics", "kfeta_trigger", 1)
+            if kfeta_trigger not in (1, 3):
+                self.error(f"WRF kfeta_trigger = {kfeta_trigger} is not supported; CPPWRF supports 1 and 3.")
+            elif kfeta_trigger != 1:
+                sections.setdefault("phys", {})["kfeta_trigger"] = kfeta_trigger
+
+        if self.has_opt("physics", "convtrans_avglen_m"):
+            convtrans = self.get_opt("physics", "convtrans_avglen_m", 30.0)
+            if float(convtrans) <= 0.0:
+                self.error(f"WRF convtrans_avglen_m = {convtrans} must be > 0.")
+            elif float(convtrans) != 30.0:
+                sections.setdefault("phys", {})["convtrans_avglen_m"] = convtrans
+
+        if self.has_opt("physics", "ysu_topdown_pblmix"):
+            ysu_td = self.get_opt("physics", "ysu_topdown_pblmix", 1)
+            if ysu_td not in (0, 1):
+                self.error(f"WRF ysu_topdown_pblmix = {ysu_td} is not supported; CPPWRF supports 0 and 1.")
+            elif ysu_td != 1:
+                sections.setdefault("phys", {})["ysu_topdown_pblmix"] = ysu_td
+
+        if self.has_opt("physics", "rdmaxalb"):
+            rdmaxalb = self.get_opt("physics", "rdmaxalb", True)
+            if not bool(rdmaxalb):
+                sections.setdefault("phys", {})["rdmaxalb"] = False
 
         # surface fluxes (surface layer, LSM and the diffusion's surface flux), cloud fractions in RRTMG
         isfflx = self.get_opt("physics", "isfflx", 1)
-        if isfflx != 1 and (has_physics_suite or diff_opt == 2):  # used by these only
+        if isfflx not in (0, 1):
+            self.error(f"WRF isfflx = {isfflx} is not supported; CPPWRF supports 0 and 1.")
+        elif isfflx != 1 and (has_physics_suite or diff_opt == 2):  # used by these only
             sections.setdefault("phys", {})["isfflx"] = isfflx
+
         icloud = self.get_opt("physics", "icloud", 1)
-        if ra_lw != 0 or ra_sw != 0:
-            if icloud not in (0, 1):
-                self.error(f"WRF icloud = {icloud} is not supported; CPPWRF supports icloud 0 and 1.")
-            elif icloud != 1:
-                sections.setdefault("phys", {})["icloud"] = icloud
+        if icloud not in (0, 1):
+            self.error(f"WRF icloud = {icloud} is not supported; CPPWRF supports icloud 0 and 1.")
+        elif (ra_lw != 0 or ra_sw != 0) and icloud != 1:
+            sections.setdefault("phys", {})["icloud"] = icloud
+
+        if self.has_opt("physics", "cldovrlp"):
+            cldovrlp = self.get_opt("physics", "cldovrlp", 2)
+            if cldovrlp not in (1, 2, 3, 4, 5):
+                self.error(f"WRF cldovrlp = {cldovrlp} is not supported; CPPWRF supports 1..5.")
+            elif cldovrlp != 2:
+                sections.setdefault("phys", {})["cldovrlp"] = cldovrlp
+
+        if self.has_opt("physics", "idcor"):
+            idcor = self.get_opt("physics", "idcor", 0)
+            if idcor not in (0, 1):
+                self.error(f"WRF idcor = {idcor} is not supported; CPPWRF supports 0 and 1.")
+            elif idcor != 0:
+                sections.setdefault("phys", {})["idcor"] = idcor
+
+        if self.has_opt("physics", "o3input"):
+            o3input = self.get_opt("physics", "o3input", 2)
+            if o3input not in (0, 2):
+                self.error(f"WRF o3input = {o3input} is not supported; CPPWRF supports 0 and 2.")
+            elif o3input != 2:
+                sections.setdefault("phys", {})["o3input"] = o3input
+
+        if self.has_opt("physics", "ghg_input"):
+            ghg_input = self.get_opt("physics", "ghg_input", 1)
+            if ghg_input not in (0, 1):
+                self.error(f"WRF ghg_input = {ghg_input} is not supported; CPPWRF supports 0 and 1.")
+            elif ghg_input != 1:
+                sections.setdefault("phys", {})["ghg_input"] = ghg_input
+
+        if self.has_opt("physics", "aer_opt"):
+            aer_opt = self.get_opt("physics", "aer_opt", 0)
+            if aer_opt != 0:
+                self.error(f"WRF aer_opt = {aer_opt} is not supported; CPPWRF supports aer_opt = 0 only.")
+
         sf_urban = self.get_opt("physics", "sf_urban_physics", 0)
         if sf_urban != 0:
             self.error(f"WRF sf_urban_physics = {sf_urban} (urban canopy) is not supported by CPPWRF.")
+
+        for unsup_key, desc in UNSUPPORTED_PHYSICS_SWITCHES.items():
+            if self.has_opt("physics", unsup_key):
+                val = self.get_opt("physics", unsup_key, 0)
+                if val not in (0, False):
+                    self.error(f"WRF {unsup_key} = {val} ({desc}) is not supported by CPPWRF.")
+
+        if self.has_opt("bdy_control", "spec_bdy_width"):
+            spec_bdy = self.get_opt("bdy_control", "spec_bdy_width", 5)
+            if case_name == "real" and max_dom == 1 and spec_bdy != 5:
+                self.error(f"WRF spec_bdy_width = {spec_bdy} is not supported; CPPWRF requires spec_bdy_width = 5.")
 
         # 12. Output Section [output]
         sections["output"] = {}
@@ -885,7 +1186,246 @@ class WrfTranslator:
                 "interval": int(restart_m * 60)
             }
 
-        # 14. Check for unused / ignored options
+        # 14. Nested Domains [domains] and [d02]..[d0N]
+        for mv_key in ("vortex_interval", "max_vortex_speed", "corral_dist", "track_level",
+                       "time_to_move", "move_id", "move_interval", "move_cd_x", "move_cd_y"):
+            if self.has_opt("domains", mv_key):
+                vals = self.get_opt_list("domains", mv_key)
+                if any(v not in (0, False) for v in vals):
+                    self.error(f"WRF moving nest option &domains.{mv_key} = {vals} is not supported by CPPWRF.")
+
+        for vr_key in ("vert_refine_method", "vert_refine_fact"):
+            if self.has_opt("domains", vr_key):
+                vals = self.get_opt_list("domains", vr_key)
+                if any((v not in (0, 1) if vr_key == "vert_refine_fact" else v != 0) for v in vals):
+                    self.error(f"WRF vertical nest refinement (&domains.{vr_key} = {vals}) is not supported by CPPWRF.")
+
+        if max_dom > 1:
+            if case_name != "real":
+                self.error(f"Nested domains (max_dom = {max_dom}) are only supported for real-data cases (got '{case_name}').")
+
+            feedback = self.get_dom_opt("domains", "feedback", 0, 1)
+            if feedback not in (0, 1):
+                self.error(f"WRF feedback = {feedback} is not supported; CPPWRF supports 0 (one-way) and 1 (two-way).")
+
+            smooth_option = self.get_dom_opt("domains", "smooth_option", 0, 0)
+            if smooth_option not in (0, 1, 2):
+                self.error(f"WRF smooth_option = {smooth_option} is not supported; CPPWRF supports 0, 1, and 2.")
+
+            sections["domains"] = {
+                "max_dom": max_dom,
+                "feedback": feedback,
+                "smooth_option": smooth_option,
+            }
+
+            if self.has_opt("domains", "save_topo_from_real"):
+                save_topo = self.get_dom_opt("domains", "save_topo_from_real", 0, 1)
+                if save_topo not in (0, 1):
+                    self.error(f"WRF save_topo_from_real = {save_topo} is not supported; CPPWRF supports 0 and 1.")
+                elif save_topo != 1:
+                    sections["domains"]["save_topo_from_real"] = save_topo
+
+            if self.has_opt("domains", "blend_width"):
+                blend_w = self.get_dom_opt("domains", "blend_width", 0, 5)
+                if not isinstance(blend_w, int) or blend_w < 0:
+                    self.error(f"WRF blend_width = {blend_w} must be an integer >= 0.")
+                elif blend_w != 5:
+                    sections["domains"]["blend_width"] = blend_w
+
+            if self.has_opt("bdy_control", "spec_bdy_width"):
+                spec_bdy = self.get_dom_opt("bdy_control", "spec_bdy_width", 0, 5)
+                if not isinstance(spec_bdy, int) or spec_bdy < 1:
+                    self.error(f"WRF spec_bdy_width = {spec_bdy} must be an integer >= 1.")
+                elif spec_bdy != 5:
+                    sections["domains"]["spec_bdy_width"] = spec_bdy
+
+            if self.has_opt("bdy_control", "nested"):
+                self.get_opt_list("bdy_control", "nested")
+
+            dom_dt: List[float] = [dt_val] * max_dom
+            dom_out_iv: List[int] = [out_interval] * max_dom
+            dom_diag_iv: List[int] = [diag_interval] * max_dom
+
+            for d in range(max_dom):
+                dom_id = d + 1
+                tag = f"d{dom_id:02d}"
+                if self.has_opt("time_control", "input_from_file"):
+                    inp_file = self.get_dom_opt("time_control", "input_from_file", d, True)
+                    if not inp_file:
+                        self.error(f"Domain {tag}: input_from_file = .false. is not supported; CPPWRF requires wrfinput_{tag}.")
+
+                if d == 0:
+                    continue
+
+                parent_id = self.get_dom_opt("domains", "parent_id", d, dom_id - 1, fallback_d0=False)
+                if not isinstance(parent_id, int) or parent_id < 1 or parent_id >= dom_id:
+                    self.error(f"Domain {tag}: invalid parent_id = {parent_id} (must satisfy 1 <= parent_id < {dom_id}).")
+                    p_idx = 0
+                else:
+                    p_idx = parent_id - 1
+
+                i_start = self.get_dom_opt("domains", "i_parent_start", d, None, fallback_d0=False)
+                j_start = self.get_dom_opt("domains", "j_parent_start", d, None, fallback_d0=False)
+                grid_ratio = self.get_dom_opt("domains", "parent_grid_ratio", d, None, fallback_d0=False)
+                ts_ratio = self.get_dom_opt("domains", "parent_time_step_ratio", d, grid_ratio, fallback_d0=False)
+
+                if i_start is None or not isinstance(i_start, int) or i_start < 2:
+                    self.error(f"Domain {tag}: i_parent_start = {i_start} is invalid (must be an integer >= 2).")
+                    if not isinstance(i_start, int) or i_start < 1:
+                        i_start = 2
+                if j_start is None or not isinstance(j_start, int) or j_start < 2:
+                    self.error(f"Domain {tag}: j_parent_start = {j_start} is invalid (must be an integer >= 2).")
+                    if not isinstance(j_start, int) or j_start < 1:
+                        j_start = 2
+                if grid_ratio is None or not isinstance(grid_ratio, int) or grid_ratio < 2:
+                    self.error(f"Domain {tag}: parent_grid_ratio = {grid_ratio} is invalid (must be an integer >= 2).")
+                    if not isinstance(grid_ratio, int) or grid_ratio < 1:
+                        grid_ratio = 3
+                if ts_ratio is None or not isinstance(ts_ratio, int) or ts_ratio < 1:
+                    self.error(f"Domain {tag}: parent_time_step_ratio = {ts_ratio} is invalid (must be an integer >= 1).")
+                    if not isinstance(ts_ratio, int) or ts_ratio < 1:
+                        ts_ratio = grid_ratio
+
+                # Validate child geometry against parent domain when dimensions are provided in &domains
+                if self.has_opt("domains", "e_we"):
+                    c_e_we = self.get_dom_opt("domains", "e_we", d, None, fallback_d0=False)
+                    p_e_we = self.get_dom_opt("domains", "e_we", p_idx, None, fallback_d0=False)
+                    c_s_we = self.get_dom_opt("domains", "s_we", d, 1)
+                    p_s_we = self.get_dom_opt("domains", "s_we", p_idx, 1)
+                    if c_e_we is not None and p_e_we is not None:
+                        c_nx = c_e_we - c_s_we
+                        p_nx = p_e_we - p_s_we
+                        if c_nx <= 0:
+                            self.error(f"Domain {tag}: invalid e_we = {c_e_we} (must be > {c_s_we}).")
+                        elif c_nx % grid_ratio != 0:
+                            self.error(f"Domain {tag}: (e_we - s_we) = {c_nx} is not divisible by parent_grid_ratio = {grid_ratio}.")
+                        elif i_start + c_nx // grid_ratio - 1 > p_nx:
+                            self.error(f"Domain {tag}: nest X extent (i_parent_start={i_start}, nx={c_nx}, ratio={grid_ratio}) "
+                                       f"exceeds parent domain d{parent_id:02d} (nx={p_nx}).")
+
+                if self.has_opt("domains", "e_sn"):
+                    c_e_sn = self.get_dom_opt("domains", "e_sn", d, None, fallback_d0=False)
+                    p_e_sn = self.get_dom_opt("domains", "e_sn", p_idx, None, fallback_d0=False)
+                    c_s_sn = self.get_dom_opt("domains", "s_sn", d, 1)
+                    p_s_sn = self.get_dom_opt("domains", "s_sn", p_idx, 1)
+                    if c_e_sn is not None and p_e_sn is not None:
+                        c_ny = c_e_sn - c_s_sn
+                        p_ny = p_e_sn - p_s_sn
+                        if c_ny <= 0:
+                            self.error(f"Domain {tag}: invalid e_sn = {c_e_sn} (must be > {c_s_sn}).")
+                        elif c_ny % grid_ratio != 0:
+                            self.error(f"Domain {tag}: (e_sn - s_sn) = {c_ny} is not divisible by parent_grid_ratio = {grid_ratio}.")
+                        elif j_start + c_ny // grid_ratio - 1 > p_ny:
+                            self.error(f"Domain {tag}: nest Y extent (j_parent_start={j_start}, ny={c_ny}, ratio={grid_ratio}) "
+                                       f"exceeds parent domain d{parent_id:02d} (ny={p_ny}).")
+
+                if self.has_opt("domains", "e_vert"):
+                    c_ev = self.get_dom_opt("domains", "e_vert", d, None, fallback_d0=False)
+                    p_ev = self.get_dom_opt("domains", "e_vert", p_idx, None, fallback_d0=False)
+                    if c_ev is not None and p_ev is not None and c_ev != p_ev:
+                        self.error(f"Domain {tag}: e_vert = {c_ev} must match parent domain e_vert = {p_ev}.")
+
+                if self.has_opt("domains", "dx"):
+                    c_dx = self.get_dom_opt("domains", "dx", d, None, fallback_d0=False)
+                    p_dx = self.get_dom_opt("domains", "dx", p_idx, None, fallback_d0=False)
+                    if c_dx is not None and p_dx is not None and abs(float(c_dx) * grid_ratio - float(p_dx)) > 1e-2:
+                        self.error(f"Domain {tag}: dx = {c_dx} is inconsistent with parent dx = {p_dx} and parent_grid_ratio = {grid_ratio}.")
+
+                if self.has_opt("domains", "dy"):
+                    c_dy = self.get_dom_opt("domains", "dy", d, None, fallback_d0=False)
+                    p_dy = self.get_dom_opt("domains", "dy", p_idx, None, fallback_d0=False)
+                    if c_dy is not None and p_dy is not None and abs(float(c_dy) * grid_ratio - float(p_dy)) > 1e-2:
+                        self.error(f"Domain {tag}: dy = {c_dy} is inconsistent with parent dy = {p_dy} and parent_grid_ratio = {grid_ratio}.")
+
+                # Validate child physics options and ensure consistency with root [phys]
+                for pk in ("mp_physics", "sf_sfclay_physics", "sf_surface_physics", "bl_pbl_physics",
+                           "cu_physics", "ra_lw_physics", "ra_sw_physics", "radt", "bldt", "cudt",
+                           "ishallow", "clos_choice", "kfeta_trigger", "sf_urban_physics"):
+                    if self.has_opt("physics", pk):
+                        v_d = self.get_dom_opt("physics", pk, d, None)
+                        v_0 = self.get_dom_opt("physics", pk, 0, None)
+                        if pk == "sf_urban_physics" and v_d not in (0, None):
+                            self.error(f"Domain {tag}: WRF sf_urban_physics = {v_d} is not supported by CPPWRF.")
+                        elif pk in SUPPORTED_OPTIONS and v_d is not None and v_d not in SUPPORTED_OPTIONS[pk]:
+                            self.error(f"Domain {tag}: WRF {pk} = {v_d} is not supported by CPPWRF.")
+                        elif v_d != v_0:
+                            self.error(f"Domain {tag}: per-domain physics override &physics.{pk} = {v_d} "
+                                       f"(domain 1 has {v_0}) is not supported in inline nested configs; all domains share [phys].")
+
+                if dom_id == 2:
+                    sections["domains"]["i_parent_start"] = i_start
+                    sections["domains"]["j_parent_start"] = j_start
+                    sections["domains"]["parent_grid_ratio"] = grid_ratio
+                    sections["domains"]["parent_time_step_ratio"] = ts_ratio
+
+                sections[tag] = {}
+                if dom_id >= 3 or parent_id != dom_id - 1:
+                    sections[tag]["parent_id"] = parent_id
+                    sections[tag]["i_parent_start"] = i_start
+                    sections[tag]["j_parent_start"] = j_start
+                    sections[tag]["parent_grid_ratio"] = grid_ratio
+                    sections[tag]["parent_time_step_ratio"] = ts_ratio
+
+                sections[tag]["wrfinput"] = f"wrfinput_{tag}"
+                child_dt = dom_dt[p_idx] / float(ts_ratio)
+                dom_dt[d] = child_dt
+                sections[tag]["dt"] = int(child_dt) if float(child_dt).is_integer() else child_dt
+
+                hist_s_d = self.get_dom_opt("time_control", "history_interval_s", d, 0, fallback_d0=False)
+                hist_m_d = self.get_dom_opt("time_control", "history_interval", d, 0, fallback_d0=False)
+                if hist_s_d and hist_s_d > 0:
+                    child_out_iv = max(1, round(float(hist_s_d) / child_dt))
+                elif hist_m_d and hist_m_d > 0:
+                    child_out_iv = max(1, round(float(hist_m_d * 60) / child_dt))
+                else:
+                    child_out_iv = dom_out_iv[p_idx] * ts_ratio
+                child_diag_iv = 1 if child_out_iv == 1 else min(child_out_iv, dom_diag_iv[p_idx] * ts_ratio)
+                dom_out_iv[d] = child_out_iv
+                dom_diag_iv[d] = child_diag_iv
+                sections[tag]["out_interval"] = child_out_iv
+                sections[tag]["diag_interval"] = child_diag_iv
+
+                if self.has_opt("dynamics", "non_hydrostatic"):
+                    if not self.get_dom_opt("dynamics", "non_hydrostatic", d, True):
+                        self.error(f"Domain {tag}: non_hydrostatic = .false. is unsupported; CPPWRF is strictly non-hydrostatic.")
+
+                dyn_dom_map = (
+                    ("diff_opt", "diff_opt"),
+                    ("km_opt", "km_opt"),
+                    ("diff_6th_opt", "diff_6th_opt"),
+                    ("diff_6th_factor", "diff_6th_factor"),
+                    ("zdamp", "zdamp"),
+                    ("dampcoef", "dampcoef"),
+                    ("khdif", "khdif"),
+                    ("kvdif", "kvdif"),
+                    ("moist_adv_opt", "moist_adv_opt"),
+                    ("scalar_adv_opt", "scalar_adv_opt"),
+                    ("tke_adv_opt", "tke_adv_opt"),
+                    ("h_mom_adv_order", "h_adv_order"),
+                    ("v_mom_adv_order", "v_adv_order"),
+                    ("c_s", "c_s"),
+                    ("c_k", "c_k"),
+                )
+                for nml_k, ini_k in dyn_dom_map:
+                    if self.has_opt("dynamics", nml_k):
+                        v_d = self.get_dom_opt("dynamics", nml_k, d, None)
+                        v_0 = self.get_dom_opt("dynamics", nml_k, 0, None)
+                        if ini_k in SUPPORTED_OPTIONS and v_d is not None and v_d not in SUPPORTED_OPTIONS[ini_k] and not (ini_k == "km_opt" and v_d == 0):
+                            self.error(f"Domain {tag}: WRF {nml_k} = {v_d} is not supported.")
+                        elif ini_k in ("moist_adv_opt", "scalar_adv_opt", "tke_adv_opt") and v_d not in (0, 1):
+                            self.error(f"Domain {tag}: WRF {nml_k} = {v_d} is not supported (0 or 1 only).")
+                        elif ini_k == "diff_6th_opt" and v_d not in (0, 1, 2):
+                            self.error(f"Domain {tag}: WRF diff_6th_opt = {v_d} is not supported (0, 1, or 2 only).")
+                        if v_d != v_0 and v_d is not None:
+                            sections[tag][ini_k] = int(v_d) if isinstance(v_d, (int, float)) and float(v_d).is_integer() and ini_k in ("khdif", "kvdif", "zdamp") else v_d
+
+                if self.has_opt("dynamics", "time_step_sound"):
+                    tss_d = self.get_dom_opt("dynamics", "time_step_sound", d, 0)
+                    tss_0 = self.get_dom_opt("dynamics", "time_step_sound", 0, 0)
+                    if tss_d != tss_0:
+                        sections[tag]["time_step_sound"] = tss_d
+
+        # 15. Check for unused / ignored options
         for grp_name, grp_dict in self.nml.items():
             for key_name, vals in grp_dict.items():
                 if (grp_name, key_name) not in self.used_keys:
@@ -918,7 +1458,7 @@ class WrfTranslator:
 
         lines.append("")
 
-        section_order = ["run", "real", "domain", "case", "time", "dyn", "moist", "phys", "restart", "output", "tracers"]
+        section_order = ["run", "real", "domain", "case", "time", "dyn", "moist", "phys", "restart", "output", "tracers", "domains"]
         remaining = [s for s in sections if s not in section_order]
 
         for sec in section_order + remaining:

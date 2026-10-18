@@ -155,19 +155,65 @@ class TestNamelistParser(unittest.TestCase):
         self.assertAlmostEqual(grp["d"][0], 0.12)
         self.assertAlmostEqual(grp["e"][0], -1.5e-3)
 
-    def test_multiple_domains_warning(self):
+    def test_multiple_domains_translation(self):
         text = """
+        &time_control
+         run_hours = 1,
+         history_interval = 10, 10, 10,
+         input_from_file = .true., .true., .true.
+        /
         &domains
-         max_dom = 2,
-         e_we = 120, 240,
-         dx = 15000, 5000
+         time_step = 60,
+         max_dom = 3,
+         e_we = 120, 121, 91,
+         e_sn = 90, 91, 61,
+         e_vert = 45, 45, 45,
+         dx = 15000, 5000, 1000,
+         dy = 15000, 5000, 1000,
+         parent_id = 0, 1, 2,
+         i_parent_start = 1, 40, 30,
+         j_parent_start = 1, 30, 20,
+         parent_grid_ratio = 1, 3, 5,
+         parent_time_step_ratio = 1, 3, 5,
+         feedback = 1,
+         smooth_option = 2
+        /
+        &dynamics
+         khdif = 0, 0, 10,
+         kvdif = 0, 0, 5
+        /
+        &bdy_control
+         specified = .true., .false., .false.,
+         nested = .false., .true., .true.
         /
         """
         nml = parse_namelist(text)
         translator = WrfTranslator(nml)
-        translator.translate()
-        warnings_joined = " ".join(translator.warnings)
-        self.assertIn("multiple domains", warnings_joined.lower())
+        gen = translator.translate()
+        self.assertEqual(translator.errors, [])
+        self.assertEqual(translator.warnings, [])
+        self.assertEqual(gen["domains"]["max_dom"], 3)
+        self.assertEqual(gen["domains"]["feedback"], 1)
+        self.assertEqual(gen["domains"]["smooth_option"], 2)
+        self.assertEqual(gen["domains"]["i_parent_start"], 40)
+        self.assertEqual(gen["domains"]["j_parent_start"], 30)
+        self.assertEqual(gen["domains"]["parent_grid_ratio"], 3)
+        self.assertEqual(gen["domains"]["parent_time_step_ratio"], 3)
+        self.assertEqual(gen["d02"]["wrfinput"], "wrfinput_d02")
+        self.assertEqual(gen["d02"]["dt"], 20)
+        self.assertEqual(gen["d02"]["out_interval"], 30)
+        self.assertEqual(gen["d02"]["diag_interval"], 30)
+        self.assertEqual(gen["d03"]["parent_id"], 2)
+        self.assertEqual(gen["d03"]["i_parent_start"], 30)
+        self.assertEqual(gen["d03"]["j_parent_start"], 20)
+        self.assertEqual(gen["d03"]["parent_grid_ratio"], 5)
+        self.assertEqual(gen["d03"]["parent_time_step_ratio"], 5)
+        self.assertEqual(gen["d03"]["wrfinput"], "wrfinput_d03")
+        self.assertEqual(gen["d03"]["dt"], 4)
+        self.assertEqual(gen["d03"]["out_interval"], 150)
+        self.assertEqual(gen["d03"]["diag_interval"], 150)
+        self.assertEqual(gen["d03"]["khdif"], 10)
+        self.assertEqual(gen["d03"]["kvdif"], 5)
 
 
 class TestRealCasesReproduction(unittest.TestCase):
@@ -204,9 +250,15 @@ class TestRealCasesReproduction(unittest.TestCase):
                 self.assertIn(k, gen[s], f"[{s}].{k} missing in generated config")
                 self.assertIn(k, ref[s], f"[{s}].{k} extra in generated config")
 
-                # Compare normalized string values
+                # Compare normalized string values (treating '20' and '20.0' as equal)
                 gv = str(gen[s][k]).replace(" ", "")
                 rv = str(ref[s][k]).replace(" ", "")
+                if gv != rv and gv.endswith(".0") or rv.endswith(".0"):
+                    try:
+                        if float(gv) == float(rv):
+                            gv = rv
+                    except ValueError:
+                        pass
                 self.assertEqual(gv, rv, f"[{s}].{k} mismatch: generated '{gen[s][k]}' vs ref '{ref[s][k]}'")
 
     def test_real_r0_key_by_key(self):
@@ -232,6 +284,21 @@ class TestRealCasesReproduction(unittest.TestCase):
 
     def test_real_p3_key_by_key(self):
         self._compare_configs("run_P3_r8/steps/namelist.input", "configs/real_p3_r8.ini", sections=("phys", "dyn"))
+
+    def test_real_p8_key_by_key(self):
+        self._compare_configs("run_P8_r8/steps/namelist.input", "configs/real_p8_r8.ini", sections=("phys", "dyn"))
+
+    def test_real_n1_key_by_key(self):
+        self._compare_configs("run_N1/namelist.input", "configs/real_n1.ini", sections=("domains", "d02"))
+
+    def test_real_n2_key_by_key(self):
+        self._compare_configs("run_N2/namelist.input", "configs/real_n2.ini", sections=("domains", "d02"))
+
+    def test_real_n1_steps_key_by_key(self):
+        self._compare_configs("run_N1_r8/steps/namelist.input", "configs/real_n1_steps.ini", sections=("domains", "d02"))
+
+    def test_real_n2_steps_key_by_key(self):
+        self._compare_configs("run_N2_r8/steps/namelist.input", "configs/real_n2_steps.ini", sections=("domains", "d02"))
 
     def test_real_p4_diff_opt_mapped(self):
         # run_P4 namelist specifies diff_opt = 1, km_opt = 4
@@ -346,10 +413,198 @@ class TestValidationAndWarnings(unittest.TestCase):
         t = WrfTranslator(nml)
         gen = t.translate()
         self.assertEqual(t.warnings, [])
+        self.assertEqual(t.errors, [])
         self.assertEqual(gen["phys"]["sf_surface_physics"], 4)
+        self.assertEqual(gen["phys"]["num_soil_layers"], 4)
         self.assertEqual(gen["phys"]["dveg"], 4)
         self.assertEqual(gen["phys"]["opt_runsrf"], 3)
         self.assertEqual(gen["phys"]["opt_runsub"], 3)
+
+    def test_extended_physics_options_mapping(self):
+        text = """
+        &time_control /
+        &domains time_step = 60 /
+        &physics
+         mp_physics = 6,
+         mp_tend_lim = 5.0,
+         hail_opt = 1,
+         use_mp_re = 0,
+         sf_sfclay_physics = 1,
+         sf_surface_physics = 2,
+         num_soil_layers = 4,
+         bl_pbl_physics = 1,
+         ysu_topdown_pblmix = 0,
+         cu_physics = 3,
+         ishallow = 1,
+         clos_choice = 2,
+         kfeta_trigger = 3,
+         convtrans_avglen_m = 45.0,
+         ra_lw_physics = 4,
+         ra_sw_physics = 4,
+         radt = 10,
+         icloud = 0,
+         cldovrlp = 4,
+         idcor = 1,
+         o3input = 0,
+         ghg_input = 0,
+         aer_opt = 0,
+         rdmaxalb = .false.,
+         kim_tofd = .true.,
+         tofd_factor = 0.005
+        /
+        &dynamics /
+        """
+        nml = parse_namelist(text)
+        t = WrfTranslator(nml)
+        gen = t.translate()
+        self.assertEqual(t.errors, [])
+        p = gen["phys"]
+        self.assertEqual(p["mp_tend_lim"], 5.0)
+        self.assertEqual(p["hail_opt"], 1)
+        self.assertEqual(p["use_mp_re"], 0)
+        self.assertEqual(p["num_soil_layers"], 4)
+        self.assertEqual(p["ysu_topdown_pblmix"], 0)
+        self.assertEqual(p["ishallow"], 1)
+        self.assertEqual(p["clos_choice"], 2)
+        self.assertEqual(p["kfeta_trigger"], 3)
+        self.assertEqual(p["convtrans_avglen_m"], 45.0)
+        self.assertEqual(p["icloud"], 0)
+        self.assertEqual(p["cldovrlp"], 4)
+        self.assertEqual(p["idcor"], 1)
+        self.assertEqual(p["o3input"], 0)
+        self.assertEqual(p["ghg_input"], 0)
+        self.assertEqual(p["rdmaxalb"], False)
+        self.assertEqual(p["kim_tofd"], True)
+        self.assertEqual(p["tofd_factor"], 0.005)
+
+    def test_extended_dynamics_options_mapping(self):
+        text = """
+        &time_control /
+        &domains time_step = 60 /
+        &dynamics
+         diff_opt = 2,
+         km_opt = 2,
+         c_s = 0.18,
+         c_k = 0.12,
+         mix_isotropic = 1,
+         mix_upper_bound = 0.2,
+         mix_full_fields = .true.,
+         tke_drag_coefficient = 0.01,
+         tke_heat_flux = 0.05,
+         tke_upper_bound = 500.0,
+         moist_mix2_off = .true.,
+         scalar_mix2_off = .true.,
+         tke_mix2_off = .true.,
+         moist_mix6_off = .true.,
+         scalar_mix6_off = .true.,
+         tke_mix6_off = .true.,
+         w_damping = 1,
+         w_crit_cfl = 1.2,
+         scalar_adv_opt = 0,
+         tke_adv_opt = 0,
+         epssm = 0.2,
+         smdiv = 0.15,
+         emdiv = 0.02,
+         etac = 0.25
+        /
+        """
+        nml = parse_namelist(text)
+        t = WrfTranslator(nml)
+        gen = t.translate()
+        self.assertEqual(t.errors, [])
+        d = gen["dyn"]
+        self.assertEqual(d["c_s"], 0.18)
+        self.assertEqual(d["c_k"], 0.12)
+        self.assertEqual(d["mix_isotropic"], 1)
+        self.assertEqual(d["mix_upper_bound"], 0.2)
+        self.assertEqual(d["mix_full_fields"], True)
+        self.assertEqual(d["tke_drag_coefficient"], 0.01)
+        self.assertEqual(d["tke_heat_flux"], 0.05)
+        self.assertEqual(d["tke_upper_bound"], 500.0)
+        self.assertEqual(d["moist_mix2_off"], True)
+        self.assertEqual(d["scalar_mix2_off"], True)
+        self.assertEqual(d["tke_mix2_off"], True)
+        self.assertEqual(d["moist_mix6_off"], True)
+        self.assertEqual(d["scalar_mix6_off"], True)
+        self.assertEqual(d["tke_mix6_off"], True)
+        self.assertEqual(d["w_crit_cfl"], 1.2)
+        self.assertEqual(d["scalar_adv_opt"], 0)
+        self.assertEqual(d["tke_adv_opt"], 0)
+        self.assertEqual(d["epssm"], 0.2)
+        self.assertEqual(d["smdiv"], 0.15)
+        self.assertEqual(d["emdiv"], 0.02)
+        self.assertEqual(d["etac"], 0.25)
+
+    def test_unsupported_physics_and_dynamics_errors(self):
+        cases = [
+            ("&physics cu_physics = 1, ishallow = 1 /", "ishallow = 1 requires cu_physics = 3"),
+            ("&physics cu_physics = 3, clos_choice = 99 /", "clos_choice = 99"),
+            ("&physics cu_physics = 1, kfeta_trigger = 2 /", "kfeta_trigger = 2"),
+            ("&physics sf_surface_physics = 2, num_soil_layers = 5 /", "num_soil_layers = 5"),
+            ("&physics sf_surface_physics = 4, opt_crop = 1 /", "opt_crop = 1"),
+            ("&physics ra_lw_physics = 4, ra_sw_physics = 0 /", "requires both ra_lw_physics = 4 and ra_sw_physics = 4"),
+            ("&physics ra_lw_physics = 4, ra_sw_physics = 4, aer_opt = 1 /", "aer_opt = 1"),
+            ("&physics ra_lw_physics = 4, ra_sw_physics = 4, cldovrlp = 9 /", "cldovrlp = 9"),
+            ("&physics cu_rad_feedback = .true. /", "cu_rad_feedback"),
+            ("&physics shcu_physics = 2 /", "shcu_physics"),
+            ("&physics topo_wind = 1 /", "topo_wind"),
+            ("&dynamics moist_adv_opt = 2 /", "moist_adv_opt = 2"),
+            ("&dynamics diff_6th_opt = 3 /", "diff_6th_opt = 3"),
+            ("&dynamics h_mom_adv_order = 5, h_sca_adv_order = 6 /", "h_sca_adv_order = 6"),
+            ("&dynamics hybrid_opt = 9 /", "hybrid_opt = 9"),
+        ]
+        for fragment, expected_err in cases:
+            text = f"&time_control /\n&domains time_step = 60 /\n{fragment}\n"
+            nml = parse_namelist(text)
+            t = WrfTranslator(nml)
+            t.translate()
+            joined = " ".join(t.errors)
+            self.assertIn(expected_err, joined, f"Expected '{expected_err}' in errors for {fragment}, got {t.errors}")
+
+    def test_invalid_nest_configurations_errors(self):
+        # 1. Non-divisible child extent (e_we - 1) % parent_grid_ratio != 0
+        text1 = """
+        &domains
+         time_step = 60, max_dom = 2,
+         e_we = 120, 120, e_sn = 90, 91, e_vert = 45, 45,
+         parent_id = 0, 1, i_parent_start = 1, 40, j_parent_start = 1, 30,
+         parent_grid_ratio = 1, 3, parent_time_step_ratio = 1, 3
+        /
+        &bdy_control specified = .true., .false. /
+        """
+        t1 = WrfTranslator(parse_namelist(text1))
+        t1.translate()
+        self.assertTrue(any("not divisible by parent_grid_ratio" in e for e in t1.errors))
+
+        # 2. Child extent exceeds parent domain
+        text2 = """
+        &domains
+         time_step = 60, max_dom = 2,
+         e_we = 120, 121, e_sn = 90, 91, e_vert = 45, 45,
+         parent_id = 0, 1, i_parent_start = 1, 100, j_parent_start = 1, 30,
+         parent_grid_ratio = 1, 3, parent_time_step_ratio = 1, 3
+        /
+        &bdy_control specified = .true., .false. /
+        """
+        t2 = WrfTranslator(parse_namelist(text2))
+        t2.translate()
+        self.assertTrue(any("exceeds parent domain" in e for e in t2.errors))
+
+        # 3. Mismatched e_vert and invalid smooth_option
+        text3 = """
+        &domains
+         time_step = 60, max_dom = 2,
+         e_we = 120, 121, e_sn = 90, 91, e_vert = 45, 60,
+         parent_id = 0, 1, i_parent_start = 1, 40, j_parent_start = 1, 30,
+         parent_grid_ratio = 1, 3, parent_time_step_ratio = 1, 3,
+         smooth_option = 5
+        /
+        &bdy_control specified = .true., .false. /
+        """
+        t3 = WrfTranslator(parse_namelist(text3))
+        t3.translate()
+        self.assertTrue(any("e_vert" in e for e in t3.errors))
+        self.assertTrue(any("smooth_option = 5" in e for e in t3.errors))
 
 
 class TestExecution2Steps(unittest.TestCase):
@@ -380,6 +635,32 @@ class TestExecution2Steps(unittest.TestCase):
             ret_run = subprocess.run(cmd_run, capture_output=True, text=True, cwd=REPO_ROOT)
             self.assertEqual(ret_run.returncode, 0, f"Run failed: {ret_run.stderr}\n{ret_run.stdout}")
             self.assertIn("done, 2 steps", ret_run.stdout)
+        finally:
+            if os.path.exists(ini_path):
+                os.remove(ini_path)
+
+    def test_run_n1_2steps(self):
+        exe = os.environ.get("CPPWRF_BIN", os.path.join(REPO_ROOT, "build", "cppwrf"))
+        if not os.path.exists(exe):
+            self.skipTest(f"{exe} not found (set CPPWRF_BIN)")
+
+        nml_path = wrf_runs_path("run_N1_r8/steps/namelist.input")
+        if not os.path.exists(nml_path):
+            self.skipTest(f"Namelist not found: {nml_path}")
+
+        with tempfile.NamedTemporaryFile(suffix=".ini", mode="w", delete=False) as tf:
+            ini_path = tf.name
+
+        try:
+            cmd_trans = [sys.executable, os.path.join(REPO_ROOT, "tools", "wrf2cppwrf.py"),
+                         nml_path, "-o", ini_path]
+            ret_trans = subprocess.run(cmd_trans, capture_output=True, text=True)
+            self.assertEqual(ret_trans.returncode, 0, f"Translator failed: {ret_trans.stderr}")
+
+            cmd_run = [os.path.join(REPO_ROOT, "tools", "heavy.sh"), exe, ini_path,
+                       "--set", "run.run_time=120"]
+            ret_run = subprocess.run(cmd_run, capture_output=True, text=True, cwd=REPO_ROOT)
+            self.assertEqual(ret_run.returncode, 0, f"Nested run failed: {ret_run.stderr}\n{ret_run.stdout}")
         finally:
             if os.path.exists(ini_path):
                 os.remove(ini_path)

@@ -119,8 +119,14 @@ python3 tools/wrf2cppwrf.py /path/to/wrf/run/namelist.input -o run.ini --format 
 
 Key translator features:
 - **f90nml-Free Parser:** Pure Python tokenizer supporting standard Fortran namelist syntax, repetition counts (`3*0`), exponents (`1.0d-4`), and inline comments.
-- **Single-Domain Filtering:** Extracts domain 1 settings; issues descriptive warnings when nested domain arrays (`max_dom > 1`) are present.
-- **Non-Silent Diagnostics:** Reports clear warnings on unsupported schemes (e.g. `diff_opt=3`, `mp_physics=2`) and informational notices for ignored WPS/quilt metadata.
+- **Complete Option Coverage:**
+  - **Time & I/O:** Translates `run_days/hours/minutes/seconds` (or `start_*`/`end_*` timestamps), `time_step` + `time_step_fract_num/den`, `time_step_sound`, `history_interval_s` / `history_interval`, and `restart` / `restart_interval`.
+  - **Dynamics (`[dyn]`):** Translates `diff_opt` (`0..2`), `km_opt` (`1..4`), `c_s`, `c_k`, `mix_isotropic`, `mix_upper_bound`, `mix_full_fields`, `tke_drag_coefficient`, `tke_heat_flux`, `tke_upper_bound`, `moist_mix2_off`, `scalar_mix2_off`, `tke_mix2_off`, `moist_mix6_off`, `scalar_mix6_off`, `tke_mix6_off`, `diff_6th_opt` (`0..2`), `diff_6th_factor`, `w_damping` (`0, 1`), `w_crit_cfl`, `damp_opt` (`0..3`), `zdamp`, `dampcoef`, `khdif`, `kvdif`, `moist_adv_opt` (`0, 1`), `scalar_adv_opt` (`0, 1`), `tke_adv_opt` (`0, 1`), `prandtl` ($\to$ `pr_inv`), `top_lid`, `h_mom_adv_order` ($\to$ `h_adv_order`), `v_mom_adv_order` ($\to$ `v_adv_order`), `epssm`, `smdiv`, `emdiv`, `etac`, `hybrid_opt` (`0..2`), and `hypsometric_opt` (`1, 2`).
+  - **Physics (`[phys]` & `[moist]`):** Translates `mp_physics` (`0, 1, 6, 8`), `mp_tend_lim`, `hail_opt` (`0, 1`), `use_mp_re` (`0, 1`), `sf_sfclay_physics` (`0, 1, 2`), `sf_surface_physics` (`0, 2, 4`), `num_soil_layers` (`4`), `bl_pbl_physics` (`0, 1, 2`), `cu_physics` (`0, 1, 3, 16`), `ishallow` (`0, 1`), `clos_choice` (`0..16`), `kfeta_trigger` (`1, 3`), `convtrans_avglen_m`, `ra_lw_physics` (`0, 4`), `ra_sw_physics` (`0, 4`), `radt`, `bldt`, `cudt`, `isfflx` (`0, 1`), `ysu_topdown_pblmix` (`0, 1`), `kim_tofd`, `tofd_factor`, `rdmaxalb`, `icloud` (`0, 1`), `cldovrlp` (`1..5`), `idcor` (`0, 1`), `o3input` (`0, 2`), `ghg_input` (`0, 1`), `aer_opt` (`0`), and all 27 `&noah_mp` options when `sf_surface_physics = 4`.
+  - **Nested Domains (`max_dom > 1`):** Translates multi-domain real-data namelists into `[domains]` (`max_dom`, `feedback`, `smooth_option`, `save_topo_from_real`, `blend_width`, `spec_bdy_width`, and `d02` placement keys) and per-child `[d02]`..`[d0N]` sections (`wrfinput`, `dt`, `out_interval`, `diag_interval`, `parent_id`, `i_parent_start`, `j_parent_start`, `parent_grid_ratio`, `parent_time_step_ratio`, and per-domain dynamics overrides).
+- **Strict Validation & Rejection of Unsupported Options:**
+  - **Rejected with Error (exit code 1):** Hydrostatic mode (`non_hydrostatic = .false.`), non-RK3 integration (`rk_ord != 3`), mismatched scalar vs. momentum advection orders (`h_sca_adv_order != h_mom_adv_order` or `v_sca_adv_order != v_mom_adv_order`), unsupported advection/diffusion/coordinate options (`moist_adv_opt`/`scalar_adv_opt`/`tke_adv_opt` outside `0..1`, `diff_6th_opt` outside `0..2`, `hybrid_opt` outside `0..2`, `hypsometric_opt` outside `1..2`), unpaired RRTMG radiation (`ra_lw_physics` vs. `ra_sw_physics`), `ishallow = 1` without `cu_physics = 3`, `clos_choice` outside `0..16`, `kfeta_trigger` outside `{1, 3}`, `num_soil_layers != 4` when an LSM is active, `cldovrlp` outside `1..5`, `idcor` outside `{0, 1}`, `o3input` outside `{0, 2}`, `ghg_input` outside `{0, 1}`, `aer_opt != 0`, unsupported `&noah_mp` option values, unimplemented physics switches (`iau`, `dyn_lightning_option`, `sf_urban_physics`, `cu_rad_feedback`, `shcu_physics`, `sf_lake_physics`, `topo_wind`, `slope_rad`, `topo_shading`, `swint_opt`, `fractional_seaice`, `seaice_*`, `sst_update`, `grav_settling`, `ra_call_offset`, `isftcflx`, `iz0tlnd`, `shalwater_z0`, `scm_force_flux`, `rdlai2d`, `usemonalb`), and invalid or unsupported nesting configurations (nested ideal cases, moving nests, vertical refinement, `feedback` outside `{0, 1}`, `smooth_option` outside `{0, 1, 2}`, invalid `parent_id` / `i_parent_start` / `j_parent_start` / `parent_grid_ratio` / `parent_time_step_ratio`, child dimensions not divisible by `parent_grid_ratio` or exceeding parent bounds, mismatched `e_vert` or `dx`/`dy`, `input_from_file = .false.`, or per-domain `[phys]` overrides in inline nested configs).
+  - **Warnings & Notices:** Reports warnings on unimplemented scheme IDs (`--strict` promotes warnings to errors) and informational notices for ignored WPS/quilt metadata.
 
 ### Idealized Cases
 WRF's own idealized cases are initialized by a port of WRF v4.8.0's `ideal.exe`
@@ -208,8 +214,14 @@ Every option supported by the CPPWRF runtime is cataloged below, along with its 
 | `[time]` | `time_step_sound` | integer | `0` (auto) | Acoustic small steps per RK stage (0 = auto-computed CFL rule) | `time_step_sound` |
 | `[dyn]` | `khdif`, `kvdif` | double | `0.0` | Constant horizontal/vertical eddy diffusion in $m^2/s$ | `khdif`, `kvdif` |
 | `[dyn]` | `diff_opt` | integer | `0` | Diffusion option (0 = off, 1 = coordinate-surface diffusion, 2 = physical-space diffusion) | `diff_opt` |
-| `[dyn]` | `km_opt` | integer | `1` | Eddy viscosity closure (1 = constant, 2 = 1.5-order TKE, 4 = 2D Smagorinsky) | `km_opt` |
-| `[dyn]` | `c_s` | double | `0.25` | Smagorinsky diffusion constant | `c_s` |
+| `[dyn]` | `km_opt` | integer | `1` | Eddy viscosity closure (1 = constant, 2 = 1.5-order TKE, 3 = 3D Smagorinsky, 4 = 2D Smagorinsky) | `km_opt` |
+| `[dyn]` | `c_s`, `c_k` | double | `0.25`, `0.15` | Smagorinsky and TKE closure constants | `c_s`, `c_k` |
+| `[dyn]` | `mix_isotropic` | integer | `0` | Isotropic mixing length flag (0 = anisotropic, 1 = isotropic) | `mix_isotropic` |
+| `[dyn]` | `mix_upper_bound` | double | `0.1` | Upper bound on eddy diffusivityCourant number | `mix_upper_bound` |
+| `[dyn]` | `mix_full_fields` | boolean | `false` | Apply diffusion to full fields instead of perturbation fields | `mix_full_fields` |
+| `[dyn]` | `tke_drag_coefficient`, `tke_heat_flux`, `tke_upper_bound` | double | `0.0`, `0.0`, `1000.0` | Surface drag, heat flux, and upper bound for prognostic TKE (`km_opt = 2`) | `tke_drag_coefficient`, `tke_heat_flux`, `tke_upper_bound` |
+| `[dyn]` | `moist_mix2_off`, `scalar_mix2_off`, `tke_mix2_off` | boolean | `false` | Disable 2nd-order diffusion on moisture, scalars, or TKE | `moist_mix2_off`, `scalar_mix2_off`, `tke_mix2_off` |
+| `[dyn]` | `moist_mix6_off`, `scalar_mix6_off`, `tke_mix6_off` | boolean | `false` | Disable 6th-order diffusion on moisture, scalars, or TKE | `moist_mix6_off`, `scalar_mix6_off`, `tke_mix6_off` |
 | `[dyn]` | `diff_6th_opt` | integer | `0` | 6th-order spatial diffusion (0 = off, 1 = standard, 2 = monotonic) | `diff_6th_opt` |
 | `[dyn]` | `diff_6th_factor` | double | `0.12` | 6th-order numerical diffusion coefficient | `diff_6th_factor` |
 | `[dyn]` | `pr_inv` | double | `3.0` | Inverse turbulent Prandtl number ($Pr^{-1} = K_\theta / K_m$) | $1 / \text{prandtl}$ |
@@ -222,21 +234,22 @@ Every option supported by the CPPWRF runtime is cataloged below, along with its 
 | `[dyn]` | `zdamp` | double | `5000.0` | Depth of upper Rayleigh damping sponge layer in meters | `zdamp` |
 | `[dyn]` | `dampcoef` | double | `0.2` | Rayleigh damping coefficient ($s^{-1}$) | `dampcoef` |
 | `[dyn]` | `moist_adv_opt` | integer | `1` | Moisture advection scheme (0 = standard, 1 = positive-definite) | `moist_adv_opt` |
-| `[dyn]` | `scalar_adv_opt` | integer | `1` | Passive tracer advection (0 = standard, 1 = positive-definite) | `scalar_adv_opt` |
+| `[dyn]` | `scalar_adv_opt`, `tke_adv_opt` | integer | `1` | Scalar and TKE advection scheme (0 = standard, 1 = positive-definite) | `scalar_adv_opt`, `tke_adv_opt` |
+| `[dyn]` | `hybrid_opt`, `etac`, `hypsometric_opt` | int/double | `0`/`2`, `0.2`, `1`/`2` | Hybrid vertical coordinate option, transition $\eta_c$, and hypsometric integration option | `hybrid_opt`, `etac`, `hypsometric_opt` |
 | `[dyn]` | `epssm` | double | `0.1` | Acoustic small-step forward-centering factor | `epssm` |
 | `[dyn]` | `smdiv`, `emdiv` | double | `0.1`, `0.01` | Acoustic divergence and external mode filters | `smdiv`, `emdiv` |
 | `[moist]` | `species` | string list | `""` | Comma-separated list of active water species (`qv,qc,qr,qi,qs,qg`) | WRF moisture array |
 | `[phys]` | `mp_physics` | integer | `0` | Microphysics scheme (0 = off, 1 = Kessler, 6 = WSM6, 8 = Thompson) | `mp_physics` |
-| `[phys]` | `hail_opt` | integer | `0` | WSM6 6th class density (0 = graupel, 1 = hail) | `hail_opt` |
+| `[phys]` | `hail_opt`, `use_mp_re` | integer | `0`, `1` | WSM6 graupel/hail switch (0/1) and microphysics effective radii coupling to RRTMG (0/1) | `hail_opt`, `use_mp_re` |
 | `[phys]` | `mp_tend_lim` | double | `10.0` | Heating rate limiter for microphysics ($K/s$) | `mp_tend_lim` |
 | `[phys]` | `sf_sfclay_physics` | integer | `1` | Surface layer formulation (0 = off, 1 = Revised MM5 / sfclayrev, 2 = Eta / MYJ) | `sf_sfclay_physics` |
-| `[phys]` | `sf_surface_physics` | integer | `2` | Land surface model (0 = off, 2 = Unified Noah LSM 4-layer, 4 = Noah-MP LSM v5.1.2 4-layer) | `sf_surface_physics` |
-| `[phys]` | `dveg`, `opt_*` | integer | WRF defaults | Noah-MP sub-options when `sf_surface_physics = 4` (`dveg=4`, `opt_crs=1`, `opt_btr=1`, `opt_runsrf=3`, `opt_runsub=3`, `opt_sfc=1`, `opt_frz=1`, `opt_inf=1`, `opt_rad=3`, `opt_alb=2`, `opt_snf=1`, `opt_tbot=2`, `opt_stc=1`, `opt_gla=1`, `opt_rsf=1`, `opt_soil=1`, `opt_pedo=1`, `opt_crop=0`, `opt_irr=0`, `opt_irrm=0`, `opt_infdv=1`, `opt_tdrn=0`, `opt_tksno=1`, `opt_compact=1`, `opt_scf=1`, `opt_wetland=1`) | `&noah_mp` options |
-| `[phys]` | `bl_pbl_physics` | integer | `1` | Planetary boundary layer scheme (0 = off, 1 = YSU, 2 = MYJ) | `bl_pbl_physics` |
-| `[phys]` | `cu_physics` | integer | `0` | Cumulus parameterization (0 = off, 1 = Kain-Fritsch, 3 = Grell-Freitas-Li, 16 = New Tiedtke); GFL also reads `ishallow` and `clos_choice` | `cu_physics` |
-| `[phys]` | `ra_lw_physics` | integer | `0` | Longwave radiation scheme (0 = off, 4 = RRTMG LW) | `ra_lw_physics` |
-| `[phys]` | `ra_sw_physics` | integer | `0` | Shortwave radiation scheme (0 = off, 4 = RRTMG SW) | `ra_sw_physics` |
-| `[phys]` | `radt` | double | `0.0` | Radiation physics call interval (minutes; 0 = every step) | `radt` |
+| `[phys]` | `isfflx`, `kim_tofd`, `tofd_factor` | int/bool/double | `1`, `false`, `0.003` | Surface heat/moisture flux switch and turbulent orographic form drag options | `isfflx`, `kim_tofd`, `tofd_factor` |
+| `[phys]` | `sf_surface_physics`, `num_soil_layers`, `rdmaxalb` | int/bool | `2`, `4`, `true` | Land surface model (0 = off, 2 = Unified Noah, 4 = Noah-MP v5.1.2), soil layers (4), snow albedo source | `sf_surface_physics`, `num_soil_layers`, `rdmaxalb` |
+| `[phys]` | `dveg`, `opt_*`, `soiltstep` | int/double | WRF defaults | Noah-MP sub-options when `sf_surface_physics = 4` (`dveg=4`, `opt_crs=1`, `opt_btr=1`, `opt_runsrf=3`, `opt_runsub=3`, `opt_sfc=1`, `opt_frz=1`, `opt_inf=1`, `opt_rad=3`, `opt_alb=2`, `opt_snf=1`, `opt_tbot=2`, `opt_stc=1`, `opt_gla=1`, `opt_rsf=1`, `opt_soil=1`, `opt_pedo=1`, `opt_crop=0`, `opt_irr=0`, `opt_irrm=0`, `opt_infdv=0`, `opt_tdrn=0`, `opt_tksno=1`, `opt_compact=2`, `opt_scf=1`, `opt_wetland=0`, `soiltstep=0.0`) | `&noah_mp` options |
+| `[phys]` | `bl_pbl_physics`, `bldt`, `ysu_topdown_pblmix` | int/double | `1`, `0.0`, `1` | Planetary boundary layer scheme (0 = off, 1 = YSU, 2 = MYJ), call interval (min), YSU top-down mixing | `bl_pbl_physics`, `bldt`, `ysu_topdown_pblmix` |
+| `[phys]` | `cu_physics`, `cudt`, `ishallow`, `clos_choice`, `kfeta_trigger`, `convtrans_avglen_m` | int/double | `0`, `0.0`, `0`, `0`, `1`, `30.0` | Cumulus parameterization (0 = off, 1 = KF, 3 = Grell-Freitas, 16 = New Tiedtke), call interval, shallow convection, closure, trigger | `cu_physics`, `cudt`, `ishallow`, `clos_choice`, `kfeta_trigger`, `convtrans_avglen_m` |
+| `[phys]` | `ra_lw_physics`, `ra_sw_physics` | integer | `0` | Longwave and shortwave radiation schemes (0 = off, 4 = RRTMG) | `ra_lw_physics`, `ra_sw_physics` |
+| `[phys]` | `radt`, `icloud`, `cldovrlp`, `idcor`, `o3input`, `ghg_input`, `aer_opt` | int/double | `0.0`, `1`, `2`, `0`, `2`, `1`, `0` | Radiation call interval (min), cloud fraction, cloud overlap (`1..5`), decorrelation, ozone (`0, 2`), GHG (`0, 1`), aerosols (`0`) | `radt`, `icloud`, `cldovrlp`, `idcor`, `o3input`, `ghg_input`, `aer_opt` |
 | `[phys]` | `table_dir` | string | `"."` | Path to directory containing physics tables (`LANDUSE.TBL`, `NoahmpTable.TBL`, etc.) | WRF run directory |
 | `[output]` | `dir` | string | `"out/<case>"` | Directory for simulation output files | Output path |
 | `[output]` | `format` | string | `"native"` | Output data format (`native`, `wrfout`, `both`) | `io_form_history` |
@@ -244,6 +257,8 @@ Every option supported by the CPPWRF runtime is cataloged below, along with its 
 | `[output]` | `out_interval` | integer | `nsteps` | Frequency (in steps) for writing field snapshots | `history_interval` |
 | `[restart]` | `interval` | double | `0.0` | Restart snapshot write frequency in seconds (0 = disabled) | `restart_interval` |
 | `[tracers]` | `names` | string list | `""` | Comma-separated names of passive scalar tracers | Tracer variables |
+| `[domains]` | `max_dom`, `feedback`, `smooth_option`, `save_topo_from_real`, `blend_width`, `spec_bdy_width` | integer | `1`, `1`, `0`, `1`, `5`, `5` | Multi-domain nesting count, two-way feedback (`0, 1`), feedback smoother (`0..2`), terrain blending | `&domains` / `&bdy_control` |
+| `[d02]`..`[d0N]` | `wrfinput`, `dt`, `out_interval`, `diag_interval`, `parent_id`, `i_parent_start`, `j_parent_start`, `parent_grid_ratio`, `parent_time_step_ratio` | string/int/double | *per-domain* | Child domain input file, timestep, output intervals, parent link, and per-domain dynamics overrides | `&domains` / `&time_control` / `&dynamics` |
 
 ---
 
