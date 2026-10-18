@@ -96,6 +96,7 @@ CPPWRF_HOST_DEVICE inline void gfl_prep(const GflDrvColumn<real>& c,
 template <typename real>
 struct GflDrvOut {
   real rthcuten[KM], rqvcuten[KM], rqccuten[KM], rqicuten[KM], rucuten[KM], rvcuten[KM];
+  real gdc[KM], gdc2[KM];
   real raincv, pratec, htop, hbot;
 };
 
@@ -112,6 +113,8 @@ CPPWRF_HOST_DEVICE inline void gfl_column(const GflDrvColumn<real>& c,
     o.rqicuten[k] = R(0.0);
     o.rucuten[k] = R(0.0);
     o.rvcuten[k] = R(0.0);
+    o.gdc[k] = R(0.0);
+    o.gdc2[k] = R(0.0);
   }
   o.hbot = static_cast<real>(kte);
   o.htop = R(1.0);
@@ -156,7 +159,7 @@ CPPWRF_HOST_DEVICE inline void gfl_column(const GflDrvColumn<real>& c,
   d.ichoice = ichoice_deep;
   d.xmbs_in = R(0.0);
 
-  const GflDeepOut r =
+  const GflDeepOut<real> r =
       cu_gfl_deep_run(d, outu, outv, outt, outq, outqc, subten_h, subten_q,
                       subten_t, subten_u, subten_v, cupclw, cnvwt, pret, xmb);
 
@@ -217,9 +220,13 @@ CPPWRF_HOST_DEVICE inline void gfl_column(const GflDrvColumn<real>& c,
     if (p.t2d[k] < C::tcrit) {
       o.rqccuten[k - 1] = R(0.0);
       o.rqicuten[k - 1] = factor * (outqcs[k] + outqc[k]);
+      o.gdc[k - 1] = R(0.0);
+      o.gdc2[k - 1] = factor * (frhs * cupclws[k] + r.frh_out * cupclw[k]);
     } else {
       o.rqicuten[k - 1] = R(0.0);
       o.rqccuten[k - 1] = factor * (outqcs[k] + outqc[k]);
+      o.gdc2[k - 1] = R(0.0);
+      o.gdc[k - 1] = factor * (frhs * cupclws[k] + r.frh_out * cupclw[k]);
     }
   }
 }

@@ -415,9 +415,17 @@ Port: `src/phys/cu_gfl/` = WRF 4.8.0 `phys/GFL/module_cu_gfl_deep.F90` (`cu_gfl_
 Driver glue `KGrellFreitas` in `src/phys/driver/suite.cpp`; it uses the same `RTHFTEN`/`RQVFTEN`
 forcing as New Tiedtke (`cu_grell_freitas_li` combines it with `RTHRATEN`/`RTHBLTEN` itself). All
 columns in the domain are active (`its..itf`, `jts..jtf`), `RUCUTEN`/`RVCUTEN` are computed (including
-cold-pool gust-front momentum impact and ECMWF-style kinetic energy dissipation heating) but WRF's
-`phy_cu_ten` (`CASE (GDSCHEME, G3SCHEME, GFLSCHEME)`) does not add them to the model momentum
-tendencies, and `RQCCUTEN`/`RQICUTEN` split at `T = 258 K`.
+cold-pool gust-front momentum impact and ECMWF-style kinetic energy dissipation heating) and added to the
+staggered momentum tendencies in `phy_cu_ten` (`CASE (GDSCHEME, G3SCHEME, GFLSCHEME)`), and
+`RQCCUTEN`/`RQICUTEN` split at `T = 258 K`. In `first_rk_step_part1`, `cumulus_driver` is called with
+`HTOP = grid%cutop, HBOT = grid%cubot` while `advance_ppt` hits `CASE DEFAULT` for `GFLSCHEME`, so
+`CUTOP`/`CUBOT` hold GFL's cloud-top/bottom levels and `HTOP`/`HBOT` remain `0`. With `cu_diag = 1`
+(`check_a_mundo` for `cu_physics = 3`), `cu_grell_freitas_li` also outputs `GD_CLOUD` (`gdc`) and
+`GD_CLOUD2` (`gdc2`) split at `T = 258 K`, and `first_rk_step_part1` calls `convtrans_prep`
+(`dyn_em/module_convtrans_prep.F`, `PhysicsSuite::convtrans_prep` / `KConvtransPrep`) every step after
+`cumulus_driver` to update `RAINCV_A`, `RAINCV_B`, `GD_CLOUD_A`, `GD_CLOUD2_A`, `QC_CU` (`gd_cloud_b`),
+`QI_CU` (`gd_cloud2_b`), and `GD_CLDFR` (`cldfr`) over the `convtrans_avglen_m` (default `30` min)
+window (`stepave_count` `SAVE` variable).
 
 Exactness details in `src/phys/cu_gfl/`:
 - **Vector pow and operation order.** `gfortran` vectorises the `zu` profile loop (`get_zu_zd_pdf_fim`)
@@ -440,8 +448,9 @@ Exactness details in `src/phys/cu_gfl/`:
 shallow + deep).
 
 **Acceptance** (P8 = P2 with `cu_physics = 3`, `ishallow = 1`; reference run `P8_r8`, FP32: `P8`): CPU
-FP64 bit-identical to WRF for 10 min (`steps/`) and 1 h. CUDA FP64 at 1 h: U 3.6e-10, W 2.0e-8,
-THM 1.2e-10, QV 5.4e-9; CUDA FP32 against single-precision WRF: U 4.3e-4, W 2.2e-2, THM 9.8e-6,
+FP64 bit-identical to WRF for 10 min (`steps/`) and 1 h, and all `wrfout` and `wrfrst` files (`rst_P8_r8`,
+10 minutes) are identical to WRF v4.8.0's (`run_wrf_files_test.sh ... p8`). CUDA FP64 at 1 h: U 3.6e-10,
+W 2.0e-8, THM 1.2e-10, QV 5.4e-9; CUDA FP32 against single-precision WRF: U 4.3e-4, W 2.2e-2, THM 9.8e-6,
 QV 2.9e-4. `wrf_suite`: `real_p8_r8_fp64_cpu_10min`, `real_p8_r8_fp64_cpu_1h`,
 `real_p8_r8_fp64_cuda_1h`, `real_p8_fp32_1h`, `restart_p8_fp64`.
 

@@ -593,7 +593,7 @@ struct KGrellFreitas {
   BView2<const real> ht;
   C3 rthraten, rthblten, rqvblten, rthften, rqvften;
   V2 raincv, pratec, htop, hbot;
-  V3 rthcuten, rqvcuten, rqccuten, rqicuten, rucuten, rvcuten;
+  V3 rthcuten, rqvcuten, rqccuten, rqicuten, rucuten, rvcuten, gd_cloud, gd_cloud2;
   bool flag_qc, flag_qi;
   CPPWRF_HD void column(int i, int j, cu_gfl::GflDrvColumn<real>& c) const {
     c.nz = nz; c.dt = dt; c.dx = dx; c.ht = ht(i, j); c.hfx = hfx(i, j); c.qfx = qfx(i, j); c.xland = xland(i, j);
@@ -631,8 +631,92 @@ struct KGrellFreitas {
       rqicuten(i, j, k) = o.rqicuten[k];
       rucuten(i, j, k) = o.rucuten[k];
       rvcuten(i, j, k) = o.rvcuten[k];
+      gd_cloud(i, j, k) = o.gdc[k];
+      gd_cloud2(i, j, k) = o.gdc2[k];
       (void)flag_qc;
       (void)flag_qi;
+    }
+  }
+};
+
+// ------------------------------------------------------------ convtrans_prep
+// dyn_em/module_convtrans_prep.F convtrans_prep (cu_diag == 1).
+struct KConvtransPrep {
+  int nz, ktau, stepave_count, cu_phys;
+  bool avg_end_flag, first_period_flag, flag_qc, flag_qi;
+  C2 raincv;
+  V2 raincv_a, raincv_b;
+  C3 gd_cloud, gd_cloud2, t_phy, p_phy, qv, qc, qi;
+  V3 gd_cloud_a, gd_cloud2_a, qc_cu, qi_cu, gd_cldfr;
+  CPPWRF_HD void operator()(int i, int j) const {
+    if (ktau <= 1) {
+      raincv_a(i, j) = real(0.);
+      raincv_b(i, j) = real(0.);
+      for (int k = 0; k < nz; ++k) {
+        gd_cloud2_a(i, j, k) = real(0.);
+        gd_cldfr(i, j, k) = real(0.);
+      }
+    }
+    if (first_period_flag) {
+      raincv_b(i, j) = raincv(i, j);
+    }
+    raincv_a(i, j) = raincv_a(i, j) + raincv(i, j);
+    if (avg_end_flag) {
+      raincv_b(i, j) = raincv_a(i, j) / real(stepave_count);
+      raincv_a(i, j) = real(0.);
+    }
+    if (cu_phys == 3 || cu_phys == 5 || cu_phys == 93) {
+      if (first_period_flag) {
+        for (int k = 0; k < nz; ++k) {
+          qc_cu(i, j, k) = gd_cloud(i, j, k);
+          qi_cu(i, j, k) = gd_cloud2(i, j, k);
+        }
+      }
+      for (int k = 0; k < nz; ++k) {
+        gd_cloud_a(i, j, k) = gd_cloud_a(i, j, k) + gd_cloud(i, j, k);
+        gd_cloud2_a(i, j, k) = gd_cloud2_a(i, j, k) + gd_cloud2(i, j, k);
+      }
+      if (avg_end_flag) {
+        for (int k = 0; k < nz; ++k) {
+          qc_cu(i, j, k) = real(.1) * gd_cloud_a(i, j, k) / real(stepave_count);
+          gd_cloud_a(i, j, k) = real(0.);
+          qi_cu(i, j, k) = real(.1) * gd_cloud2_a(i, j, k) / real(stepave_count);
+          gd_cloud2_a(i, j, k) = real(0.);
+        }
+      }
+    }
+    if (first_period_flag || avg_end_flag) {
+      for (int k = 0; k < nz; ++k) {
+        gd_cldfr(i, j, k) = real(0.);
+        if (flag_qc && !flag_qi) {
+          real satvp = real(3.80) * std::exp(real(17.27) * (t_phy(i, j, k) - real(273.)) /
+                                             (t_phy(i, j, k) - real(36.))) /
+                       (real(.01) * p_phy(i, j, k));
+          real rhgrid = std::max(real(.1), std::min(real(.95), qv(i, j, k) / satvp));
+          real h2oliq = real(1000.) * (qc_cu(i, j, k) + qc(i, j, k));
+          satvp = real(1000.) * satvp;
+          real c = (real(1.) - std::exp((-real(100.) * h2oliq) /
+                                        rpow((real(1.) - rhgrid) * satvp, real(0.49)))) *
+                   rpow(rhgrid, real(0.25));
+          c = std::max(real(0.), std::min(real(1.), c));
+          if (qc(i, j, k) == real(0.)) c = c * real(.2);
+          gd_cldfr(i, j, k) = c;
+        }
+        if (flag_qc && flag_qi) {
+          real satvp = real(3.80) * std::exp(real(17.27) * (t_phy(i, j, k) - real(273.)) /
+                                             (t_phy(i, j, k) - real(36.))) /
+                       (real(.01) * p_phy(i, j, k));
+          real rhgrid = std::max(real(.1), std::min(real(.95), qv(i, j, k) / satvp));
+          real h2oliq = real(1000.) * (qc_cu(i, j, k) + qc(i, j, k) + qi_cu(i, j, k) + qi(i, j, k));
+          satvp = real(1000.) * satvp;
+          real c = (real(1.) - std::exp((-real(100.) * h2oliq) /
+                                        rpow((real(1.) - rhgrid) * satvp, real(0.49)))) *
+                   rpow(rhgrid, real(0.25));
+          c = std::max(real(0.), std::min(real(1.), c));
+          if (qc(i, j, k) == real(0.) && qi(i, j, k) == real(0.)) c = c * real(.2);
+          gd_cldfr(i, j, k) = c;
+        }
+      }
     }
   }
 };
@@ -775,7 +859,8 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       q2(g, Stagger::M, "q2"), psfc(g, Stagger::M, "psfc"), ch(g, Stagger::M, "ch"), snow(g, Stagger::M, "snow"),
       snowh(g, Stagger::M, "snowh"), snowc(g, Stagger::M, "snowc"), canwat(g, Stagger::M, "canwat"),
       lai(g, Stagger::M, "lai"), snotime(g, Stagger::M, "snotime"), qz0(g, Stagger::M, "qz0"),
-      rainbl(g, Stagger::M, "rainbl"), raincv(g, Stagger::M, "raincv"), rainncv(g, Stagger::M, "rainncv"),
+      rainbl(g, Stagger::M, "rainbl"), raincv(g, Stagger::M, "raincv"), raincv_a(g, Stagger::M, "raincv_a"),
+      raincv_b(g, Stagger::M, "raincv_b"), rainncv(g, Stagger::M, "rainncv"),
       rainshv(g, Stagger::M, "rainshv"), rainc(g, Stagger::M, "rainc"), rainsh(g, Stagger::M, "rainsh"),
       pratec(g, Stagger::M, "pratec"), pratesh(g, Stagger::M, "pratesh"), nca(g, Stagger::M, "nca"),
       htop(g, Stagger::M, "htop"), hbot(g, Stagger::M, "hbot"), cutop(g, Stagger::M, "cutop"),
@@ -831,6 +916,9 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   mk3(tke_pbl, g, "tke_pbl"); mk3(el_pbl, g, "el_pbl");
   mk3(w0avg, g, "w0avg"); mk3(cldfra_dp, g, "cldfra_dp"); mk3(cldfra_sh, g, "cldfra_sh");
   mk3(qc_cu, g, "qc_cu"); mk3(qi_cu, g, "qi_cu"); mk3(cldfra, g, "cldfra");
+  mk3(gd_cloud, g, "gd_cloud"); mk3(gd_cloud2, g, "gd_cloud2");
+  mk3(gd_cloud_a, g, "gd_cloud_a"); mk3(gd_cloud2_a, g, "gd_cloud2_a");
+  mk3(gd_cldfr, g, "gd_cldfr");
   mk3(n_stc, gs_, "n_stc"); mk3(n_smc, gs_, "n_smc"); mk3(n_swc, gs_, "n_swc"); mk3(n_et, gs_, "n_et");
   mk3(n_smav, gs_, "n_smav"); mk3(zero3_, g, "zero3");
   for (Field2* f : {&n_lwdn, &n_soldn, &n_solnet, &n_sfcprs, &n_prcp, &n_sfctmp, &n_th2, &n_q2, &n_q2sat, &n_dqsdt2,
@@ -891,7 +979,8 @@ std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
   for (Field2* f : {&tsk, &xland, &xice, &lakemask, &water_depth, &mavail, &tmn, &vegfra, &shdmin, &shdmax, &snoalb,
                     &albbck, &albedo, &emiss, &embck, &znt, &z0, &ust, &ustm, &mol, &rmol, &pblh, &hfx, &qfx, &lh,
                     &grdflx, &qsfc, &flhc, &flqc, &wspd, &br, &fm, &fh, &zol, &regime, &u10, &v10, &t2, &th2, &q2,
-                    &psfc, &ch, &snow, &snowh, &snowc, &canwat, &lai, &snotime, &qz0, &rainbl, &raincv, &rainncv,
+                    &psfc, &ch, &snow, &snowh, &snowc, &canwat, &lai, &snotime, &qz0, &rainbl, &raincv, &raincv_a,
+                    &raincv_b, &rainncv,
                     &rainshv, &sr, &glw, &swdown, &gsw, &smstav, &smstot, &sfcrunoff, &udrunoff, &acsnom, &acsnow,
                     &snopcx, &potevp, &noahres, &sfcevp, &sfcexc, &achfx, &aclhf, &acgrdflx, &dx2d, &uoce, &voce,
                     &ctopo, &ctopo2, &ck, &cka, &cd, &cda, &wstar, &delta, &hol, &rainc, &rainsh, &pratec, &pratesh, &nca, &htop, &hbot,
@@ -911,7 +1000,8 @@ std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
   std::vector<std::pair<std::string, Field3*>> v;
   for (Field3* f : {&tslb, &smois, &sh2o, &smcrel, &exch_h, &exch_m, &pt.rthraten, &pt.rublten, &pt.rvblten,
                     &pt.rthblten, &pt.rqvblten, &pt.rqcblten, &pt.rqiblten, &t1_lag_, &w0avg, &cldfra_dp, &cldfra_sh,
-                    &qc_cu, &qi_cu, &pt.rucuten, &pt.rvcuten, &pt.rthcuten, &pt.rqvcuten, &pt.rqccuten, &pt.rqrcuten,
+                    &qc_cu, &qi_cu, &gd_cloud, &gd_cloud2, &gd_cloud_a, &gd_cloud2_a, &gd_cldfr,
+                    &pt.rucuten, &pt.rvcuten, &pt.rthcuten, &pt.rqvcuten, &pt.rqccuten, &pt.rqrcuten,
                     &pt.rqicuten, &pt.rqscuten})
     v.emplace_back("sfc_" + f->name(), f);
   if (o_.sf_sfclay_physics == 2 || o_.bl_pbl_physics == 2) {
@@ -971,6 +1061,7 @@ void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
   pbl_driver(s, b);
   vmdump::dump("vm_pbl", 1, {&pt.rublten, &pt.rvblten, &pt.rthblten, &pt.rqvblten, &exch_h}, {&pblh});
   cumulus_driver(s, b);
+  if (o_.cu_physics == 3) convtrans_prep(s);
 }
 
 void PhysicsSuite::part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) {
@@ -1296,9 +1387,12 @@ void PhysicsSuite::cumulus_driver(const dyn::State& s, const dyn::BaseState& b) 
     k.xland = xland.cview(); k.hfx = hfx.cview(); k.qfx = qfx.cview(); k.kpbl = kpbl.cview(); k.ht = b.ht.view();
     k.rthraten = pt.rthraten.cview(); k.rthblten = pt.rthblten.cview(); k.rqvblten = pt.rqvblten.cview();
     k.rthften = pt.rthften.cview(); k.rqvften = pt.rqvften.cview();
-    k.raincv = raincv.view(); k.pratec = pratec.view(); k.htop = htop.view(); k.hbot = hbot.view();
+    // first_rk_step_part1 passes HTOP=grid%cutop, HBOT=grid%cubot to cumulus_driver; advance_ppt
+    // hits CASE DEFAULT for GFLSCHEME, so grid%htop and grid%hbot remain 0.
+    k.raincv = raincv.view(); k.pratec = pratec.view(); k.htop = cutop.view(); k.hbot = cubot.view();
     k.rthcuten = pt.rthcuten.view(); k.rqvcuten = pt.rqvcuten.view(); k.rqccuten = pt.rqccuten.view();
     k.rqicuten = pt.rqicuten.view(); k.rucuten = pt.rucuten.view(); k.rvcuten = pt.rvcuten.view();
+    k.gd_cloud = gd_cloud.view(); k.gd_cloud2 = gd_cloud2.view();
     k.flag_qc = s.P_QC >= 0; k.flag_qi = s.P_QI >= 0;
     column_for(g_.columns(), k);
     // debug: CPPWRF_GFL_DUMP=file CPPWRF_GFL_DUMP_STEP=n (or CPPWRF_GF_DUMP / CPPWRF_GF_DUMP_STEP)
@@ -1360,7 +1454,7 @@ void PhysicsSuite::cumulus_driver(const dyn::State& s, const dyn::BaseState& b) 
       }
       w3(pt.rthcuten, nz); w3(pt.rqvcuten, nz); w3(pt.rqccuten, nz); w3(pt.rqicuten, nz);
       w3(pt.rucuten, nz); w3(pt.rvcuten, nz);
-      w2(raincv); w2(pratec); w2(htop); w2(hbot);
+      w2(raincv); w2(pratec); w2(cutop); w2(cubot);
       std::fclose(f);
     }
     return;
@@ -1422,6 +1516,32 @@ void PhysicsSuite::cumulus_driver(const dyn::State& s, const dyn::BaseState& b) 
   cu_kf::run_kf(kf, g_.columns());
 }
 
+// dyn_em/module_convtrans_prep.F convtrans_prep (called in first_rk_step_part1 when cu_diag == 1)
+void PhysicsSuite::convtrans_prep(const dyn::State& s) {
+  const int ktau = int(itimestep);
+  int stepave = int(real(o_.convtrans_avglen_m) * real(60.) / real(g_.dt));
+  stepave = std::max(1, stepave);
+  const bool avg_end_flag = (ktau % stepave == 0);
+  const bool first_period_flag = (ktau <= stepave);
+  if (ktau <= 1) stepave_count = 0;
+  stepave_count = stepave_count + 1;
+  KConvtransPrep k{};
+  k.nz = g_.nz; k.ktau = ktau; k.stepave_count = stepave_count; k.cu_phys = o_.cu_physics;
+  k.avg_end_flag = avg_end_flag; k.first_period_flag = first_period_flag;
+  k.flag_qc = s.P_QC >= 0; k.flag_qi = s.P_QI >= 0;
+  k.raincv = raincv.cview();
+  k.raincv_a = raincv_a.view(); k.raincv_b = raincv_b.view();
+  k.gd_cloud = gd_cloud.cview(); k.gd_cloud2 = gd_cloud2.cview();
+  k.t_phy = prep.t_phy.cview(); k.p_phy = prep.p_phy.cview();
+  k.qv = s.q_2[s.P_QV].cview();
+  k.qc = s.P_QC >= 0 ? s.q_2[s.P_QC].cview() : zero3_.cview();
+  k.qi = s.P_QI >= 0 ? s.q_2[s.P_QI].cview() : zero3_.cview();
+  k.gd_cloud_a = gd_cloud_a.view(); k.gd_cloud2_a = gd_cloud2_a.view();
+  k.qc_cu = qc_cu.view(); k.qi_cu = qi_cu.view(); k.gd_cldfr = gd_cldfr.view();
+  column_for(g_.columns(), k);
+  if (avg_end_flag) stepave_count = 0;
+}
+
 // module_physics_addtendc.F advance_ppt (called in solve_em before phy_prep_part2)
 void PhysicsSuite::advance_ppt(const dyn::State& s) {
   if (o_.cu_physics == 0) return;
@@ -1434,11 +1554,11 @@ void PhysicsSuite::advance_ppt(const dyn::State& s) {
 
 
 std::vector<const Field2*> PhysicsSuite::fields2() const {
-  return {&lwcf, &swcf, &hrang, &uratx, &vratx, &tratx, &ra, &rs, &shall, &lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc, &aclwupt, &aclwuptc, &aclwdnt, &aclwdntc, &aclwupb, &aclwupbc, &aclwdnb, &aclwdnbc, &acswupt, &acswuptc, &acswdnt, &acswdntc, &acswupb, &acswupbc, &acswdnb, &acswdnbc, &olr, &tsk, &xland, &xice, &lakemask, &water_depth, &mavail, &tmn, &vegfra, &shdmin, &shdmax, &snoalb, &albbck, &albedo, &emiss, &embck, &znt, &z0, &ust, &ustm, &mol, &rmol, &pblh, &hfx, &qfx, &lh, &grdflx, &qsfc, &flhc, &flqc, &wspd, &br, &fm, &fh, &zol, &regime, &u10, &v10, &t2, &th2, &q2, &psfc, &ch, &snow, &snowh, &snowc, &canwat, &lai, &snotime, &qz0, &rainbl, &raincv, &rainncv, &rainshv, &rainc, &rainsh, &pratec, &pratesh, &nca, &htop, &hbot, &cutop, &cubot, &cuppt, &sr, &glw, &swdown, &gsw, &smstav, &smstot, &sfcrunoff, &udrunoff, &acsnom, &acsnow, &snopcx, &potevp, &noahres, &sfcevp, &sfcexc, &achfx, &aclhf, &acgrdflx, &dx2d, &var2d, &uoce, &voce, &ctopo, &ctopo2, &ck, &cka, &cd, &cda, &wstar, &delta, &hol, &thz0, &uz0, &vz0, &akhs, &akms, &ct, &tshltr, &th10, &qshltr, &q10, &pshltr, &u10e, &v10e, &mixht};
+  return {&lwcf, &swcf, &hrang, &uratx, &vratx, &tratx, &ra, &rs, &shall, &lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc, &aclwupt, &aclwuptc, &aclwdnt, &aclwdntc, &aclwupb, &aclwupbc, &aclwdnb, &aclwdnbc, &acswupt, &acswuptc, &acswdnt, &acswdntc, &acswupb, &acswupbc, &acswdnb, &acswdnbc, &olr, &tsk, &xland, &xice, &lakemask, &water_depth, &mavail, &tmn, &vegfra, &shdmin, &shdmax, &snoalb, &albbck, &albedo, &emiss, &embck, &znt, &z0, &ust, &ustm, &mol, &rmol, &pblh, &hfx, &qfx, &lh, &grdflx, &qsfc, &flhc, &flqc, &wspd, &br, &fm, &fh, &zol, &regime, &u10, &v10, &t2, &th2, &q2, &psfc, &ch, &snow, &snowh, &snowc, &canwat, &lai, &snotime, &qz0, &rainbl, &raincv, &raincv_a, &raincv_b, &rainncv, &rainshv, &rainc, &rainsh, &pratec, &pratesh, &nca, &htop, &hbot, &cutop, &cubot, &cuppt, &sr, &glw, &swdown, &gsw, &smstav, &smstot, &sfcrunoff, &udrunoff, &acsnom, &acsnow, &snopcx, &potevp, &noahres, &sfcevp, &sfcexc, &achfx, &aclhf, &acgrdflx, &dx2d, &var2d, &uoce, &voce, &ctopo, &ctopo2, &ck, &cka, &cd, &cda, &wstar, &delta, &hol, &thz0, &uz0, &vz0, &akhs, &akms, &ct, &tshltr, &th10, &qshltr, &q10, &pshltr, &u10e, &v10e, &mixht};
 }
 
 std::vector<const Field3*> PhysicsSuite::fields3() const {
-  return {&rthratenlw, &rthratensw, &rthratenlwc, &rthratenswc, &o3rad, &tslb, &smois, &sh2o, &smcrel, &exch_h, &exch_m, &tke_pbl, &el_pbl, &w0avg, &cldfra_dp, &cldfra_sh, &qc_cu, &qi_cu, &pt.rthraten, &pt.rublten, &pt.rvblten, &pt.rthblten, &pt.rqvblten, &pt.rqcblten, &pt.rqiblten, &pt.rucuten, &pt.rvcuten, &pt.rthcuten, &pt.rqvcuten, &pt.rqccuten, &pt.rqrcuten, &pt.rqicuten, &pt.rqscuten, &pt.rthften, &pt.rqvften, &prep.th_phy, &prep.th_phy_m_t0, &prep.p_phy, &prep.pi_phy, &prep.t_phy, &prep.rho, &prep.u_phy, &prep.v_phy, &prep.z, &prep.p_hyd, &prep.z_at_w, &prep.dz8w, &prep.p8w, &prep.t8w, &prep.p_hyd_w};
+  return {&rthratenlw, &rthratensw, &rthratenlwc, &rthratenswc, &o3rad, &tslb, &smois, &sh2o, &smcrel, &exch_h, &exch_m, &tke_pbl, &el_pbl, &w0avg, &cldfra_dp, &cldfra_sh, &qc_cu, &qi_cu, &gd_cloud, &gd_cloud2, &gd_cloud_a, &gd_cloud2_a, &gd_cldfr, &pt.rthraten, &pt.rublten, &pt.rvblten, &pt.rthblten, &pt.rqvblten, &pt.rqcblten, &pt.rqiblten, &pt.rucuten, &pt.rvcuten, &pt.rthcuten, &pt.rqvcuten, &pt.rqccuten, &pt.rqrcuten, &pt.rqicuten, &pt.rqscuten, &pt.rthften, &pt.rqvften, &prep.th_phy, &prep.th_phy_m_t0, &prep.p_phy, &prep.pi_phy, &prep.t_phy, &prep.rho, &prep.u_phy, &prep.v_phy, &prep.z, &prep.p_hyd, &prep.z_at_w, &prep.dz8w, &prep.p8w, &prep.t8w, &prep.p_hyd_w};
 }
 
 }  // namespace cppwrf::phys::driver
