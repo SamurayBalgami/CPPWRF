@@ -405,34 +405,45 @@ WRF for 1 h. CUDA FP64 at 1 h: U 4.7e-7, THM 6.0e-8; CUDA FP32 against single-pr
 wrf_suite: real_p7_r8_fp64_cpu, real_p7_r8_fp64_cpu_1h, real_p7_r8_fp64_cuda_1h, real_p7_fp32_1h,
 restart_p7_fp64.
 
-## 13. Grell-Freitas cumulus (P8, cu_physics = 3)
+## 13. Grell-Freitas-Li cumulus (P8, cu_physics = 3, GFLSCHEME)
 
-Port: `src/phys/cu_gf/` = WRF 4.6.1 `module_cu_gf_deep.F` (CUP_gf), `module_cu_gf_sh.F` (CUP_gf_sh,
-`ishallow = 1`) and `module_cu_gf_wrfdrv.F` (GFDRV) with WRF's settings (imid = 0, dicycle = 1,
-irainevap = 0, autoconv = 1, aeroevap = 1, no stochastic perturbations, `clos_choice` = phys.clos_choice).
-Driver glue `KGrellFreitas` in `src/phys/driver/suite.cpp`; it uses the same RTHFTEN/RQVFTEN forcing as
-New Tiedtke (GF combines it with RTHRATEN/RTHBLTEN itself). Columns within 4 points of a specified
-boundary get no tendencies (ibegc/iendc), RUCUTEN/RVCUTEN are computed but WRF's phy_cu_ten does not add
-them, RQCCUTEN/RQICUTEN split at T = 258 K.
+Port: `src/phys/cu_gfl/` = WRF 4.8.0 `phys/GFL/module_cu_gfl_deep.F90` (`cu_gfl_deep_run`),
+`phys/GFL/module_cu_gfl_sh.F90` (`cu_gfl_sh_run`, `ishallow = 1`, `ichoice = 3`) and
+`phys/GFL/WRF/module_cu_gfl_wrf.F90` (`cu_grell_freitas_li`) with WRF's settings (`imid = 0`,
+`sub3d = 0`, `dicycle = 0`, `irainevap = 1`, `icoldpool = 1`, `autoconv = 1`, `aeroevap = 1`,
+`ccn = 1500.`, `ccnclean = 250.`, no stochastic perturbations, `clos_choice` = `phys.clos_choice`).
+Driver glue `KGrellFreitas` in `src/phys/driver/suite.cpp`; it uses the same `RTHFTEN`/`RQVFTEN`
+forcing as New Tiedtke (`cu_grell_freitas_li` combines it with `RTHRATEN`/`RTHBLTEN` itself). All
+columns in the domain are active (`its..itf`, `jts..jtf`), `RUCUTEN`/`RVCUTEN` are computed (including
+cold-pool gust-front momentum impact and ECMWF-style kinetic energy dissipation heating) but WRF's
+`phy_cu_ten` (`CASE (GDSCHEME, G3SCHEME, GFLSCHEME)`) does not add them to the model momentum
+tendencies, and `RQCCUTEN`/`RQICUTEN` split at `T = 258 K`.
 
-Two WRF behaviours that are not "one column at a time":
-- **Vector pow.** gfortran vectorises the zu/zd profile loops (get_zu_zd_pdf_fim) and calls glibc's
-  libmvec `_ZGVbN2vv_pow` for pairs of iterations; it differs from scalar pow in the last bit, which GF's
-  cancelling closures (aa1 - aa0) turn into 1e-10. The CPU path calls the same function (cppwrf_core links
-  libmvec); the GPU uses its own pow.
-- **Row-carried scratch.** get_inversion_layers (shallow) resets its sec_deriv once per row and then lets
-  each column's search see the previous column's values; CPPWRF runs the shallow scheme in three
-  passes (per column, per-row scan, per column) to reproduce that. It also reads the never-set
-  sec_deriv(2) when kbcon = 2 (phys.gf_sec2, default 1e9; not seen to matter in P8).
+Exactness details in `src/phys/cu_gfl/`:
+- **Vector pow and operation order.** `gfortran` vectorises the `zu` profile loop (`get_zu_zd_pdf_fim`)
+  and calls glibc's `libmvec` `_ZGVbN2vv_pow` for pairs of iterations (scalar `pow` for an odd remainder
+  iteration), evaluating `(((x**(a - 1.) * b) / beta) * (1. - x)**(b - 1.))`; it can differ from scalar
+  `pow` or left-to-right multiplication in the last bit. The CPU path calls the same `libmvec` function
+  (`cppwrf_core` links `libmvec`) and matches Fortran's evaluation order (`rates_up_pdf` `smooth_Heaviside`
+  and `irainevap`'s `edt * evfact * (sig_init * sig_init)`); the GPU uses its own `pow`.
+- **Column-local inversion layers.** Unlike WRF 4.6.1 GF, `get_inversion_layers` in GFL v4.8.0
+  initialises `sec_deriv(:) = 0.` at entry, starts at `ilev = max(4, kstart(i)+1)`, and resets
+  `sec_deriv(:) = 1.e9` inside the column loop, so there is no row-carried state or uninitialised read
+  and the entire scheme runs in a single parallel pass over all columns.
+- **Constants.** `cu_grell_freitas_li` receives WRF's model constants (`xlv = 2.5e6`, `cp = 1004.5`,
+  `g = 9.81`, `r_v = 461.6`) as `real(kind=kind_phys)` for `dhdt`, `omeg`, and `mconv`, while
+  `module_cu_gfl_deep` and `module_cu_gfl_sh` use their own module parameters (`g = 9.81`, `cp = 1004.`,
+  `xlv = 2.5e6`, `r_v = 461.`, `tcrit = 258.`, `fluxtune = 1.5`).
 
-**Column replay** (tests/phys/cu_gf): GFDRV's inputs dumped from CPPWRF at P8 steps 1, 5 and 10 run
-through WRF's objects: every column bit-identical (deep only and shallow + deep).
+**Column replay** (`tests/phys/cu_gfl`): `cu_grell_freitas_li`'s inputs dumped from CPPWRF at P8 steps
+1, 5 and 10 run through WRF v4.8.0's `r8d8` objects: every column bit-identical (deep only and
+shallow + deep).
 
-**Acceptance** (P8 = P2 with cu_physics = 3, ishallow = 1; reference run P8_r8, FP32: P8): CPU FP64
-bit-identical to WRF for 1 h. CUDA FP64 at 1 h: U 3.7e-10, THM 9.8e-11; CUDA FP32 against
-single-precision WRF: U 8.5e-4.
-wrf_suite: real_p8_r8_fp64_cpu_10min, real_p8_r8_fp64_cpu_1h, real_p8_r8_fp64_cuda_1h, real_p8_fp32_1h,
-restart_p8_fp64.
+**Acceptance** (P8 = P2 with `cu_physics = 3`, `ishallow = 1`; reference run `P8_r8`, FP32: `P8`): CPU
+FP64 bit-identical to WRF for 10 min (`steps/`) and 1 h. CUDA FP64 at 1 h: U 3.6e-10, W 2.0e-8,
+THM 1.2e-10, QV 5.4e-9; CUDA FP32 against single-precision WRF: U 4.3e-4, W 2.2e-2, THM 9.8e-6,
+QV 2.9e-4. `wrf_suite`: `real_p8_r8_fp64_cpu_10min`, `real_p8_r8_fp64_cpu_1h`,
+`real_p8_r8_fp64_cuda_1h`, `real_p8_fp32_1h`, `restart_p8_fp64`.
 
 ## 14. WRF behaviours reproduced for bit identity (P4-P6, nesting)
 

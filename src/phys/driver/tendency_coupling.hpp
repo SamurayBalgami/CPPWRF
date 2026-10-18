@@ -28,7 +28,7 @@ struct CouplingFlags {
   bool radiation = false;  // ra_lw_physics > 0 .or. ra_sw_physics > 0
   bool pbl = false;        // bl_pbl_physics > 0 (YSU: phy_bl_ten adds th, u, v, qv, qc, qi)
   int cu_physics = 0;      // cu_physics (1 = KFETASCHEME: phy_cu_ten adds th, qv, qc, qr, qi, qs;
-                           // 16 = NTIEDTKESCHEME: u, v, th, qv, qc, qi)
+                           // 3 = GFLSCHEME: th, qv, qc, qi; 16 = NTIEDTKESCHEME: u, v, th, qv, qc, qi)
   bool theta_m = false;    // use_theta_m = 1 (phy_prep_part2: dry-theta RTHFTEN)
 };
 
