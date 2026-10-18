@@ -1,6 +1,6 @@
 # Nesting in CPPWRF: design
 
-Scope: WRF 4.6.1 two-way (feedback = 1) and one-way (feedback = 0) static nests with odd
+Scope: WRF 4.8.0 two-way (feedback = 1) and one-way (feedback = 0) static nests with odd
 parent_grid_ratio, the same vertical levels in all domains (no vertical refinement), nests that read
 their own wrfinput_d0N (input_from_file = .true.), real-data cases. Not implemented: ideal-case nests,
 moving nests, vertical refinement.

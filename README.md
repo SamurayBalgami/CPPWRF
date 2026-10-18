@@ -1,11 +1,11 @@
 # CPPWRF
 
-CPPWRF is a C++20 / CUDA reimplementation of the WRF-ARW v4.6.1 dynamical core, physics and static
+CPPWRF is a C++20 / CUDA reimplementation of the WRF-ARW v4.8.0 dynamical core, physics and static
 nesting, written from one source for CPU (OpenMP) and GPU (CUDA), in FP32 or FP64. It reads standard
 `wrfinput_d0N` / `wrfbdy_d01` files and writes `wrfout_d0N` and restart files.
 
 Every routine follows WRF statement by statement and is verified against WRF itself: on the CPU in FP64,
-CPPWRF is bit-identical to WRF v4.6.1 real*8 for the real-data dynamics, the physics suites (surface
+CPPWRF is bit-identical to WRF v4.8.0 real*8 for the real-data dynamics, the physics suites (surface
 layer, Noah LSM, YSU, Kain-Fritsch, Grell-Freitas, New Tiedtke, WSM6, Thompson, RRTMG) and one- and
 two-way nesting. The GPU build agrees to roundoff in FP64. See [docs/STATUS.md](docs/STATUS.md).
 

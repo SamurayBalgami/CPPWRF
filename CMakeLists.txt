@@ -117,6 +117,11 @@ if(TARGET netCDF::netcdf OR NETCDF_FOUND OR NETCDF_INCDIR)
   # cppwrf_real against WRF real.exe output (skips without ${CPPWRF_WRF_RUNS}/real)
   add_test(NAME real_vs_wrf COMMAND bash ${CMAKE_SOURCE_DIR}/tests/init_real/run_real_test.sh ${CMAKE_BINARY_DIR}
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  # wrfout/wrfrst files identical to WRF v4.8.0's (CPU FP64 builds; skips without ${CPPWRF_WRF_RUNS})
+  if(CPPWRF_DOUBLE AND NOT CPPWRF_ENABLE_CUDA)
+    add_test(NAME wrf_files_vs_wrf COMMAND bash ${CMAKE_SOURCE_DIR}/tests/verify/run_wrf_files_test.sh ${CMAKE_BINARY_DIR}
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  endif()
 endif()
 
 # Single-source kernels: every source of the core is compiled by nvcc in CUDA builds.

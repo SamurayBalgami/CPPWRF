@@ -1,5 +1,5 @@
 #pragma once
-// Port of WRF 4.6.1 phys/module_sf_myjsfc.F (myjsfc, sfcdif, myjsfcinit)
+// Port of WRF 4.8.0 phys/module_sf_myjsfc.F (myjsfc, sfcdif, myjsfcinit)
 // Mellor-Yamada-Janjic (Eta) surface layer scheme (sf_sfclay_physics = 2).
 
 #include <cmath>

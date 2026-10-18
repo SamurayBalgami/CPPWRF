@@ -2,7 +2,7 @@
 
 // ============================================================================
 // CPPWRF Coupling and Uncoupling Kernels (couple_or_uncouple_em)
-// Ports WRF 4.6.1 dyn_em/couple_or_uncouple_em.F
+// Ports WRF 4.8.0 dyn_em/couple_or_uncouple_em.F
 // Couples/uncouples prognostic state variables in-place before and after
 // nesting forcing/feedback, using WRF's exact reciprocal multiplication on
 // uncoupling so that interior roundoff matches WRF bit-for-bit:

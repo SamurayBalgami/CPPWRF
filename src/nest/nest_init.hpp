@@ -2,7 +2,7 @@
 
 // ============================================================================
 // CPPWRF Nest Initialisation Kernels (blend_terrain, adjust_tempqv, copy_3d_field)
-// Ports WRF 4.6.1 dyn_em/nest_init_utils.F
+// Ports WRF 4.8.0 dyn_em/nest_init_utils.F
 // Implements nest terrain blending and thermodynamic lapse-rate adjustments
 // for input_from_file initialisation.
 // ============================================================================

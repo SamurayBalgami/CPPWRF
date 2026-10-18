@@ -1,5 +1,5 @@
 #pragma once
-// P1 physics suite: the column physics of WRF v4.6.1 first_rk_step_part1/part2 and
+// P1 physics suite: the column physics of WRF v4.8.0 first_rk_step_part1/part2 and
 // phy_prep_part2 for
 //   sf_sfclay_physics = 1 (sfclayrev), sf_surface_physics = 2 (Noah, 4 soil layers),
 //   bl_pbl_physics = 1 (YSU), mp/cu/ra = 0, isfflx = 1, fractional_seaice = 0, use_theta_m = 1,
@@ -103,7 +103,10 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   void part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) override;
   void after_rk(const dyn::State& s, const dyn::BaseState& b) override;
   Field3* th_forcing() override { return o_.cu_physics == 16 || o_.cu_physics == 3 ? &pt.rthften : nullptr; }
-  Field3* qv_forcing() override { return o_.cu_physics == 16 || o_.cu_physics == 3 ? &pt.rqvften : nullptr; }
+  // rk_scalar_tend sets RQVFTEN for Kain-Fritsch too (module_em.F), though KF does not use it
+  Field3* qv_forcing() override {
+    return o_.cu_physics == 16 || o_.cu_physics == 3 || o_.cu_physics == 1 ? &pt.rqvften : nullptr;
+  }
 
   long itimestep = 0;  // WRF grid%itimestep (incremented in part1, as solve_em does per step)
   int stepbl = 1;      // WRF grid%stepbl (set_physics_rconfigs: nint(bldt*60/dt), >= 1)
@@ -139,7 +142,11 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   Field3 t1_lag_;  // WRF grid%t_1 as seen by first_rk_step_part2 (wrf_t1_lag)
   Field2 coszen;   // radiation: cosine of the solar zenith angle (middle of the radiation interval)
   // radiation diagnostics (radiation_driver): LW/SW heating rates, fluxes and their accumulations (every step)
-  Field3 rthratenlw, rthratensw;
+  Field3 rthratenlw, rthratensw, rthratenlwc, rthratenswc, o3rad;
+  Field2 lwcf, swcf, hrang;
+  // surface_driver diagnostics: uratx, vratx, tratx (obs-nudging ratios), ra (Noah), rs (Noah canopy
+  // resistance), shall (KF shallow flag)
+  Field2 uratx, vratx, tratx, ra, rs, shall;
   Field2 lwupt, lwuptc, lwdnt, lwdntc, lwupb, lwupbc, lwdnb, lwdnbc, olr, swupt, swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc;
   Field2 aclwupt, aclwuptc, aclwdnt, aclwdntc, aclwupb, aclwupbc, aclwdnb, aclwdnbc, acswupt, acswuptc, acswdnt, acswdntc, acswupb, acswupbc, acswdnb, acswdnbc;
   std::unique_ptr<RadiationDriver> rad_;
@@ -157,6 +164,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   }
   const Field2 *rainncv_mp_ = nullptr, *sr_mp_ = nullptr;
   Field3 cldfra;  // radiation cloud fraction (WRF CLDFRA)
+  const RadiationDriver* radiation() const { return rad_.get(); }
   bool radiation_on() const { return o_.rad.ra_lw_physics != 0 || o_.rad.ra_sw_physics != 0; }
   bool t1_lag_set_ = false;
 

@@ -2,7 +2,7 @@
 
 // ============================================================================
 // CPPWRF Lateral Boundary Interpolation Kernels (bdy_interp / bdy_interp1)
-// Ports WRF 4.6.1 share/interp_fcn.F (bdy_interp1)
+// Ports WRF 4.8.0 share/interp_fcn.F (bdy_interp1)
 // Computes boundary values and tendencies:
 //   value = current nest field
 //   tendency = rdt * (sint(parent new) - nest), rdt = 1.D0 / cdt

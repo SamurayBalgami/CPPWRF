@@ -7,7 +7,7 @@
 
 namespace cppwrf::dyn::diffusion {
 
-// Ported from WRF v4.6.1 dyn_em/module_big_step_utilities_em.F:
+// Ported from WRF v4.8.0 dyn_em/module_big_step_utilities_em.F:
 //   horizontal_diffusion      (lines 2715-2950)
 //   horizontal_diffusion_3dmp (lines 2954-3060)
 //   vertical_diffusion        (lines 3064-3187)
@@ -79,7 +79,7 @@ struct KHorizDiffV1 {
                                 xkmhd(i + 1, j - 1, k) + xkmhd(i + 1, j, k)) * rdx;
     real mrdx = msfvx(i, j) * msfvy(i, j) * rdx;
 
-    // Follows WRF v4.6.1 line 2854-2856 exactly (no c1*mut+c2 in y direction for v)
+    // Follows WRF v4.8.0 line 2854-2856 exactly (no c1*mut+c2 in y direction for v)
     real mkrdym = (msfty(i, j - 1) / msftx(i, j - 1)) * xkmhd(i, j - 1, k) * rdy;
     real mkrdyp = (msfty(i, j) / msftx(i, j)) * xkmhd(i, j, k) * rdy;
     real mrdy = msfvx(i, j) * msfvy(i, j) * rdy;

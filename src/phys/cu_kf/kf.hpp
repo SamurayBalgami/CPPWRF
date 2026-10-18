@@ -228,6 +228,8 @@ CPPWRF_HD inline void prof5(T eq, T& ee, T& ud) {
 
 template <typename T>
 struct KFKernel {
+    // WRF shall (WRFCuP): the shallow-convection flag of the last call per column (may be unset)
+    View2<T> shall{};
     // Grid sizes
     int nx;
     int ny;
@@ -381,6 +383,13 @@ struct KFKernel {
 
         T fbfrc = static_cast<T>(0.0);
         int ishall = 0;
+        // kf_eta_cps: shall(i,j) = ishall after KF_eta_PARA returns (any of its exits)
+        struct ShallOut {
+            const View2<T>& v;
+            const int& ish;
+            int i, j;
+            CPPWRF_HD ~ShallOut() { if (v.p) v(i, j) = static_cast<T>(ish); }
+        } shall_out{shall, ishall, i, j};
         const T dpmin = static_cast<T>(5.0e3);
         const T p300 = p0[0] - static_cast<T>(30000.0);
 
@@ -486,6 +495,7 @@ struct KFKernel {
                     fbfrc = static_cast<T>(1.0);
                     continue;
                 } else {
+                    ishall = 2;  // KF_eta_PARA: no convection (WRFCuP accounting)
                     return; // No convection occurs
                 }
             }
@@ -501,6 +511,7 @@ struct KFKernel {
                 if (dpthmx > dpmin) break;
             }
             if (dpthmx < dpmin) {
+                ishall = 2;  // KF_eta_PARA: no convection (WRFCuP accounting)
                 return;
             }
             kpbl = lc + nlayrs - 1;
@@ -544,6 +555,7 @@ struct KFKernel {
                 if (zlcl <= z0[nk]) break;
             }
             if (zlcl > z0[kl - 1]) {
+                ishall = 2;  // KF_eta_PARA: no convection (WRFCuP accounting)
                 return;
             }
 
@@ -1388,6 +1400,7 @@ struct KFKernel {
             T dabe = (abe - abeg > static_cast<T>(0.1) * abe) ? (abe - abeg) : (static_cast<T>(0.1) * abe);
             fabe = abeg / abe;
             if (fabe > static_cast<T>(1.0) && ishall == 0) {
+                ishall = 2;  // KF_eta_PARA: no convection (WRFCuP accounting)
                 return;
             }
             if (ncount != 1) {
@@ -1424,6 +1437,7 @@ struct KFKernel {
                 }
                 if (ainc > aincmx) ainc = aincmx;
                 if (ainc < static_cast<T>(0.05)) {
+                    ishall = 2;  // KF_eta_PARA: no convection (WRFCuP accounting)
                     return;
                 }
                 tder = tder2 * ainc;

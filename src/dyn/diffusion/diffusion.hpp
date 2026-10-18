@@ -1,6 +1,6 @@
 #pragma once
 
-// Master header for WRF v4.6.1 Diffusion and Damping kernels in CPPWRF.
+// Master header for WRF v4.8.0 Diffusion and Damping kernels in CPPWRF.
 
 #include "dyn/diffusion/diffusion_params.hpp"
 #include "dyn/diffusion/diff_metrics.hpp"

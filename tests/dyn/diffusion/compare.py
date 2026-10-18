@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 compare.py
-Differential verification comparison between Fortran WRF v4.6.1 reference
+Differential verification comparison between Fortran WRF v4.8.0 reference
 and CPPWRF C++ diffusion and damping outputs.
 """
 

@@ -5,6 +5,7 @@
 //   stage 3: dt,   n   acoustic steps of dts
 // Per stage: rk_step_prep, rk_tendency, small steps, small_step_finish, scalar transport
 // (rk_scalar_tend + rk_update_scalar), calc_p_rho_phi.
+#include <functional>
 #include <memory>
 
 #include "dyn/large_step.hpp"
@@ -53,6 +54,9 @@ class RK3 {
   // WRF diffusion (diff_opt 1, km_opt 1/4, sixth order) in RK stage 1; not owned.
   void set_diffusion(DiffusionDriver* d) { dd_ = d; large_.set_diffusion(d); scalars_.set_diffusion(d); }
   LateralBC* lateral_bc() const { return bc_; }
+  // called in RK stage 1 after rk_step_prep, where first_rk_step_part1 runs phy_prep (output of runs
+  // without column physics)
+  std::function<void()> on_first_rk_prep;
 
  private:
   Grid g_;

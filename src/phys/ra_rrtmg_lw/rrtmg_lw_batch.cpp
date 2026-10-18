@@ -98,8 +98,10 @@ struct KLwFinish {
     const int ci = LW_CI(a, b, cc);
     const int col = ch.col0 + ci, nc = in.ncol;
     const LwColumnOut o = rrtmg_lw_finish(c, ch.views(ci), col_view(in.pi3d, col, nc),
-                                          SD{out.rthraten + col, nc}, SD{nullptr, 0});
+                                          SD{out.rthraten + col, nc},
+                                          out.rthratenc ? SD{out.rthratenc + col, nc} : SD{nullptr, 0});
     out.glw[col] = o.glw;
+    if (out.cf) out.cf[col] = o.lwcf;
     if (out.olr) out.olr[col] = o.olr;
     if (out.diag) {
       const double d[8] = {o.lwupt, o.lwuptc, o.lwdnt, o.lwdntc, o.lwupb, o.lwupbc, o.lwdnb, o.lwdnbc};

@@ -1,6 +1,6 @@
 # CPPWRF: status and verification
 
-CPPWRF reproduces WRF-ARW v4.6.1 statement by statement. This page lists what is implemented, how it
+CPPWRF reproduces WRF-ARW v4.8.0 statement by statement. This page lists what is implemented, how it
 is verified against WRF, and the current results. All numbers come from `tests/verify/wrf_suite.py`
 (41 cases, all passing).
 
@@ -15,7 +15,7 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 | PBL, surface layer, land surface | YSU (1), MYJ (2), revised MM5 surface layer (1), Eta surface layer (2), Noah LSM (2, including glacial and sea-ice points) |
 | Radiation | RRTMG LW and SW (4), CAM ozone and greenhouse gases, cal_cldfra1, McICA |
 | Nesting | static one-way and two-way nests (interp_fcn_sint, bdy_interp1, copy_fcn feedback, sm121/smdsm smoothers, blend_terrain, adjust_tempqv) |
-| I/O | reads wrfinput_d0N / wrfbdy_d01, writes wrfout_d0N (NetCDF) and restart files; native binary output |
+| I/O | reads wrfinput_d0N / wrfbdy_d01; writes WRF v4.8.0 wrfout_d0N and wrfrst_d0N files (WRF I/O schema, iofields_filename) and its own restart files; native binary output; cppwrf_real (real.exe) |
 | Ideal cases | rest state, warm bubble, Straka density current, inertia-gravity wave, 2-D squall line, 2-D hill flow, quarter-circle supercell |
 
 ## Verification method
@@ -23,7 +23,7 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 1. **Column and kernel tests** (`tests/phys`, `tests/dyn`, `tests/nest`): each scheme and kernel is
    driven with identical inputs in C++ and in the WRF Fortran (compiled with WRF's own flags) and the
    outputs are compared. Most of these tests require bit-for-bit agreement.
-2. **Model runs against WRF** (`tests/verify/wrf_suite.py`): WRF v4.6.1 and CPPWRF are run from the same
+2. **Model runs against WRF** (`tests/verify/wrf_suite.py`): WRF v4.8.0 and CPPWRF are run from the same
    wrfinput/wrfbdy files (119 x 89 x 44, 15 km, dt 60 s; nests 120 x 90 x 44 at 5 km) and the wrfout
    files are compared field by field (relative L2 over the domain).
 3. **Checkpoint dumps** (`tests/verify/wrf_dycore_dumps`): a WRF build that writes intermediate arrays
@@ -58,6 +58,13 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | N2 | two-way nest (both domains) | 1 h |
 
 Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8, P9, T1).
+
+Output files: the `wrfout_d0N` files of P1-P7, P9, mp8, R1, T1, N1 and N2 (both domains) and the
+`wrfrst_d0N` files of P1, P3, P4, P6, P7, P9, mp8 and N2 are identical to WRF v4.8.0's. This covers
+every variable, value, dimension, attribute and global attribute
+(`tests/verify/run_wrf_files_test.sh`). The one exception is RQCBLTEN / RQIBLTEN in runs without
+qc / qi: WRF leaves them uninitialised. `cppwrf_real` output is identical to real.exe for 41 cases
+([REAL.md](REAL.md)).
 
 CUDA (relative L2 at 1 h unless noted):
 

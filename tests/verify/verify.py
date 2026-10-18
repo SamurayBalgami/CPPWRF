@@ -49,7 +49,7 @@ TOL = {
     "water_budget_mp0": {"float64": 1e-12, "float32": 1e-5},
     "water_budget_mp": 1e-3,
     "wsm6_sym_time": 600.0,  # s, WSM6 squall2d: last snapshot checked for FP64 mirror symmetry
-    # Straka vs WRF v4.6.1 (FP32 output, diff_opt=1, top_lid=.false., same eta levels, p_top,
+    # Straka vs WRF v4.8.0 (FP32 output, diff_opt=1, top_lid=.false., same eta levels, p_top,
     # bubble; configs/straka_wrf.ini): measured theta' RMS difference 5.6e-6..7.4e-6 K over 900 s
     # (field RMS ~1 K), i.e. FP32 roundoff of WRF. Tolerance 1e-4 K (14x margin).
     "wrf_rms_thp": 1e-4,     # K

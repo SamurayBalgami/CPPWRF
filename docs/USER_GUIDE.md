@@ -34,7 +34,7 @@ This guide provides instructions for building CPPWRF on CPU and GPU architecture
 
 ## 1. Architecture & Design Principles
 
-CPPWRF is engineered to match WRF ARW (v4.6.1) numerics and equations discretely:
+CPPWRF is engineered to match WRF ARW (v4.8.0) numerics and equations discretely:
 
 - **Equation Set:** Fully compressible, non-hydrostatic Euler equations in flux form with hybrid terrain-following vertical coordinates ($\eta$).
 - **Time Integration:** 3rd-order Runge-Kutta (RK3) with split-explicit acoustic substeps.
@@ -255,18 +255,25 @@ When `output.format = native` (or `both`), CPPWRF writes raw binary dumps:
 3. **`snap_<step>.bin` and `snap_<step>.json`:** Multi-field binary array dumps with companion JSON headers detailing variable offsets, shapes, and IEEE precision.
 
 ### WRF NetCDF Output
-When `output.format = wrfout` (or `both`), CPPWRF produces files named `wrfout_d01_<YYYY-MM-DD_HH:MM:SS>`.
-
-- Fully compatible with standard WRF post-processing tools: `ncview`, Python (`xarray`, `netCDF4`, `wrf-python`), and NCL.
-- Contains 3D prognostic state fields (`U`, `V`, `W`, `T`, `PH`, `P`, `PB`, `PHB`, `QVAPOR`, `QCLOUD`, `QRAIN`, etc.) and 2D surface diagnostics (`TSK`, `HFX`, `QFX`, `LH`, `UST`, `PBLH`, `RAINNC`).
+When `output.format = wrfout` (or `both`), CPPWRF writes `wrfout_d0N_<YYYY-MM-DD_HH:MM:SS>` files as
+WRF v4.8.0 writes them: the history stream of the WRF I/O schema (`data/wrf_schema/wrf-4.8.0.tsv`) for
+the run's options (package conditions, `iofields_filename`, `frames_per_outfile`), with WRF's
+variables, dimensions, attributes and global attributes in WRF's order. The options come from the WRF
+`namelist.input` next to the wrfinput file, or from `output.wrf_namelist`. In CPU FP64 builds the
+files are identical to WRF real*8's (`tests/verify/run_wrf_files_test.sh`, ctest `wrf_files_vs_wrf`).
+The one exception is RQCBLTEN / RQIBLTEN in runs without cloud water / ice, which WRF leaves
+uninitialised.
 
 ### Restart Files & Resuming Simulations
-NetCDF restart files (`restart_<step>.nc`) store the complete prognostic state at bitwise precision.
+`restart.interval` (seconds) writes restart files. With `output.format = wrfout`, CPPWRF writes WRF's
+`wrfrst_d0N_<date>` files, including the restart stream, the alarm global attributes and every
+nest domain. In CPU FP64 builds these files are identical to WRF's. CPPWRF also writes its own
+`restart_<step>.nc` files, which hold the complete model state at bitwise precision. Runs resume from
+these files:
 
-To enable periodic restart snapshots:
 ```ini
 [restart]
-interval = 3600   # Write restart file every 3600 seconds (1 hour)
+interval = 3600   # restart files every 3600 seconds (1 hour)
 ```
 
 To resume a simulation from a restart file:

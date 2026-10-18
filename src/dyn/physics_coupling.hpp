@@ -29,6 +29,8 @@ class PhysicsCoupling {
   // One call per time step, after the RK3 loop (before the final calc_p_rho_phi).
   void step(State& s, const BaseState& b, real dt);
   const PhysicsParams& params() const { return p_; }
+  // WRF grid fields moist_physics_prep/finish_em leave (rho, qv_diabatic, qc_diabatic), by WRF name
+  std::vector<const Field3*> fields() const;
   Field2 rainnc, rainncv;  // accumulated / last-step grid-scale precipitation [mm]
   Field2 snownc, snowncv, graupelnc, graupelncv, sr;  // WSM6/Thompson: snow, graupel [mm]; sr = frozen fraction
   Field3 re_cloud, re_ice, re_snow;  // microp_re: effective radii [m] (RE_QC_BG ... before the first call)
@@ -37,7 +39,7 @@ class PhysicsCoupling {
   Grid g_;
   PhysicsParams p_;
   // moist_physics_prep_em outputs (WRF names)
-  Field3 th_phy, rho, pii, z, dz8w, qv_diabatic, p_phy;
+  Field3 th_phy, rho, pii, z, dz8w, qv_diabatic, qc_diabatic, p_phy;
   phys::wsm6::Wsm6Params<real> wp_{};  // WSM6 constants (wsm6init), computed once
   phys::mp_thompson::ThompsonDeviceTables<real> tp_{};  // Thompson lookup tables (thompson_init), computed once, device-resident
 };

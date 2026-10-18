@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare the C++ P1 suite (suite_cpp.bin) with WRF v4.6.1 (suite_ref.bin).
+"""Compare the C++ P1 suite (suite_cpp.bin) with WRF v4.8.0 (suite_ref.bin).
 
 Every record the C++ driver writes is compared with the WRF record of the same name
 (P1_n = after first_rk_step_part1, P2_n = after first_rk_step_part2, OUTn = after

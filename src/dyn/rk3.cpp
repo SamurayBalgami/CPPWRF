@@ -77,6 +77,7 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
     double dts_rk = rk == 1 ? dt_rk : dts;
     int ns = rk == 1 ? 1 : (rk == 2 ? n_sound_ / 2 : n_sound_);
     large_.prep(s, b);
+    if (rk == 1 && on_first_rk_prep) on_first_rk_prep();
     if (rk == 1 && cp_) {  // first_rk_step_part1: init_zero_tendency, then the column physics
       large_.zero_tendf(t);
       { const char* e = std::getenv("CPPWRF_VM_DUMP_STEP"); vmdump::on() = vm_step_ == (e ? std::atol(e) - 1 : 0); }

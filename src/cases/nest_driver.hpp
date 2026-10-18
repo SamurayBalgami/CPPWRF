@@ -2,7 +2,7 @@
 
 // ============================================================================
 // CPPWRF Multi-Domain Static Nest Driver (one-way & two-way nesting)
-// Ports WRF 4.6.1 frame/module_integrate.F, share/mediation_integrate.F,
+// Ports WRF 4.8.0 frame/module_integrate.F, share/mediation_integrate.F,
 // share/mediation_force_domain.F, and share/mediation_feedback_domain.F.
 // ============================================================================
 

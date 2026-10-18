@@ -90,6 +90,34 @@ struct KSfcPrep {
   }
 };
 
+// module_surface_driver.F: obs-nudging ratios after the surface layer (P_PHY = p_hyd)
+struct KSfcRatios {
+  C3 u_phytmp, v_phytmp, t_phy, p_phy;
+  C2 u10, v10, th2;
+  V2 uratx, vratx, tratx;
+  int nx;
+  CPPWRF_HD void operator()(int i, int j) const {
+    uratx(i, j) = abs(u10(i, j)) > real(1.e-10) ? u_phytmp(i, j, 0) / u10(i, j) : real(1.2);
+    vratx(i, j) = abs(v10(i, j)) > real(1.e-10) ? v_phytmp(i, j, 0) / v10(i, j) : real(1.2);
+    // scalar libm: gfortran does not vectorise this loop of surface_driver
+    tratx(i, j) = (t_phy(i, j, 0) * rpow(real(wrfc::p1000mb) * real(0.001) / (p_phy(i, j, 0) / real(1000.)),
+                                     real(wrfc::rcp))) / th2(i, j);
+  }
+};
+// RA = WSPD/UST**2 before the Noah call (Noah-CMAQ consistency)
+struct KNoahRa {
+  C2 wspd, ust;
+  V2 ra;
+  CPPWRF_HD void operator()(int i, int j) const { ra(i, j) = wspd(i, j) / (ust(i, j) * ust(i, j)); }
+};
+// rc2 = RC on the Noah land points (RS)
+struct KNoahRs {
+  C2 rc;
+  CI2 active;
+  V2 rs;
+  CPPWRF_HD void operator()(int i, int j) const { if (active(i, j) == 1) rs(i, j) = rc(i, j); }
+};
+
 struct KAccum2 {  // ac = ac + x*dt
   V2 ac;
   C2 x;
@@ -788,7 +816,7 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       psim(g, Stagger::M, "psim"), psih(g, Stagger::M, "psih"), gz1oz0(g, Stagger::M, "gz1oz0"),
       chklowq(g, Stagger::M, "chklowq"), qgh(g, Stagger::M, "qgh"), chs(g, Stagger::M, "chs"),
       chs2(g, Stagger::M, "chs2"), cqs2(g, Stagger::M, "cqs2"), cpm(g, Stagger::M, "cpm"),
-      u_phytmp(g, Stagger::M, "u_phytmp"), v_phytmp(g, Stagger::M, "v_phytmp"), t1_lag_(g, Stagger::M, "t1_lag"), coszen(g, Stagger::M, "coszen"), rthratenlw(g, Stagger::M, "rthratenlw"), rthratensw(g, Stagger::M, "rthratensw"), lwupt(g, Stagger::M, "lwupt"), lwuptc(g, Stagger::M, "lwuptc"), lwdnt(g, Stagger::M, "lwdnt"), lwdntc(g, Stagger::M, "lwdntc"), lwupb(g, Stagger::M, "lwupb"), lwupbc(g, Stagger::M, "lwupbc"), lwdnb(g, Stagger::M, "lwdnb"), lwdnbc(g, Stagger::M, "lwdnbc"), olr(g, Stagger::M, "olr"), swupt(g, Stagger::M, "swupt"), swuptc(g, Stagger::M, "swuptc"), swdnt(g, Stagger::M, "swdnt"), swdntc(g, Stagger::M, "swdntc"), swupb(g, Stagger::M, "swupb"), swupbc(g, Stagger::M, "swupbc"), swdnb(g, Stagger::M, "swdnb"), swdnbc(g, Stagger::M, "swdnbc"), aclwupt(g, Stagger::M, "aclwupt"), aclwuptc(g, Stagger::M, "aclwuptc"), aclwdnt(g, Stagger::M, "aclwdnt"), aclwdntc(g, Stagger::M, "aclwdntc"), aclwupb(g, Stagger::M, "aclwupb"), aclwupbc(g, Stagger::M, "aclwupbc"), aclwdnb(g, Stagger::M, "aclwdnb"), aclwdnbc(g, Stagger::M, "aclwdnbc"), acswupt(g, Stagger::M, "acswupt"), acswuptc(g, Stagger::M, "acswuptc"), acswdnt(g, Stagger::M, "acswdnt"), acswdntc(g, Stagger::M, "acswdntc"), acswupb(g, Stagger::M, "acswupb"), acswupbc(g, Stagger::M, "acswupbc"), acswdnb(g, Stagger::M, "acswdnb"), acswdnbc(g, Stagger::M, "acswdnbc"), g_(g), gs_(g), o_(o) {
+      u_phytmp(g, Stagger::M, "u_phytmp"), v_phytmp(g, Stagger::M, "v_phytmp"), t1_lag_(g, Stagger::M, "t1_lag"), coszen(g, Stagger::M, "coszen"), rthratenlw(g, Stagger::M, "rthratenlw"), rthratensw(g, Stagger::M, "rthratensw"), rthratenlwc(g, Stagger::M, "rthratenlwc"), rthratenswc(g, Stagger::M, "rthratenswc"), o3rad(g, Stagger::M, "o3rad"), lwcf(g, Stagger::M, "lwcf"), swcf(g, Stagger::M, "swcf"), hrang(g, Stagger::M, "hrang"), uratx(g, Stagger::M, "uratx"), vratx(g, Stagger::M, "vratx"), tratx(g, Stagger::M, "tratx"), ra(g, Stagger::M, "ra"), rs(g, Stagger::M, "rs"), shall(g, Stagger::M, "shall"), lwupt(g, Stagger::M, "lwupt"), lwuptc(g, Stagger::M, "lwuptc"), lwdnt(g, Stagger::M, "lwdnt"), lwdntc(g, Stagger::M, "lwdntc"), lwupb(g, Stagger::M, "lwupb"), lwupbc(g, Stagger::M, "lwupbc"), lwdnb(g, Stagger::M, "lwdnb"), lwdnbc(g, Stagger::M, "lwdnbc"), olr(g, Stagger::M, "olr"), swupt(g, Stagger::M, "swupt"), swuptc(g, Stagger::M, "swuptc"), swdnt(g, Stagger::M, "swdnt"), swdntc(g, Stagger::M, "swdntc"), swupb(g, Stagger::M, "swupb"), swupbc(g, Stagger::M, "swupbc"), swdnb(g, Stagger::M, "swdnb"), swdnbc(g, Stagger::M, "swdnbc"), aclwupt(g, Stagger::M, "aclwupt"), aclwuptc(g, Stagger::M, "aclwuptc"), aclwdnt(g, Stagger::M, "aclwdnt"), aclwdntc(g, Stagger::M, "aclwdntc"), aclwupb(g, Stagger::M, "aclwupb"), aclwupbc(g, Stagger::M, "aclwupbc"), aclwdnb(g, Stagger::M, "aclwdnb"), aclwdnbc(g, Stagger::M, "aclwdnbc"), acswupt(g, Stagger::M, "acswupt"), acswuptc(g, Stagger::M, "acswuptc"), acswdnt(g, Stagger::M, "acswdnt"), acswdntc(g, Stagger::M, "acswdntc"), acswupb(g, Stagger::M, "acswupb"), acswupbc(g, Stagger::M, "acswupbc"), acswdnb(g, Stagger::M, "acswdnb"), acswdnbc(g, Stagger::M, "acswdnbc"), g_(g), gs_(g), o_(o) {
   if ((o.sf_sfclay_physics != 1 && o.sf_sfclay_physics != 2) || o.sf_surface_physics != 2 ||
       (o.bl_pbl_physics != 1 && o.bl_pbl_physics != 2))
     throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1|2, sf_surface_physics=2, bl_pbl_physics=1|2");
@@ -945,6 +973,7 @@ void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
                               &prep.t8w, &s.q_2[s.P_QV], q(s.P_QC), q(s.P_QI), q(s.P_QS), re_cloud_, re_ice_,
                               re_snow_, &tsk, &albedo, &emiss, &xland, &xice, &snow},
               RadiationOutputs{&pt.rthraten, &glw, &gsw, &swdown, &coszen, &cldfra, &rthratenlw, &rthratensw,
+                               &rthratenlwc, &rthratenswc, &o3rad, &lwcf, &swcf, &hrang,
                                {&lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &olr}, {&swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc}});
   }
   if (rad_) {  // radiation_driver: accumulated fluxes, every step (DTaccum = DT)
@@ -1036,8 +1065,11 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
                                  prep.u_phy.cview(), prep.v_phy.cview()});
   }
 
+  column_for(cols, KSfcRatios{u_phytmp.cview(), v_phytmp.cview(), prep.t_phy.cview(), prep.p_hyd.cview(), u10.cview(),
+                              v10.cview(), th2.cview(), uratx.view(), vratx.view(), tratx.view(), g_.nx});
   if (o_.isfflx != 0) {
     const int nsoil = o_.num_soil_layers;
+    column_for(cols, KNoahRa{wspd.cview(), ust.cview(), ra.view()});
     // ---- lsm (module_sf_noahdrv.F) ----
     KLsmPre pre{};
     pre.dz8w = prep.dz8w.cview(); pre.qv3d = s.q_2[s.P_QV].cview(); pre.p8w3d = prep.p_hyd_w.cview();
@@ -1147,6 +1179,7 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
       std::fclose(fp);
     }
     noah::run_noah(nk, cols);
+    column_for(cols, KNoahRs{n_rc.cview(), n_active.cview(), rs.view()});
     if (do_ndump) {
       std::FILE* fp = std::fopen((std::string(ndump) + "/noah_out_c.bin").c_str(), "wb");
       const int hdr[2] = {int(ncol.size()), nsoil};
@@ -1391,6 +1424,7 @@ void PhysicsSuite::cumulus_driver(const dyn::State& s, const dyn::BaseState& b) 
     return;
   }
   cu_kf::KFKernel<real> kf{};
+  kf.shall = shall.view();
   kf.nx = g_.nx; kf.ny = g_.ny; kf.nz = g_.nz;
   kf.dt = real(g_.dt); kf.dx = real(g_.dx); kf.cudt = real(o_.cudt);
   kf.stepcu = stepcu; kf.ktau = int(itimestep); kf.trigger = o_.kfeta_trigger;
@@ -1427,11 +1461,11 @@ void PhysicsSuite::advance_ppt(const dyn::State& s) {
 
 
 std::vector<const Field2*> PhysicsSuite::fields2() const {
-  return {&lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc, &aclwupt, &aclwuptc, &aclwdnt, &aclwdntc, &aclwupb, &aclwupbc, &aclwdnb, &aclwdnbc, &acswupt, &acswuptc, &acswdnt, &acswdntc, &acswupb, &acswupbc, &acswdnb, &acswdnbc, &olr, &tsk, &xland, &xice, &lakemask, &water_depth, &mavail, &tmn, &vegfra, &shdmin, &shdmax, &snoalb, &albbck, &albedo, &emiss, &embck, &znt, &z0, &ust, &ustm, &mol, &rmol, &pblh, &hfx, &qfx, &lh, &grdflx, &qsfc, &flhc, &flqc, &wspd, &br, &fm, &fh, &zol, &regime, &u10, &v10, &t2, &th2, &q2, &psfc, &ch, &snow, &snowh, &snowc, &canwat, &lai, &snotime, &qz0, &rainbl, &raincv, &rainncv, &rainshv, &rainc, &rainsh, &pratec, &pratesh, &nca, &htop, &hbot, &cutop, &cubot, &cuppt, &sr, &glw, &swdown, &gsw, &smstav, &smstot, &sfcrunoff, &udrunoff, &acsnom, &acsnow, &snopcx, &potevp, &noahres, &sfcevp, &sfcexc, &achfx, &aclhf, &acgrdflx, &dx2d, &var2d, &uoce, &voce, &ctopo, &ctopo2, &ck, &cka, &cd, &cda, &wstar, &delta, &hol, &thz0, &uz0, &vz0, &akhs, &akms, &ct, &tshltr, &th10, &qshltr, &q10, &pshltr, &u10e, &v10e, &mixht};
+  return {&lwcf, &swcf, &hrang, &uratx, &vratx, &tratx, &ra, &rs, &shall, &lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc, &aclwupt, &aclwuptc, &aclwdnt, &aclwdntc, &aclwupb, &aclwupbc, &aclwdnb, &aclwdnbc, &acswupt, &acswuptc, &acswdnt, &acswdntc, &acswupb, &acswupbc, &acswdnb, &acswdnbc, &olr, &tsk, &xland, &xice, &lakemask, &water_depth, &mavail, &tmn, &vegfra, &shdmin, &shdmax, &snoalb, &albbck, &albedo, &emiss, &embck, &znt, &z0, &ust, &ustm, &mol, &rmol, &pblh, &hfx, &qfx, &lh, &grdflx, &qsfc, &flhc, &flqc, &wspd, &br, &fm, &fh, &zol, &regime, &u10, &v10, &t2, &th2, &q2, &psfc, &ch, &snow, &snowh, &snowc, &canwat, &lai, &snotime, &qz0, &rainbl, &raincv, &rainncv, &rainshv, &rainc, &rainsh, &pratec, &pratesh, &nca, &htop, &hbot, &cutop, &cubot, &cuppt, &sr, &glw, &swdown, &gsw, &smstav, &smstot, &sfcrunoff, &udrunoff, &acsnom, &acsnow, &snopcx, &potevp, &noahres, &sfcevp, &sfcexc, &achfx, &aclhf, &acgrdflx, &dx2d, &var2d, &uoce, &voce, &ctopo, &ctopo2, &ck, &cka, &cd, &cda, &wstar, &delta, &hol, &thz0, &uz0, &vz0, &akhs, &akms, &ct, &tshltr, &th10, &qshltr, &q10, &pshltr, &u10e, &v10e, &mixht};
 }
 
 std::vector<const Field3*> PhysicsSuite::fields3() const {
-  return {&rthratenlw, &rthratensw, &tslb, &smois, &sh2o, &smcrel, &exch_h, &exch_m, &tke_pbl, &el_pbl, &w0avg, &cldfra_dp, &cldfra_sh, &qc_cu, &qi_cu, &pt.rthraten, &pt.rublten, &pt.rvblten, &pt.rthblten, &pt.rqvblten, &pt.rqcblten, &pt.rqiblten, &pt.rucuten, &pt.rvcuten, &pt.rthcuten, &pt.rqvcuten, &pt.rqccuten, &pt.rqrcuten, &pt.rqicuten, &pt.rqscuten, &pt.rthften, &pt.rqvften, &prep.th_phy, &prep.th_phy_m_t0, &prep.p_phy, &prep.pi_phy, &prep.t_phy, &prep.rho, &prep.u_phy, &prep.v_phy, &prep.z, &prep.p_hyd, &prep.z_at_w, &prep.dz8w, &prep.p8w, &prep.t8w, &prep.p_hyd_w};
+  return {&rthratenlw, &rthratensw, &rthratenlwc, &rthratenswc, &o3rad, &tslb, &smois, &sh2o, &smcrel, &exch_h, &exch_m, &tke_pbl, &el_pbl, &w0avg, &cldfra_dp, &cldfra_sh, &qc_cu, &qi_cu, &pt.rthraten, &pt.rublten, &pt.rvblten, &pt.rthblten, &pt.rqvblten, &pt.rqcblten, &pt.rqiblten, &pt.rucuten, &pt.rvcuten, &pt.rthcuten, &pt.rqvcuten, &pt.rqccuten, &pt.rqrcuten, &pt.rqicuten, &pt.rqscuten, &pt.rthften, &pt.rqvften, &prep.th_phy, &prep.th_phy_m_t0, &prep.p_phy, &prep.pi_phy, &prep.t_phy, &prep.rho, &prep.u_phy, &prep.v_phy, &prep.z, &prep.p_hyd, &prep.z_at_w, &prep.dz8w, &prep.p8w, &prep.t8w, &prep.p_hyd_w};
 }
 
 }  // namespace cppwrf::phys::driver

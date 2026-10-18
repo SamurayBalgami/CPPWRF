@@ -128,4 +128,4 @@ rate `h_diabatic`.
 sea-ice overrides), the Noah tables (`SOILPARM.TBL`, `VEGPARM.TBL`, `GENPARM.TBL`) and `lsminit`
 (liquid soil water from `FRH2O`), the surface layer tables (`sf_sfclayrev_init`, `myjsfcinit`),
 `myjpblinit`, the KF lookup tables (`kf_lutab`), the WSM6 and Thompson tables, and the RRTMG
-absorption data (`data/rrtmg`, WRF 4.6.1 images).
+absorption data (`data/rrtmg`, WRF 4.8.0 images).

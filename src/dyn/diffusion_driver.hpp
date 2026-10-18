@@ -41,6 +41,8 @@ struct DiffusionConfig {
   int diff_6th_opt = 0;       // 0 off, 1, 2 (flux limited)
   real diff_6th_factor = real(0.12);
   bool pbl = false;           // bl_pbl_physics != 0: no vertical diffusion in dynamics
+  // km_opt 1/4: also evaluate calculate_N2 as WRF's calculate_km_kh does (BN2 of restart files; unused)
+  bool n2_diagnostic = false;
   int sf_sfclay_physics = 0;
   int isfflx = 1;
   int use_theta_m = 1;

@@ -7,7 +7,7 @@
 
 namespace cppwrf::dyn::diffusion {
 
-// Ported from WRF v4.6.1 dyn_em/module_diffusion_em.F: compute_diff_metrics (lines 6882-7130)
+// Ported from WRF v4.8.0 dyn_em/module_diffusion_em.F: compute_diff_metrics (lines 6882-7130)
 // Computes physical vertical grid distances and metric slopes:
 //   z_at_w = (ph + phb) / g
 //   rdzw   = 1 / (z_at_w(k+1) - z_at_w(k)) at mass points

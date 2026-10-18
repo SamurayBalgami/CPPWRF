@@ -214,6 +214,8 @@ Model Model::build(const io::Config& cfg) {
   dyn::DiffusionConfig dc;
   dc.diff_opt = int(cfg.get_int("dyn.diff_opt", (lp.khdif > 0 || lp.kvdif > 0) ? 1 : 0));
   dc.km_opt = int(cfg.get_int("dyn.km_opt", 1));
+  // restart files carry BN2, which WRF evaluates for every km_opt
+  dc.n2_diagnostic = cfg.get_double("restart.interval", cfg.get_double("output.restart_interval", 0.0)) > 0;
   m.diff_opt = dc.diff_opt;
   m.km_opt = dc.km_opt;
   m.hybrid_opt = int(cfg.get_int("dyn.hybrid_opt", m.hybrid_opt));  // real: from the input file

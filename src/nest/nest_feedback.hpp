@@ -2,7 +2,7 @@
 
 // ============================================================================
 // CPPWRF Feedback Averaging & Smoothing Kernels (copy_fcn, sm121, smdsm)
-// Ports WRF 4.6.1 share/interp_fcn.F (copy_fcn, smoother, sm121, smdsm)
+// Ports WRF 4.8.0 share/interp_fcn.F (copy_fcn, smoother, sm121, smdsm)
 // Single-source C++20 / CUDA FP64 bit-exact numerics for odd and even ratios.
 // ============================================================================
 

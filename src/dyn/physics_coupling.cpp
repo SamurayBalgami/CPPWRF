@@ -49,7 +49,7 @@ struct KPrep {
 
 // moist_physics_finish_em, use_theta_m = 1: new theta_m - t0 and the heating rate h_diabatic
 struct KFinish {
-  V3 t, hd; C3 th_phy, qv, qvd; real dt, lim;
+  V3 t, hd; C3 th_phy, qv; V3 qvd; C3 qc; V3 qcd; real dt, lim; bool has_qc;
   CPPWRF_HD void operator()(int i, int j, int k) const {
     const real th = th_phy(i, j, k), th_old = hd(i, j, k), q = qv(i, j, k), q_old = qvd(i, j, k);
     real mpten = th - th_old;
@@ -58,7 +58,14 @@ struct KFinish {
     const real qvten = q - q_old;
     t(i, j, k) = th_old * (real(1) + RVRD * q_old) + mpten * (real(1) + RVRD * q) + RVRD * qvten * th - T0;
     hd(i, j, k) = (mpten * (real(1) + RVRD * q) + RVRD * qvten * th) / dt;
+    qvd(i, j, k) = qvten / dt;  // qv_diabatic, qc_diabatic: the microphysics tendencies of qv and qc
+    if (has_qc) qcd(i, j, k) = (qc(i, j, k) - qcd(i, j, k)) / dt;
   }
+};
+
+struct KSaveQc {  // moist_physics_prep_em: qc_diabatic = qc
+  C3 qc; V3 qcd;
+  CPPWRF_HD void operator()(int i, int j, int k) const { qcd(i, j, k) = qc(i, j, k); }
 };
 
 }  // namespace
@@ -66,7 +73,7 @@ struct KFinish {
 PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
     : rainnc(g, Stagger::M, "rainnc"), rainncv(g, Stagger::M, "rainncv"), g_(g), p_(p),
       th_phy(g, Stagger::M, "th_phy"), rho(g, Stagger::M, "rho"), pii(g, Stagger::M, "pii"), z(g, Stagger::M, "z"),
-      dz8w(g, Stagger::M, "dz8w"), qv_diabatic(g, Stagger::M, "qv_diabatic"),
+      dz8w(g, Stagger::M, "dz8w"), qv_diabatic(g, Stagger::M, "qv_diabatic"), qc_diabatic(g, Stagger::M, "qc_diabatic"),
       p_phy(g, Stagger::M, "p_phy") {
   if (p_.mp_physics != 0 && p_.mp_physics != 1 && p_.mp_physics != 6 && p_.mp_physics != 8)
     throw std::runtime_error("phys.mp_physics must be 0, 1, 6 or 8");
@@ -133,6 +140,7 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
   parallel_for(g.mass_cells(), KPrep{s.t_2.cview(), qv.cview(), s.ph_2.cview(), s.al.cview(), s.p.cview(),
                                      b.phb.view(), b.alb.view(), b.pb.view(), th_phy.view(), s.h_diabatic.view(),
                                      qv_diabatic.view(), rho.view(), pii.view(), z.view(), dz8w.view(), p_phy.view(), pi0, g.nx - 2 * pi0});
+  if (s.P_QC >= 0) parallel_for(g.mass_cells(), KSaveQc{s.q_2[s.P_QC].cview(), qc_diabatic.view()});
   namespace pc = phys::cst;
   // microphysics_driver: with specified boundaries the spec zone is skipped (sz = spec_zone)
   const int sx = g.bc_x == BC::Specified ? 1 : 0, sy = g.bc_y == BC::Specified ? 1 : 0;
@@ -182,12 +190,15 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
                                             real(pc::rhowater), g.nz});
   }
   parallel_for(g.mass_cells(), KFinish{s.t_2.view(), s.h_diabatic.view(), th_phy.cview(), qv.cview(),
-                                       qv_diabatic.cview(), dt, p_.mp_tend_lim});
+                                       qv_diabatic.view(), s.P_QC >= 0 ? s.q_2[s.P_QC].cview() : qv.cview(),
+                                       qc_diabatic.view(), dt, p_.mp_tend_lim, s.P_QC >= 0});
   std::vector<Field3*> fs{&s.t_2, &s.h_diabatic};
   for (int n = 0; n < s.n_moist; ++n) fs.push_back(&s.q_2[n]);
   if (s.P_QNI >= 0) fs.push_back(&s.q_2[s.P_QNI]);
   if (s.P_QNR >= 0) fs.push_back(&s.q_2[s.P_QNR]);
   fill_halos(fs, g);
 }
+
+std::vector<const Field3*> PhysicsCoupling::fields() const { return {&rho, &qv_diabatic, &qc_diabatic}; }
 
 }  // namespace cppwrf::dyn

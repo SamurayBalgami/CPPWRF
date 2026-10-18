@@ -2,7 +2,7 @@
 """
 generate_inputs.py
 Generates physical, realistic 3D input fields for differential testing of
-WRF v4.6.1 Diffusion and Damping kernels against CPPWRF.
+WRF v4.8.0 Diffusion and Damping kernels against CPPWRF.
 """
 
 import sys

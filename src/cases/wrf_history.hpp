@@ -37,6 +37,8 @@ class WrfHistory {
   // before step n of a frame that will be written: runs without column physics evaluate phy_prep as
   // first_rk_step_part1 does every step (P_HYD of the frame)
   void before_step(long n);
+  // phy_prep of that step where first_rk_step_part1 runs it (RK stage 1, after rk_step_prep)
+  void first_rk_prep();
   // after the solve of step n, before nest feedback changes the state: WRF's T (th_phy_m_t0) of the frame
   void after_solve(long n);
   // med_nest_feedback for the history fields the model does not carry (Registry u= functions)
@@ -69,6 +71,7 @@ class WrfHistory {
   std::map<std::string, std::vector<double>> fed_;  // nest-feedback values of such fields
   std::map<std::string, std::vector<double>> phy_init_;  // phy_init fields of runs without column physics
   long step_ = 0;
+  long prep_step_ = -1;
   double time_sec_ = 0;
   std::string last_file_, last_restart_;
 };

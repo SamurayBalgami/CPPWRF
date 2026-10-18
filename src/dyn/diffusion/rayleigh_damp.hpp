@@ -9,7 +9,7 @@
 
 namespace cppwrf::dyn::diffusion {
 
-// Ported from WRF v4.6.1 dyn_em/module_big_step_utilities_em.F:
+// Ported from WRF v4.8.0 dyn_em/module_big_step_utilities_em.F:
 //   rk_rayleigh_damp (lines 5836-6110, damp_opt = 2)
 
 CPPWRF_HD inline real vsin_rayleigh(real x, int lane_k, int nk) {

@@ -1,5 +1,5 @@
 #pragma once
-// New Tiedtke cumulus scheme (cu_physics = 16): WRF 4.6.1 phys/physics_mmm/cu_ntiedtke.F90 for one column
+// New Tiedtke cumulus scheme (cu_physics = 16): WRF 4.8.0 phys/physics_mmm/cu_ntiedtke.F90 for one column
 // (klon = 1). Arrays keep the Fortran 1-based level index (k = 1 is the model TOP, k = klev the lowest
 // level; klev + 1 is the surface for half levels), sized kMaxLevels + 2. Every statement follows the
 // Fortran in order; x**2 is x*x (gfortran powi), x**real is pow.

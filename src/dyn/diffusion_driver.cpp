@@ -62,7 +62,7 @@ DiffusionDriver::DiffusionDriver(const Grid& g, const DiffusionConfig& c)
   p_.periodic_y = g.bc_y == BC::Periodic;
   p_.specified = g.specified();
 
-  if (c.km_opt == 2 || c.km_opt == 3) {
+  if (c.km_opt == 2 || c.km_opt == 3 || (c.n2_diagnostic && c.diff_opt != 0)) {
     bn2_ = Field3(g, S::M, "bn2");
   }
   if (c.diff_opt == 2) {
@@ -73,7 +73,7 @@ DiffusionDriver::DiffusionDriver(const Grid& g, const DiffusionConfig& c)
     titau13_ = Field3(gp_, S::U, "titau13");
     titau23_ = Field3(gp_, S::V, "titau23");
   }
-  if (c.diff_opt == 2 || c.km_opt == 2 || c.km_opt == 3) {
+  if (c.diff_opt == 2 || c.km_opt == 2 || c.km_opt == 3 || (c.n2_diagnostic && c.diff_opt != 0)) {
     prep_ = std::make_unique<phys::driver::PhyPrepFields>(g);
     ustm_ = Field2(g, S::M, "dif_ustm");
     hfx_  = Field2(g, S::M, "dif_hfx");
@@ -106,6 +106,14 @@ void DiffusionDriver::prepare(const State& s, const BaseState& b) {
                           d22_.view(), d33_.view(), d12_.view(), d13_.view(), d23_.view(), div_.view(), g.nx, g.ny,
                           g.nz);
   if (c_.km_opt == 1 || c_.km_opt == 4) {
+    if (c_.n2_diagnostic) {  // calculate_km_kh: calculate_N2 for every km_opt
+      const phys::driver::PhyPrepFields& pr = suite_ ? suite_->prep : *prep_;
+      dif::calculate_N2(p_, pr.th_phy.cview(), pr.t_phy.cview(), pr.p_phy.cview(), pr.p8w.cview(), pr.t8w.cview(),
+                        rdz_.cview(), rdzw_.cview(), s.P_QV >= 0 ? s.q_2[s.P_QV].cview() : View3<const real>{},
+                        s.P_QV >= 0, s.P_QC >= 0 ? s.q_2[s.P_QC].cview() : View3<const real>{}, s.P_QC >= 0,
+                        s.P_QI >= 0 ? s.q_2[s.P_QI].cview() : View3<const real>{}, s.P_QI >= 0, real(b.cf1),
+                        real(b.cf2), real(b.cf3), bn2_.view(), g.nx, g.ny, g.nz);
+    }
     dif::calculate_km_kh(p_, real(g.dx), real(g.dy), d11_.cview(), d22_.cview(), d12_.cview(), rdzw_.cview(),
                          zx_.cview(), zy_.cview(), b.msftx.view(), b.msfty.view(), xkmh_.view(), xkmv_.view(),
                          xkhh_.view(), xkhv_.view(), g.nx, g.ny, g.nz);

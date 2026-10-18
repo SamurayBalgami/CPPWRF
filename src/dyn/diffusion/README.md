@@ -1,6 +1,6 @@
-# WRF v4.6.1 Diffusion and Damping in CPPWRF
+# WRF v4.8.0 Diffusion and Damping in CPPWRF
 
-This directory implements the diffusion, deformation, eddy viscosity, and damping kernels ported from WRF v4.6.1 (`dyn_em/module_diffusion_em.F` and `dyn_em/module_big_step_utilities_em.F`) into modern C++20 with single-source execution semantics (CPU/OpenMP and GPU via `core/backend.hpp`).
+This directory implements the diffusion, deformation, eddy viscosity, and damping kernels ported from WRF v4.8.0 (`dyn_em/module_diffusion_em.F` and `dyn_em/module_big_step_utilities_em.F`) into modern C++20 with single-source execution semantics (CPU/OpenMP and GPU via `core/backend.hpp`).
 
 ## Structure and Kernels
 
@@ -134,6 +134,6 @@ The following table summarizes the lateral ($x, y$) halo cells required on input
 ## Precision and Validation
 
 All kernels are implemented with template support for single (`float`) or double (`double`) precision, matching CPPWRF working precision `cppwrf::real`.
-Differential validation against reference WRF v4.6.1 Fortran yields:
+Differential validation against reference WRF v4.8.0 Fortran yields:
 $$\frac{\| \phi_{\text{C++}} - \phi_{\text{Fortran}} \|_\infty}{\max(1, \| \phi_{\text{Fortran}} \|_\infty)} \le 10^{-14} \quad (\text{well within } 10^{-12} \text{ quality gate})$$
 under IEEE 754 floating-point arithmetic without vectorization contraction divergences (`-ffp-contract=off`).

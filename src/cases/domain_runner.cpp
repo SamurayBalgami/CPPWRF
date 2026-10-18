@@ -280,7 +280,10 @@ void DomainRunner::prepare_output() {
   if (write_wrfout_ && !wrfout_)
   {
     std::vector<const Field2*> f2 = extra_2d_;
-    std::vector<const Field3*> f3 = extra_3d_;
+    std::vector<const Field3*> f3;  // first match wins: the microphysics' grid%rho is the last writer
+    if (m_.rk && m_.rk->physics())
+      for (const Field3* f : m_.rk->physics()->fields()) f3.push_back(f);
+    f3.insert(f3.end(), extra_3d_.begin(), extra_3d_.end());
     if (m_.suite) {
       for (const Field2* f : m_.suite->fields2()) f2.push_back(f);
       for (const Field3* f : m_.suite->fields3()) f3.push_back(f);
@@ -288,6 +291,7 @@ void DomainRunner::prepare_output() {
     if (m_.diff)
       for (const Field3* f : m_.diff->fields()) f3.push_back(f);
     wrfout_ = std::make_unique<WrfHistory>(cfg_, m_, out_dir_, domain_tag_, start_date_, f2, f3);
+    if (m_.rk) m_.rk->on_first_rk_prep = [this] { wrfout_->first_rk_prep(); };
   }
 #endif
 }
@@ -445,7 +449,8 @@ void DomainRunner::after_solve(long n) {
 
 void DomainRunner::before_step(long n) {
 #ifdef CPPWRF_HAVE_NETCDF
-  if (write_wrfout_ && wrfout_ && (n % out_iv_ == 0 || n == m_.nsteps)) wrfout_->before_step(n);
+  if (write_wrfout_ && wrfout_ && (n % out_iv_ == 0 || n == m_.nsteps || (rst_iv_ > 0 && n % rst_iv_ == 0)))
+    wrfout_->before_step(n);
 #endif
   if (pending_ >= 0) {  // deferred frame of the previous step (set_defer_output)
     const long p = pending_;

@@ -1,7 +1,7 @@
-# RRTMG tables (WRF v4.6.1)
+# RRTMG tables (WRF v4.8.0)
 
 `rrtmg_lw_tables.bin` / `rrtmg_sw_tables.bin` are the RRTMG longwave / shortwave tables exactly as
-WRF v4.6.1 (real*8 build) holds them after `rrtmg_lwinit` / `rrtmg_swinit` read
+WRF v4.8.0 (real*8 build) holds them after `rrtmg_lwinit` / `rrtmg_swinit` read
 `RRTMG_LW_DATA_DBL` / `RRTMG_SW_DATA_DBL` and reduce them to 140 / 112 g-points (cmbgb*), plus the
 cloud property data and the Pade tables: raw memory images of `RrtmgLwTables` /
 `RrtmgSwTables` (src/phys/ra_rrtmg_*/rrtmg_*_tables.hpp; sizes are checked by static_assert),

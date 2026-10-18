@@ -1,5 +1,5 @@
 ! driver_diffusion.f90
-! Differential testing harness for WRF v4.6.1 Diffusion and Damping kernels.
+! Differential testing harness for WRF v4.8.0 Diffusion and Damping kernels.
 ! Calls original WRF subroutines linked from libwrflib.a.
 
 PROGRAM driver_diffusion

@@ -6,7 +6,7 @@
 
 namespace cppwrf::dyn::diffusion {
 
-// Ported from WRF v4.6.1 dyn_em/module_big_step_utilities_em.F: sixth_order_diffusion (lines 6220-6636)
+// Ported from WRF v4.8.0 dyn_em/module_big_step_utilities_em.F: sixth_order_diffusion (lines 6220-6636)
 // Supports diff_6th_opt = 1 (linear) and diff_6th_opt = 2 (monotonic flux-limited), diff_6th_slopeopt = 0.
 
 struct KSixthOrderU {

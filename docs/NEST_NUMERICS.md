@@ -1,6 +1,6 @@
 # CPPWRF Nesting Numerics (`src/nest/`)
 
-This document specifies the exact mathematical formulations, index conventions, staggering rules, coupling/uncoupling reciprocals, and differential test results for the CPPWRF static nesting numerics module (`src/nest/`), verified against WRF 4.6.1 double-precision (real*8) Fortran object code.
+This document specifies the exact mathematical formulations, index conventions, staggering rules, coupling/uncoupling reciprocals, and differential test results for the CPPWRF static nesting numerics module (`src/nest/`), verified against WRF 4.8.0 double-precision (real*8) Fortran object code.
 
 ---
 
@@ -127,9 +127,9 @@ Matches `med_nest_initial` (`share/mediation_integrate.F`) and `dyn_em/nest_init
 
 ---
 
-## 7. Differential Test Results vs WRF 4.6.1 Fortran (`tests/nest/`)
+## 7. Differential Test Results vs WRF 4.8.0 Fortran (`tests/nest/`)
 
-Command (needs a WRF v4.6.1 real*8 build; outputs under `$CPPWRF_SCRATCH/nest_test`):
+Command (needs a WRF v4.8.0 real*8 build; outputs under `$CPPWRF_SCRATCH/nest_test`):
 ```bash
 tests/nest/run_test.sh
 ```
@@ -174,7 +174,7 @@ tests/nest/run_test.sh
 3. History output follows `med_before_solve_io`: a nest's frame for time t is written at the start of
    its next step, i.e. after the parent's next `med_nest_force`; the last frame after the last step.
 
-### 8.2 Acceptance vs WRF 4.6.1 (`tests/verify/wrf_suite.py`)
+### 8.2 Acceptance vs WRF 4.8.0 (`tests/verify/wrf_suite.py`)
 
 | Case | Mode | Build | Window | Result |
 |---|---|---|---|---|

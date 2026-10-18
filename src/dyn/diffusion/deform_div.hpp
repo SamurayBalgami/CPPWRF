@@ -6,7 +6,7 @@
 
 namespace cppwrf::dyn::diffusion {
 
-// Ported from WRF v4.6.1 dyn_em/module_diffusion_em.F: cal_deform_and_div (lines 17-1190)
+// Ported from WRF v4.8.0 dyn_em/module_diffusion_em.F: cal_deform_and_div (lines 17-1190)
 // Calculates deformation tensor components and 3-d divergence:
 //   defor11 = 2 * du/dx (mass points)
 //   defor22 = 2 * dv/dy (mass points)

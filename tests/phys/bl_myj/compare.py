@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Differential validator for MYJ PBL scheme (bl_myj).
-Compares unmodified Fortran WRF 4.6.1 outputs vs C++ outputs.
+Compares unmodified Fortran WRF 4.8.0 outputs vs C++ outputs.
 Checks 7 2D variables and 9 3D variables across all columns and levels.
 """
 

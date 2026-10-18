@@ -42,6 +42,8 @@ struct RadiationOutputs {
   // diagnostics (may be nullptr): RTHRATLW, RTHRATSW; LWUPT, LWUPTC, LWDNT, LWDNTC, LWUPB, LWUPBC, LWDNB,
   // LWDNBC, OLR; SWUPT, SWUPTC, SWDNT, SWDNTC, SWUPB, SWUPBC, SWDNB, SWDNBC (0 at night)
   Field3 *rthratlw = nullptr, *rthratsw = nullptr;
+  Field3 *rthratlwc = nullptr, *rthratswc = nullptr, *o3rad = nullptr;  // clear-sky heating, ozone (o3input = 2)
+  Field2 *lwcf = nullptr, *swcf = nullptr, *hrang = nullptr;
   Field2* lw[9] = {};
   Field2* sw[8] = {};
 };
@@ -50,7 +52,7 @@ struct RadiationOutputs {
 // li, ln: lane li of WRF's n = ln-trip i loop (its..ite = 0..nx-1), which gfortran vectorises: sin(xxlat),
 // cos(xxlat) and cos(hrang) through libmvec's 2-lane functions (cppwrf::vm); ln = 1: scalar libm
 CPPWRF_HD inline double calc_coszen(double julian, double xtime, double gmt, double declin, double xlon,
-                                    double xlat, int li = 0, int ln = 1) {
+                                    double xlat, int li = 0, int ln = 1, double* hrang_out = nullptr) {
   constexpr double piconst = 3.1415926535897932384626433;
   constexpr double degrad = piconst / 180.;
   const double da = 6.2831853071795862 * (julian - 0.5) / 365.;
@@ -59,6 +61,7 @@ CPPWRF_HD inline double calc_coszen(double julian, double xtime, double gmt, dou
   const double xt24 = std::fmod(xtime, 1440.) + eot;
   const double tloctm = gmt + xt24 / 60. + xlon / 15.;
   const double hrang = 15. * (tloctm - 12.) * degrad;
+  if (hrang_out) *hrang_out = hrang;
   const double xxlat = xlat * degrad;
   double c = vm::sin(xxlat, li, ln) * std::sin(declin) + vm::cos(xxlat, li, ln) * std::cos(declin) * vm::cos(hrang, li, ln);
   return std::min(std::max(c, -1.0), 1.0);
@@ -118,6 +121,8 @@ class RadiationDriver {
   // radiation_driver for time step itimestep (1-based) at xtime minutes after the start and
   // julian (day of year - 1 + fraction); returns false when the radiation is not called
   bool run(long itimestep, double xtime, double julian, const RadiationInputs& in, const RadiationOutputs& out);
+  double declin() const { return declin_; }  // radconst of the last call (DECLINX, SOLCONX)
+  double solcon() const { return solcon_; }
 
  private:
   struct Impl;
@@ -125,6 +130,7 @@ class RadiationDriver {
   Grid g_;
   RadiationOptions o_;
   int stepra_ = 1;
+  double declin_ = 0, solcon_ = 0;
 };
 
 }  // namespace cppwrf::phys::driver

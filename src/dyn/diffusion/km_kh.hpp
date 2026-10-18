@@ -10,7 +10,7 @@
 
 namespace cppwrf::dyn::diffusion {
 
-// Ported from WRF v4.6.1 dyn_em/module_diffusion_em.F:
+// Ported from WRF v4.8.0 dyn_em/module_diffusion_em.F:
 //   calculate_km_kh (lines 1195-1349)
 //   cal_dampkm      (lines 1353-1480, damp_opt = 1)
 //   calculate_N2    (lines 1485-1713)

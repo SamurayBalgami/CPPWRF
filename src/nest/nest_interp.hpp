@@ -2,7 +2,7 @@
 
 // ============================================================================
 // CPPWRF Nesting Interpolation Kernels (SINT / SINTB / interp_fcn_sint)
-// Ports WRF 4.6.1 share/sint.F and share/interp_fcn.F (interp_fcn_sint)
+// Ports WRF 4.8.0 share/sint.F and share/interp_fcn.F (interp_fcn_sint)
 // Single-source C++20 / CUDA FP64 bit-exact numerics.
 // ============================================================================
 

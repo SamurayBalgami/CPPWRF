@@ -1,6 +1,6 @@
 ! Reference driver for the P1 physics-suite differential test (tests/phys/suite).
 !
-! Links against an UNMODIFIED WRF v4.6.1 build configured with "-r8" (serial gfortran,
+! Links against an UNMODIFIED WRF v4.8.0 build configured with "-r8" (serial gfortran,
 ! -fdefault-real-8) and drives WRF's own code: the framework sets up the domain from
 ! namelist.input (wrf_init without the wrfinput read), the synthetic tile of suite_input.bin
 ! is copied into grid% in place of med_initialdata_input, WRF's start_domain runs (phy_init,

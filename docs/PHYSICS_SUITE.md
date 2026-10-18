@@ -1,6 +1,6 @@
 # Physics: ports, driver glue and verification
 
-This document describes how the WRF v4.6.1 physics is reproduced in CPPWRF, scheme by scheme, and
+This document describes how the WRF v4.8.0 physics is reproduced in CPPWRF, scheme by scheme, and
 how each part is verified. Sections 1-5 cover the column-physics driver (surface layer, land surface,
 PBL); sections 6-13 add microphysics, cumulus and radiation; section 14 lists the WRF behaviours that
 had to be reproduced for bit-identical results. Case names (P1-P8) refer to the reference runs listed
@@ -9,7 +9,7 @@ in docs/STATUS.md.
 ## 0. The P1 driver (sfclayrev + Noah + YSU)
 
 `src/phys/driver/suite.{hpp,cpp}` (class `PhysicsSuite`, a `dyn::ColumnPhysics`) is a
-statement-by-statement port of the path WRF v4.6.1 executes for
+statement-by-statement port of the path WRF v4.8.0 executes for
 
 ```
 sf_sfclay_physics = 1 (sfclayrev)   sf_surface_physics = 2 (Noah, num_soil_layers = 4)
@@ -81,7 +81,7 @@ of solve_em: they are recomputed each step (scratch members in C++).
 
 ## 2. Call map (WRF file:line -> C++ file:line)
 
-| WRF v4.6.1 | C++ |
+| WRF v4.8.0 | C++ |
 |---|---|
 | solve_em.F:371 `itimestep + 1` | src/phys/driver/suite.cpp:605 (`PhysicsSuite::part1`) |
 | module_big_step_utilities_em.F:4730 `phy_prep` | src/phys/driver/phy_prep.cpp:16 (`KPhyPrep`), :88 |
@@ -118,7 +118,7 @@ and `phy_init` provide; the test takes it from WRF after `start_domain`).
 
 ## 3. Corrections found by the test (all now bit-identical to WRF)
 
-- **`P_PHY = grid%p_hyd`.** WRF 4.6.1 passes the hydrostatic pressure (and `P8W = p_hyd_w`) to
+- **`P_PHY = grid%p_hyd`.** WRF 4.8.0 passes the hydrostatic pressure (and `P8W = p_hyd_w`) to
   surface_driver and pbl_driver; sfclayrev and YSU see p_hyd, not p+pb. The draft's "SFCLAYREV
   gets p_hyd instead of p_phy" is what WRF does; the C++ suite keeps it.
 - **conv_t_tendf_to_moist** (use_theta_m = 1) was missing.
@@ -138,7 +138,7 @@ and `phy_init` provide; the test takes it from WRF after `start_domain`).
 
 ## 4. Differential test (tests/phys/suite)
 
-Reference: **unmodified** WRF v4.6.1 compiled by `tests/phys/suite/build_wrf_r8.sh`
+Reference: **unmodified** WRF v4.8.0 compiled by `tests/phys/suite/build_wrf_r8.sh`
 (`configure -r8`, option 32 serial gfortran, the configure flags except
 `-ftree-vectorize` -> `-fno-tree-vectorize -ffp-contract=off`: with -ftree-vectorize gfortran
 calls glibc's libmvec vector math (`_ZGVbN2vv_pow`, `_ZGVbN2v_exp`, `_ZGVbN2v_log`), which
@@ -163,7 +163,7 @@ inversions) and unstable (warm land, sea) columns, frozen and unfrozen soil, rai
 and freezing rain (T1 <= 273.15).
 
 ```bash
-# once (about 30 min): unmodified WRF v4.6.1, real*8, scalar libm
+# once (about 30 min): unmodified WRF v4.8.0, real*8, scalar libm
 tests/phys/suite/build_wrf_r8.sh /path/to/wrfref
 # the test (needs gfortran, g++, python3 + numpy); CPU FP64 compared, FP32 compiled
 WRF_DIR=/path/to/wrfref/WRF tests/phys/suite/run_test.sh [--markdown]
@@ -190,7 +190,7 @@ step n-1 (the initial state in step 1). The suite keeps that lagged copy (`wrf_t
 dycore's current t_1 step 2 already differed by 1e-9 (U) from WRF. The differential test passes
 WRF's t_1 itself and sets `wrf_t1_lag = false`.
 
-Acceptance against WRF v4.6.1 real*8, run P1_r8 (`configs/real_p1_r8.ini`, tests/verify/wrf_suite.py):
+Acceptance against WRF v4.8.0 real*8, run P1_r8 (`configs/real_p1_r8.ini`, tests/verify/wrf_suite.py):
 CPU FP64 is bit-identical to WRF for 1 h (every compared field, including the surface state). CUDA FP64
 agrees to roundoff (U 1.5e-9, THM 1.4e-10 relative L2 at 1 h); the land surface amplifies the
 difference between the CUDA and glibc elementary functions over the hour. CUDA FP32 against
@@ -198,7 +198,7 @@ single-precision WRF: U 1.9e-4, THM 7.5e-7.
 
 ## 6. Microphysics with the column physics (P5 = P1 + WSM6 + diff_opt 1, km_opt 4)
 
-Reference: the WRF v4.6.1 real*8 run P5_r8 (the P4 inputs with ra_lw/ra_sw/cu_physics = 0; history
+Reference: the WRF v4.8.0 real*8 run P5_r8 (the P4 inputs with ra_lw/ra_sw/cu_physics = 0; history
 every step; `configs/real_p5_r8.ini`). CPU FP64 is bit-identical to WRF for 1 h, including all water
 species. WSM6 amplifies roundoff strongly once ice is present (ice processes near saturation
 thresholds), so the CUDA builds differ from WRF by more than in the dry case. The column replay
@@ -232,7 +232,7 @@ thresholds), so the CUDA builds differ from WRF by more than in the dry case. Th
    - `phy_prep_part2` (`dyn_em/module_big_step_utilities_em.F:5105-5167`): decouples `R*CUTEN /= (c1h(k)*muts + c2h(k))`.
    - On the following step, `surface_driver` (`KSfcAlways`) adds the previous step's `RAINCV` into `RAINBL` before `cumulus_driver` runs.
 
-### Real-data acceptance against WRF v4.6.1 (`run_P2_r8` and `run_P2`)
+### Real-data acceptance against WRF v4.8.0 (`run_P2_r8` and `run_P2`)
 
 CPU FP64 is bit-identical to WRF for 1 h (state, RAINC, RAINCV, NCA, W0AVG and the cumulus tendencies).
 CUDA FP64 at 1 h: U 5.2e-5, THM 9.4e-7 relative L2; CUDA FP32 against single-precision WRF: U 8.4e-4.
@@ -269,7 +269,7 @@ THM 7.4e-7.
 
 ## 9. Clouds in the radiation (P4 = P2 + WSM6 + RRTMG + diff_opt 1 / km_opt 4)
 
-Reference: the WRF v4.6.1 real*8 run P4_r8 (kf + WSM6 + RRTMG radt = 1,
+Reference: the WRF v4.8.0 real*8 run P4_r8 (kf + WSM6 + RRTMG radt = 1,
 icloud = 1, use_mp_re = 1 (default); steps/ = 3 minutes with history every step and RQRCUTEN,
 RQICUTEN, RQSCUTEN, RE_CLOUD, RE_ICE, RE_SNOW in the history; `configs/real_p4_r8.ini`).
 
@@ -372,7 +372,7 @@ wrf_suite: real_p6_r8_fp64_cpu, real_p6_r8_fp64_cpu_1h, real_p6_fp32_1h.
 
 ## 12. New Tiedtke cumulus (P7, cu_physics = 16)
 
-Port: `src/phys/cu_ntiedtke/ntiedtke.hpp` = WRF 4.6.1 `phys/physics_mmm/cu_ntiedtke.F90` for one column
+Port: `src/phys/cu_ntiedtke/ntiedtke.hpp` = WRF 4.8.0 `phys/physics_mmm/cu_ntiedtke.F90` for one column
 (cumastrn and the routines it calls, statement for statement; integer powers as products, cutypen's
 INTEGER `zcbase`, cuflxn's `ktopm2 = 2`). The flags WRF computes over a row of columns (llo3, the
 early exits) do not depend on the other columns: a whole row (lq = 119) through WRF's object gives

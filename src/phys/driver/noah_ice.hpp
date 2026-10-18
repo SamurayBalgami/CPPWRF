@@ -1,5 +1,5 @@
 #pragma once
-// Noah LSM ice surfaces, statement-by-statement ports of WRF v4.6.1:
+// Noah LSM ice surfaces, statement-by-statement ports of WRF v4.8.0:
 //   SFLX_GLACIAL  phys/module_sf_noahlsm_glacial_only.F  (land ice: IVGTYP == ISICE on land)
 //   SFLX_SEAICE   phys/module_sf_noah_seaice.F           (sea ice: XICE >= xice_threshold)
 // Each module has its own private CSNOW, SNOW_NEW, SNOWZ0, PENMAN, HRTICE, SNOPAC, SNOWPACK

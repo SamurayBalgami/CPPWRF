@@ -78,9 +78,14 @@ struct KRadColumn {
   bool has_cldfra;
   View3<real> cldfra_out;
   View2<real> coszen_out;
+  bool has_diag;
+  View2<real> hrang_out;
+  View3<real> o3_out;
   CPPWRF_HD void operator()(int i, int j) const {
     const int col = i + nx * j;
-    const double c = calc_coszen(julian, xtime_mid, gmt, declin, xlong[col], xlat[col]);
+    double hr = 0;
+    const double c = calc_coszen(julian, xtime_mid, gmt, declin, xlong[col], xlat[col], 0, 1, &hr);
+    if (has_diag) hrang_out(i, j) = real(hr);
     cz[col] = c;
     coszen_out(i, j) = real(c);
     constexpr int per = CamOzone::nmon * CamOzone::levsiz;
@@ -95,18 +100,20 @@ struct KRadColumn {
     }
     if (has_cldfra)
       for (int k = 0; k < nz; ++k) cldfra_out(i, j, k) = real(cf[std::size_t(k) * ncol + col]);
+    if (has_diag && o3input == 2)
+      for (int k = 0; k < nz; ++k) o3_out(i, j, k) = real(o3[std::size_t(k) * ncol + col]);
   }
 };
 // RTHRATEN = LW (+ SW in daytime), GLW, GSW, SWDOWN = GSW/(1 - ALBEDO)
 struct KRadOut {
   int nx, ncol;
-  const double *rlw, *rsw, *glw, *gsw, *cz, *olr, *lwd, *swd;
+  const double *rlw, *rsw, *glw, *gsw, *cz, *olr, *lwd, *swd, *rlwc, *rswc, *lwcf, *swcf;
   View3<real> rth;
   View2<real> glw_out, gsw_out, swdown_out;
   View2<const real> alb;
   bool diag;  // RTHRATLW/SW and the LW/SW flux diagnostics
-  View3<real> rthlw, rthsw;
-  View2<real> lw[9], sw[8];
+  View3<real> rthlw, rthsw, rthlwc, rthswc;
+  View2<real> lw[9], sw[8], lwcf_out, swcf_out;
   CPPWRF_HD void operator()(int i, int j, int k) const {
     const int col = i + nx * j;
     const std::size_t q = std::size_t(k) * ncol + col;
@@ -117,6 +124,8 @@ struct KRadOut {
     if (diag) {
       rthlw(i, j, k) = real(rlw[q]);
       rthsw(i, j, k) = real(day ? rsw[q] : 0.0);
+      rthlwc(i, j, k) = real(rlwc[q]);
+      rthswc(i, j, k) = real(day ? rswc[q] : 0.0);
     }
     if (k == 0) {
       glw_out(i, j) = real(glw[col]);
@@ -127,6 +136,8 @@ struct KRadOut {
         for (int d = 0; d < 8; ++d) lw[d](i, j) = real(lwd[std::size_t(d) * ncol + col]);
         lw[8](i, j) = real(olr[col]);
         for (int d = 0; d < 8; ++d) sw[d](i, j) = real(day ? swd[std::size_t(d) * ncol + col] : 0.0);
+        lwcf_out(i, j) = real(lwcf[col]);
+        swcf_out(i, j) = real(day ? swcf[col] : 0.0);
       }
     }
   }
@@ -154,7 +165,7 @@ struct RadiationDriver::Impl {
   // staged inputs, outputs (column fastest)
   double *p8w, *t8w, *p3d, *pi3d, *t3d, *qv, *qc, *qi, *qs, *rec, *rei, *res, *cf, *o3;
   double *tsk, *emiss, *xland, *xice, *snow, *albedo, *cz;
-  double *rlw, *rsw, *glw, *gsw, *olr, *lwd, *swd;
+  double *rlw, *rsw, *glw, *gsw, *olr, *lwd, *swd, *rlwc, *rswc, *lwcf, *swcf;
   ~Impl() {
     for (void* q : bufs) dev_free(q);
   }
@@ -209,9 +220,9 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
     q.pin_d = up(q.ozone.pin);
     q.p8w = q.dev(n3w); q.t8w = q.dev(n3w);
     for (double** a : {&q.p3d, &q.pi3d, &q.t3d, &q.qv, &q.qc, &q.qi, &q.qs, &q.rec, &q.rei, &q.res, &q.cf, &q.o3,
-                       &q.rlw, &q.rsw})
+                       &q.rlw, &q.rsw, &q.rlwc, &q.rswc})
       *a = q.dev(n3);
-    for (double** a : {&q.tsk, &q.emiss, &q.xland, &q.xice, &q.snow, &q.albedo, &q.cz, &q.glw, &q.gsw, &q.olr}) *a = q.dev(nc);
+    for (double** a : {&q.tsk, &q.emiss, &q.xland, &q.xice, &q.snow, &q.albedo, &q.cz, &q.glw, &q.gsw, &q.olr, &q.lwcf, &q.swcf}) *a = q.dev(nc);
     q.lwd = q.dev(8 * nc);
     q.swd = q.dev(8 * nc);
     RrtmgLwConfig lc;
@@ -232,6 +243,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
   if (!run_param) return false;
   double declin, solcon;
   radconst(julian, declin, solcon);  // Solar_step (radconst before calc_coszen)
+  declin_ = declin;
+  solcon_ = solcon;
   RrtmgLwConfig lc;
   lc.icloud = o_.icloud; lc.cldovrlp = o_.cldovrlp; lc.idcor = o_.idcor; lc.p_top = o_.p_top;
   lc.yr = o_.julyr; lc.julian = julian; lc.o3input = o_.o3input;
@@ -285,6 +298,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
     kc.has_cldfra = out.cldfra != nullptr;
     if (out.cldfra) kc.cldfra_out = out.cldfra->view();
     kc.coszen_out = out.coszen->view();
+    kc.has_diag = out.hrang != nullptr;
+    if (kc.has_diag) { kc.hrang_out = out.hrang->view(); kc.o3_out = out.o3rad->view(); }
     column_for(Range2D{0, nx, 0, ny}, kc);
     LwBatchInput li{};
     li.ncol = ncol; li.tsk = q.tsk; li.emiss = q.emiss; li.xland = q.xland; li.xice = q.xice; li.snow = q.snow;
@@ -293,16 +308,21 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
     li.qc = in.qc ? q.qc : nullptr; li.qi = in.qi ? q.qi : nullptr; li.qs = in.qs ? q.qs : nullptr;
     li.re_cloud = in.re_cloud ? q.rec : nullptr; li.re_ice = in.re_ice ? q.rei : nullptr;
     li.re_snow = in.re_snow ? q.res : nullptr;
-    q.lwb->run(rrtmg_lw_call_config(nz, lc, in.re_cloud, in.re_ice, in.re_snow), li, LwBatchOutput{q.rlw, q.glw, q.olr, q.lwd});
+    q.lwb->run(rrtmg_lw_call_config(nz, lc, in.re_cloud, in.re_ice, in.re_snow), li, LwBatchOutput{q.rlw, q.glw, q.olr, q.lwd, q.rlwc, q.lwcf});
     SwBatchInput si{};
     si.ncol = ncol; si.coszen = q.cz; si.albedo = q.albedo; si.xland = q.xland; si.xice = q.xice; si.snow = q.snow;
     si.p8w = q.p8w; si.t8w = q.t8w; si.p3d = q.p3d; si.pi3d = q.pi3d; si.t3d = q.t3d; si.qv = q.qv; si.cldfra = q.cf;
     si.o3 = q.o3; si.qc = li.qc; si.qi = li.qi; si.qs = li.qs;
     si.re_cloud = li.re_cloud; si.re_ice = li.re_ice; si.re_snow = li.re_snow;
-    q.swb->run(rrtmg_sw_call_config(nz, sc), si, SwBatchOutput{q.rsw, q.gsw, q.swd});
-    KRadOut ko{nx, ncol, q.rlw, q.rsw, q.glw, q.gsw, q.cz, q.olr, q.lwd, q.swd, out.rthraten->view(), out.glw->view(),
-               out.gsw->view(), out.swdown->view(), in.albedo->cview(), out.rthratlw != nullptr};
+    q.swb->run(rrtmg_sw_call_config(nz, sc), si, SwBatchOutput{q.rsw, q.gsw, q.swd, q.rswc, q.swcf});
+    KRadOut ko{nx, ncol, q.rlw, q.rsw, q.glw, q.gsw, q.cz, q.olr, q.lwd, q.swd, q.rlwc, q.rswc, q.lwcf, q.swcf,
+               out.rthraten->view(), out.glw->view(), out.gsw->view(), out.swdown->view(), in.albedo->cview(),
+               out.rthratlw != nullptr};
     if (ko.diag) {
+      ko.rthlwc = out.rthratlwc->view();
+      ko.rthswc = out.rthratswc->view();
+      ko.lwcf_out = out.lwcf->view();
+      ko.swcf_out = out.swcf->view();
       ko.rthlw = out.rthratlw->view();
       ko.rthsw = out.rthratsw->view();
       for (int d = 0; d < 9; ++d) ko.lw[d] = out.lw[d]->view();
@@ -336,7 +356,11 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
       coszen(out.coszen->layout().total, real(0)), cldfra(out.cldfra ? out.cldfra->layout().total : 0, real(0));
   const Layout &Lo3 = out.rthraten->layout(), &Lo2 = out.glw->layout();
   const bool diag = out.rthratlw != nullptr;
-  std::vector<real> rthlw(diag ? Lo3.total : 0, real(0)), rthsw(diag ? Lo3.total : 0, real(0));
+  std::vector<real> rthlw(diag ? Lo3.total : 0, real(0)), rthsw(diag ? Lo3.total : 0, real(0)),
+      rthlwc(diag ? Lo3.total : 0, real(0)), rthswc(diag ? Lo3.total : 0, real(0)),
+      o3r(diag ? Lo3.total : 0, real(0));
+  std::vector<real> lwcf2(diag ? Lo2.total : 0, real(0)), swcf2(diag ? Lo2.total : 0, real(0)),
+      hrang2(diag ? Lo2.total : 0, real(0));
   std::vector<std::vector<real>> lwd(diag ? 9 : 0, std::vector<real>(Lo2.total, real(0))),
       swd(diag ? 8 : 0, std::vector<real>(Lo2.total, real(0)));
 
@@ -371,7 +395,9 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
       const double* pri = rei.empty() ? nullptr : crei.data();
       const double* prs = res.empty() ? nullptr : cres.data();
       const std::size_t q2 = L2.index(i, j, 0), o2i = Lo2.index(i, j, 0);
-      const double cz = calc_coszen(julian, xtime + o_.radt * 0.5, o_.gmt, declin, p_->xlong[c], p_->xlat[c], i, nx);
+      double hr = 0;
+      const double cz = calc_coszen(julian, xtime + o_.radt * 0.5, o_.gmt, declin, p_->xlong[c], p_->xlat[c], i, nx, &hr);
+      if (diag) hrang2[o2i] = real(hr);
       coszen[o2i] = real(cz);
       if (o_.o3input == 2)
         ozone_column(&p_->ozmixm[c * per + nm * CamOzone::levsiz], &p_->ozmixm[c * per + np * CamOzone::levsiz], f1, f2,
@@ -385,6 +411,9 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
       if (diag) {
         const double d[9] = {a1, a2, a3, a4, a5, a6, a7, a8, olr};
         for (int q = 0; q < 9; ++q) lwd[std::size_t(q)][o2i] = real(d[q]);
+        lwcf2[o2i] = real(lwcf);
+        if (o_.o3input == 2)
+          for (int k = 0; k < nz; ++k) o3r[Lo3.index(i, j, k)] = real(co3[k]);
       }
       double g_sw = 0;
       std::fill(rsw.begin(), rsw.end(), 0.0);
@@ -397,6 +426,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
         if (diag) {  // swupt, swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc follow gsw, swcf
           const double d[8] = {s2, s3, s4, s5, s6, s7, s8, s9};
           for (int q = 0; q < 8; ++q) swd[std::size_t(q)][o2i] = real(d[q]);
+          swcf2[o2i] = real(s1);
         }
       }
       gsw[o2i] = real(g_sw);
@@ -409,6 +439,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
         if (diag) {
           rthlw[Lo3.index(i, j, k)] = real(rlw[k]);
           rthsw[Lo3.index(i, j, k)] = real(cz > 0.0 ? rsw[k] : 0.0);
+          rthlwc[Lo3.index(i, j, k)] = real(rlwc[k]);
+          rthswc[Lo3.index(i, j, k)] = real(cz > 0.0 ? rswc[k] : 0.0);
         }
       }
     }
@@ -425,6 +457,12 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
     copy_to_dev(out.rthratsw->data() - Lo3.offset, rthsw.data(), rthsw.size() * sizeof(real));
     for (int q = 0; q < 9; ++q) copy_to_dev(out.lw[q]->data() - Lo2.offset, lwd[std::size_t(q)].data(), Lo2.total * sizeof(real));
     for (int q = 0; q < 8; ++q) copy_to_dev(out.sw[q]->data() - Lo2.offset, swd[std::size_t(q)].data(), Lo2.total * sizeof(real));
+    copy_to_dev(out.rthratlwc->data() - Lo3.offset, rthlwc.data(), rthlwc.size() * sizeof(real));
+    copy_to_dev(out.rthratswc->data() - Lo3.offset, rthswc.data(), rthswc.size() * sizeof(real));
+    if (o_.o3input == 2) copy_to_dev(out.o3rad->data() - Lo3.offset, o3r.data(), o3r.size() * sizeof(real));
+    copy_to_dev(out.lwcf->data() - Lo2.offset, lwcf2.data(), Lo2.total * sizeof(real));
+    copy_to_dev(out.swcf->data() - Lo2.offset, swcf2.data(), Lo2.total * sizeof(real));
+    copy_to_dev(out.hrang->data() - Lo2.offset, hrang2.data(), Lo2.total * sizeof(real));
   }
   return true;
 #endif

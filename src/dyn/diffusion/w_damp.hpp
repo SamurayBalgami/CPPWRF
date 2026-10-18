@@ -9,7 +9,7 @@
 
 namespace cppwrf::dyn::diffusion {
 
-// Ported from WRF v4.6.1 dyn_em/module_big_step_utilities_em.F:
+// Ported from WRF v4.8.0 dyn_em/module_big_step_utilities_em.F:
 //   w_damp (lines 2503-2711)
 
 struct KWdamp {

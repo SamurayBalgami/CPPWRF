@@ -24,6 +24,8 @@ struct LwBatchOutput {
   double* olr;       // [ncol] (may be nullptr)
   // [8*ncol] (may be nullptr): lwupt, lwuptc, lwdnt, lwdntc, lwupb, lwupbc, lwdnb, lwdnbc (d*ncol + col)
   double* diag = nullptr;
+  double* rthratenc = nullptr;  // [nz*ncol] clear-sky heating rate (may be nullptr)
+  double* cf = nullptr;         // [ncol] LW cloud forcing (may be nullptr)
 };
 
 class RrtmgLwBatch {

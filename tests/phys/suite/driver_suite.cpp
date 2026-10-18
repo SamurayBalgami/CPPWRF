@@ -1,6 +1,6 @@
 // C++ side of the P1 physics-suite differential test (tests/phys/suite).
 //
-// Reads suite_ref.bin (written by fortran/suite_ref.F90 from the ORIGINAL WRF v4.6.1 code):
+// Reads suite_ref.bin (written by fortran/suite_ref.F90 from the ORIGINAL WRF v4.8.0 code):
 //   IN1:*  the state after WRF's start_domain (phy_init) = the suite's initial surface state
 //   INn:*  the atmospheric state before call n (the dynamics in between is a fixed change)
 // and runs the C++ PhysicsSuite (part1, part2, after_rk) on the same inputs, three calls with

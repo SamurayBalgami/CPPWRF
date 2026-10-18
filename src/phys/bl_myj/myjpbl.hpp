@@ -1,5 +1,5 @@
 #pragma once
-// Port of WRF 4.6.1 phys/module_bl_myjpbl.F (myjpbl, mixlen, prodq2, difcof, vdifq, vdifh, vdifv, myjpblinit)
+// Port of WRF 4.8.0 phys/module_bl_myjpbl.F (myjpbl, mixlen, prodq2, difcof, vdifq, vdifh, vdifv, myjpblinit)
 // Mellor-Yamada-Janjic (MYJ) PBL scheme (bl_pbl_physics = 2).
 
 #include <cmath>

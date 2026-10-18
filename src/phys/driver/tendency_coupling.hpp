@@ -1,5 +1,5 @@
 #pragma once
-// Coupling of the column-physics tendencies to the dynamics (statement ports, WRF v4.6.1):
+// Coupling of the column-physics tendencies to the dynamics (statement ports, WRF v4.8.0):
 //   calculate_phy_tend      dyn_em/module_em.F
 //   update_phy_ten          phys/module_physics_addtendc.F (phy_ra_ten, phy_bl_ten; add_a2a,
 //                           add_a2c_u, add_a2c_v with the specified-boundary ranges)

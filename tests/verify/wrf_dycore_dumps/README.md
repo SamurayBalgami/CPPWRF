@@ -1,6 +1,6 @@
 # Dycore checkpoint dumps: CPPWRF vs a debug WRF, statement by statement
 
-`solve_em_dumps.patch` (against WRF 4.6.1 `dyn_em/solve_em.F`, r8 build, serial) writes, for one
+`solve_em_dumps.patch` (against WRF 4.8.0 `dyn_em/solve_em.F`, r8 build, serial) writes, for one
 time step, the arrays at seven checkpoints of every RK stage:
 
 | file | where in solve_em | arrays |

@@ -16,8 +16,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 # WRF reference runs (wrfinput/wrfbdy and wrfout of each case); the configs read them as ${CPPWRF_WRF_RUNS}
-WR = os.environ.setdefault("CPPWRF_WRF_RUNS", os.path.expanduser("~/wrf_real"))
-os.environ.setdefault("CPPWRF_WRF_REF", os.path.expanduser("~/wrf_ref"))
+WR = os.environ.setdefault("CPPWRF_WRF_RUNS", os.path.expanduser("~/wrf_real480"))
+os.environ.setdefault("CPPWRF_WRF_REF", os.path.expanduser("~/wrf_ref480"))
 WREF = os.environ["CPPWRF_WRF_REF"]
 
 # name, binary key, config, extra --set, WRF wrfout, time [s], {var: max rel L2 (whole domain)}
@@ -109,7 +109,7 @@ CASES = [
     ("real_p6_fp32_1h", "cuda", "configs/real_p6_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P6/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 5e-4, "W": 1e-2, "THM": 1e-5, "QV": 5e-4}),
-    # P7 = P2 with New Tiedtke (cu_physics = 16) instead of KF; reference WRF-4.6.1-r8d8 (r8 + double-8).
+    # P7 = P2 with New Tiedtke (cu_physics = 16) instead of KF; reference WRF-4.8.0-r8d8 (r8 + double-8).
     # The scheme has thresholds that roundoff flips (one column at step 4 jumps 1.3e-4 K under 1e-15 input noise).
     ("real_p7_r8_fp64_cpu", "cpu_dp", "configs/real_p7_r8.ini", [],
      f"{WR}/run_P7_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
@@ -120,7 +120,7 @@ CASES = [
     ("real_p7_fp32_1h", "cuda", "configs/real_p7_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P7", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P7/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-3, "W": 5e-2, "THM": 3e-5, "QV": 8e-4}),
-    # P8 = P2 with Grell-Freitas (cu_physics = 3, ishallow = 1); reference WRF-4.6.1-r8d8. Column replay of
+    # P8 = P2 with Grell-Freitas (cu_physics = 3, ishallow = 1); reference WRF-4.8.0-r8d8. Column replay of
     # GFDRV through WRF's objects is bit-identical (tests/phys/cu_gf); GF's closures cancel (aa1 - aa0), so
     # roundoff in its inputs shows as ~1e-11 in RTHCUTEN/RAINC.
     ("real_p8_r8_fp64_cpu_10min", "cpu_dp", "configs/real_p8_r8.ini", ["run.run_time=600"],

@@ -1,5 +1,5 @@
 ! tests/nest/fortran_nest_bridge.f90
-! Fortran-to-C bridge for WRF 4.6.1 nesting routines
+! Fortran-to-C bridge for WRF 4.8.0 nesting routines
 MODULE wrf_nest_bridge
   USE ISO_C_BINDING
   IMPLICIT NONE

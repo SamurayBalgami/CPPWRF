@@ -9,7 +9,7 @@
 
 namespace cppwrf::dyn::diffusion {
 
-// Ported from WRF v4.6.1 dyn_em/module_diffusion_em.F:
+// Ported from WRF v4.8.0 dyn_em/module_diffusion_em.F:
 //   tke_rhs      (lines 6099-6229)
 //   tke_buoyancy (lines 6234-6379)
 //   tke_dissip   (lines 6384-6524)

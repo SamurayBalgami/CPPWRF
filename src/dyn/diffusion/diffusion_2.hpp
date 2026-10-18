@@ -7,7 +7,7 @@
 
 namespace cppwrf::dyn::diffusion {
 
-// Ported from WRF v4.6.1 dyn_em/module_diffusion_em.F:
+// Ported from WRF v4.8.0 dyn_em/module_diffusion_em.F:
 //   horizontal_diffusion_2 (lines 2864-3113)
 //   horizontal_diffusion_u_2 (lines 3118-3318)
 //   horizontal_diffusion_v_2 (lines 3323-3514)

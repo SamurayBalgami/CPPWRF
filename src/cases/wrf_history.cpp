@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <set>
 #include <stdexcept>
 
 #include "core/constants.hpp"
@@ -226,10 +227,9 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
     const int w = std::max(1, wc_->integer("spec_bdy_width")), sz = wc_->integer("spec_zone"),
               rz = wc_->integer("relax_zone");
     std::vector<double> fcx(std::size_t(w), 0.0), gcx(std::size_t(w), 0.0);
-    for (int loop = sz + 1; loop <= sz + rz - 1 && loop <= w; ++loop) {
-      const real fac = real(sz + rz - loop) / real(rz - 1);
-      fcx[std::size_t(loop - 1)] = double(real(0.1) / real(g.dt) * fac);
-      gcx[std::size_t(loop - 1)] = double(real(1.0) / real(g.dt) / real(50.) * fac);
+    for (int loop = sz + 1; loop <= sz + rz - 1 && loop <= w; ++loop) {  // module_bc_em's order
+      fcx[std::size_t(loop - 1)] = double(real(0.1) / real(g.dt) * real(sz + rz - loop) / real(rz - 1));
+      gcx[std::size_t(loop - 1)] = double(real(1.0) / real(g.dt) / real(50.) * real(sz + rz - loop) / real(rz - 1));
     }
     phy_init_["FCX"] = fcx;
     phy_init_["GCX"] = gcx;
@@ -298,6 +298,13 @@ void WrfHistory::after_solve(long n) {
 
 void WrfHistory::before_step(long n) {
   if (m_.suite) return;
+  prep_step_ = n;
+}
+
+void WrfHistory::first_rk_prep() {
+  if (m_.suite || prep_step_ < 0) return;
+  const long n = prep_step_;
+  prep_step_ = -1;
   if (!prep_) prep_ = std::make_unique<phys::driver::PhyPrepFields>(m_.g);
   phys::driver::PhyPrepParams pp;
   pp.use_theta_m = m_.st->P_QV >= 0 ? 1 : 0;
@@ -424,9 +431,13 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     auto it = p_hyd_snap_.find(step_);
     if (it != p_hyd_snap_.end() && it->second.size() == n) { out = it->second; return true; }
   }
-  {
+  if (!model_only_) {  // phy_init / start_em values (nest feedback replaces them on the parent)
     auto it = phy_init_.find(name);
-    if (it != phy_init_.end() && it->second.size() == n) { out = it->second; return true; }
+    if (it != phy_init_.end() && it->second.size() == n) {
+      auto fb = fed_.find(name);
+      out = fb != fed_.end() && fb->second.size() == n ? fb->second : it->second;
+      return true;
+    }
   }
   if (name == "P_HYD" && !(m_.suite && step_ > 0)) {  // start_em: p_hyd = p + pb until phy_prep sets it
     if (p_hyd0_.empty()) {
@@ -442,7 +453,9 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
   }
   if (name == "SAVE_TOPO_FROM_REAL") { out.assign(1, 0.0); return true; }
   if (name == "DTBC") {  // time since the last boundary update (spec_bdyupdate's dtbc)
-    const double iv = wc_->num("interval_seconds");
+    // nests: med_nest_force sets dtbc = 0 at every parent step
+    const double iv = wc_->domain() > 1 ? m_.g.dt * std::max(1, wc_->integer("parent_time_step_ratio"))
+                                        : wc_->num("interval_seconds");
     out.assign(1, iv > 0 ? std::fmod(time_sec_, iv) == 0 && time_sec_ > 0 ? iv : std::fmod(time_sec_, iv) : time_sec_);
     return true;
   }  // output_wrf: 0 in model output
@@ -461,10 +474,51 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     if (it != wn.end() && it->second == name) return copy_field(s.q_2[std::size_t(q)], dims, out);
   }
   const std::string vn = lower(varname);
+  if (vn == "rho" && dims.size() == 3) {
+    // grid%rho: moist_physics_prep_em sets it on the tile without the spec zone; the spec-zone ring keeps
+    // phy_prep's value of the step start
+    const Field3* ring = m_.suite ? &m_.suite->prep.rho : prep_ ? &prep_->rho : nullptr;
+    const bool spec = m_.g.bc_x == BC::Specified || m_.g.bc_y == BC::Specified;
+    const Field3* inner = nullptr;
+    for (const Field3* f : f3_)
+      if (f->name() == vn) { inner = f; break; }
+    std::vector<double> r;
+    if (inner && ring && spec && copy_field(*inner, dims, out) && copy_field(*ring, dims, r)) {
+      const std::size_t nk = dims[0], nj = dims[1], ni = dims[2];
+      const bool px = m_.g.bc_x != BC::Periodic;
+      for (std::size_t k = 0; k < nk; ++k)
+        for (std::size_t j = 0; j < nj; ++j)
+          for (std::size_t i = 0; i < ni; ++i)
+            if (j == 0 || j + 1 == nj || (px && (i == 0 || i + 1 == ni)))
+              out[(k * nj + j) * ni + i] = r[(k * nj + j) * ni + i];
+      return true;
+    }
+  }
   for (const Field2* f : f2_)
     if (f->name() == vn && copy_field(*f, dims, out)) return true;
   for (const Field3* f : f3_)
     if (f->name() == vn && copy_field(*f, dims, out)) return true;
+  if (prep_)  // phy_prep of a run without column physics (first_rk_step_part1 runs it every step)
+    for (const Field3* f : {&prep_->t_phy, &prep_->u_phy, &prep_->v_phy, &prep_->rho, &prep_->p_hyd_w, &prep_->z,
+                            &prep_->z_at_w, &prep_->p8w, &prep_->t8w})
+      if (f->name() == vn && copy_field(*f, dims, out)) return true;
+  if ((name == "DECLIN" || name == "SOLCON") && m_.suite && m_.suite->radiation()) {  // radiation_driver's radconst
+    out.assign(1, name == "DECLIN" ? m_.suite->radiation()->declin() : m_.suite->radiation()->solcon());
+    return true;
+  }
+  if (name == "HAS_REQC" || name == "HAS_REQI" || name == "HAS_REQS") {  // microphysics radii to the radiation
+    out.assign(1, m_.rk && m_.rk->physics() && m_.rk->physics()->params().microp_re ? 1.0 : 0.0);
+    return true;
+  }
+  if (name == "AKPBL" && m_.suite && m_.suite->options().cu_physics != 0 && dims.size() == 2) {  // cumulus_driver
+    std::vector<int> h;
+    m_.suite->kpbl.download(h);
+    const Layout& L = m_.suite->kpbl.layout();
+    out.resize(n);
+    for (std::size_t j = 0; j < dims[0]; ++j)
+      for (std::size_t i = 0; i < dims[1]; ++i) out[j * dims[1] + i] = double(h[L.index(int(i), int(j), 0)]);
+    return true;
+  }
   if (model_only_) return false;
   auto fb = fed_.find(name);  // nest feedback of a field the model does not carry
   if (fb != fed_.end() && fb->second.size() == n) { out = fb->second; return true; }
@@ -521,9 +575,21 @@ void feedback(const std::string& fn, std::vector<double>& c, int cnx, int cny, c
 void WrfHistory::feedback_from(WrfHistory& child, int ipos, int jpos, int ratio) {
   const Grid& g = m_.g;
   const Grid& cg = child.m_.g;
+  // history and restart fields (the restart stream carries more of them)
   std::vector<wrf_io::OutVar> vars = schema_->history_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real)));
+  {
+    std::set<std::string> have;
+    for (const wrf_io::OutVar& v : vars) have.insert(v.name);
+    for (wrf_io::OutVar& v : schema_->restart_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real))))
+      if (!have.count(v.name)) vars.push_back(std::move(v));
+  }
   const int spec_zone = std::max(1, wc_->integer("spec_zone"));
   for (const wrf_io::OutVar& v : vars) {
+    if (v.name == "HT_COARSE") {  // med_feedback_domain: parent%ht_coarse = parent%ht
+      std::vector<double> h;
+      if (value("HGT", "ht", v.dimlens, h)) fed_[v.name] = std::move(h);
+      continue;
+    }
     if (!v.var || v.var->nest_up.empty() || v.dimlens.size() < 2) continue;
     const std::string fn = v.var->nest_up.substr(0, v.var->nest_up.find(':'));
     std::vector<double> tmp;
@@ -604,7 +670,7 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
   // just rung (or rings every history_interval), the restart alarm is ringing, 55 counts from the start
   const long el = std::lround(time_sec);
   for (int a = 1; a <= 55; ++a) {
-    if (a == 26 || a == 54) continue;
+    if (a == 26 || a == 54 || (a == 52 && d.grid_id > 1)) continue;  // nests have no boundary alarm
     char n1[40], n2[40];
     std::snprintf(n1, sizeof n1, "WRF_ALARM_ISRINGING_%02d", a);
     std::snprintf(n2, sizeof n2, "WRF_ALARM_SECS_TIL_NEXT_RING_%02d", a);
@@ -613,7 +679,8 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
       const long iv = std::lround(history_interval_s);
       secs = int(iv - el % iv);
       // the last step: med_restart_out runs before med_last_solve_io writes that frame
-      if (step == m_.nsteps && el % iv == 0) ring = 1;
+      // nests: med_restart_out of the parent runs before the nest's next med_before_solve_io turns it off
+      if ((step == m_.nsteps || d.grid_id > 1) && el % iv == 0) ring = 1;
     } else if (a == 51 && restart_interval_s > 0) {
       ring = 1;
       secs = int(std::lround(restart_interval_s));

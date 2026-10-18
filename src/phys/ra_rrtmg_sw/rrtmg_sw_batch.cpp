@@ -83,8 +83,10 @@ struct KSwFinish {
     const int ci = SW_CI(a, cc);
     const int col = ch.col0 + ci, nc = in.ncol;
     const SwColumnOut o =
-        rrtmg_sw_finish(c, ch.views(ci), col_view(in.pi3d, col, nc), SD{out.rthraten + col, nc}, SD{nullptr, 0});
+        rrtmg_sw_finish(c, ch.views(ci), col_view(in.pi3d, col, nc), SD{out.rthraten + col, nc},
+                        out.rthratenc ? SD{out.rthratenc + col, nc} : SD{nullptr, 0});
     out.gsw[col] = o.gsw;
+    if (out.cf) out.cf[col] = o.swcf;
     if (out.diag) {
       const double d[8] = {o.swupt, o.swuptc, o.swdnt, o.swdntc, o.swupb, o.swupbc, o.swdnb, o.swdnbc};
       for (int q = 0; q < 8; ++q) out.diag[std::size_t(q) * nc + col] = d[q];

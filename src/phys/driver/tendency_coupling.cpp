@@ -186,6 +186,7 @@ void phy_prep_part2(PhysicsTendencies& pt, const dyn::State& s, const dyn::BaseS
     if (s.P_QC >= 0) decouple(pt.rqcblten);
     if (s.P_QI >= 0) decouple(pt.rqiblten);
   }
+  if (f.cu_physics == 1 && s.P_QV >= 0) decouple(pt.rqvften);  // phy_prep_part2: KFETASCHEME (RQVFTEN only)
   if (f.cu_physics == 16 || f.cu_physics == 3) {  // advective forcing of the cumulus scheme
     if (s.P_QV >= 0) decouple(pt.rqvften);
     decouple(pt.rthften);
