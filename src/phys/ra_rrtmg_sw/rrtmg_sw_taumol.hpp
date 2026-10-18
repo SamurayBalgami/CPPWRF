@@ -8,32 +8,32 @@
 
 namespace cppwrf::phys {
 
-CPPWRF_HD inline void taumol_sw(
+CPPWRF_FORCEINLINE void taumol_sw(
     int nlayers,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colch4,
-    SD colo2,
-    SD colo3,
-    SD colmol,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colch4,
+    CSD colo2,
+    CSD colo3,
+    CSD colmol,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
     SD2 taug,                 // (nlayers, 112)
     SD2 taur,                 // (nlayers, 112)
     SD sfluxzen,         // (112)
-    const RrtmgSwTables& tables
+    const RrtmgSwTables& CPPWRF_RESTRICT tables
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
 

@@ -26,12 +26,21 @@ void run_wsm6(
     int nz,
     const Wsm6Params<real>& params) {
   assert(nz <= kMaxLevels);
-  Wsm6Kernel<real> kernel{
-      params, dt, nz,
-      th, q, qc, qr, qi, qs, qg,
-      den, pii, p, delz,
-      rain, rainncv, snow, snowncv, graupel, graupelncv, sr};
-  column_for(range, kernel);
+  if (nz <= 48) {
+    Wsm6Kernel<real, 48> kernel{
+        params, dt, nz,
+        th, q, qc, qr, qi, qs, qg,
+        den, pii, p, delz,
+        rain, rainncv, snow, snowncv, graupel, graupelncv, sr};
+    column_for(range, kernel);
+  } else {
+    Wsm6Kernel<real, kMaxLevels> kernel{
+        params, dt, nz,
+        th, q, qc, qr, qi, qs, qg,
+        den, pii, p, delz,
+        rain, rainncv, snow, snowncv, graupel, graupelncv, sr};
+    column_for(range, kernel);
+  }
 }
 
 }  // namespace cppwrf::phys::wsm6

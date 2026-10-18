@@ -57,8 +57,8 @@ struct SwLayout {
   int nl;
   std::size_t nd = 0, ni = 0;
   CPPWRF_HD explicit SwLayout(int nl_) : nl(nl_) { views(nullptr, nullptr, 0, 1, &nd, &ni); }
-  CPPWRF_HD SwViews views(double* d, int* ip, int col, int ncol, std::size_t* nd_out = nullptr,
-                          std::size_t* ni_out = nullptr) const {
+  CPPWRF_FORCEINLINE SwViews views(double* d, int* ip, int col, int ncol, std::size_t* nd_out = nullptr,
+                                   std::size_t* ni_out = nullptr) const {
     SwViews v{};
     const int L = nl, L1 = nl + 1, s = ncol;
     std::size_t od = 0, oi = 0;
@@ -88,7 +88,7 @@ struct SwLayout {
     v.uvfddir = v1(L1); v.nifd = v1(L1); v.nifddir = v1(L1);
     v.swhr = v1(L1); v.swhrc = v1(L1);
     v.dscal = v1(5);
-    v.jp = i1(L); v.jt = i1(L); v.jt1 = i1(L); v.indself = i1(L); v.indfor = i1(L); v.iscal = i1(5);
+    v.jp = i1(L); v.jt = i1(L); v.jt1 = i1(L); v.indself = i1(L); v.indfor = i1(L); v.iscal = i1(6);
     if (nd_out) *nd_out = od;
     if (ni_out) *ni_out = oi;
     return v;
@@ -299,109 +299,92 @@ CPPWRF_HD inline void rrtmg_sw_prep(const RrtmgSwCallConfig& c, const SwColumnIn
   v.iscal[4] = liqflgsw;
 
   // 5. McICA subcolumns (KISS, permuteseed = 1, maximum-random overlap), subcolumn by subcolumn
-  KissRng rng;
-  rng.init_from_pressure(v.pavel[0] * 100.0, v.pavel[1] * 100.0, v.pavel[2] * 100.0, v.pavel[3] * 100.0);
-  rng.permute(1);
-  for (int isubcol = 0; isubcol < 112; ++isubcol) {
-    double cdf_prev = 0.0, cldf_prev = 0.0;
-    for (int ilev = 0; ilev < nlayers; ++ilev) {
-      const double cldf = (v.cldfrac[ilev] < 1.0e-20) ? 0.0 : v.cldfrac[ilev];
-      double cdf = rng.step<double>();
-      if (ilev > 0) {
-        if (cdf_prev > 1.0 - cldf_prev) cdf = cdf_prev;
-        else cdf = cdf * (1.0 - cldf_prev);
+  bool any_cloud = false;
+  for (int ilev = 0; ilev < nlayers; ++ilev) {
+    if (CSD(v.cldfrac)[ilev] >= 1.0e-20) any_cloud = true;
+  }
+#if defined(__CUDA_ARCH__)
+  const bool run_mcica = __any_sync(__activemask(), any_cloud);
+#else
+  const bool run_mcica = any_cloud;
+#endif
+  int any_cld_subcol = 0;
+  if (run_mcica && any_cloud) {
+    KissRng rng;
+    rng.init_from_pressure(CSD(v.pavel)[0] * 100.0, CSD(v.pavel)[1] * 100.0, CSD(v.pavel)[2] * 100.0,
+                           CSD(v.pavel)[3] * 100.0);
+    rng.permute(1);
+    for (int isubcol = 0; isubcol < 112; ++isubcol) {
+      double cdf_prev = 0.0, cldf_prev = 0.0;
+      for (int ilev = 0; ilev < nlayers; ++ilev) {
+        const double cf = CSD(v.cldfrac)[ilev];
+        const double cldf = (cf < 1.0e-20) ? 0.0 : cf;
+        double cdf = rng.step<double>();
+        if (ilev > 0) {
+          if (cdf_prev > 1.0 - cldf_prev) cdf = cdf_prev;
+          else cdf = cdf * (1.0 - cldf_prev);
+        }
+        const bool cld = cdf >= 1.0 - cldf;
+        v.cldfmc[ilev][isubcol] = cld ? 1.0 : 0.0;
+        if (cld) any_cld_subcol = 1;
+        cdf_prev = cdf;
+        cldf_prev = cldf;
       }
-      v.cldfmc[ilev][isubcol] = cdf >= 1.0 - cldf ? 1.0 : 0.0;
-      cdf_prev = cdf;
-      cldf_prev = cldf;
     }
   }
+  v.iscal[5] = any_cld_subcol;
 
   rrtmg_sw_core_prep(nlayers, v, tables, in.coszen, in.albedo, in.albedo, in.albedo, in.albedo);
 }
 
 // ---- stage 2: per g-point (spcvmc_sw with icpr = 1, no aerosols) --------------------------------
-CPPWRF_HD inline void rrtmg_sw_gpoint(const RrtmgSwCallConfig& c, int iw, const SwViews& v,
-                                      const RrtmgSwTables& tables) {
-  if (v.iscal[0] == 0) return;
+template <int ML>
+CPPWRF_FORCEINLINE void rrtmg_sw_gpoint_impl(const RrtmgSwCallConfig& c, int iw, const SwViews& v,
+                                             const RrtmgSwTables& CPPWRF_RESTRICT tables) {
+  if (CSI(v.iscal)[0] == 0) return;
   constexpr double tblint = 10000.0;
   constexpr double od_lo = 0.06;
   constexpr double pade = 0.278;
   constexpr double bpade = 1.0 / pade;
-  constexpr double repclc = 1.0e-12;
   constexpr double ptaua = 0.0, pasya = 0.0, pomga = 1.0;  // aer_opt = 0
-  constexpr int ML = RRTMG_SW_COL_MAX;
   const int klev = c.nlayers;
-  const double prmu0 = v.dscal[0];
-  const int inflag = v.iscal[2], iceflag = v.iscal[3], liqflag = v.iscal[4];
+  const double prmu0 = CSD(v.dscal)[0];
+  const int inflag = CSI(v.iscal)[2], iceflag = CSI(v.iscal)[3], liqflag = CSI(v.iscal)[4];
+  const bool has_col_cld = CSI(v.iscal)[5] != 0;
   int ibm = 0, cum = tables.ngc[0];
   while (iw >= cum) cum += tables.ngc[++ibm];
   // band albedos: WRF bands 1-9 and 14 near-IR (al*), 10-13 UV/visible (as*)
   const bool uv = ibm >= 9 && ibm <= 12;
-  const double palbp = uv ? v.dscal[1] : v.dscal[3], palbd = uv ? v.dscal[2] : v.dscal[4];
+  const double palbp = uv ? CSD(v.dscal)[1] : CSD(v.dscal)[3], palbd = uv ? CSD(v.dscal)[2] : CSD(v.dscal)[4];
 
-  double ztauc[ML], zomcc[ML], zgcc[ML], ztauo[ML], zomco[ML], zgco[ML], zcldf[ML], ztaorm[ML];
-  bool lrtchkclr[ML], lrtchkcld[ML];
-  double zrefc[ML + 1], zrefdc[ML + 1], ztrac[ML + 1], ztradc[ML + 1];
-  double zrefo[ML + 1], zrefdo[ML + 1], ztrao[ML + 1], ztrado[ML + 1];
-  double zdbtc[ML + 1], zdbtc_nodel[ML + 1], ztdbtc[ML + 1], ztdbtc_nodel[ML + 1];
-  double zrdndc[ML + 1], zrupc[ML + 1], zrupdc[ML + 1];
   double zref[ML + 1], zrefd[ML + 1], ztra[ML + 1], ztrad[ML + 1];
-  double zdbt[ML + 1], zdbt_nodel[ML + 1], ztdbt[ML + 1], ztdbt_nodel[ML + 1];
-  double zrdnd[ML + 1], zrup[ML + 1], zrupd[ML + 1];
-  double zcd[ML + 1], zcu[ML + 1], zfd[ML + 1], zfu[ML + 1];
-  double ptaucmc[ML], pomgcmc[ML], pasycmc[ML];
+  double zdbt[ML + 1], ztdbt[ML + 1];
 
-  // cldprmc_sw of this subcolumn (McICA: tau 0, ssa 1, asym 0, fsfc 0 before)
-  for (int ikl = 0; ikl < klev; ++ikl) {
-    const double cf = v.cldfmc[ikl][iw];
-    const bool cl = cf == 1.0;
-    double taorm = 0.0, taucm = 0.0, ssacm = 1.0, asmcm = 0.0;
-    cldprmc_sw_elem(inflag, iceflag, liqflag, iw, cf, cl ? v.ciwpth[ikl] : 0.0, cl ? v.clwpth[ikl] : 0.0,
-                    cl ? v.cswpth[ikl] : 0.0, v.reicmc[ikl], v.relqmc[ikl], v.resnmc[ikl], 0.0, taorm, taucm, ssacm,
-                    asmcm, tables);
-    zcldf[ikl] = cf;
-    ztaorm[ikl] = taorm;
-    ptaucmc[ikl] = taucm;
-    pomgcmc[ikl] = ssacm;
-    pasycmc[ikl] = asmcm;
-  }
+  const double zincflx = c.adjflux * CSD(v.sfluxzen)[iw] * prmu0;
 
-  const double zincflx = c.adjflux * v.sfluxzen[iw] * prmu0;
-
-  // clear-sky and total-sky TOA direct beam and surface values
-  ztdbtc[0] = 1.0;
-  ztdbtc_nodel[0] = 1.0;
-  zdbtc[klev] = 0.0;
-  ztrac[klev] = 0.0;
-  ztradc[klev] = 0.0;
-  zrefc[klev] = palbp;
-  zrefdc[klev] = palbd;
-  zrupc[klev] = palbp;
-  zrupdc[klev] = palbd;
+  // Clear-sky TOA direct beam and surface values
   ztdbt[0] = 1.0;
-  ztdbt_nodel[0] = 1.0;
   zdbt[klev] = 0.0;
   ztra[klev] = 0.0;
   ztrad[klev] = 0.0;
   zref[klev] = palbp;
   zrefd[klev] = palbd;
-  zrup[klev] = palbp;
-  zrupd[klev] = palbd;
+
+  double ztdbtc_nodel = 1.0;
+  v.ccdd[klev][iw] = zincflx;
+  bool any_cld = false;
 
   for (int jk = 0; jk < klev; ++jk) {
     int ikl = klev - 1 - jk;  // top to bottom
-    lrtchkclr[jk] = true;
-    lrtchkcld[jk] = (zcldf[ikl] > repclc);
-    ztauc[jk] = v.taur[ikl][iw] + v.taug[ikl][iw] + ptaua;
-    zomcc[jk] = v.taur[ikl][iw] * 1.0 + ptaua * pomga;
-    zgcc[jk] = (zomcc[jk] != 0.0) ? pasya * pomga * ptaua / zomcc[jk] : 0.0;
-    zomcc[jk] = (ztauc[jk] != 0.0) ? zomcc[jk] / ztauc[jk] : 0.0;
+    if (has_col_cld && CSD2(v.cldfmc)[ikl][iw] == 1.0) any_cld = true;
+    const double taur_val = CSD2(v.taur)[ikl][iw];
+    const double taug_val = CSD2(v.taug)[ikl][iw];
+    double ztauc = taur_val + taug_val + ptaua;
+    double zomcc = taur_val * 1.0 + ptaua * pomga;
+    double zgcc = (zomcc != 0.0) ? pasya * pomga * ptaua / zomcc : 0.0;
+    zomcc = (ztauc != 0.0) ? zomcc / ztauc : 0.0;
 
-    double zclear = 1.0 - zcldf[ikl];
-    double zcloud = zcldf[ikl];
-
-    double ze1 = ztauc[jk] / prmu0;
+    double ze1 = ztauc / prmu0;
     double zdbtmc;
     if (ze1 <= od_lo) {
       zdbtmc = 1.0 - ze1 + 0.5 * ze1 * ze1;
@@ -410,55 +393,19 @@ CPPWRF_HD inline void rrtmg_sw_gpoint(const RrtmgSwCallConfig& c, int iw, const 
       int itind = static_cast<int>(tblint * tblind + 0.5);
       zdbtmc = tables.exp_tbl[itind];
     }
-    zdbtc_nodel[jk] = zdbtmc;
-    ztdbtc_nodel[jk + 1] = zdbtc_nodel[jk] * ztdbtc_nodel[jk];
+    ztdbtc_nodel = zdbtmc * ztdbtc_nodel;
+    v.ccdd[ikl][iw] = zincflx * ztdbtc_nodel;
 
-    double tauorig = ztauc[jk] + ztaorm[ikl];
-    ze1 = tauorig / prmu0;
-    double zdbtmo;
-    if (ze1 <= od_lo) {
-      zdbtmo = 1.0 - ze1 + 0.5 * ze1 * ze1;
-    } else {
-      double tblind = ze1 / (bpade + ze1);
-      int itind = static_cast<int>(tblint * tblind + 0.5);
-      zdbtmo = tables.exp_tbl[itind];
-    }
-    zdbt_nodel[jk] = zclear * zdbtmc + zcloud * zdbtmo;
-    ztdbt_nodel[jk + 1] = zdbt_nodel[jk] * ztdbt_nodel[jk];
-  }
+    // delta scaling, clear sky
+    double zf = zgcc * zgcc;
+    double zwf = zomcc * zf;
+    ztauc = (1.0 - zwf) * ztauc;
+    zomcc = (zomcc - zwf) / (1.0 - zwf);
+    zgcc = (zgcc - zf) / (1.0 - zf);
 
-  // delta scaling, clear sky
-  for (int jk = 0; jk < klev; ++jk) {
-    double zf = zgcc[jk] * zgcc[jk];
-    double zwf = zomcc[jk] * zf;
-    ztauc[jk] = (1.0 - zwf) * ztauc[jk];
-    zomcc[jk] = (zomcc[jk] - zwf) / (1.0 - zwf);
-    zgcc[jk] = (zgcc[jk] - zf) / (1.0 - zf);
-  }
-  // total sky optical parameters (icpr = 1)
-  for (int jk = 0; jk < klev; ++jk) {
-    int ikl = klev - 1 - jk;
-    ztauo[jk] = ztauc[jk] + ptaucmc[ikl];
-    zomco[jk] = ztauc[jk] * zomcc[jk] + ptaucmc[ikl] * pomgcmc[ikl];
-    zgco[jk] = (ptaucmc[ikl] * pomgcmc[ikl] * pasycmc[ikl] + ztauc[jk] * zomcc[jk] * zgcc[jk]) / zomco[jk];
-    zomco[jk] = zomco[jk] / ztauo[jk];
-  }
+    reftra_sw_elem(true, zgcc, prmu0, ztauc, zomcc, zref[jk], zrefd[jk], ztra[jk], ztrad[jk], tables);
 
-  reftra_sw(klev, lrtchkclr, zgcc, prmu0, ztauc, zomcc, zrefc, zrefdc, ztrac, ztradc, tables);
-  reftra_sw(klev, lrtchkcld, zgco, prmu0, ztauo, zomco, zrefo, zrefdo, ztrao, ztrado, tables);
-
-  for (int jk = 0; jk < klev; ++jk) {
-    int ikl = klev - 1 - jk;
-    double zclear = 1.0 - zcldf[ikl];
-    double zcloud = zcldf[ikl];
-
-    zref[jk] = zclear * zrefc[jk] + zcloud * zrefo[jk];
-    zrefd[jk] = zclear * zrefdc[jk] + zcloud * zrefdo[jk];
-    ztra[jk] = zclear * ztrac[jk] + zcloud * ztrao[jk];
-    ztrad[jk] = zclear * ztradc[jk] + zcloud * ztrado[jk];
-
-    double ze1 = ztauc[jk] / prmu0;
-    double zdbtmc;
+    ze1 = ztauc / prmu0;
     if (ze1 <= od_lo) {
       zdbtmc = 1.0 - ze1 + 0.5 * ze1 * ze1;
     } else {
@@ -466,56 +413,123 @@ CPPWRF_HD inline void rrtmg_sw_gpoint(const RrtmgSwCallConfig& c, int iw, const 
       int itind = static_cast<int>(tblint * tblind + 0.5);
       zdbtmc = tables.exp_tbl[itind];
     }
-    zdbtc[jk] = zdbtmc;
-    ztdbtc[jk + 1] = zdbtc[jk] * ztdbtc[jk];
-
-    ze1 = ztauo[jk] / prmu0;
-    double zdbtmo;
-    if (ze1 <= od_lo) {
-      zdbtmo = 1.0 - ze1 + 0.5 * ze1 * ze1;
-    } else {
-      double tblind = ze1 / (bpade + ze1);
-      int itind = static_cast<int>(tblint * tblind + 0.5);
-      zdbtmo = tables.exp_tbl[itind];
-    }
-    zdbt[jk] = zclear * zdbtmc + zcloud * zdbtmo;
+    zdbt[jk] = zdbtmc;
     ztdbt[jk + 1] = zdbt[jk] * ztdbt[jk];
   }
 
-  vrtqdr_sw(klev, zrefc, zrefdc, ztrac, ztradc, zdbtc, ztdbtc, zrdndc, zrupc, zrupdc, zcd, zcu);
-  vrtqdr_sw(klev, zref, zrefd, ztra, ztrad, zdbt, ztdbt, zrdnd, zrup, zrupd, zfd, zfu);
+  vrtqdr_sw_direct<ML>(klev, zref, zrefd, ztra, ztrad, zdbt, ztdbt, zincflx, v.ccd, v.ccu, iw);
 
-  // contributions to the level sums (bottom-to-top level index)
-  for (int jk = 0; jk <= klev; ++jk) {
-    int ikl = klev - jk;
-    v.cfu[ikl][iw] = zincflx * zfu[jk];
-    v.cfd[ikl][iw] = zincflx * zfd[jk];
-    v.ccu[ikl][iw] = zincflx * zcu[jk];
-    v.ccd[ikl][iw] = zincflx * zcd[jk];
-    v.cfdd[ikl][iw] = zincflx * ztdbt_nodel[jk];
-    v.ccdd[ikl][iw] = zincflx * ztdbtc_nodel[jk];
+  if (!any_cld) {
+    for (int ikl = 0; ikl <= klev; ++ikl) {
+      v.cfu[ikl][iw] = v.ccu[ikl][iw];
+      v.cfd[ikl][iw] = v.ccd[ikl][iw];
+      v.cfdd[ikl][iw] = v.ccdd[ikl][iw];
+    }
+    return;
   }
+
+  // Cloudy subcolumn: update only cloudy layers in zref/zrefd/ztra/ztrad/zdbt and run total-sky vrtqdr_sw
+  double ztdbt_nodel = 1.0;
+  v.cfdd[klev][iw] = zincflx;
+  ztdbt[0] = 1.0;
+
+  for (int jk = 0; jk < klev; ++jk) {
+    int ikl = klev - 1 - jk;
+    const double cf = CSD2(v.cldfmc)[ikl][iw];
+    const double taur_val = CSD2(v.taur)[ikl][iw];
+    const double taug_val = CSD2(v.taug)[ikl][iw];
+    double ztauc = taur_val + taug_val + ptaua;
+
+    if (cf == 1.0) {
+      double taorm = 0.0, taucm = 0.0, ssacm = 1.0, asmcm = 0.0;
+      cldprmc_sw_elem(inflag, iceflag, liqflag, iw, cf, CSD(v.ciwpth)[ikl], CSD(v.clwpth)[ikl],
+                      CSD(v.cswpth)[ikl], CSD(v.reicmc)[ikl], CSD(v.relqmc)[ikl], CSD(v.resnmc)[ikl], 0.0,
+                      taorm, taucm, ssacm, asmcm, tables);
+      double tauorig = ztauc + taorm;
+      double ze1 = tauorig / prmu0;
+      double zdbtmo;
+      if (ze1 <= od_lo) {
+        zdbtmo = 1.0 - ze1 + 0.5 * ze1 * ze1;
+      } else {
+        double tblind = ze1 / (bpade + ze1);
+        int itind = static_cast<int>(tblint * tblind + 0.5);
+        zdbtmo = tables.exp_tbl[itind];
+      }
+      ztdbt_nodel = zdbtmo * ztdbt_nodel;
+      v.cfdd[ikl][iw] = zincflx * ztdbt_nodel;
+
+      double zomcc = taur_val * 1.0 + ptaua * pomga;
+      double zgcc = (zomcc != 0.0) ? pasya * pomga * ptaua / zomcc : 0.0;
+      zomcc = (ztauc != 0.0) ? zomcc / ztauc : 0.0;
+      double zf = zgcc * zgcc;
+      double zwf = zomcc * zf;
+      ztauc = (1.0 - zwf) * ztauc;
+      zomcc = (zomcc - zwf) / (1.0 - zwf);
+      zgcc = (zgcc - zf) / (1.0 - zf);
+
+      double ztauo = ztauc + taucm;
+      double zomco = ztauc * zomcc + taucm * ssacm;
+      double zgco = (taucm * ssacm * asmcm + ztauc * zomcc * zgcc) / zomco;
+      zomco = zomco / ztauo;
+
+      reftra_sw_elem(true, zgco, prmu0, ztauo, zomco, zref[jk], zrefd[jk], ztra[jk], ztrad[jk], tables);
+
+      ze1 = ztauo / prmu0;
+      if (ze1 <= od_lo) {
+        zdbtmo = 1.0 - ze1 + 0.5 * ze1 * ze1;
+      } else {
+        double tblind = ze1 / (bpade + ze1);
+        int itind = static_cast<int>(tblint * tblind + 0.5);
+        zdbtmo = tables.exp_tbl[itind];
+      }
+      zdbt[jk] = zdbtmo;
+    } else {
+      double ze1 = ztauc / prmu0;
+      double zdbtmc;
+      if (ze1 <= od_lo) {
+        zdbtmc = 1.0 - ze1 + 0.5 * ze1 * ze1;
+      } else {
+        double tblind = ze1 / (bpade + ze1);
+        int itind = static_cast<int>(tblint * tblind + 0.5);
+        zdbtmc = tables.exp_tbl[itind];
+      }
+      ztdbt_nodel = zdbtmc * ztdbt_nodel;
+      v.cfdd[ikl][iw] = zincflx * ztdbt_nodel;
+    }
+    ztdbt[jk + 1] = zdbt[jk] * ztdbt[jk];
+  }
+
+  vrtqdr_sw_direct<ML>(klev, zref, zrefd, ztra, ztrad, zdbt, ztdbt, zincflx, v.cfd, v.cfu, iw);
+}
+
+template <int ML = RRTMG_SW_COL_MAX>
+CPPWRF_FORCEINLINE void rrtmg_sw_gpoint(const RrtmgSwCallConfig& c, int iw, const SwViews& v,
+                                        const RrtmgSwTables& CPPWRF_RESTRICT tables) {
+  rrtmg_sw_gpoint_impl<ML>(c, iw, v, tables);
 }
 
 // ---- stage 3: per level: spcvmc_sw's sums, g-points in order ------------------------------------
-CPPWRF_HD inline void rrtmg_sw_level(int lev, const SwViews& v, const RrtmgSwTables& tables) {
-  if (v.iscal[0] == 0) return;
+CPPWRF_FORCEINLINE void rrtmg_sw_level(int lev, const SwViews& v, const RrtmgSwTables& CPPWRF_RESTRICT tables) {
+  if (CSI(v.iscal)[0] == 0) return;
   double fu = 0.0, fd = 0.0, cu = 0.0, cd = 0.0, fddir = 0.0, uvfd = 0.0, uvfddir = 0.0, nifd = 0.0, nifddir = 0.0;
   int iw = 0;
   for (int ibm = 0; ibm < 14; ++ibm) {
     const int igt = tables.ngc[ibm];
     for (int jg = 0; jg < igt; ++jg, ++iw) {
-      fu += v.cfu[lev][iw];
-      fd += v.cfd[lev][iw];
-      cu += v.ccu[lev][iw];
-      cd += v.ccd[lev][iw];
-      fddir += v.cfdd[lev][iw];
+      const double cfu = CSD2(v.cfu)[lev][iw], cfd = CSD2(v.cfd)[lev][iw];
+      const double ccu = CSD2(v.ccu)[lev][iw], ccd = CSD2(v.ccd)[lev][iw];
+      const double cfdd = CSD2(v.cfdd)[lev][iw];
+      fu += cfu;
+      fd += cfd;
+      cu += ccu;
+      cd += ccd;
+      fddir += cfdd;
       if (ibm >= 9 && ibm <= 12) {
-        uvfd += v.cfd[lev][iw];
-        uvfddir += v.cfdd[lev][iw];
+        uvfd += cfd;
+        uvfddir += cfdd;
       } else if (ibm == 13 || ibm <= 8) {
-        nifd += v.cfd[lev][iw];
-        nifddir += v.cfdd[lev][iw];
+        nifd += cfd;
+        nifddir += cfdd;
       }
     }
   }
@@ -528,8 +542,8 @@ struct SwColumnOut {
   double gsw, swcf, swupt, swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc, swvisdir, swvisdif, swnirdir,
       swnirdif;
 };
-CPPWRF_HD inline SwColumnOut rrtmg_sw_finish(const RrtmgSwCallConfig& c, const SwViews& v, SD pi3d,
-                                             SD rthratensw, SD rthratenswc) {
+CPPWRF_FORCEINLINE SwColumnOut rrtmg_sw_finish(const RrtmgSwCallConfig& c, const SwViews& v, CSD pi3d,
+                                               SD rthratensw, SD rthratenswc) {
   SwColumnOut o{};
   if (v.iscal[0] == 0) {
     for (int k = 0; k < c.num_levels; ++k) {

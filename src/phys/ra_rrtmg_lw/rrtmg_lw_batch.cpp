@@ -14,9 +14,11 @@ namespace {
 // column-fastest arrays); OpenMP: ci and x are the two collapsed parallel loops.
 #if defined(CPPWRF_USE_CUDA)
 #define LW_CI(a, b, c) (a)
-inline Range3D lw_range(int n, int nx) { return Range3D{0, n, 0, nx, 0, 1}; }
+#define LW_X(a, b, c) (c)
+inline Range3D lw_range(int n, int nx) { return Range3D{0, n, 0, 1, 0, nx}; }
 #else
 #define LW_CI(a, b, c) (c)
+#define LW_X(a, b, c) (b)
 inline Range3D lw_range(int n, int nx) { return Range3D{0, 1, 0, nx, 0, n}; }
 #endif
 
@@ -27,10 +29,10 @@ struct LwChunk {
   int* ip;
   int n;     // columns in this chunk
   int col0;  // first global column
-  CPPWRF_HD LwViews views(int ci) const { return lay.views(d, ip, ci, n); }
+  CPPWRF_FORCEINLINE LwViews views(int ci) const { return lay.views(d, ip, ci, n); }
 };
 
-CPPWRF_HD inline SD col_view(const double* a, int col, int ncol) {
+CPPWRF_FORCEINLINE SD col_view(const double* a, int col, int ncol) {
   return SD{const_cast<double*>(a) + col, ncol};
 }
 
@@ -40,8 +42,8 @@ struct KLwPrep {
   LwBatchInput in;
   const RrtmgLwTables* t;
   const RrtmgLwConsts* k;
-  CPPWRF_HD void operator()(int a, int, int cc) const {
-    const int ci = LW_CI(a, 0, cc);
+  CPPWRF_HD void operator()(int a, int b, int cc) const {
+    const int ci = LW_CI(a, b, cc);
     const int col = ch.col0 + ci, nc = in.ncol;
     LwColumnIn x{};
     x.tsk = in.tsk[col]; x.emiss = in.emiss[col]; x.xland = in.xland[col]; x.xice = in.xice[col];
@@ -64,24 +66,27 @@ struct KLwLayer {
   LwChunk ch;
   int nlayers;
   const RrtmgLwTables* t;
-  CPPWRF_HD void operator()(int a, int lay, int cc) const {
-    rrtmg_lw_layer(nlayers, lay, ch.views(LW_CI(a, lay, cc)), *t);
+  CPPWRF_HD void operator()(int a, int b, int cc) const {
+    rrtmg_lw_layer(nlayers, LW_X(a, b, cc), ch.views(LW_CI(a, b, cc)), *t);
   }
 };
 
+template <int MAX_LAY>
 struct KLwBand {
   LwChunk ch;
   int nlayers;
   const RrtmgLwTables* t;
-  CPPWRF_HD void operator()(int a, int band, int cc) const {
-    rrtmg_lw_bandstage(nlayers, band, ch.views(LW_CI(a, band, cc)), *t);
+  CPPWRF_HD void operator()(int a, int b, int cc) const {
+    rrtmg_lw_bandstage<MAX_LAY>(nlayers, LW_X(a, b, cc), ch.views(LW_CI(a, b, cc)), *t);
   }
 };
 
 struct KLwLevel {
   LwChunk ch;
   const RrtmgLwTables* t;
-  CPPWRF_HD void operator()(int a, int lev, int cc) const { rrtmg_lw_level(lev, ch.views(LW_CI(a, lev, cc)), *t); }
+  CPPWRF_HD void operator()(int a, int b, int cc) const {
+    rrtmg_lw_level(LW_X(a, b, cc), ch.views(LW_CI(a, b, cc)), *t);
+  }
 };
 
 struct KLwFinish {
@@ -89,8 +94,8 @@ struct KLwFinish {
   RrtmgLwCallConfig c;
   LwBatchInput in;
   LwBatchOutput out;
-  CPPWRF_HD void operator()(int a, int, int cc) const {
-    const int ci = LW_CI(a, 0, cc);
+  CPPWRF_HD void operator()(int a, int b, int cc) const {
+    const int ci = LW_CI(a, b, cc);
     const int col = ch.col0 + ci, nc = in.ncol;
     const LwColumnOut o = rrtmg_lw_finish(c, ch.views(ci), col_view(in.pi3d, col, nc),
                                           SD{out.rthraten + col, nc}, SD{nullptr, 0});
@@ -126,7 +131,10 @@ void RrtmgLwBatch::run(const RrtmgLwCallConfig& c, const LwBatchInput& in, const
     const LwChunk ch{lay_, d_, i_, n, col0};
     parallel_for(lw_range(n, 1), KLwPrep{ch, c, in, d_tables_, d_consts_});
     parallel_for(lw_range(n, c.nlayers), KLwLayer{ch, c.nlayers, d_tables_});
-    parallel_for(lw_range(n, 16), KLwBand{ch, c.nlayers, d_tables_});
+    if (c.nlayers <= 60)
+      parallel_for(lw_range(n, 16), KLwBand<60>{ch, c.nlayers, d_tables_});
+    else
+      parallel_for(lw_range(n, 16), KLwBand<RRTMG_LW_SWEEP_MAX>{ch, c.nlayers, d_tables_});
     parallel_for(lw_range(n, c.nlayers + 1), KLwLevel{ch, d_tables_});
     parallel_for(lw_range(n, 1), KLwFinish{ch, c, in, out});
   }

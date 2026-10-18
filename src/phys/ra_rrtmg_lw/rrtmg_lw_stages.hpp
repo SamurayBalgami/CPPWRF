@@ -58,7 +58,7 @@ struct LwViews {
   SD2 fracs, taug;                             // [nl][140]
   SD2 bu, bd, bcu, bcd;                        // [16][nl + 1] band sums of rtrnmc
   SD totuflux, totdflux, totuclfl, totdclfl, fnet, fnetc, htr, htrc;  // [nl + 1]
-  SI iscal;  // [0] laytrop, [1] inflag, [2] iceflag, [3] liqflag
+  SI iscal;  // [0] laytrop, [1] inflag, [2] iceflag, [3] liqflag, [4] any_cloud
   SD dscal;  // [0] pwvcm
 };
 
@@ -68,8 +68,8 @@ struct LwLayout {
   int nl;
   std::size_t nd = 0, ni = 0;  // doubles and ints per column
   CPPWRF_HD explicit LwLayout(int nl_) : nl(nl_) { views(nullptr, nullptr, 0, 1, &nd, &ni); }
-  CPPWRF_HD LwViews views(double* d, int* ip, int col, int ncol, std::size_t* nd_out = nullptr,
-                          std::size_t* ni_out = nullptr) const {
+  CPPWRF_FORCEINLINE LwViews views(double* d, int* ip, int col, int ncol, std::size_t* nd_out = nullptr,
+                                   std::size_t* ni_out = nullptr) const {
     LwViews v{};
     const int L = nl, L1 = nl + 1, s = ncol;
     std::size_t od = 0, oi = 0;
@@ -105,7 +105,7 @@ struct LwLayout {
     v.fnet = v1(L1); v.fnetc = v1(L1); v.htr = v1(L1); v.htrc = v1(L1);
     v.dscal = v1(1);
     v.jp = i1(L); v.jt = i1(L); v.jt1 = i1(L); v.indself = i1(L); v.indfor = i1(L); v.indminor = i1(L);
-    v.icldlyr = i1(L); v.iscal = i1(4);
+    v.icldlyr = i1(L); v.iscal = i1(5);
     if (nd_out) *nd_out = od;
     if (ni_out) *ni_out = oi;
     return v;
@@ -146,8 +146,9 @@ CPPWRF_HD inline void rrtmg_lw_inatm(int nlayers, const LwViews& v) {
 }
 
 // ---- stage 1: per column ------------------------------------------------------------------------
-CPPWRF_HD inline void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumnIn& in, const LwViews& v,
-                                    const RrtmgLwTables& tables, const RrtmgLwConsts& kc) {
+CPPWRF_FORCEINLINE void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumnIn& in, const LwViews& v,
+                                      const RrtmgLwTables& CPPWRF_RESTRICT tables,
+                                      const RrtmgLwConsts& CPPWRF_RESTRICT kc) {
   const int num_levels = c.num_levels, nlayers = c.nlayers;
   constexpr double deltap = 4.0;  // mb
   const double xland = in.xland;
@@ -345,28 +346,53 @@ CPPWRF_HD inline void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumnIn
 
   // McICA subcolumns (mcica_subcol_lw / generate_stochastic_clouds, KISS, changeSeed = 150,
   // maximum-random overlap): the random numbers are drawn subcolumn by subcolumn, level by level
-  KissRng rng;
-  rng.init_from_pressure(v.pavel[0] * 100.0, v.pavel[1] * 100.0, v.pavel[2] * 100.0, v.pavel[3] * 100.0);
-  rng.permute(150);
-  for (int isubcol = 0; isubcol < 140; ++isubcol) {
-    double cdf_prev = 0.0, cldf_prev = 0.0;
-    for (int ilev = 0; ilev < nlayers; ++ilev) {
-      const double cldf = (v.cldfrac[ilev] < 1.0e-20) ? 0.0 : v.cldfrac[ilev];
-      double cdf = rng.step<double>();
-      if (ilev > 0) {
-        if (cdf_prev > 1.0 - cldf_prev) cdf = cdf_prev;
-        else cdf = cdf * (1.0 - cldf_prev);
+  bool any_cloud = false;
+  for (int ilev = 0; ilev < nlayers; ++ilev) {
+    if (CSD(v.cldfrac)[ilev] >= 1.0e-20) any_cloud = true;
+  }
+#if defined(__CUDA_ARCH__)
+  const bool run_mcica = __any_sync(__activemask(), any_cloud);
+#else
+  const bool run_mcica = any_cloud;
+#endif
+  std::uint64_t icld_mask_lo = 0, icld_mask_hi = 0;
+  if (run_mcica && any_cloud) {
+    KissRng rng;
+    rng.init_from_pressure(CSD(v.pavel)[0] * 100.0, CSD(v.pavel)[1] * 100.0, CSD(v.pavel)[2] * 100.0,
+                           CSD(v.pavel)[3] * 100.0);
+    rng.permute(150);
+    for (int isubcol = 0; isubcol < 140; ++isubcol) {
+      double cdf_prev = 0.0, cldf_prev = 0.0;
+      for (int ilev = 0; ilev < nlayers; ++ilev) {
+        const double cf = CSD(v.cldfrac)[ilev];
+        const double cldf = (cf < 1.0e-20) ? 0.0 : cf;
+        double cdf = rng.step<double>();
+        if (ilev > 0) {
+          if (cdf_prev > 1.0 - cldf_prev) cdf = cdf_prev;
+          else cdf = cdf * (1.0 - cldf_prev);
+        }
+        // cloudy subcolumns get the layer's in-cloud paths (cldprmc reads them through cldfmc)
+        if (cldf > 0.0) {
+          const bool cld = cdf >= 1.0 - cldf;
+          v.cldfmc[isubcol][ilev] = cld ? 1.0 : 0.0;
+          if (cld) {
+            if (ilev < 64) icld_mask_lo |= (std::uint64_t(1) << ilev);
+            else icld_mask_hi |= (std::uint64_t(1) << (ilev - 64));
+          }
+        }
+        cdf_prev = cdf;
+        cldf_prev = cldf;
       }
-      // cloudy subcolumns get the layer's in-cloud paths (cldprmc reads them through cldfmc)
-      v.cldfmc[isubcol][ilev] = cdf >= 1.0 - cldf ? 1.0 : 0.0;
-      v.taucmc[isubcol][ilev] = 0.0;
-      cdf_prev = cdf;
-      cldf_prev = cldf;
     }
+  }
+  for (int ilev = 0; ilev < nlayers; ++ilev) {
+    const int bit = (ilev < 64) ? int((icld_mask_lo >> ilev) & 1u) : int((icld_mask_hi >> (ilev - 64)) & 1u);
+    v.icldlyr[ilev] = bit;
   }
   v.iscal[1] = inflglw;
   v.iscal[2] = iceflglw;
   v.iscal[3] = liqflglw;
+  v.iscal[4] = (icld_mask_lo != 0 || icld_mask_hi != 0) ? 1 : 0;
 
   // inatm
   rrtmg_lw_inatm(nlayers, v);
@@ -383,27 +409,31 @@ CPPWRF_HD inline void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumnIn
 }
 
 // ---- stage 2: per layer -------------------------------------------------------------------------
-CPPWRF_HD inline void rrtmg_lw_layer(int nlayers, int lay, const LwViews& v, const RrtmgLwTables& tables) {
-  const int laytrop = v.iscal[0];
-  rrtmg_lw_cldprmc(nlayers, v.iscal[1], v.iscal[2], v.iscal[3], v.cldfmc, v.ciwpth, v.clwpth, v.cswpth, v.reicmc,
-                   v.relqmc, v.resnmc, v.taucmc, tables, lay, lay + 1);
+CPPWRF_FORCEINLINE void rrtmg_lw_layer(int nlayers, int lay, const LwViews& v,
+                                       const RrtmgLwTables& CPPWRF_RESTRICT tables) {
+  const int laytrop = CSI(v.iscal)[0];
+  if (CSI(v.icldlyr)[lay] != 0) {
+    rrtmg_lw_cldprmc(nlayers, CSI(v.iscal)[1], CSI(v.iscal)[2], CSI(v.iscal)[3], v.cldfmc, v.ciwpth, v.clwpth,
+                     v.cswpth, v.reicmc, v.relqmc, v.resnmc, v.taucmc, tables, lay, lay + 1);
+  }
   rrtmg_lw_taumol(nlayers, v.pavel, v.wx, v.coldry, laytrop, v.jp, v.jt, v.jt1, v.colh2o, v.colco2, v.colo3,
                   v.coln2o, v.colco, v.colch4, v.colo2, v.colbrd, v.fac00, v.fac01, v.fac10, v.fac11, v.rat_h2oco2,
                   v.rat_h2oco2_1, v.rat_h2oo3, v.rat_h2oo3_1, v.rat_h2on2o, v.rat_h2on2o_1, v.rat_h2och4,
                   v.rat_h2och4_1, v.rat_n2oco2, v.rat_n2oco2_1, v.rat_o3co2, v.rat_o3co2_1, v.selffac, v.selffrac,
                   v.indself, v.forfac, v.forfrac, v.indfor, v.minorfrac, v.scaleminor, v.scaleminorn2, v.indminor,
                   v.fracs, v.taug, tables, lay, lay + 1);
-  rrtmg_lw_icldlyr(v.cldfmc, v.icldlyr, lay, lay + 1);
 }
 
 // ---- stage 3: per band (taut = taug: no aerosols) ----------------------------------------------
-CPPWRF_HD inline void rrtmg_lw_bandstage(int nlayers, int iband, const LwViews& v, const RrtmgLwTables& tables) {
-  rrtmg_lw_band(nlayers, iband, v.secdiff, v.semiss, v.cldfmc, v.taucmc, v.planklay, v.planklev, v.plankbnd,
-                v.fracs, v.taug, v.icldlyr, v.bu, v.bd, v.bcu, v.bcd, tables);
+template <int MAX_LAY = RRTMG_LW_SWEEP_MAX>
+CPPWRF_FORCEINLINE void rrtmg_lw_bandstage(int nlayers, int iband, const LwViews& v,
+                                           const RrtmgLwTables& CPPWRF_RESTRICT tables) {
+  rrtmg_lw_band<MAX_LAY>(nlayers, iband, v.secdiff, v.semiss, v.cldfmc, v.taucmc, v.planklay, v.planklev, v.plankbnd,
+                         v.fracs, v.taug, v.icldlyr, v.bu, v.bd, v.bcu, v.bcd, tables, CSI(v.iscal)[4] == 0);
 }
 
 // ---- stage 4: per level -------------------------------------------------------------------------
-CPPWRF_HD inline void rrtmg_lw_level(int lev, const LwViews& v, const RrtmgLwTables& tables) {
+CPPWRF_FORCEINLINE void rrtmg_lw_level(int lev, const LwViews& v, const RrtmgLwTables& CPPWRF_RESTRICT tables) {
   double tu, td, tuc, tdc, fn, fnc;
   rrtmg_lw_accum(lev, v.bu, v.bd, v.bcu, v.bcd, tables, tu, td, tuc, tdc, fn, fnc);
   v.totuflux[lev] = tu; v.totdflux[lev] = td; v.totuclfl[lev] = tuc; v.totdclfl[lev] = tdc;
@@ -414,8 +444,8 @@ CPPWRF_HD inline void rrtmg_lw_level(int lev, const LwViews& v, const RrtmgLwTab
 struct LwColumnOut {
   double glw, olr, lwcf, lwupt, lwuptc, lwdnt, lwdntc, lwupb, lwupbc, lwdnb, lwdnbc;
 };
-CPPWRF_HD inline LwColumnOut rrtmg_lw_finish(const RrtmgLwCallConfig& c, const LwViews& v, SD pi3d,
-                                             SD rthratenlw, SD rthratenlwc) {
+CPPWRF_FORCEINLINE LwColumnOut rrtmg_lw_finish(const RrtmgLwCallConfig& c, const LwViews& v, CSD pi3d,
+                                               SD rthratenlw, SD rthratenlwc) {
   const int nlayers = c.nlayers;
   rrtmg_lw_heating(nlayers, v.pz, v.fnet, v.fnetc, v.htr, v.htrc, c.heatfac);
   LwColumnOut o;

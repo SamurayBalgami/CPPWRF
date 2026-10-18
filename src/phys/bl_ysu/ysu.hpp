@@ -22,26 +22,25 @@ CPPWRF_HD inline void tridin_ysu(
     T* au,
     T* f2,
     int nz) {
-  T aul[kMaxLevels];
   for (int k = 0; k < nz; ++k) {
-    aul[k] = static_cast<T>(0.0);
+    au[k] = static_cast<T>(0.0);
   }
 
   T fk = static_cast<T>(1.0) / cm[0];
-  aul[0] = fk * cu[0];
+  au[0] = fk * cu[0];
   f2[0] = fk * r2[0];
 
   for (int k = 1; k < nz - 1; ++k) {
-    fk = static_cast<T>(1.0) / (cm[k] - cl[k - 1] * aul[k - 1]);
-    aul[k] = fk * cu[k];
+    fk = static_cast<T>(1.0) / (cm[k] - cl[k - 1] * au[k - 1]);
+    au[k] = fk * cu[k];
     f2[k] = fk * (r2[k] - cl[k - 1] * f2[k - 1]);
   }
 
-  fk = static_cast<T>(1.0) / (cm[nz - 1] - cl[nz - 2] * aul[nz - 2]);
+  fk = static_cast<T>(1.0) / (cm[nz - 1] - cl[nz - 2] * au[nz - 2]);
   f2[nz - 1] = fk * (r2[nz - 1] - cl[nz - 2] * f2[nz - 2]);
 
   for (int k = nz - 2; k >= 0; --k) {
-    f2[k] = f2[k] - aul[k] * f2[k + 1];
+    f2[k] = f2[k] - au[k] * f2[k + 1];
   }
 }
 
@@ -236,7 +235,10 @@ struct YSUKernel {
   real rv;
 
   int dbg_i = -1, dbg_j = -1;  // debug print of one column (host)
-  CPPWRF_HD void operator()(int i, int j) const {
+  CPPWRF_HD void operator()(int i, int j) const { compute<kMaxLevels>(i, j); }
+
+  template <int MaxLevels = kMaxLevels>
+  CPPWRF_HD void compute(int i, int j) const {
     using std::abs;
     using std::exp;
     using std::max;
@@ -284,47 +286,40 @@ struct YSUKernel {
     const real dt2 = real(2.0) * dtstep;
     const real rdt = real(1.0) / dt2;
 
-    // Local column scratch arrays (kMaxLevels = 128)
-    real zq[kMaxLevels + 1];
-    real za[kMaxLevels];
-    real dzq[kMaxLevels];
-    real del[kMaxLevels];
-    real dza[kMaxLevels];
-    real rhox2[kMaxLevels];
+    // Local column scratch arrays
+    real zq[MaxLevels + 1];
+    real za[MaxLevels];
+    real dzq[MaxLevels];
+    real del[MaxLevels];
+    real dza[MaxLevels];
+    real rhox2[MaxLevels];
 
-    real thx[kMaxLevels];
-    real thvx[kMaxLevels];
-    real thlix[kMaxLevels];
-    real qcxl[kMaxLevels];
-    real qixl[kMaxLevels];
+    real thx[MaxLevels];
+    real thvx[MaxLevels];
+    real thlix[MaxLevels];
+    real qcxl[MaxLevels];
+    real qixl[MaxLevels];
 
-    real xkzm[kMaxLevels];
-    real xkzh[kMaxLevels];
-    real xkzq[kMaxLevels];
-    real xkzml[kMaxLevels];
-    real xkzhl[kMaxLevels];
-    real xkzom[kMaxLevels];
-    real xkzoh[kMaxLevels];
+    real xkzm[MaxLevels];
+    real xkzh[MaxLevels];
+    real xkzq[MaxLevels];
+    real xkzml[MaxLevels];
+    real xkzhl[MaxLevels];
 
-    real wscalek[kMaxLevels];
-    real wscalek2[kMaxLevels];
-    real zfac[kMaxLevels];
-    real zfacent[kMaxLevels];
-    real entfac[kMaxLevels];
+    real zfacent[MaxLevels];
+    real entfac[MaxLevels];
 
-    real au[kMaxLevels];
-    real al[kMaxLevels];
-    real ad[kMaxLevels];
-    real f1[kMaxLevels];
-    real f2[kMaxLevels];
-    real r1[kMaxLevels];
-    real r2[kMaxLevels];
-    real cu[kMaxLevels];
-    real adv[kMaxLevels];
-    real ad1[kMaxLevels];
-    real hgamt2[kMaxLevels];
+    real au[MaxLevels];
+    real al[MaxLevels];
+    real ad[MaxLevels];
+    real f1[MaxLevels];
+    real f2[MaxLevels];
+    real r1[MaxLevels];
+    real r2[MaxLevels];
+    real cu[MaxLevels];
+    real ad1[MaxLevels];
 
-    real tke_ysu[kMaxLevels];
+    real tke_ysu[MaxLevels];
 
     // Hydrometeor flags (WRF lines 390-416)
     for (int k = 0; k < nz; ++k) {
@@ -368,11 +363,6 @@ struct YSUKernel {
       xkzm[k] = real(0.0);
       xkzml[k] = real(0.0);
       xkzq[k] = real(0.0);
-      wscalek[k] = real(0.0);
-      wscalek2[k] = real(0.0);
-      zfac[k] = real(0.0);
-      xkzom[k] = xkzminm;
-      xkzoh[k] = xkzminh;
     }
 
     real wspd1 = sqrt((ux(i, j, 0) - uoxl) * (ux(i, j, 0) - uoxl) + (vx(i, j, 0) - voxl) * (vx(i, j, 0) - voxl)) + real(1.e-9);
@@ -641,8 +631,8 @@ struct YSUKernel {
           hgamt = min(gamfac * hfx(i, j) / cp, gamcrt);
           hgamq = min(gamfac * qfx(i, j), gamcrq);
           gamfac = bfac / rhox2[k] / wscale;
-          hgamt2[k] = min(gamfac * radsum / cp, gamcrt);
-          hgamt = max(hgamt, real(0.0)) + max(hgamt2[k], real(0.0));
+          real hgamt2_k = min(gamfac * radsum / cp, gamcrt);
+          hgamt = max(hgamt, real(0.0)) + max(hgamt2_k, real(0.0));
           brint = real(-15.9) * ust(i, j) * ust(i, j) / wspd(i, j) * (wstar3 + wstar3_2) / pow(wscale, real(4.0));
           hgamu = brint * ux(i, j, 0);
           hgamv = brint * vx(i, j, 0);
@@ -690,10 +680,10 @@ struct YSUKernel {
     // Diffusion coefficients below PBL (WRF lines 939-979)
     for (int k = 0; k < nz; ++k) {
       if (k < kpbl) {
-        zfac[k] = min(max(real(1.0) - (zq[k + 1] - zl1) / (hpbl(i, j) - zl1), zfmin), real(1.0));
-        zfacent[k] = pow(real(1.0) - zfac[k], real(3.0));
-        wscalek[k] = pow(ust3 + phifac * karman * wstar3 * (real(1.0) - zfac[k]), h1);
-        wscalek2[k] = pow(phifac * karman * wstar3_2 * zfac[k], h1);
+        real zfac_k = min(max(real(1.0) - (zq[k + 1] - zl1) / (hpbl(i, j) - zl1), zfmin), real(1.0));
+        zfacent[k] = pow(real(1.0) - zfac_k, real(3.0));
+        real wscalek_k = pow(ust3 + phifac * karman * wstar3 * (real(1.0) - zfac_k), h1);
+        real wscalek2_k = pow(phifac * karman * wstar3_2 * zfac_k, h1);
 
         real prfac, prfac2, prnumfac;
         if (sfcflg) {
@@ -706,27 +696,27 @@ struct YSUKernel {
           prfac2 = real(0.0);
           prnumfac = real(0.0);
           real phim8z = real(1.0) + aphi5 * zol1 * zq[k + 1] / zl1;
-          wscalek[k] = ust(i, j) / phim8z;
-          wscalek[k] = max(wscalek[k], real(0.001));
+          wscalek_k = ust(i, j) / phim8z;
+          wscalek_k = max(wscalek_k, real(0.001));
         }
 
         real prnum0 = (phih / phim + prfac);
         prnum0 = max(min(prnum0, prmax), prmin);
-        xkzm[k] = wscalek[k] * karman * zq[k + 1] * pow(zfac[k], pfac) +
-                  wscalek2[k] * karman * (hpbl(i, j) - zq[k + 1]) * pow(real(1.0) - zfac[k], pfac);
+        xkzm[k] = wscalek_k * karman * zq[k + 1] * pow(zfac_k, pfac) +
+                  wscalek2_k * karman * (hpbl(i, j) - zq[k + 1]) * pow(real(1.0) - zfac_k, pfac);
 
         if (k == kpbl - 1 && cloudflg && we < real(0.0)) {
           xkzm[k] = real(0.0);
         }
 
         real prnum = real(1.0) + (prnum0 - real(1.0)) * exp(prnumfac);
-        xkzq[k] = xkzm[k] / prnum * pow(zfac[k], pfac_q - pfac);
+        xkzq[k] = xkzm[k] / prnum * pow(zfac_k, pfac_q - pfac);
         prnum0 = prnum0 / (real(1.0) + prfac2 * karman * sfcfrac);
         prnum = real(1.0) + (prnum0 - real(1.0)) * exp(prnumfac);
         xkzh[k] = xkzm[k] / prnum;
-        xkzm[k] = xkzm[k] + xkzom[k];
-        xkzh[k] = xkzh[k] + xkzoh[k];
-        xkzq[k] = xkzq[k] + xkzoh[k];
+        xkzm[k] = xkzm[k] + xkzminm;
+        xkzh[k] = xkzh[k] + xkzminh;
+        xkzq[k] = xkzq[k] + xkzminh;
         xkzm[k] = min(xkzm[k], xkzmax);
         xkzh[k] = min(xkzh[k], xkzmax);
         xkzq[k] = min(xkzq[k], xkzmax);
@@ -770,8 +760,8 @@ struct YSUKernel {
           xkzm[k] = xkzh[k] * prnum;
         }
 
-        xkzm[k] = xkzm[k] + xkzom[k];
-        xkzh[k] = xkzh[k] + xkzoh[k];
+        xkzm[k] = xkzm[k] + xkzminm;
+        xkzh[k] = xkzh[k] + xkzminh;
         xkzm[k] = min(xkzm[k], xkzmax);
         xkzh[k] = min(xkzh[k], xkzmax);
         xkzml[k] = xkzm[k];
@@ -806,7 +796,7 @@ struct YSUKernel {
       } else if (pblflg && k >= kpbl && entfac[k] < real(4.6)) {
         xkzh[k] = -we * dza[kpbl] * exp(-entfac[k]);
         xkzh[k] = sqrt(xkzh[k] * xkzhl[k]);
-        xkzh[k] = max(xkzh[k], xkzoh[k]);
+        xkzh[k] = max(xkzh[k], xkzminh);
         xkzh[k] = min(xkzh[k], xkzmax);
         f1[k + 1] = thx[k + 1] - real(300.0);
       } else {
@@ -871,7 +861,7 @@ struct YSUKernel {
       } else if (pblflg && k >= kpbl && entfac[k] < real(4.6)) {
         xkzq[k] = -we * dza[kpbl] * exp(-entfac[k]);
         xkzq[k] = sqrt(xkzq[k] * xkzhl[k]);
-        xkzq[k] = max(xkzq[k], xkzoh[k]);
+        xkzq[k] = max(xkzq[k], xkzminh);
         xkzq[k] = min(xkzq[k], xkzmax);
         f1[k + 1] = qvx(i, j, k + 1);
       } else {
@@ -887,12 +877,12 @@ struct YSUKernel {
     }
 
     for (int k = 0; k < nz; ++k) {
-      adv[k] = ad[k];
+      ad1[k] = ad[k];
       cu[k] = au[k];
       r1[k] = f1[k];
     }
 
-    tridin_ysu(al, adv, cu, r1, au, f1, nz);
+    tridin_ysu(al, ad1, cu, r1, au, f1, nz);
 
     for (int k = nz - 1; k >= 0; --k) {
       real qtend = (f1[k] - qvx(i, j, k)) * rdt;
@@ -1013,7 +1003,7 @@ struct YSUKernel {
       } else if (pblflg && k >= kpbl && entfac[k] < real(4.6)) {
         xkzm[k] = real(1.0) * xkzh[k];
         xkzm[k] = sqrt(xkzm[k] * xkzml[k]);
-        xkzm[k] = max(xkzm[k], xkzom[k]);
+        xkzm[k] = max(xkzm[k], xkzminm);
         xkzm[k] = min(xkzm[k], xkzmax);
         f1[k + 1] = ux(i, j, k + 1);
         f2[k + 1] = vx(i, j, k + 1);
@@ -1058,6 +1048,12 @@ struct YSUKernel {
 
     kpbl1d(i, j) = kpbl + 1;  // Fortran 1-based index
   }
+};
+
+template <int MaxLevels>
+struct YSURunner {
+  YSUKernel k;
+  CPPWRF_HD void operator()(int i, int j) const { k.template compute<MaxLevels>(i, j); }
 };
 
 void run_ysu(

@@ -16,9 +16,17 @@
 #if defined(__CUDACC__)
 #define CPPWRF_HD __host__ __device__
 #define CPPWRF_DEV __device__
+#define CPPWRF_FORCEINLINE __host__ __device__ __forceinline__
 #else
 #define CPPWRF_HD
 #define CPPWRF_DEV
+#define CPPWRF_FORCEINLINE inline
+#endif
+
+#if defined(__GNUC__) || defined(__clang__) || defined(__CUDACC__)
+#define CPPWRF_RESTRICT __restrict__
+#else
+#define CPPWRF_RESTRICT
 #endif
 
 // pow in the working precision on host and device (powf for float, as Fortran REAL ** REAL);
@@ -158,6 +166,10 @@ const char* backend_name();
 
 #if defined(CPPWRF_USE_CUDA)
 void cuda_check_launch(const char* where);
+inline void*& cuda_active_stream_raw() {
+  static thread_local void* s = nullptr;
+  return s;
+}
 // Developer kernel timer: CPPWRF_KTIME=1 synchronises around every parallel_for/column_for and
 // prints the time per kernel type at exit (no performance counters needed). Off: one branch.
 namespace ktime {
@@ -166,8 +178,18 @@ void begin();
 void end(const char* kernel_type);
 }  // namespace ktime
 #if defined(__CUDACC__)
+inline cudaStream_t cuda_launch_stream() {
+  return static_cast<cudaStream_t>(cuda_active_stream_raw());
+}
 namespace detail {
 template <class K> __global__ void k3d(K k, Range3D r) {
+  int i = r.i0 + blockIdx.x * blockDim.x + threadIdx.x;
+  int j = r.j0 + blockIdx.y * blockDim.y + threadIdx.y;
+  int kk = r.k0 + blockIdx.z;
+  if (i < r.i1 && j < r.j1) k(i, j, kk);
+}
+template <int MaxThreads, int MinBlocks, class K>
+__global__ __launch_bounds__(MaxThreads, MinBlocks) void k3d_lb(K k, Range3D r) {
   int i = r.i0 + blockIdx.x * blockDim.x + threadIdx.x;
   int j = r.j0 + blockIdx.y * blockDim.y + threadIdx.y;
   int kk = r.k0 + blockIdx.z;
@@ -177,6 +199,23 @@ template <class K> __global__ void k2d(K k, Range2D r) {
   int i = r.i0 + blockIdx.x * blockDim.x + threadIdx.x;
   int j = r.j0 + blockIdx.y * blockDim.y + threadIdx.y;
   if (i < r.i1 && j < r.j1) k(i, j);
+}
+template <int MaxThreads, int MinBlocks, class K>
+__global__ __launch_bounds__(MaxThreads, MinBlocks) void k2d_lb(K k, Range2D r) {
+  int i = r.i0 + blockIdx.x * blockDim.x + threadIdx.x;
+  int j = r.j0 + blockIdx.y * blockDim.y + threadIdx.y;
+  if (i < r.i1 && j < r.j1) k(i, j);
+}
+template <int CHUNK_K, class K>
+__global__ void k3d_kchunk(K k, Range3D r) {
+  int i = r.i0 + int(blockIdx.x) * int(blockDim.x) + int(threadIdx.x);
+  int j = r.j0 + int(blockIdx.y) * int(blockDim.y) + int(threadIdx.y);
+  int k0 = r.k0 + int(blockIdx.z) * CHUNK_K;
+  int k1 = (k0 + CHUNK_K < r.k1) ? (k0 + CHUNK_K) : r.k1;
+  if (i < r.i1 && j < r.j1) {
+#pragma unroll 1
+    for (int kk = k0; kk < k1; ++kk) k(i, j, kk);
+  }
 }
 // One block per k plane; fixed-order tree => deterministic.
 template <class F, bool MAX> __global__ void kred(F f, Range3D r, double* part) {
@@ -205,13 +244,33 @@ template <class K> void parallel_for(const Range3D& r, const K& k) {
   static_assert(__nv_is_extended_host_device_lambda_closure_type(K) || std::is_trivially_copyable_v<K>,
                 "kernels are copied to the device: trivially copyable structs/lambdas only (no std::string, std::vector, ...)");
   if (r.i1 <= r.i0 || r.j1 <= r.j0 || r.k1 <= r.k0) return;
-  dim3 b(64, 2, 1);
-  dim3 g((r.i1 - r.i0 + 63) / 64, (r.j1 - r.j0 + 1) / 2, r.k1 - r.k0);
+  const unsigned int by = (r.j1 - r.j0 == 1) ? 1u : 2u;
+  dim3 b(64, by, 1);
+  dim3 g((r.i1 - r.i0 + 63) / 64, (r.j1 - r.j0 + by - 1) / by, r.k1 - r.k0);
   const bool kt = ktime::on();
   if (kt) ktime::begin();
-  detail::k3d<<<g, b>>>(k, r);
+  detail::k3d<<<g, b, 0, cuda_launch_stream()>>>(k, r);
   cuda_check_launch("parallel_for");
   if (kt) ktime::end(typeid(K).name());
+}
+template <int MaxThreads, int MinBlocks, class K> void parallel_for_lb(const Range3D& r, const K& k) {
+  static_assert(__nv_is_extended_host_device_lambda_closure_type(K) || std::is_trivially_copyable_v<K>,
+                "kernels are copied to the device: trivially copyable structs/lambdas only (no std::string, std::vector, ...)");
+  if (r.i1 <= r.i0 || r.j1 <= r.j0 || r.k1 <= r.k0) return;
+  const unsigned int by = (r.j1 - r.j0 == 1 || MaxThreads == 64) ? 1u : 2u;
+  dim3 b(64, by, 1);
+  dim3 g((r.i1 - r.i0 + 63) / 64, (r.j1 - r.j0 + by - 1) / by, r.k1 - r.k0);
+  const bool kt = ktime::on();
+  if (kt) ktime::begin();
+  detail::k3d_lb<MaxThreads, MinBlocks><<<g, b, 0, cuda_launch_stream()>>>(k, r);
+  cuda_check_launch("parallel_for_lb");
+  if (kt) ktime::end(typeid(K).name());
+}
+template <int CHUNK_K, class K> void parallel_for_flux_tile(const Range3D& r, const K& k) {
+  parallel_for_kchunk<CHUNK_K>(r, k);
+}
+template <int CHUNK_K, class K> void parallel_for_kchunk(const Range3D& r, const K& k) {
+  parallel_for(r, k);
 }
 template <class K> void column_for(const Range2D& r, const K& k) {
   static_assert(__nv_is_extended_host_device_lambda_closure_type(K) || std::is_trivially_copyable_v<K>,
@@ -221,8 +280,21 @@ template <class K> void column_for(const Range2D& r, const K& k) {
   dim3 g((r.i1 - r.i0 + 63) / 64, (r.j1 - r.j0 + 1) / 2, 1);
   const bool kt = ktime::on();
   if (kt) ktime::begin();
-  detail::k2d<<<g, b>>>(k, r);
+  detail::k2d<<<g, b, 0, cuda_launch_stream()>>>(k, r);
   cuda_check_launch("column_for");
+  if (kt) ktime::end(typeid(K).name());
+}
+template <int MaxThreads, int MinBlocks, class K> void column_for_lb(const Range2D& r, const K& k) {
+  static_assert(__nv_is_extended_host_device_lambda_closure_type(K) || std::is_trivially_copyable_v<K>,
+                "kernels are copied to the device: trivially copyable structs/lambdas only (no std::string, std::vector, ...)");
+  if (r.i1 <= r.i0 || r.j1 <= r.j0) return;
+  const unsigned int by = (MaxThreads == 64) ? 1u : 2u;
+  dim3 b(64, by, 1);
+  dim3 g((r.i1 - r.i0 + 63) / 64, (r.j1 - r.j0 + by - 1) / by, 1);
+  const bool kt = ktime::on();
+  if (kt) ktime::begin();
+  detail::k2d_lb<MaxThreads, MinBlocks><<<g, b, 0, cuda_launch_stream()>>>(k, r);
+  cuda_check_launch("column_for_lb");
   if (kt) ktime::end(typeid(K).name());
 }
 #endif  // __CUDACC__
@@ -235,11 +307,23 @@ template <class K> void parallel_for(const Range3D& r, const K& k) {
 #pragma omp simd
       for (int i = r.i0; i < r.i1; ++i) k(i, j, kk);
 }
+template <int MaxThreads, int MinBlocks, class K> void parallel_for_lb(const Range3D& r, const K& k) {
+  parallel_for(r, k);
+}
+template <int CHUNK_K, class K> void parallel_for_flux_tile(const Range3D& r, const K& k) {
+  parallel_for(r, k);
+}
+template <int CHUNK_K, class K> void parallel_for_kchunk(const Range3D& r, const K& k) {
+  parallel_for(r, k);
+}
 template <class K> void column_for(const Range2D& r, const K& k) {
   static_assert(std::is_trivially_copyable_v<K>, "kernels are copied to the device: trivially copyable structs/lambdas only (no std::string, std::vector, ...)");
 #pragma omp parallel for collapse(2) schedule(static)
   for (int j = r.j0; j < r.j1; ++j)
     for (int i = r.i0; i < r.i1; ++i) k(i, j);
+}
+template <int MaxThreads, int MinBlocks, class K> void column_for_lb(const Range2D& r, const K& k) {
+  column_for(r, k);
 }
 #endif
 

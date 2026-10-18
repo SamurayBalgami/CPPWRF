@@ -156,6 +156,10 @@ void rrtmg_lw_core(int nlayers, double cp, const double* play, const double* ple
   }
   for (int nb = 0; nb < 16; ++nb) v.semiss[nb] = semiss[nb];
   v.iscal[1] = inflag; v.iscal[2] = iceflag; v.iscal[3] = liqflag;
+  rrtmg_lw_icldlyr(v.cldfmc, v.icldlyr, 0, nlayers);
+  int any_cld = 0;
+  for (int l = 0; l < nlayers; ++l) if (v.icldlyr[l]) any_cld = 1;
+  v.iscal[4] = any_cld;
   rrtmg_lw_inatm(nlayers, v);
   int laytrop = 0;
   rrtmg_lw_setcoef(nlayers, 1, v.pavel, v.tavel, v.tz, tsk, v.semiss, v.coldry, v.wkl, v.wbrodl, laytrop, v.jp,

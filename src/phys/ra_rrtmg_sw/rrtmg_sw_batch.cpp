@@ -13,9 +13,11 @@ namespace {
 // chunk column ci on threadIdx.x (CUDA) or as the outer collapsed loop (OpenMP)
 #if defined(CPPWRF_USE_CUDA)
 #define SW_CI(a, c) (a)
-inline Range3D sw_range(int n, int nx) { return Range3D{0, n, 0, nx, 0, 1}; }
+#define SW_X(b, c) (c)
+inline Range3D sw_range(int n, int nx) { return Range3D{0, n, 0, 1, 0, nx}; }
 #else
 #define SW_CI(a, c) (c)
+#define SW_X(b, c) (b)
 inline Range3D sw_range(int n, int nx) { return Range3D{0, 1, 0, nx, 0, n}; }
 #endif
 
@@ -25,10 +27,10 @@ struct SwChunk {
   int* ip;
   int n;
   int col0;
-  CPPWRF_HD SwViews views(int ci) const { return lay.views(d, ip, ci, n); }
+  CPPWRF_FORCEINLINE SwViews views(int ci) const { return lay.views(d, ip, ci, n); }
 };
 
-CPPWRF_HD inline SD col_view(const double* a, int col, int ncol) { return SD{const_cast<double*>(a) + col, ncol}; }
+CPPWRF_FORCEINLINE SD col_view(const double* a, int col, int ncol) { return SD{const_cast<double*>(a) + col, ncol}; }
 
 struct KSwPrep {
   SwChunk ch;
@@ -56,17 +58,20 @@ struct KSwPrep {
   }
 };
 
+template <int ML>
 struct KSwGpoint {
   SwChunk ch;
   RrtmgSwCallConfig c;
   const RrtmgSwTables* t;
-  CPPWRF_HD void operator()(int a, int iw, int cc) const { rrtmg_sw_gpoint(c, iw, ch.views(SW_CI(a, cc)), *t); }
+  CPPWRF_HD void operator()(int a, int b, int cc) const {
+    rrtmg_sw_gpoint<ML>(c, SW_X(b, cc), ch.views(SW_CI(a, cc)), *t);
+  }
 };
 
 struct KSwLevel {
   SwChunk ch;
   const RrtmgSwTables* t;
-  CPPWRF_HD void operator()(int a, int lev, int cc) const { rrtmg_sw_level(lev, ch.views(SW_CI(a, cc)), *t); }
+  CPPWRF_HD void operator()(int a, int b, int cc) const { rrtmg_sw_level(SW_X(b, cc), ch.views(SW_CI(a, cc)), *t); }
 };
 
 struct KSwFinish {
@@ -109,7 +114,10 @@ void RrtmgSwBatch::run(const RrtmgSwCallConfig& c, const SwBatchInput& in, const
     const int n = std::min(chunk_, in.ncol - col0);
     const SwChunk ch{lay_, d_, i_, n, col0};
     parallel_for(sw_range(n, 1), KSwPrep{ch, c, in, d_tables_, d_consts_});
-    parallel_for(sw_range(n, 112), KSwGpoint{ch, c, d_tables_});
+    if (c.nlayers <= 48)
+      parallel_for(sw_range(n, 112), KSwGpoint<48>{ch, c, d_tables_});
+    else
+      parallel_for(sw_range(n, 112), KSwGpoint<RRTMG_SW_COL_MAX>{ch, c, d_tables_});
     parallel_for(sw_range(n, c.nlayers + 1), KSwLevel{ch, d_tables_});
     parallel_for(sw_range(n, 1), KSwFinish{ch, c, in, out});
   }

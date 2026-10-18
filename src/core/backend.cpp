@@ -77,7 +77,7 @@ void* dev_alloc(std::size_t bytes) {
 void dev_free(void* p) { if (p) cudaFree(p); }
 void copy_to_host(void* d, const void* s, std::size_t n) { ck(cudaMemcpy(d, s, n, cudaMemcpyDeviceToHost), "D2H"); }
 void copy_to_dev(void* d, const void* s, std::size_t n) { ck(cudaMemcpy(d, s, n, cudaMemcpyHostToDevice), "H2D"); }
-void copy_dev(void* d, const void* s, std::size_t n) { ck(cudaMemcpy(d, s, n, cudaMemcpyDeviceToDevice), "D2D"); }
+void copy_dev(void* d, const void* s, std::size_t n) { ck(cudaMemcpyAsync(d, s, n, cudaMemcpyDeviceToDevice, 0), "D2D"); }
 void dev_sync() { ck(cudaDeviceSynchronize(), "sync"); }
 const char* backend_name() { return "cuda"; }
 Reducer::Reducer(int max_k) : max_k_(max_k), hpart_(max_k) { dpart_ = static_cast<double*>(dev_alloc(sizeof(double) * max_k)); }

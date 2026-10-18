@@ -37,7 +37,7 @@ CPPWRF_HD inline void rrtmg_lw_secdiff(double pwvcm, SD secdiff) {
 }
 
 // icldlyr for layers [lay0, lay1)
-CPPWRF_HD inline void rrtmg_lw_icldlyr(SD2 cldfmc, SI icldlyr, int lay0, int lay1) {
+CPPWRF_FORCEINLINE void rrtmg_lw_icldlyr(CSD2 cldfmc, SI icldlyr, int lay0, int lay1) {
   for (int lay = lay0; lay < lay1; ++lay) {
     int c = 0;
     for (int ig = 0; ig < 140; ++ig)
@@ -46,107 +46,40 @@ CPPWRF_HD inline void rrtmg_lw_icldlyr(SD2 cldfmc, SI icldlyr, int lay0, int lay
   }
 }
 
-// One band of rtrnmc's band loop (iband 0..15): its g-points in order, down and up sweeps, the
-// band sums urad/drad/clrurad/clrdrad of every level (bu/bd/bcu/bcd [16][nlayers + 1]) with WRF's
-// clear-sky assignments (clrdrad = drad, clrurad = urad below the first cloud).
-CPPWRF_HD inline void rrtmg_lw_band(int nlayers, int iband, SD secdiff, SD semiss, SD2 cldfmc, SD2 taucmc,
-                                    SD2 planklay, SD2 planklev, SD plankbnd, SD2 fracs, SD2 taut, SI icldlyr,
-                                    SD2 bu, SD2 bd, SD2 bcu, SD2 bcd, const RrtmgLwTables& tables) {
+template <int MAX_LAY, bool CLEAR_COL>
+CPPWRF_FORCEINLINE void rrtmg_lw_band_impl(int nlayers, int iband, CSD secdiff, CSD semiss, CSD2 cldfmc, CSD2 taucmc,
+                                           CSD2 planklay, CSD2 planklev, CSD plankbnd, CSD2 fracs, CSD2 taut,
+                                           CSI icldlyr, SD2 bu, SD2 bd, SD2 bcu, SD2 bcd,
+                                           const RrtmgLwTables& CPPWRF_RESTRICT tables) {
   constexpr double rec_6 = 0.166667;
   constexpr double bpade = 1.0 / 0.278;
   constexpr double tblint = 10000.0;
   const SD urad = bu[iband], drad = bd[iband], clrurad = bcu[iband], clrdrad = bcd[iband];
   for (int lev = 0; lev <= nlayers; ++lev) {
-    urad[lev] = 0.0; drad[lev] = 0.0; clrurad[lev] = 0.0; clrdrad[lev] = 0.0;
+    urad[lev] = 0.0; drad[lev] = 0.0;
+    if constexpr (!CLEAR_COL) {
+      clrurad[lev] = 0.0; clrdrad[lev] = 0.0;
+    }
   }
   const double sd = secdiff[iband];
-  double atrans[RRTMG_LW_SWEEP_MAX], atot[RRTMG_LW_SWEEP_MAX], bbugas[RRTMG_LW_SWEEP_MAX],
-      bbutot[RRTMG_LW_SWEEP_MAX], efcl[RRTMG_LW_SWEEP_MAX];
+  const double reflect = 1.0 - semiss[iband];
+  const double pbnd = plankbnd[iband];
   const int igc0 = iband == 0 ? 0 : tables.ngs[iband - 1];
-  for (int igc = igc0; igc < tables.ngs[iband]; ++igc) {
-    double radld = 0.0;
-    double radclrd = 0.0;
-    int iclddn = 0;
+  const int igc1 = tables.ngs[iband];
 
-    for (int lev = nlayers; lev >= 1; --lev) {
-      int lay = lev - 1;
-      // odcld, abscld, efclfrac of rtrnmc for (lay, igc)
-      double odcld = 0.0;
-      efcl[lay] = 0.0;
-      const double cf = cldfmc[igc][lay];
-      if (cf == 1.0) {
-        odcld = secdiff[tables.ngb[igc] - 1] * taucmc[igc][lay];
-        double transcld = std::exp(-odcld);
-        double abscld = 1.0 - transcld;
-        efcl[lay] = abscld * cf;
-      }
-      double plfrac = fracs[lay][igc];
-      double blay = planklay[lay][iband];
-      double dplankup = planklev[lev][iband] - blay;
-      double dplankdn = planklev[lev - 1][iband] - blay;
-      double odepth = sd * taut[lay][igc];
-      if (odepth < 0.0) odepth = 0.0;
-
-      double bbd = 0.0;
-
-      if (icldlyr[lay] == 1) {
-        iclddn = 1;
-        double odtot = odepth + odcld;
-        if (odtot < 0.06) {
-          atrans[lay] = odepth - 0.5 * odepth * odepth;
-          double odepth_rec = rec_6 * odepth;
-          double gassrc = plfrac * (blay + dplankdn * odepth_rec) * atrans[lay];
-
-          atot[lay] = odtot - 0.5 * odtot * odtot;
-          double odtot_rec = rec_6 * odtot;
-          double bbdtot = plfrac * (blay + dplankdn * odtot_rec);
-          bbd = plfrac * (blay + dplankdn * odepth_rec);
-
-          radld = radld - radld * (atrans[lay] + efcl[lay] * (1.0 - atrans[lay])) +
-                  gassrc + cf * (bbdtot * atot[lay] - gassrc);
-
-          bbugas[lay] = plfrac * (blay + dplankup * odepth_rec);
-          bbutot[lay] = plfrac * (blay + dplankup * odtot_rec);
-        } else if (odepth <= 0.06) {
-          atrans[lay] = odepth - 0.5 * odepth * odepth;
-          double odepth_rec = rec_6 * odepth;
-          double gassrc = plfrac * (blay + dplankdn * odepth_rec) * atrans[lay];
-
-          double tblind = odtot / (bpade + odtot);
-          int ittot = static_cast<int>(tblint * tblind + 0.5);
-          double tfactot = tables.tfn_tbl[ittot];
-          double bbdtot = plfrac * (blay + tfactot * dplankdn);
-          bbd = plfrac * (blay + dplankdn * odepth_rec);
-          atot[lay] = 1.0 - tables.exp_tbl[ittot];
-
-          radld = radld - radld * (atrans[lay] + efcl[lay] * (1.0 - atrans[lay])) +
-                  gassrc + cf * (bbdtot * atot[lay] - gassrc);
-
-          bbugas[lay] = plfrac * (blay + dplankup * odepth_rec);
-          bbutot[lay] = plfrac * (blay + tfactot * dplankup);
-        } else {
-          double tblind = odepth / (bpade + odepth);
-          int itgas = static_cast<int>(tblint * tblind + 0.5);
-          odepth = tables.tau_tbl[itgas];
-          atrans[lay] = 1.0 - tables.exp_tbl[itgas];
-          double tfacgas = tables.tfn_tbl[itgas];
-          double gassrc = atrans[lay] * plfrac * (blay + tfacgas * dplankdn);
-
-          odtot = odepth + odcld;
-          tblind = odtot / (bpade + odtot);
-          int ittot = static_cast<int>(tblint * tblind + 0.5);
-          double tfactot = tables.tfn_tbl[ittot];
-          double bbdtot = plfrac * (blay + tfactot * dplankdn);
-          bbd = plfrac * (blay + tfacgas * dplankdn);
-          atot[lay] = 1.0 - tables.exp_tbl[ittot];
-
-          radld = radld - radld * (atrans[lay] + efcl[lay] * (1.0 - atrans[lay])) +
-                  gassrc + cf * (bbdtot * atot[lay] - gassrc);
-
-          bbugas[lay] = plfrac * (blay + tfacgas * dplankup);
-          bbutot[lay] = plfrac * (blay + tfactot * dplankup);
-        }
-      } else {
+  if constexpr (CLEAR_COL) {
+    double atrans[MAX_LAY], bbugas[MAX_LAY];
+    for (int igc = igc0; igc < igc1; ++igc) {
+      double radld = 0.0;
+      for (int lev = nlayers; lev >= 1; --lev) {
+        int lay = lev - 1;
+        double plfrac = fracs[lay][igc];
+        double blay = planklay[lay][iband];
+        double dplankup = planklev[lev][iband] - blay;
+        double dplankdn = planklev[lev - 1][iband] - blay;
+        double odepth = sd * taut[lay][igc];
+        if (odepth < 0.0) odepth = 0.0;
+        double bbd = 0.0;
         if (odepth <= 0.06) {
           atrans[lay] = odepth - 0.5 * odepth * odepth;
           double odepth_rec = rec_6 * odepth;
@@ -162,53 +95,194 @@ CPPWRF_HD inline void rrtmg_lw_band(int nlayers, int iband, SD secdiff, SD semis
           bbugas[lay] = plfrac * (blay + tausfac * dplankup);
         }
         radld = radld + (bbd - radld) * atrans[lay];
+        drad[lev - 1] += radld;
       }
-      drad[lev - 1] += radld;
 
-      if (iclddn == 1) {
-        radclrd = radclrd + (bbd - radclrd) * atrans[lay];
-        clrdrad[lev - 1] += radclrd;
-      } else {
-        radclrd = radld;
-        clrdrad[lev - 1] = drad[lev - 1];
-      }
-    }
+      double rad0 = fracs[0][igc] * pbnd;
+      double radlu = rad0 + reflect * radld;
+      urad[0] += radlu;
 
-    double rad0 = fracs[0][igc] * plankbnd[iband];
-    double reflect = 1.0 - semiss[iband];
-    double radlu = rad0 + reflect * radld;
-    double radclru = rad0 + reflect * radclrd;
-
-    urad[0] += radlu;
-    clrurad[0] += radclru;
-
-    for (int lev = 1; lev <= nlayers; ++lev) {
-      int lay = lev - 1;
-      if (icldlyr[lay] == 1) {
-        double gassrc = bbugas[lay] * atrans[lay];
-        radlu = radlu - radlu * (atrans[lay] + efcl[lay] * (1.0 - atrans[lay])) +
-                gassrc + cldfmc[igc][lay] * (bbutot[lay] * atot[lay] - gassrc);
-        urad[lev] += radlu;
-      } else {
+      for (int lev = 1; lev <= nlayers; ++lev) {
+        int lay = lev - 1;
         radlu = radlu + (bbugas[lay] - radlu) * atrans[lay];
         urad[lev] += radlu;
       }
+    }
+    for (int lev = 0; lev <= nlayers; ++lev) {
+      clrdrad[lev] = drad[lev];
+      clrurad[lev] = urad[lev];
+    }
+  } else {
+    double atrans[MAX_LAY], bbugas[MAX_LAY], bbutot_atot[MAX_LAY], efcl[MAX_LAY];
+    for (int igc = igc0; igc < igc1; ++igc) {
+      double radld = 0.0;
+      double radclrd = 0.0;
+      int iclddn = 0;
 
-      if (iclddn == 1) {
-        radclru = radclru + (bbugas[lay] - radclru) * atrans[lay];
-        clrurad[lev] += radclru;
-      } else {
-        radclru = radlu;
-        clrurad[lev] = urad[lev];
+      for (int lev = nlayers; lev >= 1; --lev) {
+        int lay = lev - 1;
+        double plfrac = fracs[lay][igc];
+        double blay = planklay[lay][iband];
+        double dplankup = planklev[lev][iband] - blay;
+        double dplankdn = planklev[lev - 1][iband] - blay;
+        double odepth = sd * taut[lay][igc];
+        if (odepth < 0.0) odepth = 0.0;
+
+        double bbd = 0.0;
+
+        if (icldlyr[lay] == 1) {
+          iclddn = 1;
+          double odcld = 0.0;
+          double efcl_lay = 0.0;
+          const double cf = cldfmc[igc][lay];
+          if (cf == 1.0) {
+            odcld = secdiff[tables.ngb[igc] - 1] * taucmc[igc][lay];
+            double transcld = std::exp(-odcld);
+            double abscld = 1.0 - transcld;
+            efcl_lay = abscld * cf;
+          }
+          efcl[lay] = efcl_lay;
+          double odtot = odepth + odcld;
+          double atot_lay, bbutot_lay;
+          if (odtot < 0.06) {
+            atrans[lay] = odepth - 0.5 * odepth * odepth;
+            double odepth_rec = rec_6 * odepth;
+            double gassrc = plfrac * (blay + dplankdn * odepth_rec) * atrans[lay];
+
+            atot_lay = odtot - 0.5 * odtot * odtot;
+            double odtot_rec = rec_6 * odtot;
+            double bbdtot = plfrac * (blay + dplankdn * odtot_rec);
+            bbd = plfrac * (blay + dplankdn * odepth_rec);
+
+            radld = radld - radld * (atrans[lay] + efcl_lay * (1.0 - atrans[lay])) +
+                    gassrc + cf * (bbdtot * atot_lay - gassrc);
+
+            bbugas[lay] = plfrac * (blay + dplankup * odepth_rec);
+            bbutot_lay = plfrac * (blay + dplankup * odtot_rec);
+          } else if (odepth <= 0.06) {
+            atrans[lay] = odepth - 0.5 * odepth * odepth;
+            double odepth_rec = rec_6 * odepth;
+            double gassrc = plfrac * (blay + dplankdn * odepth_rec) * atrans[lay];
+
+            double tblind = odtot / (bpade + odtot);
+            int ittot = static_cast<int>(tblint * tblind + 0.5);
+            double tfactot = tables.tfn_tbl[ittot];
+            double bbdtot = plfrac * (blay + tfactot * dplankdn);
+            bbd = plfrac * (blay + dplankdn * odepth_rec);
+            atot_lay = 1.0 - tables.exp_tbl[ittot];
+
+            radld = radld - radld * (atrans[lay] + efcl_lay * (1.0 - atrans[lay])) +
+                    gassrc + cf * (bbdtot * atot_lay - gassrc);
+
+            bbugas[lay] = plfrac * (blay + dplankup * odepth_rec);
+            bbutot_lay = plfrac * (blay + tfactot * dplankup);
+          } else {
+            double tblind = odepth / (bpade + odepth);
+            int itgas = static_cast<int>(tblint * tblind + 0.5);
+            odepth = tables.tau_tbl[itgas];
+            atrans[lay] = 1.0 - tables.exp_tbl[itgas];
+            double tfacgas = tables.tfn_tbl[itgas];
+            double gassrc = atrans[lay] * plfrac * (blay + tfacgas * dplankdn);
+
+            odtot = odepth + odcld;
+            tblind = odtot / (bpade + odtot);
+            int ittot = static_cast<int>(tblint * tblind + 0.5);
+            double tfactot = tables.tfn_tbl[ittot];
+            double bbdtot = plfrac * (blay + tfactot * dplankdn);
+            bbd = plfrac * (blay + tfacgas * dplankdn);
+            atot_lay = 1.0 - tables.exp_tbl[ittot];
+
+            radld = radld - radld * (atrans[lay] + efcl_lay * (1.0 - atrans[lay])) +
+                    gassrc + cf * (bbdtot * atot_lay - gassrc);
+
+            bbugas[lay] = plfrac * (blay + tfacgas * dplankup);
+            bbutot_lay = plfrac * (blay + tfactot * dplankup);
+          }
+          bbutot_atot[lay] = bbutot_lay * atot_lay;
+        } else {
+          if (odepth <= 0.06) {
+            atrans[lay] = odepth - 0.5 * odepth * odepth;
+            double odepth_rec = rec_6 * odepth;
+            bbd = plfrac * (blay + dplankdn * odepth_rec);
+            bbugas[lay] = plfrac * (blay + dplankup * odepth_rec);
+          } else {
+            double tblind = odepth / (bpade + odepth);
+            int itr = static_cast<int>(tblint * tblind + 0.5);
+            double transc = tables.exp_tbl[itr];
+            atrans[lay] = 1.0 - transc;
+            double tausfac = tables.tfn_tbl[itr];
+            bbd = plfrac * (blay + tausfac * dplankdn);
+            bbugas[lay] = plfrac * (blay + tausfac * dplankup);
+          }
+          radld = radld + (bbd - radld) * atrans[lay];
+        }
+        drad[lev - 1] += radld;
+
+        if (iclddn == 1) {
+          radclrd = radclrd + (bbd - radclrd) * atrans[lay];
+          clrdrad[lev - 1] += radclrd;
+        } else {
+          radclrd = radld;
+          clrdrad[lev - 1] = drad[lev - 1];
+        }
+      }
+
+      double rad0 = fracs[0][igc] * pbnd;
+      double radlu = rad0 + reflect * radld;
+      double radclru = rad0 + reflect * radclrd;
+
+      urad[0] += radlu;
+      clrurad[0] += radclru;
+
+      for (int lev = 1; lev <= nlayers; ++lev) {
+        int lay = lev - 1;
+        if (icldlyr[lay] == 1) {
+          double gassrc = bbugas[lay] * atrans[lay];
+          radlu = radlu - radlu * (atrans[lay] + efcl[lay] * (1.0 - atrans[lay])) +
+                  gassrc + cldfmc[igc][lay] * (bbutot_atot[lay] - gassrc);
+          urad[lev] += radlu;
+        } else {
+          radlu = radlu + (bbugas[lay] - radlu) * atrans[lay];
+          urad[lev] += radlu;
+        }
+
+        if (iclddn == 1) {
+          radclru = radclru + (bbugas[lay] - radclru) * atrans[lay];
+          clrurad[lev] += radclru;
+        } else {
+          radclru = radlu;
+          clrurad[lev] = urad[lev];
+        }
       }
     }
   }
 }
 
+// One band of rtrnmc's band loop (iband 0..15): its g-points in order, down and up sweeps, the
+// band sums urad/drad/clrurad/clrdrad of every level (bu/bd/bcu/bcd [16][nlayers + 1]) with WRF's
+// clear-sky assignments (clrdrad = drad, clrurad = urad below the first cloud).
+template <int MAX_LAY = RRTMG_LW_SWEEP_MAX>
+CPPWRF_FORCEINLINE void rrtmg_lw_band(int nlayers, int iband, CSD secdiff, CSD semiss, CSD2 cldfmc, CSD2 taucmc,
+                                      CSD2 planklay, CSD2 planklev, CSD plankbnd, CSD2 fracs, CSD2 taut, CSI icldlyr,
+                                      SD2 bu, SD2 bd, SD2 bcu, SD2 bcd, const RrtmgLwTables& CPPWRF_RESTRICT tables,
+                                      bool clear_col = false) {
+#if defined(__CUDA_ARCH__)
+  const bool fast_clear = __all_sync(__activemask(), clear_col);
+#else
+  const bool fast_clear = clear_col;
+#endif
+  if (fast_clear)
+    rrtmg_lw_band_impl<MAX_LAY, true>(nlayers, iband, secdiff, semiss, cldfmc, taucmc, planklay, planklev, plankbnd,
+                                      fracs, taut, icldlyr, bu, bd, bcu, bcd, tables);
+  else
+    rrtmg_lw_band_impl<MAX_LAY, false>(nlayers, iband, secdiff, semiss, cldfmc, taucmc, planklay, planklev, plankbnd,
+                                       fracs, taut, icldlyr, bu, bd, bcu, bcd, tables);
+}
+
 // Level lev (0..nlayers): rtrnmc's band sums in band order, scaled by fluxfac; fnet / fnetc.
-CPPWRF_HD inline void rrtmg_lw_accum(int lev, SD2 bu, SD2 bd, SD2 bcu, SD2 bcd, const RrtmgLwTables& tables,
-                                     double& totuflux, double& totdflux, double& totuclfl, double& totdclfl,
-                                     double& fnet, double& fnetc) {
+CPPWRF_FORCEINLINE void rrtmg_lw_accum(int lev, CSD2 bu, CSD2 bd, CSD2 bcu, CSD2 bcd,
+                                       const RrtmgLwTables& CPPWRF_RESTRICT tables, double& totuflux, double& totdflux,
+                                       double& totuclfl, double& totdclfl, double& fnet, double& fnetc) {
   constexpr double pi = 3.14159265358979323846;
   constexpr double fluxfac = pi * 2.0e4;
   constexpr double wtdiff = 0.5;
@@ -233,7 +307,7 @@ CPPWRF_HD inline void rrtmg_lw_accum(int lev, SD2 bu, SD2 bd, SD2 bcu, SD2 bcd, 
   totuflux = tu; totdflux = td; totuclfl = tuc; totdclfl = tdc;
 }
 
-CPPWRF_HD inline void rrtmg_lw_heating(int nlayers, SD pz, SD fnet, SD fnetc, SD htr, SD htrc, double heatfac) {
+CPPWRF_FORCEINLINE void rrtmg_lw_heating(int nlayers, CSD pz, CSD fnet, CSD fnetc, SD htr, SD htrc, double heatfac) {
   for (int lev = 1; lev <= nlayers; ++lev) {
     int l = lev - 1;
     htr[l] = heatfac * (fnet[l] - fnet[lev]) / (pz[l] - pz[lev]);

@@ -9,52 +9,52 @@
 
 namespace cppwrf::phys {
 
-CPPWRF_HD inline void rrtmg_lw_taugb01(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb01(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -73,6 +73,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb01(
   corradj = 1. - 0.15 * (250.-pp) / 154.4;
   }
   scalen2 = colbrd[lay] * scaleminorn2[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 10; ++ig) {
   tauself = selffac[lay] * (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor =  forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] -  b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -89,6 +90,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb01(
   pp = pavel[lay];
   corradj =  1. - 0.15 * (pp / 95.6);
   scalen2 = colbrd[lay] * scaleminorn2[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 10; ++ig) {
   taufor = forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
   taun2 = scalen2*(b.kb_mn2[(ig - 1) * 19 + (indm - 1)] + minorfrac[lay] * (b.kb_mn2[(ig - 1) * 19 + (indm+1 - 1)] - b.kb_mn2[(ig - 1) * 19 + (indm - 1)]));
@@ -98,52 +100,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb01(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb02(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb02(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -157,6 +159,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb02(
   indf = indfor[lay];
   pp = pavel[lay];
   corradj = 1. - .05 * (pp - 100.) / 900.;
+#pragma unroll 1
   for (int ig = 1; ig <= 12; ++ig) {
   tauself = selffac[lay] * (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor =  forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -168,6 +171,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb02(
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*1 + 1;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*1 + 1;
   indf = indfor[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 12; ++ig) {
   taufor =  forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
   taug[lay][10+ig - 1] = colh2o[lay] * (fac00[lay] * b.kb[(ig - 1) * 235 + (ind0 - 1)] + fac10[lay] * b.kb[(ig - 1) * 235 + (ind0+1 - 1)] + fac01[lay] * b.kb[(ig - 1) * 235 + (ind1 - 1)] + fac11[lay] * b.kb[(ig - 1) * 235 + (ind1+1 - 1)]) + taufor;
@@ -176,52 +180,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb02(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb03(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb03(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -341,6 +345,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb03(
   fac101 = fs1 * fac01[lay];
   fac111 = fs1 * fac11[lay];
   }
+#pragma unroll 1
   for (int ig = 1; ig <= 16; ++ig) {
   tauself = selffac[lay]* (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor = forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -411,6 +416,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb03(
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*5 + js1;
   indf = indfor[lay];
   indm = indminor[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 16; ++ig) {
   taufor = forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
   n2om1 = b.kb_mn2o[(ig - 1) * (19 * 5) + (indm - 1) * 5 + (jmn2o - 1)] + fmn2o * (b.kb_mn2o[(ig - 1) * (19 * 5) + (indm - 1) * 5 + (jmn2o+1 - 1)]-b.kb_mn2o[(ig - 1) * (19 * 5) + (indm - 1) * 5 + (jmn2o - 1)]);
@@ -422,52 +428,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb03(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb04(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb04(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -568,6 +574,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb04(
   fac101 = fs1 * fac01[lay];
   fac111 = fs1 * fac11[lay];
   }
+#pragma unroll 1
   for (int ig = 1; ig <= 14; ++ig) {
   tauself = selffac[lay]* (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor =  forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -618,6 +625,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb04(
   fpl = std::fmod(specmult_planck, 1.0);
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*5 + js;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*5 + js1;
+#pragma unroll 1
   for (int ig = 1; ig <= 14; ++ig) {
   taug[lay][38+ig - 1] =  speccomb * (fac000 * b.kb[(ig - 1) * 1175 + (ind0 - 1)] + fac100 * b.kb[(ig - 1) * 1175 + (ind0+1 - 1)] + fac010 * b.kb[(ig - 1) * 1175 + (ind0+5 - 1)] + fac110 * b.kb[(ig - 1) * 1175 + (ind0+6 - 1)]) + speccomb1 * (fac001 * b.kb[(ig - 1) * 1175 + (ind1 - 1)] + fac101 * b.kb[(ig - 1) * 1175 + (ind1+1 - 1)] + fac011 * b.kb[(ig - 1) * 1175 + (ind1+5 - 1)] + fac111 * b.kb[(ig - 1) * 1175 + (ind1+6 - 1)]);
   fracs[lay][38+ig - 1] = b.fracrefb[(jpl - 1) * 14 + (ig - 1)] + fpl * (b.fracrefb[(jpl+1 - 1) * 14 + (ig - 1)]-b.fracrefb[(jpl - 1) * 14 + (ig - 1)]);
@@ -632,52 +640,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb04(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb05(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb05(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -787,6 +795,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb05(
   fac101 = fs1 * fac01[lay];
   fac111 = fs1 * fac11[lay];
   }
+#pragma unroll 1
   for (int ig = 1; ig <= 16; ++ig) {
   tauself = selffac[lay] * (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor =  forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -840,6 +849,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb05(
   fpl = std::fmod(specmult_planck, 1.0);
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*5 + js;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*5 + js1;
+#pragma unroll 1
   for (int ig = 1; ig <= 16; ++ig) {
   taug[lay][52+ig - 1] = speccomb * (fac000 * b.kb[(ig - 1) * 1175 + (ind0 - 1)] + fac100 * b.kb[(ig - 1) * 1175 + (ind0+1 - 1)] + fac010 * b.kb[(ig - 1) * 1175 + (ind0+5 - 1)] + fac110 * b.kb[(ig - 1) * 1175 + (ind0+6 - 1)]) + speccomb1 * (fac001 * b.kb[(ig - 1) * 1175 + (ind1 - 1)] + fac101 * b.kb[(ig - 1) * 1175 + (ind1+1 - 1)] + fac011 * b.kb[(ig - 1) * 1175 + (ind1+5 - 1)] + fac111 * b.kb[(ig - 1) * 1175 + (ind1+6 - 1)]) + wx[1 - 1][lay] * b.ccl4[ig - 1];
   fracs[lay][52+ig - 1] = b.fracrefb[(jpl - 1) * 16 + (ig - 1)] + fpl * (b.fracrefb[(jpl+1 - 1) * 16 + (ig - 1)]-b.fracrefb[(jpl - 1) * 16 + (ig - 1)]);
@@ -847,52 +857,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb05(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb06(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb06(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -914,6 +924,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb06(
   inds = indself[lay];
   indf = indfor[lay];
   indm = indminor[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 8; ++ig) {
   tauself = selffac[lay] * (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor =  forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -923,6 +934,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb06(
   }
   }
   for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
+#pragma unroll 1
   for (int ig = 1; ig <= 8; ++ig) {
   taug[lay][68+ig - 1] = 0.0 + wx[2 - 1][lay] * b.cfc11adj[ig - 1] + wx[3 - 1][lay] * b.cfc12[ig - 1];
   fracs[lay][68+ig - 1] = b.fracrefa[ig - 1];
@@ -930,52 +942,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb06(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb07(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb07(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -1093,6 +1105,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb07(
   fac101 = fs1 * fac01[lay];
   fac111 = fs1 * fac11[lay];
   }
+#pragma unroll 1
   for (int ig = 1; ig <= 12; ++ig) {
   tauself = selffac[lay]* (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor = forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -1129,6 +1142,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb07(
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*1 + 1;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*1 + 1;
   indm = indminor[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 12; ++ig) {
   absco2 = b.kb_mco2[(ig - 1) * 19 + (indm - 1)] + minorfrac[lay] * (b.kb_mco2[(ig - 1) * 19 + (indm+1 - 1)] - b.kb_mco2[(ig - 1) * 19 + (indm - 1)]);
   taug[lay][76+ig - 1] = colo3[lay] * (fac00[lay] * b.kb[(ig - 1) * 235 + (ind0 - 1)] + fac10[lay] * b.kb[(ig - 1) * 235 + (ind0+1 - 1)] + fac01[lay] * b.kb[(ig - 1) * 235 + (ind1 - 1)] + fac11[lay] * b.kb[(ig - 1) * 235 + (ind1+1 - 1)]) + adjcolco2 * absco2;
@@ -1143,52 +1157,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb07(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb08(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb08(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -1210,6 +1224,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb08(
   inds = indself[lay];
   indf = indfor[lay];
   indm = indminor[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 8; ++ig) {
   tauself = selffac[lay] * (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor = forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -1232,6 +1247,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb08(
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*1 + 1;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*1 + 1;
   indm = indminor[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 8; ++ig) {
   absco2 =  (b.kb_mco2[(ig - 1) * 19 + (indm - 1)] + minorfrac[lay] * (b.kb_mco2[(ig - 1) * 19 + (indm+1 - 1)] - b.kb_mco2[(ig - 1) * 19 + (indm - 1)]));
   absn2o =  (b.kb_mn2o[(ig - 1) * 19 + (indm - 1)] + minorfrac[lay] * (b.kb_mn2o[(ig - 1) * 19 + (indm+1 - 1)] - b.kb_mn2o[(ig - 1) * 19 + (indm - 1)]));
@@ -1241,52 +1257,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb08(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb09(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb09(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -1404,6 +1420,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb09(
   fac101 = fs1 * fac01[lay];
   fac111 = fs1 * fac11[lay];
   }
+#pragma unroll 1
   for (int ig = 1; ig <= 12; ++ig) {
   tauself = selffac[lay]* (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor = forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -1440,6 +1457,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb09(
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*1 + 1;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*1 + 1;
   indm = indminor[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 12; ++ig) {
   absn2o = b.kb_mn2o[(ig - 1) * 19 + (indm - 1)] + minorfrac[lay] * (b.kb_mn2o[(ig - 1) * 19 + (indm+1 - 1)] - b.kb_mn2o[(ig - 1) * 19 + (indm - 1)]);
   taug[lay][96+ig - 1] = colch4[lay] * (fac00[lay] * b.kb[(ig - 1) * 235 + (ind0 - 1)] + fac10[lay] * b.kb[(ig - 1) * 235 + (ind0+1 - 1)] + fac01[lay] * b.kb[(ig - 1) * 235 + (ind1 - 1)] + fac11[lay] * b.kb[(ig - 1) * 235 + (ind1+1 - 1)]) + adjcoln2o*absn2o;
@@ -1448,52 +1466,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb09(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb10(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb10(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -1505,6 +1523,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb10(
   ind1 = (jp[lay]*5+(jt1[lay]-1))*1 + 1;
   inds = indself[lay];
   indf = indfor[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 6; ++ig) {
   tauself = selffac[lay] * (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor = forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -1516,6 +1535,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb10(
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*1 + 1;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*1 + 1;
   indf = indfor[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 6; ++ig) {
   taufor = forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
   taug[lay][108+ig - 1] = colh2o[lay] * (fac00[lay] * b.kb[(ig - 1) * 235 + (ind0 - 1)] + fac10[lay] * b.kb[(ig - 1) * 235 + (ind0+1 - 1)] + fac01[lay] * b.kb[(ig - 1) * 235 + (ind1 - 1)] + fac11[lay] * b.kb[(ig - 1) * 235 + (ind1+1 - 1)]) + taufor;
@@ -1524,52 +1544,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb10(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb11(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb11(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -1583,6 +1603,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb11(
   indf = indfor[lay];
   indm = indminor[lay];
   scaleo2 = colo2[lay]*scaleminor[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 8; ++ig) {
   tauself = selffac[lay] * (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor = forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -1597,6 +1618,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb11(
   indf = indfor[lay];
   indm = indminor[lay];
   scaleo2 = colo2[lay]*scaleminor[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 8; ++ig) {
   taufor = forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
   tauo2 =  scaleo2 * (b.kb_mo2[(ig - 1) * 19 + (indm - 1)] + minorfrac[lay] * (b.kb_mo2[(ig - 1) * 19 + (indm+1 - 1)] - b.kb_mo2[(ig - 1) * 19 + (indm - 1)]));
@@ -1606,52 +1628,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb11(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb12(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb12(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -1751,6 +1773,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb12(
   fac101 = fs1 * fac01[lay];
   fac111 = fs1 * fac11[lay];
   }
+#pragma unroll 1
   for (int ig = 1; ig <= 8; ++ig) {
   tauself = selffac[lay]* (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor = forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -1773,6 +1796,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb12(
   }
   }
   for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
+#pragma unroll 1
   for (int ig = 1; ig <= 8; ++ig) {
   taug[lay][122+ig - 1] = 0.0;
   fracs[lay][122+ig - 1] = 0.0;
@@ -1780,52 +1804,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb12(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb13(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb13(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -1952,6 +1976,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb13(
   fac101 = fs1 * fac01[lay];
   fac111 = fs1 * fac11[lay];
   }
+#pragma unroll 1
   for (int ig = 1; ig <= 4; ++ig) {
   tauself = selffac[lay]* (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor = forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -1981,6 +2006,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb13(
   }
   for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   indm = indminor[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 4; ++ig) {
   abso3 = b.kb_mo3[(ig - 1) * 19 + (indm - 1)] + minorfrac[lay] * (b.kb_mo3[(ig - 1) * 19 + (indm+1 - 1)] - b.kb_mo3[(ig - 1) * 19 + (indm - 1)]);
   taug[lay][130+ig - 1] = colo3[lay]*abso3;
@@ -1989,52 +2015,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb13(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb14(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb14(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -2046,6 +2072,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb14(
   ind1 = (jp[lay]*5+(jt1[lay]-1))*1 + 1;
   inds = indself[lay];
   indf = indfor[lay];
+#pragma unroll 1
   for (int ig = 1; ig <= 2; ++ig) {
   tauself = selffac[lay] * (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor =  forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -2056,6 +2083,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb14(
   for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*1 + 1;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*1 + 1;
+#pragma unroll 1
   for (int ig = 1; ig <= 2; ++ig) {
   taug[lay][134+ig - 1] = colco2[lay] * (fac00[lay] * b.kb[(ig - 1) * 235 + (ind0 - 1)] + fac10[lay] * b.kb[(ig - 1) * 235 + (ind0+1 - 1)] + fac01[lay] * b.kb[(ig - 1) * 235 + (ind1 - 1)] + fac11[lay] * b.kb[(ig - 1) * 235 + (ind1+1 - 1)]);
   fracs[lay][134+ig - 1] = b.fracrefb[ig - 1];
@@ -2063,52 +2091,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb14(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb15(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb15(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -2218,6 +2246,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb15(
   fac101 = fs1 * fac01[lay];
   fac111 = fs1 * fac11[lay];
   }
+#pragma unroll 1
   for (int ig = 1; ig <= 2; ++ig) {
   tauself = selffac[lay]* (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor =  forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -2243,6 +2272,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb15(
   }
   }
   for (int lay = (laytrop > lay0 ? laytrop : lay0); lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
+#pragma unroll 1
   for (int ig = 1; ig <= 2; ++ig) {
   taug[lay][136+ig - 1] = 0.0;
   fracs[lay][136+ig - 1] = 0.0;
@@ -2250,52 +2280,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb15(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taugb16(
+CPPWRF_FORCEINLINE void rrtmg_lw_taugb16(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,
     SD2 taug,
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
@@ -2395,6 +2425,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb16(
   fac101 = fs1 * fac01[lay];
   fac111 = fs1 * fac11[lay];
   }
+#pragma unroll 1
   for (int ig = 1; ig <= 2; ++ig) {
   tauself = selffac[lay]* (b.selfref[(ig - 1) * 10 + (inds - 1)] + selffrac[lay] * (b.selfref[(ig - 1) * 10 + (inds+1 - 1)] - b.selfref[(ig - 1) * 10 + (inds - 1)]));
   taufor =  forfac[lay] * (b.forref[(ig - 1) * 4 + (indf - 1)] + forfrac[lay] * (b.forref[(ig - 1) * 4 + (indf+1 - 1)] - b.forref[(ig - 1) * 4 + (indf - 1)]));
@@ -2420,6 +2451,7 @@ CPPWRF_HD inline void rrtmg_lw_taugb16(
   // WRF nspb(16) = 0: the upper-atmosphere lookup always uses absb(1..2, ig) (as in WRF)
   ind0 = ((jp[lay]-13)*5+(jt[lay]-1))*0 + 1;
   ind1 = ((jp[lay]-12)*5+(jt1[lay]-1))*0 + 1;
+#pragma unroll 1
   for (int ig = 1; ig <= 2; ++ig) {
   taug[lay][138+ig - 1] = colch4[lay] * (fac00[lay] * b.kb[(ig - 1) * 235 + (ind0 - 1)] + fac10[lay] * b.kb[(ig - 1) * 235 + (ind0+1 - 1)] + fac01[lay] * b.kb[(ig - 1) * 235 + (ind1 - 1)] + fac11[lay] * b.kb[(ig - 1) * 235 + (ind1+1 - 1)]);
   fracs[lay][138+ig - 1] = b.fracrefb[ig - 1];
@@ -2427,52 +2459,52 @@ CPPWRF_HD inline void rrtmg_lw_taugb16(
   }
 }
 
-CPPWRF_HD inline void rrtmg_lw_taumol(
+CPPWRF_FORCEINLINE void rrtmg_lw_taumol(
     int nlayers,
-    SD pavel,
-    SD2 wx,
-    SD coldry,
+    CSD pavel,
+    CSD2 wx,
+    CSD coldry,
     int laytrop,
-    SI jp,
-    SI jt,
-    SI jt1,
-    SD colh2o,
-    SD colco2,
-    SD colo3,
-    SD coln2o,
-    SD colco,
-    SD colch4,
-    SD colo2,
-    SD colbrd,
-    SD fac00,
-    SD fac01,
-    SD fac10,
-    SD fac11,
-    SD rat_h2oco2,
-    SD rat_h2oco2_1,
-    SD rat_h2oo3,
-    SD rat_h2oo3_1,
-    SD rat_h2on2o,
-    SD rat_h2on2o_1,
-    SD rat_h2och4,
-    SD rat_h2och4_1,
-    SD rat_n2oco2,
-    SD rat_n2oco2_1,
-    SD rat_o3co2,
-    SD rat_o3co2_1,
-    SD selffac,
-    SD selffrac,
-    SI indself,
-    SD forfac,
-    SD forfrac,
-    SI indfor,
-    SD minorfrac,
-    SD scaleminor,
-    SD scaleminorn2,
-    SI indminor,
+    CSI jp,
+    CSI jt,
+    CSI jt1,
+    CSD colh2o,
+    CSD colco2,
+    CSD colo3,
+    CSD coln2o,
+    CSD colco,
+    CSD colch4,
+    CSD colo2,
+    CSD colbrd,
+    CSD fac00,
+    CSD fac01,
+    CSD fac10,
+    CSD fac11,
+    CSD rat_h2oco2,
+    CSD rat_h2oco2_1,
+    CSD rat_h2oo3,
+    CSD rat_h2oo3_1,
+    CSD rat_h2on2o,
+    CSD rat_h2on2o_1,
+    CSD rat_h2och4,
+    CSD rat_h2och4_1,
+    CSD rat_n2oco2,
+    CSD rat_n2oco2_1,
+    CSD rat_o3co2,
+    CSD rat_o3co2_1,
+    CSD selffac,
+    CSD selffrac,
+    CSI indself,
+    CSD forfac,
+    CSD forfrac,
+    CSI indfor,
+    CSD minorfrac,
+    CSD scaleminor,
+    CSD scaleminorn2,
+    CSI indminor,
     SD2 fracs,  // [nlayers][140]
     SD2 taug,   // [nlayers][140]
-    const RrtmgLwTables& tables,
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
   rrtmg_lw_taugb01(nlayers, pavel, wx, coldry, laytrop, jp, jt, jt1, colh2o, colco2, colo3, coln2o, colco, colch4, colo2, colbrd, fac00, fac01, fac10, fac11, rat_h2oco2, rat_h2oco2_1, rat_h2oo3, rat_h2oo3_1, rat_h2on2o, rat_h2on2o_1, rat_h2och4, rat_h2och4_1, rat_n2oco2, rat_n2oco2_1, rat_o3co2, rat_o3co2_1, selffac, selffrac, indself, forfac, forfrac, indfor, minorfrac, scaleminor, scaleminorn2, indminor, fracs, taug, tables, lay0, lay1);

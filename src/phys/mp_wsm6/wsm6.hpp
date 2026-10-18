@@ -334,7 +334,9 @@ struct Wsm6Params {
     CPPWRF_HD inline void nislfv_rain_plm(int km, const Real* den, const Real* denfac,
                                         const Real* t, const Real* dz,
                                         Real* ww, Real* rql, Real& precip,
-                                        Real dt, int id, int iter) const {
+                                        Real dt, int id, int iter,
+                                        Real* zi, Real* za, Real* dza, Real* qa,
+                                        Real* wi_qmi, Real* wd_qpi, Real* wa, Real* was) const {
         precip = 0.0;
         Real allold = 0.0;
         for (int k = 0; k < km; ++k) {
@@ -344,18 +346,8 @@ struct Wsm6Params {
             return;
         }
 
-        Real zi[kMaxLevels + 1];
-        Real za[kMaxLevels + 1];
-        Real wi[kMaxLevels + 1];
-        Real dza[kMaxLevels + 1];
-        Real qa[kMaxLevels + 1];
-        Real qmi[kMaxLevels + 1];
-        Real qpi[kMaxLevels + 1];
-        Real wd[kMaxLevels];
-        Real wa[kMaxLevels];
-        Real was[kMaxLevels];
-        Real qn[kMaxLevels];
-        Real qr_work[kMaxLevels];
+        Real* wi = wi_qmi;
+        Real* wd = wd_qpi;
 
         zi[0] = 0.0;
         for (int k = 0; k < km; ++k) {
@@ -414,12 +406,24 @@ struct Wsm6Params {
 
             for (int k = 0; k < km; ++k) {
                 qa[k] = rql[k] * dz[k] / dza[k];
-                qr_work[k] = qa[k] / den[k];
             }
             qa[km] = 0.0;
 
             if (n <= iter) {
-                slope_rain(km, qr_work, den, denfac, t, wa);
+                for (int k = 0; k < km; ++k) {
+                    Real qr_k = qa[k] / den[k];
+                    Real rslope, rslopeb;
+                    if (qr_k <= qcrmin) {
+                        rslope = rslopermax;
+                        rslopeb = rsloperbmax;
+                    } else {
+                        Real lamdar = std::sqrt(std::sqrt(pidn0r / (qr_k * den[k])));
+                        rslope = 1.0 / lamdar;
+                        rslopeb = std::pow(rslope, bvtr);
+                    }
+                    wa[k] = pvtr * rslopeb * denfac[k];
+                    if (qr_k <= 0.0) wa[k] = 0.0;
+                }
                 if (n >= 2) {
                     for (int k = 0; k < km; ++k) {
                         wa[k] = 0.5 * (wa[k] + was[k]);
@@ -433,6 +437,9 @@ struct Wsm6Params {
                 break;
             }
         }
+
+        Real* qmi = wi_qmi;
+        Real* qpi = wd_qpi;
 
         // estimate values at arrival cell interface with monotone
         for (int k = 1; k < km; ++k) {
@@ -457,7 +464,7 @@ struct Wsm6Params {
 
         // interpolation to regular point
         for (int k = 0; k < km; ++k) {
-            qn[k] = 0.0;
+            rql[k] = 0.0;
         }
         int kb = 0;
         int kt = 0;
@@ -489,7 +496,7 @@ struct Wsm6Params {
                 Real qqd = 0.5 * (qpi[kb] - qmi[kb]);
                 Real qqh = qqd * th2 + qmi[kb] * th;
                 Real qql = qqd * tl2 + qmi[kb] * tl;
-                qn[k] = (qqh - qql) / (th - tl);
+                rql[k] = (qqh - qql) / (th - tl);
             } else if (kt > kb) {
                 Real tl = (zi[k] - za[kb]) / dza[kb];
                 Real tl2 = tl * tl;
@@ -510,7 +517,7 @@ struct Wsm6Params {
                 Real dqh = qqd * th2 + qmi[kt] * th;
                 zsum += th * dza[kt];
                 qsum += dqh * dza[kt];
-                qn[k] = qsum / zsum;
+                rql[k] = qsum / zsum;
             }
         }
 
@@ -525,17 +532,15 @@ struct Wsm6Params {
                 break;
             }
         }
-
-        for (int k = 0; k < km; ++k) {
-            rql[k] = qn[k];
-        }
     }
 
     CPPWRF_HD inline void nislfv_rain_plm6(int km, const Real* den, const Real* denfac,
                                          const Real* t, const Real* dz,
                                          Real* ww, Real* rql, Real* rql2,
                                          Real& precip1, Real& precip2,
-                                         Real dt, int id, int iter) const {
+                                         Real dt, int id, int iter,
+                                         Real* zi, Real* za, Real* dza, Real* qa, Real* qa2,
+                                         Real* wi_qmi, Real* wd_qpi, Real* wa, Real* was) const {
         precip1 = 0.0;
         precip2 = 0.0;
         Real allold = 0.0;
@@ -546,21 +551,8 @@ struct Wsm6Params {
             return;
         }
 
-        Real zi[kMaxLevels + 1];
-        Real za[kMaxLevels + 1];
-        Real wi[kMaxLevels + 1];
-        Real dza[kMaxLevels + 1];
-        Real qa[kMaxLevels + 1];
-        Real qa2[kMaxLevels + 1];
-        Real qmi[kMaxLevels + 1];
-        Real qpi[kMaxLevels + 1];
-        Real wd[kMaxLevels];
-        Real wa[kMaxLevels];
-        Real wa2[kMaxLevels];
-        Real was[kMaxLevels];
-        Real qn[kMaxLevels];
-        Real qr_work[kMaxLevels];
-        Real qr2_work[kMaxLevels];
+        Real* wi = wi_qmi;
+        Real* wd = wd_qpi;
 
         zi[0] = 0.0;
         for (int k = 0; k < km; ++k) {
@@ -620,19 +612,43 @@ struct Wsm6Params {
             for (int k = 0; k < km; ++k) {
                 qa[k] = rql[k] * dz[k] / dza[k];
                 qa2[k] = rql2[k] * dz[k] / dza[k];
-                qr_work[k] = qa[k] / den[k];
-                qr2_work[k] = qa2[k] / den[k];
             }
             qa[km] = 0.0;
             qa2[km] = 0.0;
 
             if (n <= iter) {
-                slope_snow(km, qr_work, den, denfac, t, wa);
-                slope_graup(km, qr2_work, den, denfac, t, wa2);
                 for (int k = 0; k < km; ++k) {
-                    Real tmp_k = std::max(qr_work[k] + qr2_work[k], static_cast<Real>(1.0e-15));
+                    Real qr_k = qa[k] / den[k];
+                    Real qr2_k = qa2[k] / den[k];
+                    Real supcol = t0c - t[k];
+                    Real n0sfac = std::max(std::min(std::exp(alpha * supcol), n0smax / n0s), static_cast<Real>(1.0));
+                    Real rslope_s, rslopeb_s;
+                    if (qr_k <= qcrmin) {
+                        rslope_s = rslopesmax;
+                        rslopeb_s = rslopesbmax;
+                    } else {
+                        Real lamdas = std::sqrt(std::sqrt(pidn0s * n0sfac / (qr_k * den[k])));
+                        rslope_s = 1.0 / lamdas;
+                        rslopeb_s = std::pow(rslope_s, bvts);
+                    }
+                    Real wa_s = pvts * rslopeb_s * denfac[k];
+                    if (qr_k <= 0.0) wa_s = 0.0;
+
+                    Real rslope_g, rslopeb_g;
+                    if (qr2_k <= qcrmin) {
+                        rslope_g = rslopegmax;
+                        rslopeb_g = rslopegbmax;
+                    } else {
+                        Real lamdag = std::sqrt(std::sqrt(pidn0g / (qr2_k * den[k])));
+                        rslope_g = 1.0 / lamdag;
+                        rslopeb_g = std::pow(rslope_g, bvtg);
+                    }
+                    Real wa_g = pvtg * rslopeb_g * denfac[k];
+                    if (qr2_k <= 0.0) wa_g = 0.0;
+
+                    Real tmp_k = std::max(qr_k + qr2_k, static_cast<Real>(1.0e-15));
                     if (tmp_k > static_cast<Real>(1.0e-15)) {
-                        wa[k] = (wa[k] * qr_work[k] + wa2[k] * qr2_work[k]) / tmp_k;
+                        wa[k] = (wa_s * qr_k + wa_g * qr2_k) / tmp_k;
                     } else {
                         wa[k] = 0.0;
                     }
@@ -651,8 +667,12 @@ struct Wsm6Params {
             }
         }
 
+        Real* qmi = wi_qmi;
+        Real* qpi = wd_qpi;
+
         for (int ist = 1; ist <= 2; ++ist) {
             const Real* cur_qa = (ist == 1) ? qa : qa2;
+            Real* out_rql = (ist == 1) ? rql : rql2;
             Real cur_precip = 0.0;
 
             for (int k = 1; k < km; ++k) {
@@ -676,7 +696,7 @@ struct Wsm6Params {
             qpi[km] = cur_qa[km];
 
             for (int k = 0; k < km; ++k) {
-                qn[k] = 0.0;
+                out_rql[k] = 0.0;
             }
             int kb = 0;
             int kt = 0;
@@ -708,7 +728,7 @@ struct Wsm6Params {
                     Real qqd = 0.5 * (qpi[kb] - qmi[kb]);
                     Real qqh = qqd * th2 + qmi[kb] * th;
                     Real qql = qqd * tl2 + qmi[kb] * tl;
-                    qn[k] = (qqh - qql) / (th - tl);
+                    out_rql[k] = (qqh - qql) / (th - tl);
                 } else if (kt > kb) {
                     Real tl = (zi[k] - za[kb]) / dza[kb];
                     Real tl2 = tl * tl;
@@ -729,7 +749,7 @@ struct Wsm6Params {
                     Real dqh = qqd * th2 + qmi[kt] * th;
                     zsum += th * dza[kt];
                     qsum += dqh * dza[kt];
-                    qn[k] = qsum / zsum;
+                    out_rql[k] = qsum / zsum;
                 }
             }
 
@@ -746,15 +766,14 @@ struct Wsm6Params {
             }
 
             if (ist == 1) {
-                for (int k = 0; k < km; ++k) rql[k] = qn[k];
                 precip1 = cur_precip;
             } else {
-                for (int k = 0; k < km; ++k) rql2[k] = qn[k];
                 precip2 = cur_precip;
             }
         }
     }
 
+    template <int MaxLevels = kMaxLevels>
     CPPWRF_HD inline void operator()(int nz, Real delt,
                                     Real* th, Real* q, Real* qc, Real* qr,
                                     Real* qi, Real* qs, Real* qg,
@@ -772,9 +791,9 @@ struct Wsm6Params {
             qg[k] = std::max(qg[k], static_cast<Real>(0.0));
         }
 
-        Real t[kMaxLevels];
-        Real cpm[kMaxLevels];
-        Real xl[kMaxLevels];
+        Real t[MaxLevels];
+        Real cpm[MaxLevels];
+        Real xl[MaxLevels];
         for (int k = 0; k < nz; ++k) {
             t[k] = th[k] * pii[k];
             cpm[k] = cpmcal(q[k]);
@@ -793,13 +812,13 @@ struct Wsm6Params {
         if (delt <= dtcldcr) dtcld = delt;
 
         for (int loop = 0; loop < loops; ++loop) {
-            Real denfac[kMaxLevels];
+            Real denfac[MaxLevels];
             for (int k = 0; k < nz; ++k) {
                 denfac[k] = std::sqrt((static_cast<Real>(1.0) / den[k]) * den0);
             }
 
-            Real qsat[kMaxLevels][2];
-            Real rh[kMaxLevels][2];
+            Real qsat[MaxLevels][2];
+            Real rh[MaxLevels][2];
             Real hsub = xls;
             Real hvap = xlv0;
             Real cvap = cpv;
@@ -831,25 +850,25 @@ struct Wsm6Params {
                 rh[k][1] = std::max(q[k] / qsat[k][1], qmin);
             }
 
-            Real xni[kMaxLevels];
+            Real xni[MaxLevels];
             for (int k = 0; k < nz; ++k) {
                 Real temp = den[k] * std::max(qi[k], qmin);
                 temp = std::sqrt(std::sqrt(temp * temp * temp));
                 xni[k] = std::min(std::max(static_cast<Real>(5.38e7) * temp, static_cast<Real>(1.0e3)), static_cast<Real>(1.0e6));
             }
 
-            Real rslope[kMaxLevels][3];
-            Real rslopeb[kMaxLevels][3];
-            Real rslope2[kMaxLevels][3];
-            Real rslope3[kMaxLevels][3];
-            Real vt[kMaxLevels][3];
+            Real rslope[MaxLevels][3];
+            Real rslopeb[MaxLevels][3];
+            Real rslope2[MaxLevels][3];
+            Real rslope3[MaxLevels][3];
+            Real vt[MaxLevels][3];
             slope_wsm6(nz, qr, qs, qg, den, denfac, t, rslope, rslopeb, rslope2, rslope3, vt);
 
-            Real workr[kMaxLevels];
-            Real worka[kMaxLevels];
-            Real denqrs1[kMaxLevels];
-            Real denqrs2[kMaxLevels];
-            Real denqrs3[kMaxLevels];
+            Real workr[MaxLevels];
+            Real worka[MaxLevels];
+            Real denqrs1[MaxLevels];
+            Real denqrs2[MaxLevels];
+            Real denqrs3[MaxLevels];
             for (int k = nz - 1; k >= 0; --k) {
                 workr[k] = vt[k][0];
                 Real qsum_val = std::max(qs[k] + qg[k], static_cast<Real>(1.0e-15));
@@ -864,22 +883,30 @@ struct Wsm6Params {
                 if (qr[k] <= 0.0) workr[k] = 0.0;
             }
 
-            Real delqrs1 = 0.0, delqrs2 = 0.0, delqrs3 = 0.0;
-            nislfv_rain_plm(nz, den, denfac, t, delz, workr, denqrs1, delqrs1, dtcld, 1, 1);
-            nislfv_rain_plm6(nz, den, denfac, t, delz, worka, denqrs2, denqrs3, delqrs2, delqrs3, dtcld, 1, 1);
+            Real plm_zi[MaxLevels + 1];
+            Real plm_za[MaxLevels + 1];
+            Real plm_dza[MaxLevels + 1];
+            Real plm_qa[MaxLevels + 1];
+            Real plm_qa2[MaxLevels + 1];
+            Real plm_wi[MaxLevels + 1];
+            Real plm_wd[MaxLevels + 1];
+            Real plm_wa[MaxLevels];
+            Real plm_was[MaxLevels];
 
-            Real fall[kMaxLevels][3];
+            Real delqrs1 = 0.0, delqrs2 = 0.0, delqrs3 = 0.0;
+            nislfv_rain_plm(nz, den, denfac, t, delz, workr, denqrs1, delqrs1, dtcld, 1, 1,
+                            plm_zi, plm_za, plm_dza, plm_qa, plm_wi, plm_wd, plm_wa, plm_was);
+            nislfv_rain_plm6(nz, den, denfac, t, delz, worka, denqrs2, denqrs3, delqrs2, delqrs3, dtcld, 1, 1,
+                             plm_zi, plm_za, plm_dza, plm_qa, plm_qa2, plm_wi, plm_wd, plm_wa, plm_was);
+
             for (int k = 0; k < nz; ++k) {
                 qr[k] = std::max(denqrs1[k] / den[k], static_cast<Real>(0.0));
                 qs[k] = std::max(denqrs2[k] / den[k], static_cast<Real>(0.0));
                 qg[k] = std::max(denqrs3[k] / den[k], static_cast<Real>(0.0));
-                fall[k][0] = denqrs1[k] * workr[k] / delz[k];
-                fall[k][1] = denqrs2[k] * worka[k] / delz[k];
-                fall[k][2] = denqrs3[k] * worka[k] / delz[k];
             }
-            fall[0][0] = delqrs1 / delz[0] / dtcld;
-            fall[0][1] = delqrs2 / delz[0] / dtcld;
-            fall[0][2] = delqrs3 / delz[0] / dtcld;
+            Real fall0_0 = delqrs1 / delz[0] / dtcld;
+            Real fall0_1 = delqrs2 / delz[0] / dtcld;
+            Real fall0_2 = delqrs3 / delz[0] / dtcld;
 
             slope_wsm6(nz, qr, qs, qg, den, denfac, t, rslope, rslopeb, rslope2, rslope3, vt);
 
@@ -910,8 +937,8 @@ struct Wsm6Params {
                 }
             }
 
-            Real work1c[kMaxLevels];
-            Real denqci[kMaxLevels];
+            Real* work1c = workr;
+            Real* denqci = denqrs1;
             for (int k = nz - 1; k >= 0; --k) {
                 if (qi[k] <= 0.0) {
                     work1c[k] = 0.0;
@@ -923,15 +950,16 @@ struct Wsm6Params {
                 denqci[k] = den[k] * qi[k];
             }
             Real delqi = 0.0;
-            nislfv_rain_plm(nz, den, denfac, t, delz, work1c, denqci, delqi, dtcld, 1, 0);
+            nislfv_rain_plm(nz, den, denfac, t, delz, work1c, denqci, delqi, dtcld, 1, 0,
+                            plm_zi, plm_za, plm_dza, plm_qa, plm_wi, plm_wd, plm_wa, plm_was);
             for (int k = 0; k < nz; ++k) {
                 qi[k] = std::max(denqci[k] / den[k], static_cast<Real>(0.0));
             }
             Real fallc = delqi / delz[0] / dtcld;
 
-            Real fallsum = fall[0][0] + fall[0][1] + fall[0][2] + fallc;
-            Real fallsum_qsi = fall[0][1] + fallc;
-            Real fallsum_qg = fall[0][2];
+            Real fallsum = fall0_0 + fall0_1 + fall0_2 + fallc;
+            Real fallsum_qsi = fall0_1 + fallc;
+            Real fallsum_qg = fall0_2;
             if (fallsum > 0.0) {
                 Real d_rain = fallsum * delz[0] / denr * dtcld * 1000.0;
                 rainncv += d_rain;
@@ -993,16 +1021,11 @@ struct Wsm6Params {
 
             slope_wsm6(nz, qr, qs, qg, den, denfac, t, rslope, rslopeb, rslope2, rslope3, vt);
 
-            Real work1[kMaxLevels][2];
-            Real work2[kMaxLevels];
-            for (int k = 0; k < nz; ++k) {
-                work1[k][0] = diffac(xl[k], p[k], t[k], den[k], qsat[k][0]);
-                work1[k][1] = diffac(xls, p[k], t[k], den[k], qsat[k][1]);
-                work2[k] = venfac(p[k], t[k], den[k]);
-            }
-
             // Warm and cold rain microphysics
             for (int k = 0; k < nz; ++k) {
+                const Real work1_0 = diffac(xl[k], p[k], t[k], den[k], qsat[k][0]);
+                const Real work1_1 = diffac(xls, p[k], t[k], den[k], qsat[k][1]);
+                const Real work2_k = venfac(p[k], t[k], den[k]);
                 Real supsat = std::max(q[k], qmin) - qsat[k][0];
                 Real satdt = supsat / dtcld;
 
@@ -1022,7 +1045,7 @@ struct Wsm6Params {
                 // prevp
                 if (qr[k] > 0.0) {
                     Real coeres = rslope2[k][0] * std::sqrt(rslope[k][0] * rslopeb[k][0]);
-                    prevp = (rh[k][0] - 1.0) * (precr1 * rslope2[k][0] + precr2 * work2[k] * coeres) / work1[k][0];
+                    prevp = (rh[k][0] - 1.0) * (precr1 * rslope2[k][0] + precr2 * work2_k * coeres) / work1_0;
                     if (prevp < 0.0) {
                         prevp = std::max(prevp, -qr[k] / dtcld);
                         prevp = std::max(prevp, satdt / static_cast<Real>(2.0));
@@ -1164,7 +1187,7 @@ struct Wsm6Params {
 
                 if (supcol > 0.0) {
                     if (qi[k] > 0.0 && ifsat != 1) {
-                        pidep = 4.0 * diameter * xni[k] * (rh[k][1] - 1.0) / work1[k][1];
+                        pidep = 4.0 * diameter * xni[k] * (rh[k][1] - 1.0) / work1_1;
                         Real supice = satdt_ice - prevp;
                         if (pidep < 0.0) {
                             pidep = std::max(std::max(pidep, satdt_ice / static_cast<Real>(2.0)), supice);
@@ -1178,7 +1201,7 @@ struct Wsm6Params {
                     if (qs[k] > 0.0 && ifsat != 1) {
                         Real coeres = rslope2[k][1] * std::sqrt(rslope[k][1] * rslopeb[k][1]);
                         psdep = (rh[k][1] - 1.0) * n0sfac_val * (precs1 * rslope2[k][1]
-                            + precs2 * work2[k] * coeres) / work1[k][1];
+                            + precs2 * work2_k * coeres) / work1_1;
                         Real supice = satdt_ice - prevp - pidep;
                         if (psdep < 0.0) {
                             psdep = std::max(psdep, -qs[k] / dtcld);
@@ -1192,7 +1215,7 @@ struct Wsm6Params {
                     if (qg[k] > 0.0 && ifsat != 1) {
                         Real coeres = rslope2[k][2] * std::sqrt(rslope[k][2] * rslopeb[k][2]);
                         pgdep = (rh[k][1] - 1.0) * (precg1 * rslope2[k][2]
-                            + precg2 * work2[k] * coeres) / work1[k][1];
+                            + precg2 * work2_k * coeres) / work1_1;
                         Real supice = satdt_ice - prevp - pidep - psdep;
                         if (pgdep < 0.0) {
                             pgdep = std::max(pgdep, -qg[k] / dtcld);
@@ -1228,13 +1251,13 @@ struct Wsm6Params {
                     if (qs[k] > 0.0 && rh[k][0] < 1.0) {
                         Real coeres = rslope2[k][1] * std::sqrt(rslope[k][1] * rslopeb[k][1]);
                         psevp = (rh[k][0] - 1.0) * n0sfac_val * (precs1 * rslope2[k][1]
-                            + precs2 * work2[k] * coeres) / work1[k][0];
+                            + precs2 * work2_k * coeres) / work1_0;
                         psevp = std::min(std::max(psevp, -qs[k] / dtcld), static_cast<Real>(0.0));
                     }
                     if (qg[k] > 0.0 && rh[k][0] < 1.0) {
                         Real coeres = rslope2[k][2] * std::sqrt(rslope[k][2] * rslopeb[k][2]);
                         pgevp = (rh[k][0] - 1.0) * (precg1 * rslope2[k][2]
-                            + precg2 * work2[k] * coeres) / work1[k][0];
+                            + precg2 * work2_k * coeres) / work1_0;
                         pgevp = std::min(std::max(pgevp, -qg[k] / dtcld), static_cast<Real>(0.0));
                     }
                 }
@@ -1424,7 +1447,7 @@ struct Wsm6Params {
     }
 };
 
-template <typename Real>
+template <typename Real, int MaxLevels = kMaxLevels>
 struct Wsm6Kernel {
     Wsm6Params<Real> params;
     Real dt;
@@ -1452,18 +1475,18 @@ struct Wsm6Kernel {
     View2<Real> sr;
 
     CPPWRF_HD void operator()(int i, int j) const {
-        Real th_col[kMaxLevels];
-        Real q_col[kMaxLevels];
-        Real qc_col[kMaxLevels];
-        Real qr_col[kMaxLevels];
-        Real qi_col[kMaxLevels];
-        Real qs_col[kMaxLevels];
-        Real qg_col[kMaxLevels];
+        Real th_col[MaxLevels];
+        Real q_col[MaxLevels];
+        Real qc_col[MaxLevels];
+        Real qr_col[MaxLevels];
+        Real qi_col[MaxLevels];
+        Real qs_col[MaxLevels];
+        Real qg_col[MaxLevels];
 
-        Real den_col[kMaxLevels];
-        Real pii_col[kMaxLevels];
-        Real p_col[kMaxLevels];
-        Real delz_col[kMaxLevels];
+        Real den_col[MaxLevels];
+        Real pii_col[MaxLevels];
+        Real p_col[MaxLevels];
+        Real delz_col[MaxLevels];
 
         for (int k = 0; k < nz; ++k) {
             th_col[k] = th(i, j, k);
@@ -1488,10 +1511,11 @@ struct Wsm6Kernel {
         Real graupelncv_val = graupelncv(i, j);
         Real sr_val = sr(i, j);
 
-        params(nz, dt, th_col, q_col, qc_col, qr_col, qi_col, qs_col, qg_col,
-               den_col, pii_col, p_col, delz_col,
-               rain_val, rainncv_val, snow_val, snowncv_val,
-               graupel_val, graupelncv_val, sr_val);
+        params.template operator()<MaxLevels>(
+            nz, dt, th_col, q_col, qc_col, qr_col, qi_col, qs_col, qg_col,
+            den_col, pii_col, p_col, delz_col,
+            rain_val, rainncv_val, snow_val, snowncv_val,
+            graupel_val, graupelncv_val, sr_val);
 
         for (int k = 0; k < nz; ++k) {
             th(i, j, k) = th_col[k];

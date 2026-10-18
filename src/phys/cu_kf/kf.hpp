@@ -301,7 +301,10 @@ struct KFKernel {
     View3<T> qc_kf;
     View3<T> qi_kf;
 
-    CPPWRF_HD void operator()(int i, int j) const {
+    CPPWRF_HD void operator()(int i, int j) const { compute<kMaxLevels>(i, j); }
+
+    template <int MaxLevels = kMaxLevels>
+    CPPWRF_HD void compute(int i, int j) const {
         using std::sqrt;
         using std::exp;
         using std::log;
@@ -349,9 +352,8 @@ struct KFKernel {
         cubot(i, j) = static_cast<T>(kx + 1);       // KTE + 1
 
         // Local column scratch arrays
-        T u0[kMaxLevels], v0[kMaxLevels], t0[kMaxLevels], qv0[kMaxLevels], p0[kMaxLevels];
-        T rhoe[kMaxLevels], dzq[kMaxLevels], w0avg1d[kMaxLevels];
-        T tpart_h0[kMaxLevels], tpart_v0[kMaxLevels];
+        T u0[MaxLevels], v0[MaxLevels], t0[MaxLevels], qv0[MaxLevels], p0[MaxLevels];
+        T dzq[MaxLevels];
 
         for (int k = 0; k < kx; ++k) {
             u0[k] = u(i, j, k);
@@ -359,11 +361,7 @@ struct KFKernel {
             t0[k] = t(i, j, k);
             qv0[k] = qv(i, j, k);
             p0[k] = pcps(i, j, k);
-            rhoe[k] = rho(i, j, k);
             dzq[k] = dz8w(i, j, k);
-            w0avg1d[k] = w0avg(i, j, k);
-            tpart_h0[k] = static_cast<T>(0.0);
-            tpart_v0[k] = static_cast<T>(0.0);
         }
 
         // --- Call KF_eta_PARA logic ---
@@ -386,29 +384,26 @@ struct KFKernel {
         const T dpmin = static_cast<T>(5.0e3);
         const T p300 = p0[0] - static_cast<T>(30000.0);
 
-        T q0[kMaxLevels], z0[kMaxLevels], tv0[kMaxLevels], tu[kMaxLevels], tvu[kMaxLevels];
-        T qu[kMaxLevels], tz[kMaxLevels], tvd[kMaxLevels], qd[kMaxLevels], qes[kMaxLevels];
-        T tg[kMaxLevels], tvg[kMaxLevels], qg[kMaxLevels], wu[kMaxLevels], wd[kMaxLevels];
-        T ems[kMaxLevels], emsd[kMaxLevels], umf[kMaxLevels], uer[kMaxLevels], udr[kMaxLevels];
-        T dmf[kMaxLevels], der[kMaxLevels], ddr[kMaxLevels], umf2[kMaxLevels], uer2[kMaxLevels];
-        T udr2[kMaxLevels], dmf2[kMaxLevels], der2[kMaxLevels], ddr2[kMaxLevels], dza[kMaxLevels];
-        T thta0[kMaxLevels], thetee[kMaxLevels], thtau[kMaxLevels], theteu[kMaxLevels];
-        T thtad[kMaxLevels], theted[kMaxLevels], qliq[kMaxLevels], qice[kMaxLevels];
-        T qlqout[kMaxLevels], qicout[kMaxLevels], pptliq[kMaxLevels], pptice[kMaxLevels];
-        T detlq[kMaxLevels], detic[kMaxLevels], detlq2[kMaxLevels], detic2[kMaxLevels];
-        T ratio2[kMaxLevels], domgdp[kMaxLevels], exn[kMaxLevels], tvqu[kMaxLevels];
-        T dp[kMaxLevels], rh[kMaxLevels], eqfrc[kMaxLevels], wspd[kMaxLevels];
-        T qdt[kMaxLevels], fxm[kMaxLevels], thtag[kMaxLevels], thpa[kMaxLevels];
-        T thfxout[kMaxLevels], thfxin[kMaxLevels], qpa[kMaxLevels], qfxout[kMaxLevels];
-        T qfxin[kMaxLevels], qlpa[kMaxLevels], qlfxin[kMaxLevels], qlfxout[kMaxLevels];
-        T qipa[kMaxLevels], qifxin[kMaxLevels], qifxout[kMaxLevels], qrpa[kMaxLevels];
-        T qrfxin[kMaxLevels], qrfxout[kMaxLevels], qspa[kMaxLevels], qsfxin[kMaxLevels];
-        T qsfxout[kMaxLevels], ql0[kMaxLevels], qlg[kMaxLevels], qi0[kMaxLevels];
-        T qig[kMaxLevels], qr0[kMaxLevels], qrg[kMaxLevels], qs0[kMaxLevels], qsg[kMaxLevels];
-        T rainfb[kMaxLevels], snowfb[kMaxLevels], cldhgt[kMaxLevels], qsd[kMaxLevels];
-        T dilfrc[kMaxLevels], ddilfrc[kMaxLevels], tgu[kMaxLevels], qgu[kMaxLevels], thteeg[kMaxLevels];
-        T omg[kMaxLevels + 1];
-        int kcheck[kMaxLevels];
+        T q0[MaxLevels], z0[MaxLevels], tv0[MaxLevels], tu[MaxLevels], tvu[MaxLevels];
+        T qu[MaxLevels], tz[MaxLevels], tvd[MaxLevels], qd[MaxLevels], qes[MaxLevels];
+        T tg[MaxLevels], tvg[MaxLevels], qg[MaxLevels], wu[MaxLevels], wd[MaxLevels];
+        T ems[MaxLevels], emsd[MaxLevels], umf[MaxLevels], uer[MaxLevels], udr[MaxLevels];
+        T dmf[MaxLevels], der[MaxLevels], ddr[MaxLevels], umf2[MaxLevels], uer2[MaxLevels];
+        T udr2[MaxLevels], dmf2[MaxLevels], der2[MaxLevels], ddr2[MaxLevels], dza[MaxLevels];
+        T thta0[MaxLevels], thetee[MaxLevels], thtau[MaxLevels], theteu[MaxLevels];
+        T thtad[MaxLevels], theted[MaxLevels], qliq[MaxLevels], qice[MaxLevels];
+        T qlqout[MaxLevels], qicout[MaxLevels], pptliq[MaxLevels], pptice[MaxLevels];
+        T detlq[MaxLevels], detic[MaxLevels], detlq2[MaxLevels], detic2[MaxLevels];
+        T ratio2[MaxLevels], domgdp[MaxLevels], tvqu[MaxLevels];
+        T dp[MaxLevels], rh[MaxLevels], eqfrc[MaxLevels], wspd[MaxLevels];
+        T qdt[MaxLevels], fxm[MaxLevels], thtag[MaxLevels], thpa[MaxLevels];
+        T thfxout[MaxLevels], thfxin[MaxLevels], qpa[MaxLevels], qfxout[MaxLevels];
+        T qfxin[MaxLevels], ql0[MaxLevels], qlg[MaxLevels], qi0[MaxLevels];
+        T qig[MaxLevels], qr0[MaxLevels], qrg[MaxLevels], qs0[MaxLevels], qsg[MaxLevels];
+        T rainfb[MaxLevels], snowfb[MaxLevels], cldhgt[MaxLevels], qsd[MaxLevels];
+        T dilfrc[MaxLevels], ddilfrc[MaxLevels], tgu[MaxLevels], qgu[MaxLevels], thteeg[MaxLevels];
+        T omg[MaxLevels + 1];
+        int kcheck[MaxLevels];
 
         int l5 = 0;
         int llfc = 0;
@@ -424,7 +419,7 @@ struct KFKernel {
             rh[k] = q0[k] / qes[k];
             dilfrc[k] = static_cast<T>(1.0);
             tv0[k] = t0[k] * (static_cast<T>(1.0) + static_cast<T>(0.608) * q0[k]);
-            dp[k] = rhoe[k] * g * dzq[k];
+            dp[k] = rho(i, j, k) * g * dzq[k];
             cldhgt[k] = static_cast<T>(0.0);
             if (p0[k] >= static_cast<T>(0.5) * p0[0]) l5 = k;
             if (p0[k] >= p300) llfc = k;
@@ -560,11 +555,12 @@ struct KFKernel {
 
             T wklcl = (zlcl < static_cast<T>(2.0e3)) ? static_cast<T>(0.02) * zlcl / static_cast<T>(2.0e3)
                                                      : static_cast<T>(0.02);
-            wkl = (w0avg1d[k_lcl] + (w0avg1d[klcl] - w0avg1d[k_lcl]) * dlp) * dx / static_cast<T>(25.0e3) - wklcl;
+            const T w0_klclm1 = w0avg(i, j, k_lcl);
+            const T w0_klcl = w0avg(i, j, klcl);
+            wkl = (w0_klclm1 + (w0_klcl - w0_klclm1) * dlp) * dx / static_cast<T>(25.0e3) - wklcl;
             T dtlcl = (wkl < static_cast<T>(0.0001)) ? static_cast<T>(0.0) : static_cast<T>(4.64) * pow(wkl, static_cast<T>(0.33));
             if (trigger == 2) {
-                T sum = tpart_h0[klcl] + tpart_v0[klcl];
-                dtlcl = (sum > static_cast<T>(0.0)) ? sum : static_cast<T>(0.0);
+                dtlcl = static_cast<T>(0.0);
             }
             T dtrh = static_cast<T>(0.0);
             if (trigger == 3) {
@@ -972,10 +968,10 @@ struct KFKernel {
         for (int nk = 0; nk <= ltop; ++nk) {
             ems[nk] = dp[nk] * dxsq / g;
             emsd[nk] = static_cast<T>(1.0) / ems[nk];
-            exn[nk] = vm::pow(p00 / p0[nk], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qdt[nk]), nk, ltop + 1);
-            thtau[nk] = tu[nk] * exn[nk];
-            exn[nk] = vm::pow(p00 / p0[nk], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * q0[nk]), nk, ltop + 1);
-            thta0[nk] = t0[nk] * exn[nk];
+            T exn_nk = vm::pow(p00 / p0[nk], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qdt[nk]), nk, ltop + 1);
+            thtau[nk] = tu[nk] * exn_nk;
+            exn_nk = vm::pow(p00 / p0[nk], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * q0[nk]), nk, ltop + 1);
+            thta0[nk] = t0[nk] * exn_nk;
             ddilfrc[nk] = static_cast<T>(1.0) / dilfrc[nk];
             omg[nk] = static_cast<T>(0.0);
         }
@@ -1313,8 +1309,8 @@ struct KFKernel {
             }
 
             for (int nk = 0; nk <= ltop; ++nk) {
-                exn[nk] = vm::pow(p00 / p0[nk], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qg[nk]), nk, ltop + 1);
-                tg[nk] = thtag[nk] / exn[nk];
+                T exn_nk = vm::pow(p00 / p0[nk], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qg[nk]), nk, ltop + 1);
+                tg[nk] = thtag[nk] / exn_nk;
                 tvg[nk] = tg[nk] * (static_cast<T>(1.0) + static_cast<T>(0.608) * qg[nk]);
             }
             if (ishall == 1) {
@@ -1466,7 +1462,20 @@ struct KFKernel {
             }
         }
 
-        // Hydrometeor tendencies
+        // Hydrometeor tendencies (alias dead closure scratch arrays)
+        T* qlpa = umf2;
+        T* qipa = dmf2;
+        T* qrpa = detlq2;
+        T* qspa = detic2;
+        T* qlfxin = thfxin;
+        T* qlfxout = thfxout;
+        T* qifxin = qfxin;
+        T* qifxout = qfxout;
+        T* qrfxin = udr2;
+        T* qrfxout = uer2;
+        T* qsfxin = der2;
+        T* qsfxout = ddr2;
+
         T frc2 = (cpr > static_cast<T>(0.0)) ? (pptflx / (cpr * ainc)) : static_cast<T>(0.0);
         for (int nk = 0; nk <= ltop; ++nk) {
             qlpa[nk] = ql0[nk];
@@ -1533,17 +1542,21 @@ struct KFKernel {
             nca(i, j) = cudt * static_cast<T>(60.0);
         }
 
-        T dqcdt[kMaxLevels], dqidt[kMaxLevels], dqrdt[kMaxLevels], dqsdt[kMaxLevels];
-        T dtdt[kMaxLevels], dqdt[kMaxLevels];
+        // WRF: PRATEC = PPTFLX*(1.-FBFRC)/DXSQ, RAINCV = DT*PRATEC, unclipped (can be a tiny negative)
+        pratec(i, j) = pptflx * (static_cast<T>(1.0) - fbfrc) / dxsq;
+        raincv(i, j) = dt * pratec(i, j);
+        cutop(i, j) = static_cast<T>(ltop + 1); // 1-based level
+        cubot(i, j) = static_cast<T>(lcl + 1);  // 1-based level
 
         for (int k_idx = 0; k_idx < kx; ++k_idx) {
+            T dqcdt_k, dqidt_k, dqrdt_k, dqsdt_k;
             if (warm_rain) {
                 T cpm = cp * (static_cast<T>(1.0) + static_cast<T>(0.887) * qg[k_idx]);
                 tg[k_idx] -= (qig[k_idx] + qsg[k_idx]) * rlf / cpm;
-                dqcdt[k_idx] = (qlg[k_idx] + qig[k_idx] - ql0[k_idx] - qi0[k_idx]) / timec;
-                dqidt[k_idx] = static_cast<T>(0.0);
-                dqrdt[k_idx] = (qrg[k_idx] + qsg[k_idx] - qr0[k_idx] - qs0[k_idx]) / timec;
-                dqsdt[k_idx] = static_cast<T>(0.0);
+                dqcdt_k = (qlg[k_idx] + qig[k_idx] - ql0[k_idx] - qi0[k_idx]) / timec;
+                dqidt_k = static_cast<T>(0.0);
+                dqrdt_k = (qrg[k_idx] + qsg[k_idx] - qr0[k_idx] - qs0[k_idx]) / timec;
+                dqsdt_k = static_cast<T>(0.0);
             } else if (!flag_qs) {
                 T cpm = cp * (static_cast<T>(1.0) + static_cast<T>(0.887) * qg[k_idx]);
                 if (k_idx <= ml) {
@@ -1551,45 +1564,42 @@ struct KFKernel {
                 } else {
                     tg[k_idx] += (qlg[k_idx] + qrg[k_idx]) * rlf / cpm;
                 }
-                dqcdt[k_idx] = (qlg[k_idx] + qig[k_idx] - ql0[k_idx] - qi0[k_idx]) / timec;
-                dqidt[k_idx] = static_cast<T>(0.0);
-                dqrdt[k_idx] = (qrg[k_idx] + qsg[k_idx] - qr0[k_idx] - qs0[k_idx]) / timec;
-                dqsdt[k_idx] = static_cast<T>(0.0);
+                dqcdt_k = (qlg[k_idx] + qig[k_idx] - ql0[k_idx] - qi0[k_idx]) / timec;
+                dqidt_k = static_cast<T>(0.0);
+                dqrdt_k = (qrg[k_idx] + qsg[k_idx] - qr0[k_idx] - qs0[k_idx]) / timec;
+                dqsdt_k = static_cast<T>(0.0);
             } else {
-                dqcdt[k_idx] = (qlg[k_idx] - ql0[k_idx]) / timec;
-                dqsdt[k_idx] = (qsg[k_idx] - qs0[k_idx]) / timec;
-                dqrdt[k_idx] = (qrg[k_idx] - qr0[k_idx]) / timec;
+                dqcdt_k = (qlg[k_idx] - ql0[k_idx]) / timec;
+                dqsdt_k = (qsg[k_idx] - qs0[k_idx]) / timec;
+                dqrdt_k = (qrg[k_idx] - qr0[k_idx]) / timec;
                 if (flag_qi) {
-                    dqidt[k_idx] = (qig[k_idx] - qi0[k_idx]) / timec;
+                    dqidt_k = (qig[k_idx] - qi0[k_idx]) / timec;
                 } else {
-                    dqsdt[k_idx] += (qig[k_idx] - qi0[k_idx]) / timec;
+                    dqsdt_k += (qig[k_idx] - qi0[k_idx]) / timec;
                 }
             }
-            dtdt[k_idx] = (tg[k_idx] - t0[k_idx]) / timec;
-            dqdt[k_idx] = (qg[k_idx] - q0[k_idx]) / timec;
-        }
+            T dtdt_k = (tg[k_idx] - t0[k_idx]) / timec;
+            T dqdt_k = (qg[k_idx] - q0[k_idx]) / timec;
 
-        // WRF: PRATEC = PPTFLX*(1.-FBFRC)/DXSQ, RAINCV = DT*PRATEC, unclipped (can be a tiny negative)
-        pratec(i, j) = pptflx * (static_cast<T>(1.0) - fbfrc) / dxsq;
-        raincv(i, j) = dt * pratec(i, j);
-        cutop(i, j) = static_cast<T>(ltop + 1); // 1-based level
-        cubot(i, j) = static_cast<T>(lcl + 1);  // 1-based level
-
-        // Feedback to 3D model tendencies
-        for (int k_idx = 0; k_idx < kx; ++k_idx) {
-            rthcuten(i, j, k_idx) = dtdt[k_idx] / pi(i, j, k_idx);
-            rqvcuten(i, j, k_idx) = dqdt[k_idx];
+            rthcuten(i, j, k_idx) = dtdt_k / pi(i, j, k_idx);
+            rqvcuten(i, j, k_idx) = dqdt_k;
             if (flag_qr) {
-                rqrcuten(i, j, k_idx) = dqrdt[k_idx];
-                rqccuten(i, j, k_idx) = dqcdt[k_idx];
+                rqrcuten(i, j, k_idx) = dqrdt_k;
+                rqccuten(i, j, k_idx) = dqcdt_k;
             } else {
                 rqrcuten(i, j, k_idx) = static_cast<T>(0.0);
-                rqccuten(i, j, k_idx) = dqrdt[k_idx] + dqcdt[k_idx];
+                rqccuten(i, j, k_idx) = dqrdt_k + dqcdt_k;
             }
-            if (flag_qi) rqicuten(i, j, k_idx) = dqidt[k_idx];
-            if (flag_qs) rqscuten(i, j, k_idx) = dqsdt[k_idx];
+            if (flag_qi) rqicuten(i, j, k_idx) = dqidt_k;
+            if (flag_qs) rqscuten(i, j, k_idx) = dqsdt_k;
         }
     }
+};
+
+template <typename T, int MaxLevels>
+struct KFRunner {
+    KFKernel<T> k;
+    CPPWRF_HD void operator()(int i, int j) const { k.template compute<MaxLevels>(i, j); }
 };
 
 template <typename T>

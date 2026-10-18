@@ -8,36 +8,39 @@ namespace cppwrf::phys {
 
 // Computes in-cloud optical depth taucmc[ig][lay] for McICA subcolumns.
 // Matches WRF module_ra_rrtmg_lw subroutine cldprmc.
-CPPWRF_HD inline void rrtmg_lw_cldprmc(
+CPPWRF_FORCEINLINE void rrtmg_lw_cldprmc(
     int nlayers,
     int inflag,
     int iceflag,
     int liqflag,
-    SD2 cldfmc,   // [140][nlayers] McICA cloud flags (0 or 1)
-    SD ciwpth,    // [nlayers] in-cloud paths: the McICA subcolumn paths are these where cldfmc = 1
-    SD clwpth,    //           and 0 elsewhere (generate_stochastic_clouds)
-    SD cswpth,
-    SD reicmc,          // [nlayers]
-    SD relqmc,          // [nlayers]
-    SD resnmc,          // [nlayers]
-    SD2 taucmc,         // [140][nlayers] (inout)
-    const RrtmgLwTables& tables,
+    CSD2 cldfmc,   // [140][nlayers] McICA cloud flags (0 or 1)
+    CSD ciwpth,    // [nlayers] in-cloud paths: the McICA subcolumn paths are these where cldfmc = 1
+    CSD clwpth,    //           and 0 elsewhere (generate_stochastic_clouds)
+    CSD cswpth,
+    CSD reicmc,          // [nlayers]
+    CSD relqmc,          // [nlayers]
+    CSD resnmc,          // [nlayers]
+    SD2 taucmc,          // [140][nlayers] (inout)
+    const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1)
 ) {
   constexpr double cldmin = 1.0e-20;
   const int icb[16] = {0, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4};
 
   for (int lay = lay0; lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
+    const double ciwp_l = ciwpth[lay], clwp_l = clwpth[lay], cswp_l = cswpth[lay];
+    const double radice = reicmc[lay], radliq = relqmc[lay], radsno = resnmc[lay];
+#pragma unroll 1
     for (int ig = 0; ig < 140; ++ig) {
-      const bool cl = cldfmc[ig][lay] == 1.0;
-      const double ciwp = cl ? ciwpth[lay] : 0.0, clwp = cl ? clwpth[lay] : 0.0, cswp = cl ? cswpth[lay] : 0.0;
+      const double cf = cldfmc[ig][lay];
+      const bool cl = cf == 1.0;
+      const double ciwp = cl ? ciwp_l : 0.0, clwp = cl ? clwp_l : 0.0, cswp = cl ? cswp_l : 0.0;
       double cwp = ciwp + clwp + cswp;
-      if (cldfmc[ig][lay] >= cldmin && (cwp >= cldmin || taucmc[ig][lay] >= cldmin)) {
+      if (cf >= cldmin && (cwp >= cldmin || (inflag == 0 && taucmc[ig][lay] >= cldmin))) {
         if (inflag == 0) {
           // Cloud optical depth already defined in taucmc
           return;
         } else if (inflag >= 2) {
-          double radice = reicmc[lay];
           double abscoice = 0.0;
           double abscosno = 0.0;
 
@@ -73,7 +76,6 @@ CPPWRF_HD inline void rrtmg_lw_cldprmc(
 
           // Incorporate snow if iceflag == 5
           if (cswp > 0.0 && iceflag == 5) {
-            double radsno = resnmc[lay];
             double factor = (radsno - 2.0) / 3.0;
             int index = static_cast<int>(factor);
             if (index >= 46) index = 45;
@@ -92,7 +94,6 @@ CPPWRF_HD inline void rrtmg_lw_cldprmc(
               abscoliq = tables.absliq0;
             } else if (liqflag == 1) {
               // Hu and Stamnes (1993)
-              double radliq = relqmc[lay];
               int index = static_cast<int>(radliq - 1.5);
               if (index < 1) index = 1;
               if (index >= 58) index = 57;

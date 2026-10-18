@@ -78,7 +78,11 @@ void run_ysu(
       cp, g, rovcp, rd, rovg, ep1, ep2, karman, xlv, rv};
 
   if (const char* e = std::getenv("CPPWRF_YSU_DBG")) std::sscanf(e, "%d,%d", &kernel.dbg_i, &kernel.dbg_j);
-  column_for(range, kernel);
+  if (nz <= 48) {
+    column_for(range, YSURunner<48>{kernel});
+  } else {
+    column_for(range, YSURunner<kMaxLevels>{kernel});
+  }
 }
 
 }  // namespace cppwrf::phys::ysu

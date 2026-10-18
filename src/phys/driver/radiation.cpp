@@ -42,17 +42,26 @@ void radconst(double julian, double& declin, double& solcon) {
 
 #if defined(CPPWRF_USE_CUDA)
 // device path: model fields -> double arrays with the column index fastest (col = i + nx*j)
-struct KStage3 {
-  View3<const real> f;
-  double* d;
-  int nx, ncol;
-  CPPWRF_HD void operator()(int i, int j, int k) const { d[std::size_t(k) * ncol + i + nx * j] = double(f(i, j, k)); }
-};
-struct KStage2 {
-  View2<const real> f;
-  double* d;
-  int nx;
-  CPPWRF_HD void operator()(int i, int j, int) const { d[i + nx * j] = double(f(i, j)); }
+struct KStageAll {
+  int nx, nz, ncol, n3;
+  View3<const real> f3w[2];
+  double* d3w[2];
+  View3<const real> f3[10];
+  double* d3[10];
+  View2<const real> f2[6];
+  double* d2[6];
+  CPPWRF_HD void operator()(int i, int j, int k) const {
+    const int col = i + nx * j;
+    const std::size_t idx = std::size_t(k) * ncol + col;
+    d3w[0][idx] = double(f3w[0](i, j, k));
+    d3w[1][idx] = double(f3w[1](i, j, k));
+    if (k < nz) {
+      for (int m = 0; m < n3; ++m) d3[m][idx] = double(f3[m](i, j, k));
+    }
+    if (k == 0) {
+      for (int m = 0; m < 6; ++m) d2[m][col] = double(f2[m](i, j));
+    }
+  }
 };
 // per column: calc_coszen at xtime + radt/2, CAM ozone (ozn_time_int, ozn_p_int), cal_cldfra1
 struct KRadColumn {
@@ -228,20 +237,27 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
     if (o_.icloud != 0 && o_.icloud != 1) throw std::runtime_error("radiation: only icloud = 0 or 1 are ported");
     if (in.qc && !in.qi && in.qs) throw std::runtime_error("radiation: F_QC, F_QS without F_QI is not ported");
     const bool clouds = o_.icloud != 0 && in.qc != nullptr;
-    auto st3 = [&](const Field3* f, double* d, int nlev) {
-      parallel_for(Range3D{0, nx, 0, ny, 0, nlev}, KStage3{f->cview(), d, nx, ncol});
+    KStageAll ks{};
+    ks.nx = nx; ks.nz = nz; ks.ncol = ncol; ks.n3 = 0;
+    ks.f3w[0] = in.p_hyd_w->cview(); ks.d3w[0] = q.p8w;
+    ks.f3w[1] = in.t8w->cview();     ks.d3w[1] = q.t8w;
+    auto add3 = [&](const Field3* f, double* d) {
+      if (f) {
+        ks.f3[ks.n3] = f->cview();
+        ks.d3[ks.n3] = d;
+        ++ks.n3;
+      }
     };
-    auto st2 = [&](const Field2* f, double* d) { parallel_for(Range3D{0, nx, 0, ny, 0, 1}, KStage2{f->cview(), d, nx}); };
-    st3(in.p_hyd_w, q.p8w, nz + 1); st3(in.t8w, q.t8w, nz + 1); st3(in.p_hyd, q.p3d, nz); st3(in.pi_phy, q.pi3d, nz);
-    st3(in.t_phy, q.t3d, nz); st3(in.qv, q.qv, nz);
-    if (in.qc) st3(in.qc, q.qc, nz);
-    if (in.qi) st3(in.qi, q.qi, nz);
-    if (in.qs) st3(in.qs, q.qs, nz);
-    if (in.re_cloud) st3(in.re_cloud, q.rec, nz);
-    if (in.re_ice) st3(in.re_ice, q.rei, nz);
-    if (in.re_snow) st3(in.re_snow, q.res, nz);
-    st2(in.tsk, q.tsk); st2(in.emiss, q.emiss); st2(in.xland, q.xland); st2(in.xice, q.xice); st2(in.snow, q.snow);
-    st2(in.albedo, q.albedo);
+    add3(in.p_hyd, q.p3d); add3(in.pi_phy, q.pi3d); add3(in.t_phy, q.t3d); add3(in.qv, q.qv);
+    add3(in.qc, q.qc); add3(in.qi, q.qi); add3(in.qs, q.qs);
+    add3(in.re_cloud, q.rec); add3(in.re_ice, q.rei); add3(in.re_snow, q.res);
+    ks.f2[0] = in.tsk->cview();    ks.d2[0] = q.tsk;
+    ks.f2[1] = in.emiss->cview();  ks.d2[1] = q.emiss;
+    ks.f2[2] = in.xland->cview();  ks.d2[2] = q.xland;
+    ks.f2[3] = in.xice->cview();   ks.d2[3] = q.xice;
+    ks.f2[4] = in.snow->cview();   ks.d2[4] = q.snow;
+    ks.f2[5] = in.albedo->cview(); ks.d2[5] = q.albedo;
+    parallel_for(Range3D{0, nx, 0, ny, 0, nz + 1}, ks);
     KRadColumn kc{};
     kc.nx = nx; kc.nz = nz; kc.ncol = ncol;
     kc.julian = julian; kc.xtime_mid = xtime + o_.radt * 0.5; kc.gmt = o_.gmt; kc.declin = declin;
