@@ -30,12 +30,14 @@ const char* bc_name(BC b) {
 }
 
 #ifdef CPPWRF_HAVE_NETCDF
-// A WRF restart file (wrfrst_d0N): global attribute FLAG_RESTART
+// A WRF restart file (wrfrst_d0N): FLAG_RESTART and WRF's Times variable (CPPWRF's own restart files
+// have FLAG_RESTART without Times)
 bool is_wrfrst(const std::string& path) {
   int id;
   if (nc_open(path.c_str(), NC_NOWRITE, &id) != NC_NOERR) return false;
-  int flag = 0;
-  const bool r = nc_get_att_int(id, NC_GLOBAL, "FLAG_RESTART", &flag) == NC_NOERR;
+  int flag = 0, vid;
+  const bool r = nc_get_att_int(id, NC_GLOBAL, "FLAG_RESTART", &flag) == NC_NOERR &&
+                 nc_inq_varid(id, "Times", &vid) == NC_NOERR;
   nc_close(id);
   return r;
 }
