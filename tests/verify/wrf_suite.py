@@ -204,7 +204,7 @@ CASES = [
     ("ideal_quarter_ss_fp64_cuda", "cuda_dp", "configs/wrf_quarter_ss.ini",
      ["run.run_time=7200", "output.out_interval=50", "output.diag_interval=50"],
      f"{WREF}/r8/run_qss/wrfout_d01_0001-01-01_00:00:00", 7200,
-     {"U": 1e-3, "W": 1e-2, "THM": 1e-4, "QV": 1e-3}),
+     {"U": 1e-12, "W": 1e-11, "THM": 1e-14, "QV": 1e-12}),
     ("wdamp_w1_fp64", "cpu_dp", "configs/real_r3.ini",
      ["real.dir=" + f"{WR}/run_W1_r8", "time.dt=450", "run.run_time=4500", "output.out_interval=1",
       "output.diag_interval=1"], f"{WR}/run_W1_r8/wrfout_d01_2026-10-12_00:00:00", 4500,
