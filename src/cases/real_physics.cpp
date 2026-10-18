@@ -74,7 +74,8 @@ LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu
     const auto& c = lt.categories[isn - 1][is];
     albbck[p] = c.albd / 100.;
     albedo[p] = albbck[p];
-    if (snowc[p] > 0.5) albedo[p] = albbck[p] * (1. + c.scfx);
+    // SCFX(IS) comes from lu_state: the last season read (see above), not season ISN
+    if (snowc[p] > 0.5) albedo[p] = albbck[p] * (1. + lt.categories[std::max(0, lt.n_seasons - 1)][is].scfx);
     z0[p] = c.sfz0 / 100.;
     embck[p] = c.sfem;
     emiss[p] = embck[p];

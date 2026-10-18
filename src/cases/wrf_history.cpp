@@ -393,6 +393,8 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     for (int q = 0; q < s.n_scalars(); ++q)
       if (s.q_names[std::size_t(q)] == "tke" && base == "TKE") return copy_field(s.q_1[std::size_t(q)], dims, out);
   }
+  // landuse_init and the surface driver set XICEM = XICE (the previous step's sea ice)
+  if (name == "XICEM" && value("SEAICE", "SEAICE", dims, out)) return true;
   if (name == "U") return copy_field(s.u_2, dims, out);
   if (name == "V") return copy_field(s.v_2, dims, out);
   if (name == "W") return copy_field(s.w_2, dims, out);
