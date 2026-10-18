@@ -68,6 +68,7 @@ struct SuiteOptions {
   int num_soil_layers = 4;
   double bldt = 0;               // minutes; 0 = every step
   double cudt = 0;               // minutes; 0 = every step
+  double convtrans_avglen_m = 30.0;  // minutes (module_convtrans_prep.F averaging window)
   int kfeta_trigger = 1;         // 1 = default KF trigger, 3 = RH perturbation
   bool warm_rain = false;        // mp_init: true for mp_physics == 1 (Kessler)
   RadiationOptions rad;          // rad.ra_lw_physics/ra_sw_physics = 0: no radiation
@@ -110,6 +111,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   long itimestep = 0;  // WRF grid%itimestep (incremented in part1, as solve_em does per step)
   int stepbl = 1;      // WRF grid%stepbl (set_physics_rconfigs: nint(bldt*60/dt), >= 1)
   int stepcu = 1;      // WRF grid%stepcu (cu_init: max(nint(cudt*60/dt), 1))
+  int stepave_count = 0;  // module_convtrans_prep.F SAVE variable
   // true (model): keep WRF's grid%t_1 for conv_t_tendf_to_moist, i.e. theta_m at the start of the
   // previous step (the dycore's s.t_1 is the current step start); false: s.t_1 already holds it
   // (the differential test passes WRF's t_1).
@@ -119,7 +121,8 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   Field2 tsk, xland, xice, lakemask, water_depth, mavail, tmn, vegfra, shdmin, shdmax, snoalb, albbck, albedo,
       emiss, embck, znt, z0, ust, ustm, mol, rmol, pblh, hfx, qfx, lh, grdflx, qsfc, flhc, flqc, wspd, br, fm, fh,
       zol, regime, u10, v10, t2, th2, q2, psfc, ch, snow, snowh, snowc, canwat, lai, snotime, qz0, rainbl, raincv,
-      rainncv, rainshv, rainc, rainsh, pratec, pratesh, nca, htop, hbot, cutop, cubot, cuppt, sr, glw, swdown, gsw,
+      raincv_a, raincv_b, rainncv, rainshv, rainc, rainsh, pratec, pratesh, nca, htop, hbot, cutop, cubot, cuppt, sr,
+      glw, swdown, gsw,
       smstav, smstot, sfcrunoff, udrunoff, acsnom, acsnow, snopcx, potevp, noahres, sfcevp, sfcexc, achfx, aclhf,
       acgrdflx, dx2d, var2d, uoce, voce, ctopo, ctopo2, ck, cka, cd, cda, wstar, delta, hol,
       thz0, uz0, vz0, akhs, akms, ct, tshltr, th10, qshltr, q10, pshltr, u10e, v10e, mixht;
@@ -128,7 +131,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   std::vector<double> dzs;            // soil layer thicknesses (m)
   Field3 exch_h, exch_m;              // M (WRF kme-sized; levels 0..nz-1 used)
   Field3 tke_pbl, el_pbl;             // MYJ PBL 3D TKE and master length scale
-  Field3 w0avg, cldfra_dp, cldfra_sh, qc_cu, qi_cu;  // cumulus 3D state and diagnostics
+  Field3 w0avg, cldfra_dp, cldfra_sh, qc_cu, qi_cu, gd_cloud, gd_cloud2, gd_cloud_a, gd_cloud2_a, gd_cldfr;  // cumulus 3D state and diagnostics
   // every persistent field above, the physics tendencies and the phy_prep diagnostics (by WRF name)
   std::vector<const Field2*> fields2() const;
   std::vector<const Field3*> fields3() const;
@@ -174,7 +177,12 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   std::vector<std::pair<std::string, Field2*>> carried2();
   std::vector<std::pair<std::string, Field3*>> carried3();
   std::vector<std::pair<std::string, IntField2*>> carried_int();
-  void restarted(long step) { itimestep = step; t1_lag_set_ = true; }
+  void restarted(long step) {
+    itimestep = step;
+    t1_lag_set_ = true;
+    const int stepave = int(real(o_.convtrans_avglen_m) * real(60.) / real(g_.dt));
+    stepave_count = stepave > 0 ? int(step % stepave) : 0;
+  }
 
  private:
   Grid g_, gs_;
@@ -196,6 +204,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   void surface_driver(const dyn::State& s, const dyn::BaseState& b);
   void pbl_driver(const dyn::State& s, const dyn::BaseState& b);
   void cumulus_driver(const dyn::State& s, const dyn::BaseState& b);
+  void convtrans_prep(const dyn::State& s);
   void advance_ppt(const dyn::State& s);
 };
 

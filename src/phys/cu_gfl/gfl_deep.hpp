@@ -577,8 +577,10 @@ struct GflColumnIn {
   real xmbs_in;
 };
 
+template <typename real>
 struct GflDeepOut {
   int ierr, kbcon, ktop, k22, jmin;
+  real frh_out;
 };
 
 // ---------------------------------------------------------------------------
@@ -587,7 +589,7 @@ struct GflDeepOut {
 // nranflag = 0, do_capsuppress = 0, do_smoke_transport = .false.
 // ---------------------------------------------------------------------------
 template <typename real>
-CPPWRF_HOST_DEVICE inline GflDeepOut cu_gfl_deep_run(
+CPPWRF_HOST_DEVICE inline GflDeepOut<real> cu_gfl_deep_run(
     const GflColumnIn<real>& in, real* outu, real* outv, real* outt, real* outq,
     real* outqc, real* subten_h, real* subten_q, real* subten_t, real* subten_u,
     real* subten_v, real* cupclw, real* cnvwt, real& pre, real& xmb_out) {
@@ -1483,7 +1485,7 @@ CPPWRF_HOST_DEVICE inline GflDeepOut cu_gfl_deep_run(
     }
   }
 
-  return GflDeepOut{ierr, kbcon, ktop, k22, jmin};
+  return GflDeepOut<real>{ierr, kbcon, ktop, k22, jmin, frh_out};
 }
 
 #undef R

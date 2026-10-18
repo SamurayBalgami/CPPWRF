@@ -15,6 +15,9 @@ for c in "$@"; do
   done
   sed -E 's/^( *restart_interval *= *)[0-9]+/\11/' "$src/namelist.input" > namelist.input
   grep -q restart_interval namelist.input || sed -i 's/^ *history_interval/ restart_interval = 1,\n&/' namelist.input
-  "$(readlink -f "$src/wrf.exe")" > wrf.log 2>&1
+  # MALLOC_PERTURB_=128: fills malloc'd buffers with 0x7f (finite float/double) so 0.0*cupclwm
+  # in GFL's module_cu_gfl_wrf.F90 (cupclwm uninitialised when imid=0) does not hit 0.0*NaN
+  # from negative 64-bit integers (0xffffffffffffff..) freed by HDF5 during wrfrst writes.
+  MALLOC_PERTURB_=128 "$(readlink -f "$src/wrf.exe")" > wrf.log 2>&1
   echo "$c: $(grep -c 'SUCCESS COMPLETE WRF' wrf.log rsl.error.0000 2>/dev/null | tr '\n' ' ') $(ls | grep -c wrfrst) restart files"
 done

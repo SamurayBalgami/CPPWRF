@@ -141,6 +141,7 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
     c.set("ra_sw_physics", std::to_string(o.rad.ra_sw_physics));
     c.set("num_soil_layers", std::to_string(o.num_soil_layers));
     c.set("ishallow", std::to_string(o.ishallow)); c.set("isfflx", std::to_string(o.isfflx));
+    c.set("convtrans_avglen_m", str(o.convtrans_avglen_m));
     c.set("isftcflx", std::to_string(o.isftcflx)); c.set("iz0tlnd", std::to_string(o.iz0tlnd));
     c.set("ysu_topdown_pblmix", std::to_string(o.ysu_topdown_pblmix));
     c.set("kim_tofd", o.kim_tofd ? ".true." : ".false.");

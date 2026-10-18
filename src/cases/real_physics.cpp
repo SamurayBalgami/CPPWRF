@@ -10,6 +10,7 @@
 //   - start_em: CTOPO = CTOPO2 = 1 (topo_wind = 0).
 // Every other surface field starts at zero (WRF allocates grid fields zeroed).
 #include <cmath>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -19,6 +20,7 @@
 #include "phys/driver/landuse_tables.hpp"
 #include "phys/driver/suite.hpp"
 #include "phys/lsm_noah/noah.hpp"
+#include "wrf_io/namelist.hpp"
 #ifdef CPPWRF_HAVE_NETCDF
 #include <netcdf.h>
 #endif
@@ -152,6 +154,13 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.num_soil_layers = int(cfg.get_int("phys.num_soil_layers", 4));
   o.bldt = cfg.get_double("phys.bldt", 0.0);
   o.cudt = cfg.get_double("phys.cudt", 0.0);
+  {
+    const std::string nl_path = cfg.get_string("output.wrf_namelist", dir + "/namelist.input");
+    const double nl_avg = std::filesystem::exists(nl_path)
+                              ? wrf_io::Namelist::read(nl_path).get_real("physics", "convtrans_avglen_m", 30.0)
+                              : 30.0;
+    o.convtrans_avglen_m = cfg.get_double("phys.convtrans_avglen_m", nl_avg);
+  }
   o.kfeta_trigger = int(cfg.get_int("phys.kfeta_trigger", 1));
   o.ishallow = int(cfg.get_int("phys.ishallow", 0));          // Grell-Freitas shallow convection
   o.gf_ichoice = int(cfg.get_int("phys.clos_choice", 0));     // Grell-Freitas closure
