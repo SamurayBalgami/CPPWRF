@@ -27,7 +27,10 @@ CPP_OUT="${RUN_DIR}/sfclayrev_output_cpp.bin"
 
 echo "=== Running Revised MM5 Surface Layer Differential Test (2500 cols) ==="
 python3 "${SCRIPT_DIR}/generate_inputs.py" --cols 2500 --out "${INPUT_BIN}"
-"${HEAVY}" "${FORT_BIN}" "${INPUT_BIN}" "${FORT_OUT}"
-"${HEAVY}" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
-python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 1e-12
+for kim in 0 1; do  # kim_tofd off / on (WRF 4.8 turbulent orographic form drag)
+  echo "--- kim_tofd = ${kim}"
+  CPPWRF_TEST_KIM_TOFD=${kim} "${HEAVY}" "${FORT_BIN}" "${INPUT_BIN}" "${FORT_OUT}"
+  CPPWRF_TEST_KIM_TOFD=${kim} "${HEAVY}" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
+  python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0
+done
 echo "=== SFCLAYREV Differential Test PASSED ==="

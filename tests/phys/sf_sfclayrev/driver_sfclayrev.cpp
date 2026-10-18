@@ -218,6 +218,15 @@ int main(int argc, char** argv) {
   bool isfflx = (isfflx_i == 1);
   bool shalwater_z0 = (shalwater_z0_i == 1);
   bool scm_force_flux = (scm_force_flux_i == 1);
+  // kim_tofd (WRF 4.8 turbulent orographic form drag): CPPWRF_TEST_KIM_TOFD=1; var2d (subgrid orography
+  // standard deviation, m) = 2*(i mod 50), as in driver_sfclayrev.f90
+  const char* kim_env = std::getenv("CPPWRF_TEST_KIM_TOFD");
+  const bool kim_tofd = kim_env != nullptr && std::string(kim_env) == "1";
+  std::vector<real> h_var2d(n2d);
+  for (std::size_t i = 0; i < n2d; ++i) h_var2d[i] = real(2.0) * real(i % 50);
+  Buffer d_var2d(n2d);
+  copy_up(d_var2d, h_var2d);
+  View2<const real> v_var2d{d_var2d.get(), n_cols};
 
   // Run kernel once
   phys::sfclayrev::run_sfclayrev(
@@ -230,7 +239,8 @@ int main(int argc, char** argv) {
       tbl_ptr, range,
       isfflx, shalwater_z0, isftcflx_i, iz0tlnd_i, scm_force_flux,
       real(cp), real(g), real(rovcp), real(r), real(xlv),
-      real(svp1), real(svp2), real(svp3), real(svpt0), real(ep1), real(ep2), real(karman), real(p1000mb));
+      real(svp1), real(svp2), real(svp3), real(svpt0), real(ep1), real(ep2), real(karman), real(p1000mb),
+      v_var2d, kim_tofd, real(0.003));
   dev_sync();
 
   if (bench_mode) {
@@ -246,7 +256,8 @@ int main(int argc, char** argv) {
           tbl_ptr, range,
           isfflx, shalwater_z0, isftcflx_i, iz0tlnd_i, scm_force_flux,
           real(cp), real(g), real(rovcp), real(r), real(xlv),
-          real(svp1), real(svp2), real(svp3), real(svpt0), real(ep1), real(ep2), real(karman), real(p1000mb));
+          real(svp1), real(svp2), real(svp3), real(svpt0), real(ep1), real(ep2), real(karman), real(p1000mb),
+      v_var2d, kim_tofd, real(0.003));
     }
     dev_sync();
     auto t1 = std::chrono::high_resolution_clock::now();

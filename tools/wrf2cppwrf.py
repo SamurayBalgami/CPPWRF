@@ -706,6 +706,12 @@ class WrfTranslator:
             if v_adv not in SUPPORTED_OPTIONS["v_adv_order"]:
                 self.error(f"WRF v_mom_adv_order = {v_adv} is not supported (3 or 4 only).")
 
+        # WRF 4.8 options without a CPPWRF implementation
+        if self.get_opt("time_control", "iau", 0):
+            self.error("WRF iau (incremental analysis update) is not supported.")
+        if self.get_opt("physics", "dyn_lightning_option", 0):
+            self.error("WRF dyn_lightning_option is not supported.")
+
         # Validate core numerical assumptions
         non_hydro = self.get_opt("dynamics", "non_hydrostatic", True)
         if not non_hydro:
@@ -786,6 +792,13 @@ class WrfTranslator:
                     if not tbl_dir:
                         tbl_dir = os.path.join(wrf_runs, "wrf_run") if wrf_runs else "${CPPWRF_WRF_RUNS}/wrf_run"
                 sections["phys"]["table_dir"] = tbl_dir
+
+                # WRF 4.8 turbulent orographic form drag of sfclayrev (needs VAR in wrfinput)
+                if self.get_opt("physics", "kim_tofd", False):
+                    sections["phys"]["kim_tofd"] = True
+                    tofd_factor = self.get_opt("physics", "tofd_factor", 0.003)
+                    if tofd_factor != 0.003:
+                        sections["phys"]["tofd_factor"] = tofd_factor
 
                 if sf_sfclay not in SUPPORTED_OPTIONS["sf_sfclay_physics"]:
                     self.warn(f"WRF sf_sfclay_physics = {sf_sfclay} not supported (0 or 1 only).")

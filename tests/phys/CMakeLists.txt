@@ -13,7 +13,7 @@ else()
 endif()
 
 # Fortran flags for bit-for-bit WRF verification
-set(PHYS_FORTRAN_FLAGS "-ffree-form -fdefault-real-8 -O3 -march=native -ffp-contract=off -fno-tree-vectorize")
+set(PHYS_FORTRAN_FLAGS "-ffree-form -fdefault-real-8 -DDOUBLE_PRECISION -O3 -march=native -ffp-contract=off -fno-tree-vectorize")
 
 set(FORTRAN_KESSLER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/fortran/module_mp_kessler.F")
 
@@ -105,9 +105,10 @@ add_executable(driver_sfclayrev_fortran
   sf_sfclayrev/driver_sfclayrev.f90
   ${FORTRAN_SFCLAYREV_SRCS}
 )
+# WRF's own -r8 configure flags: gfortran vectorises the pow/exp loops through libmvec as in wrf.exe
 set_target_properties(driver_sfclayrev_fortran PROPERTIES
   Fortran_MODULE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fortran_modules_sfclayrev"
-  COMPILE_FLAGS "${PHYS_FORTRAN_FLAGS} -DEM_CORE=1"
+  COMPILE_FLAGS "-ffree-form -fdefault-real-8 -DDOUBLE_PRECISION -O2 -ftree-vectorize -funroll-loops -DEM_CORE=1"
 )
 
 add_executable(driver_sfclayrev_cpu

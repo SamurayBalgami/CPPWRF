@@ -70,15 +70,18 @@ void run_sfclayrev(
     real ep1,
     real ep2,
     real karman,
-    real p1000mb) {
+    real p1000mb,
+    View2<const real> varf,
+    bool kim_tofd,
+    real tofd_factor) {
   SFClayRevKernel kernel{
       u1d, v1d, t1d, qv1d, p1d, dz8w1d, psfcpa, tsk, xland, dx,
-      mavail, pblh, lakemask, water_depth,
+      mavail, pblh, lakemask, water_depth, varf,
       regime, hfx, qfx, qsfc, mol, rmol, gz1oz0, wspd, br,
       psim, psih, fm, fh, znt, zol, ust, cpm, chs2, cqs2,
       chs, flhc, flqc, qgh, ustm,
       lh, u10, v10, th2, t2, q2, ck, cka, cd, cda,
-      tables, isfflx, shalwater_z0, isftcflx, iz0tlnd, scm_force_flux,
+      tables, isfflx, shalwater_z0, isftcflx, iz0tlnd, scm_force_flux, kim_tofd, tofd_factor,
       cp, g, rovcp, r, xlv, svp1, svp2, svp3, svpt0, ep1, ep2, karman, p1000mb};
   kernel.nx = range.i0 == 0 ? range.i1 : 0;  // WRF row its..ite (lanes only for the whole-row launch)
 

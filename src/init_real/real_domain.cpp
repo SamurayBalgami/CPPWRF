@@ -286,8 +286,9 @@ void RealDomain<T>::init_domain(int loop, const std::string& current_date) {
   const T g = C::g, r_d = C::r_d, cp = C::cp, t0 = C::t0, p1000mb = C::p1000mb, cvpm = C::cvpm, cpovcv = C::cpovcv,
           rvovrd = C::rvovrd;
   const int sfs = o.sf_surface_physics;
-  if (sfs != 0 && sfs != 2) throw std::runtime_error("real: only sf_surface_physics = 0 and 2 (Noah) are ported");
-  const bool lsm = (sfs == 2);  // LSMSCHEME
+  if (sfs != 0 && sfs != 2 && sfs != 4)
+    throw std::runtime_error("real: only sf_surface_physics = 0, 2 (Noah) and 4 (Noah-MP) are ported");
+  const bool lsm = (sfs == 2 || sfs == 4);  // LSMSCHEME, NOAHMPSCHEME: module_initialize_real treats them alike
   SkipCtx sk;
   sk.width = o.spec_bdy_width;
   sk.hold_ups = (loop == 1);

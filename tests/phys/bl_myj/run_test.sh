@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Column differential test for MYJ PBL (bl_pbl_physics=2) and Eta Surface Layer (sf_sfclay_physics=2)
-# Calls WRF v4.6.1's own compiled objects in ${WRF_DIR}/main/libwrflib.a.
+# Calls WRF v4.8.0's own compiled objects in ${WRF_DIR}/main/libwrflib.a.
 # Pass criterion: bit-identical (tol = 0.0) in CPU FP64.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 HEAVY="${REPO_ROOT}/tools/heavy.sh"
-WRF_DIR="${WRF_DIR:?set WRF_DIR to a WRF v4.6.1 -r8d8 build (main/libwrflib.a)}"
+WRF_DIR="${WRF_DIR:?set WRF_DIR to a WRF v4.8.0 -r8d8 build (main/libwrflib.a)}"
 OUT_DIR="${1:-${PWD}/test_bl_myj}"
 
 mkdir -p "${OUT_DIR}"

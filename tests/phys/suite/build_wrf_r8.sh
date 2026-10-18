@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the reference for tests/phys/suite: UNMODIFIED WRF v4.6.1, em_real, serial gfortran,
+# Builds the reference for tests/phys/suite: UNMODIFIED WRF v4.8.0, em_real, serial gfortran,
 # real*8 (configure -r8 = -fdefault-real-8), the configure.wrf flags with one change:
 # FCOPTIM -O2 -ftree-vectorize -funroll-loops -> -O2 -fno-tree-vectorize -funroll-loops -ffp-contract=off
 # (gfortran -ftree-vectorize calls glibc's libmvec vector math, _ZGVbN2vv_pow / _ZGVbN2v_exp /
@@ -12,7 +12,7 @@ set -euo pipefail
 DEST="${1:?usage: build_wrf_r8.sh <dir>}"
 mkdir -p "$DEST"
 cd "$DEST"
-[ -d WRF ] || git clone -q --depth 1 --branch v4.6.1 https://github.com/wrf-model/WRF.git WRF
+[ -d WRF ] || git clone -q --depth 1 --recurse-submodules --shallow-submodules --branch v4.8.0 https://github.com/wrf-model/WRF.git WRF
 cd WRF
 if [ -z "${NETCDF:-}" ]; then  # Debian/Ubuntu split NetCDF-C/Fortran: one prefix for configure
   NETCDF="$DEST/netcdf"

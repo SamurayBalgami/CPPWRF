@@ -47,7 +47,7 @@
 
 !-----------------------------------------------------------------------------------------------------------------
 
- errmsg = 'mp_wsm6_effectRad_final OK'
+ errmsg = 'mp_wsm6_effectRad_finalize OK'
  errflg = 0
 
  end subroutine mp_wsm6_effectRad_finalize

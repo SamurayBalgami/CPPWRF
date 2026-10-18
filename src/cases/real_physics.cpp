@@ -95,6 +95,8 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.warm_rain = cfg.get_int("phys.mp_physics", 0) == 1;  // mp_init: true only for KESSLERSCHEME
   o.isfflx = int(cfg.get_int("phys.isfflx", 1));
   o.ysu_topdown_pblmix = int(cfg.get_int("phys.ysu_topdown_pblmix", 1));
+  o.kim_tofd = cfg.get_bool("phys.kim_tofd", false);
+  o.tofd_factor = cfg.get_double("phys.tofd_factor", 0.003);
   o.mminlu = in.att_str("MMINLU", o.mminlu);
   o.iswater = int(in.att_num("ISWATER", o.iswater));
   o.isice = int(in.att_num("ISICE", o.isice));
@@ -135,6 +137,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   put2(su.vegfra, rd2("VEGFRA")); put2(su.shdmax, rd2("SHDMAX")); put2(su.shdmin, rd2("SHDMIN"));
   put2(su.snow, snow); put2(su.snowc, snowc); put2(su.lai, rd2("LAI"));
   put2(su.lakemask, in.has("LAKEMASK") ? rd2("LAKEMASK") : std::vector<double>(n2, 0.0));
+  if (o.kim_tofd) put2(su.var2d, rd2("VAR"));
   put2(su.water_depth, in.has("WATER_DEPTH") ? rd2("WATER_DEPTH") : std::vector<double>(n2, 0.0));
   const std::pair<const char*, Field2*> diag[] = {{"T2", &su.t2}, {"TH2", &su.th2}, {"Q2", &su.q2},
                                                    {"U10", &su.u10}, {"V10", &su.v10}, {"PSFC", &su.psfc}};

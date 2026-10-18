@@ -2,7 +2,7 @@
 # Reference wrfinput/wrfbdy files from WRF's real.exe for tests/init_real/run_real_test.sh.
 # For every ${CPPWRF_WRF_RUNS}/run_<case> with a namelist.input and met_em files, runs real.exe of the
 # -r8 build (cases named *_r8*) or the default single-precision build and keeps the result in
-# ${CPPWRF_WRF_RUNS}/real480/<case>. A case directory without met_em files uses ${CPPWRF_WRF_RUNS}/wps_run;
+# ${CPPWRF_WRF_RUNS}/real/<case>. A case directory without met_em files uses ${CPPWRF_WRF_RUNS}/wps_run;
 # a run shorter than interval_seconds is extended to one interval (real_namelist.py).
 #   usage: make_real_refs.sh WRF_SP_DIR WRF_R8_DIR [case ...]
 set -uo pipefail
@@ -10,7 +10,7 @@ set -uo pipefail
 SP=$1 R8=$2; shift 2
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HEAVY="${HERE}/../heavy.sh"
-OUT=${CPPWRF_WRF_RUNS}/real480
+OUT=${CPPWRF_WRF_RUNS}/real
 cases=("$@")
 [ ${#cases[@]} -eq 0 ] && for d in "${CPPWRF_WRF_RUNS}"/run_*/; do cases+=("$(basename "$d")"); done
 for c in "${cases[@]}"; do

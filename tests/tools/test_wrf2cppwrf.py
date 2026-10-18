@@ -16,6 +16,12 @@ import sys
 import tempfile
 import unittest
 
+
+def wrf_runs_path(rel: str) -> str:
+    """Path of a WRF reference run file under ${CPPWRF_WRF_RUNS} ('' when the variable is unset)."""
+    runs = os.environ.get("CPPWRF_WRF_RUNS")
+    return os.path.join(runs, rel) if runs else ""
+
 from typing import Any, Dict, List, Optional
 
 # Add workspace to path
@@ -169,7 +175,7 @@ class TestRealCasesReproduction(unittest.TestCase):
 
     def _compare_configs(self, nml_rel_path: str, ref_ini_rel_path: str,
                           ignore_keys: Optional[dict] = None):
-        nml_path = os.path.expanduser(nml_rel_path)
+        nml_path = wrf_runs_path(nml_rel_path)
         ref_path = os.path.join(REPO_ROOT, ref_ini_rel_path)
         if not os.path.exists(nml_path):
             self.skipTest(f"Namelist not found: {nml_path}")
@@ -200,32 +206,32 @@ class TestRealCasesReproduction(unittest.TestCase):
                 self.assertEqual(gv, rv, f"[{s}].{k} mismatch: generated '{gen[s][k]}' vs ref '{ref[s][k]}'")
 
     def test_real_r0_key_by_key(self):
-        self._compare_configs("~/wrf_real/run_R0_r8/namelist.input", "configs/real_r0.ini")
+        self._compare_configs("run_R0_r8/namelist.input", "configs/real_r0.ini")
 
     def test_real_r1_key_by_key(self):
-        self._compare_configs("~/wrf_real/run_R1_r8/namelist.input", "configs/real_r1.ini")
+        self._compare_configs("run_R1_r8/namelist.input", "configs/real_r1.ini")
 
     def test_real_r2_key_by_key(self):
-        self._compare_configs("~/wrf_real/run_R2/namelist.input", "configs/real_r2.ini")
+        self._compare_configs("run_R2/namelist.input", "configs/real_r2.ini")
 
     def test_real_r3_key_by_key(self):
-        self._compare_configs("~/wrf_real/run_R3/namelist.input", "configs/real_r3.ini")
+        self._compare_configs("run_R3/namelist.input", "configs/real_r3.ini")
 
     def test_real_mp6_key_by_key(self):
-        self._compare_configs("~/wrf_real/run_mp6/namelist.input", "configs/real_mp6.ini")
+        self._compare_configs("run_mp6/namelist.input", "configs/real_mp6.ini")
 
     def test_real_p1_key_by_key(self):
-        self._compare_configs("~/wrf_real/run_P1/namelist.input", "configs/real_p1.ini")
+        self._compare_configs("run_P1/namelist.input", "configs/real_p1.ini")
 
     def test_real_p2_key_by_key(self):
-        self._compare_configs("~/wrf_real/run_P2/namelist.input", "configs/real_p2.ini")
+        self._compare_configs("run_P2/namelist.input", "configs/real_p2.ini")
 
     def test_real_p3_key_by_key(self):
-        self._compare_configs("~/wrf_real/run_P3/namelist.input", "configs/real_p3.ini")
+        self._compare_configs("run_P3/namelist.input", "configs/real_p3.ini")
 
     def test_real_p4_diff_opt_mapped(self):
         # run_P4 namelist specifies diff_opt = 1, km_opt = 4
-        nml_path = os.path.expanduser("~/wrf_real/run_P4/namelist.input")
+        nml_path = wrf_runs_path("run_P4/namelist.input")
         if not os.path.exists(nml_path):
             self.skipTest(f"Namelist not found: {nml_path}")
         with open(nml_path) as f:
@@ -333,7 +339,7 @@ class TestExecution2Steps(unittest.TestCase):
         if not os.path.exists(exe):
             self.skipTest("build-a0-cpu/cppwrf binary not found")
 
-        nml_path = os.path.expanduser("~/wrf_real/run_R0_r8/namelist.input")
+        nml_path = wrf_runs_path("run_R0_r8/namelist.input")
         if not os.path.exists(nml_path):
             self.skipTest(f"Namelist not found: {nml_path}")
 

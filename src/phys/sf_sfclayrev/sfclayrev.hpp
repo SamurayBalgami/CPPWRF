@@ -215,6 +215,7 @@ struct SFClayRevKernel {
   View2<const real> pblh;
   View2<const real> lakemask;
   View2<const real> water_depth;
+  View2<const real> varf;  // var2d (subgrid orography standard deviation), used with kim_tofd
 
   // Inout
   View2<real> regime;
@@ -261,6 +262,8 @@ struct SFClayRevKernel {
   int isftcflx;
   int iz0tlnd;
   bool scm_force_flux;
+  bool kim_tofd;      // turbulent orographic form drag (Koo et al. 2018)
+  real tofd_factor;
 
   real cp;
   real g;
@@ -378,7 +381,6 @@ struct SFClayRevKernel {
     rmol(i, j) = -govrth * dthvdz * za * karman;
 
     // WRF lines 379-401
-    zol(i, j) = real(0.0);
     if (br(i, j) > real(0.0)) {
       if (br(i, j) > real(250.0)) {
         zol(i, j) = zolri(real(250.0), za, znt(i, j), tbl);
@@ -632,10 +634,21 @@ struct SFClayRevKernel {
     }
 
     // WRF lines 700-705: ck, cd, cka, cda
+    // option for tofd as in kim model (koo et. al. 2018, koo and hong 2025). WRF also sets an unused
+    // dx_factor here (from itself, uninitialised); it does not enter cf.
+    constexpr real varf_min = real(5.);
+    constexpr real ca_square = real(0.4) * real(0.4);
+    real cf = real(0.);
+    if (kim_tofd && varf(i, j) > varf_min) {
+      const real zf = min(varf(i, j) * tofd_factor, za);
+      const real fri = min(max(real(1.) - br(i, j), real(0.)), real(1.));
+      const real ff = log((za + zf) / zf);
+      cf = ca_square / (ff * ff) * fri;
+    }
     ck(i, j) = (karman / psix10) * (karman / psiq10);
-    cd(i, j) = (karman / psix10) * (karman / psix10);
     cka(i, j) = (karman / psix) * (karman / psiq);
-    cda(i, j) = (karman / psix) * (karman / psix);
+    cd(i, j) = (karman / psix10) * (karman / psix10) + cf;
+    cda(i, j) = (karman / psix) * (karman / psix) + cf;
 
     // WRF lines 706-756: iz0tlnd over land
     if (iz0tlnd >= 1 && (xland(i, j) - real(1.5)) <= real(0.0)) {
@@ -678,7 +691,10 @@ struct SFClayRevKernel {
     }
 
     // WRF lines 757-780: ust update and diagnostics
-    ust(i, j) = real(0.5) * ust(i, j) + real(0.5) * karman * wspd(i, j) / psix;
+    if (kim_tofd && cf > real(1.e-20))
+      ust(i, j) = real(0.5) * ust(i, j) + real(0.5) * karman * wspd(i, j) / psix + real(0.5) * sqrt(cf) * wspd(i, j);
+    else
+      ust(i, j) = real(0.5) * ust(i, j) + real(0.5) * karman * wspd(i, j) / psix;
     real wspdi = sqrt(u1d(i, j) * u1d(i, j) + v1d(i, j) * v1d(i, j));
     ustm(i, j) = real(0.5) * ustm(i, j) + real(0.5) * karman * wspdi / psix;
 
@@ -817,6 +833,9 @@ void run_sfclayrev(
     real ep1 = real(cst::ep_1),
     real ep2 = real(cst::ep_2),
     real karman = real(cst::karman),
-    real p1000mb = real(cst::p1000mb));
+    real p1000mb = real(cst::p1000mb),
+    View2<const real> varf = {},
+    bool kim_tofd = false,
+    real tofd_factor = real(0.003));
 
 }  // namespace cppwrf::phys::sfclayrev

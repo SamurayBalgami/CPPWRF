@@ -78,6 +78,8 @@ struct SuiteOptions {
   int use_theta_m = 1;
   int ysu_topdown_pblmix = 1;
   int isftcflx = 0, iz0tlnd = 0, shalwater_z0 = 0, scm_force_flux = 0;
+  bool kim_tofd = false;         // sfclayrev turbulent orographic form drag (WRF 4.8)
+  double tofd_factor = 0.003;
   bool rdlai2d = false, usemonalb = false;
   int seaice_albedo_opt = 0;
   double seaice_albedo_default = 0.65;
@@ -117,7 +119,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
       zol, regime, u10, v10, t2, th2, q2, psfc, ch, snow, snowh, snowc, canwat, lai, snotime, qz0, rainbl, raincv,
       rainncv, rainshv, rainc, rainsh, pratec, pratesh, nca, htop, hbot, cutop, cubot, cuppt, sr, glw, swdown, gsw,
       smstav, smstot, sfcrunoff, udrunoff, acsnom, acsnow, snopcx, potevp, noahres, sfcevp, sfcexc, achfx, aclhf,
-      acgrdflx, dx2d, uoce, voce, ctopo, ctopo2, ck, cka, cd, cda, wstar, delta, hol,
+      acgrdflx, dx2d, var2d, uoce, voce, ctopo, ctopo2, ck, cka, cd, cda, wstar, delta, hol,
       thz0, uz0, vz0, akhs, akms, ct, tshltr, th10, qshltr, q10, pshltr, u10e, v10e, mixht;
   IntField2 ivgtyp, isltyp, kpbl, lowlyr;
   Field3 tslb, smois, sh2o, smcrel;  // (i, j, soil layer)

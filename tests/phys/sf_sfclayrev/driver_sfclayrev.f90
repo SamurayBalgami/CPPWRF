@@ -22,6 +22,9 @@ program driver_sfclayrev_fortran
   real(8), allocatable :: lh(:,:), u10(:,:), v10(:,:), th2(:,:), t2(:,:), q2(:,:)
   real(8), allocatable :: ck(:,:), cka(:,:), cd(:,:), cda(:,:)
 
+  real(8), allocatable :: var2d(:,:)
+  logical :: kim_tofd
+  character(len=8) :: kim_env
   character(len=256) :: errmsg
   integer :: errflg
   integer :: i, iunit
@@ -99,6 +102,14 @@ program driver_sfclayrev_fortran
 
   close(iunit)
 
+  ! kim_tofd (WRF 4.8): CPPWRF_TEST_KIM_TOFD=1; var2d = 2*mod(i-1,50) as in driver_sfclayrev.cpp
+  call get_environment_variable("CPPWRF_TEST_KIM_TOFD", kim_env)
+  kim_tofd = trim(kim_env) == "1"
+  allocate(var2d(n_cols, 1))
+  do i = 1, n_cols
+    var2d(i, 1) = 2.0 * mod(i - 1, 50)
+  end do
+
   ! Initialize lookup tables
   call sf_sfclayrev_init(errmsg, errflg)
 
@@ -114,6 +125,7 @@ program driver_sfclayrev_fortran
                  gz1oz0=gz1oz0, wspd=wspd, br=br, isfflx=isfflx, dx=dx, &
                  svp1=svp1, svp2=svp2, svp3=svp3, svpt0=svpt0, ep1=ep1, ep2=ep2, &
                  karman=karman, p1000mb=p1000mb, lakemask=lakemask, &
+                 kim_tofd=kim_tofd, tofd_factor=0.003, var2d=var2d, &
                  ids=1, ide=n_cols, jds=1, jde=1, kds=1, kde=nz, &
                  ims=1, ime=n_cols, jms=1, jme=1, kms=1, kme=nz, &
                  its=1, ite=n_cols, jts=1, jte=1, kts=1, kte=nz, &

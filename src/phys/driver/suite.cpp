@@ -768,7 +768,7 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       acsnom(g, Stagger::M, "acsnom"), acsnow(g, Stagger::M, "acsnow"), snopcx(g, Stagger::M, "snopcx"),
       potevp(g, Stagger::M, "potevp"), noahres(g, Stagger::M, "noahres"), sfcevp(g, Stagger::M, "sfcevp"),
       sfcexc(g, Stagger::M, "sfcexc"), achfx(g, Stagger::M, "achfx"), aclhf(g, Stagger::M, "aclhf"),
-      acgrdflx(g, Stagger::M, "acgrdflx"), dx2d(g, Stagger::M, "dx2d"), uoce(g, Stagger::M, "uoce"),
+      acgrdflx(g, Stagger::M, "acgrdflx"), dx2d(g, Stagger::M, "dx2d"), var2d(g, Stagger::M, "var2d"), uoce(g, Stagger::M, "uoce"),
       voce(g, Stagger::M, "voce"), ctopo(g, Stagger::M, "ctopo"), ctopo2(g, Stagger::M, "ctopo2"),
       ck(g, Stagger::M, "ck"), cka(g, Stagger::M, "cka"), cd(g, Stagger::M, "cd"), cda(g, Stagger::M, "cda"),
       wstar(g, Stagger::M, "wstar"), delta(g, Stagger::M, "delta"), hol(g, Stagger::M, "hol"),
@@ -996,7 +996,7 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
         flqc.view(), qgh.view(), ustm.view(), lh.view(), u10.view(), v10.view(), th2.view(), t2.view(), q2.view(),
         ck.view(), cka.view(), cd.view(), cda.view(), d_sfclay_tables_, cols, o_.isfflx != 0, o_.shalwater_z0 != 0,
         o_.isftcflx, o_.iz0tlnd, o_.scm_force_flux != 0, cp, g, rcp, r_d, xlv, svp1, svp2, svp3, svpt0, ep_1,
-        ep_2, karman, p1000mb);
+        ep_2, karman, p1000mb, var2d.cview(), o_.kim_tofd, real(o_.tofd_factor));
     column_for(cols, KCopy2{ch.view(), chs.cview()});  // ch = chs (EM_CORE)
   } else if (o_.sf_sfclay_physics == 2) {
     // MYJSFC (module_sf_myjsfc.F: u_phy, v_phy, p_phy=grid%p_hyd, p8w=grid%p_hyd_w)

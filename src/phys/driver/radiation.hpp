@@ -48,9 +48,9 @@ CPPWRF_HD inline double calc_coszen(double julian, double xtime, double gmt, dou
                                     double xlat, int li = 0, int ln = 1) {
   constexpr double piconst = 3.1415926535897932384626433;
   constexpr double degrad = piconst / 180.;
-  const double da = 6.2831853071795862 * (julian - 1) / 365.;
+  const double da = 6.2831853071795862 * (julian - 0.5) / 365.;
   const double eot = (0.000075 + 0.001868 * std::cos(da) - 0.032077 * std::sin(da) - 0.014615 * std::cos(2 * da) -
-                      0.04089 * std::sin(2 * da)) * (229.18);
+                      0.040849 * std::sin(2 * da)) * (229.18);
   const double xt24 = std::fmod(xtime, 1440.) + eot;
   const double tloctm = gmt + xt24 / 60. + xlon / 15.;
   const double hrang = 15. * (tloctm - 12.) * degrad;

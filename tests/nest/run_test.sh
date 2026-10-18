@@ -2,7 +2,7 @@
 # ==============================================================================
 # CPPWRF: differential (CPU) and CUDA test runner for the nest numerics
 # Tests all nesting interpolation, boundary forcing, feedback, and init kernels
-# against unmodified WRF 4.6.1 Fortran (-fdefault-real-8)
+# against unmodified WRF 4.8.0 Fortran (-fdefault-real-8)
 # ==============================================================================
 set -euo pipefail
 
@@ -25,11 +25,11 @@ if [[ ! -f "${DATASET}" ]]; then
   "${REPO_ROOT}/tools/heavy.sh" --light python3 "${SCRIPT_DIR}/extract_coarse_fields.py" "${DATASET}"
 fi
 
-# 2. Compile Fortran Bridge against WRF 4.6.1 reference
-WRF_ROOT="${HOME}/wrf_real/WRF-4.6.1-r8"
+# 2. Compile Fortran Bridge against the WRF 4.8.0 -r8 reference
+WRF_ROOT="${WRF_DIR:?set WRF_DIR to a WRF v4.8.0 -r8 build}"
 BRIDGE_OBJ="${OUT_DIR}/fortran_nest_bridge.o"
 if [[ ! -f "${BRIDGE_OBJ}" || "${SCRIPT_DIR}/fortran_nest_bridge.f90" -nt "${BRIDGE_OBJ}" ]]; then
-  echo "Compiling Fortran nest bridge against WRF 4.6.1 libraries..."
+  echo "Compiling Fortran nest bridge against WRF 4.8.0 libraries..."
   "${REPO_ROOT}/tools/heavy.sh" gfortran -c -fdefault-real-8 -O3 -fPIC \
     -I"${WRF_ROOT}/inc" -I"${WRF_ROOT}/main" -I"${WRF_ROOT}/frame" \
     -I"${WRF_ROOT}/share" -I"${WRF_ROOT}/dyn_em" \
@@ -45,7 +45,7 @@ WRF_LIBS=(
   "${WRF_ROOT}/external/io_int/libwrfio_int.a"
   -L"${WRF_ROOT}/external/esmf_time_f90" -lesmf_time
   -L"${WRF_ROOT}/external/io_netcdf" -lwrfio_nf
-  -L"${HOME}/wrf_real/netcdf/lib" -lnetcdff -lnetcdf
+  -L"${NETCDF:?set NETCDF to the NetCDF prefix of the WRF build}/lib" -lnetcdff -lnetcdf
   "${WRF_ROOT}/external/fftpack/fftpack5/libfftpack.a"
   "${WRF_ROOT}/external/io_grib1/libio_grib1.a"
   "${WRF_ROOT}/external/io_grib_share/libio_grib_share.a"

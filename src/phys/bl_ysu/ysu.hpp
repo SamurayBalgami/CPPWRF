@@ -599,7 +599,7 @@ struct YSUKernel {
                              (thlix[k] + thx[k] * ep1 * (qvx(i, j, k) + qcxl[k]));
           dthvx_cloud = max(dthvx_cloud, real(0.1));
           real tmp1 = xlv / cp * rcldb / (pi2d(i, j, k) * dthvx_cloud);
-          real ent_eff = real(0.2) * real(8.0) * tmp1 + real(0.2);
+          real ent_eff = min(real(0.2) * real(8.0) * tmp1, real(0.4));
 
           real radsum = real(0.0);
           for (int kk = 0; kk <= kpbl - 1; ++kk) {

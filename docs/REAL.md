@@ -59,13 +59,13 @@ members' values, then all members' tendencies.
 
 `tools/init_real/make_real_refs.sh WRF_SP_DIR WRF_R8_DIR` runs WRF's `real.exe` for every
 `${CPPWRF_WRF_RUNS}/run_<case>`. Cases named `*_r8*` use the `-r8` build. The results go to
-`${CPPWRF_WRF_RUNS}/real480/<case>`. `tests/init_real/run_real_test.sh [BUILD_DIR]` then runs
-`cppwrf_real` on each case and compares the files with `tests/init_real/compare_real.py`. `ctest -R real_vs_wrf` runs the same test. The test is skipped when `${CPPWRF_WRF_RUNS}/real480` does not exist.
+`${CPPWRF_WRF_RUNS}/real/<case>`. `tests/init_real/run_real_test.sh [BUILD_DIR]` then runs
+`cppwrf_real` on each case and compares the files with `tests/init_real/compare_real.py`. `ctest -R real_vs_wrf` runs the same test. The test is skipped when `${CPPWRF_WRF_RUNS}/real` does not exist.
 
 The reference set covers 41 cases:
 
 - single domains with Kessler, WSM6 and Thompson microphysics;
-- Noah and no LSM;
+- Noah, Noah-MP and no LSM;
 - `hybrid_opt` 0 and 2;
 - 6 h and 12 h boundaries;
 - two-domain nests.
@@ -77,7 +77,7 @@ All 41 are identical.
 The following real.exe paths are not ported. `cppwrf_real` stops with an error when the namelist
 selects one:
 
-- `sf_surface_physics` other than 0 and 2 (RUC, Noah-MP and CLM soil handling);
+- `sf_surface_physics` other than 0, 2 and 4 (RUC, PX, CLM and SSiB soil handling);
 - `use_tavg_for_tsk`;
 - `chem_opt` and `tracer_opt` (the 4-D chemistry and tracer arrays);
 - `vert_refine_method`.

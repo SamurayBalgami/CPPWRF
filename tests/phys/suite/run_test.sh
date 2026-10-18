@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# P1 physics-suite differential test: ORIGINAL WRF v4.6.1 (real*8) vs the C++ PhysicsSuite.
+# P1 physics-suite differential test: ORIGINAL WRF v4.8.0 (real*8) vs the C++ PhysicsSuite.
 #
 #   WRF_DIR=<WRF built by build_wrf_r8.sh> tests/phys/suite/run_test.sh
 #
@@ -12,7 +12,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-WRF_DIR="${WRF_DIR:?set WRF_DIR to a WRF v4.6.1 -r8 build (tests/phys/suite/build_wrf_r8.sh)}"
+WRF_DIR="${WRF_DIR:?set WRF_DIR to a WRF v4.8.0 -r8 build (tests/phys/suite/build_wrf_r8.sh)}"
 B="$SCRIPT_DIR/build"
 HEAVY="$REPO/tools/heavy.sh"
 [ -x "$HEAVY" ] || HEAVY=""
