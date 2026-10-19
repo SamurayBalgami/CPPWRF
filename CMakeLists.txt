@@ -179,6 +179,8 @@ foreach(src ${CPPWRF_UNIT_TESTS})
   cppwrf_device_sources(${src})
   target_link_libraries(${name} PRIVATE cppwrf_core)
   add_test(NAME ${name} COMMAND ${name} WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  # OpenMP threads that spin while waiting stall the tests for hours on a loaded machine
+  set_tests_properties(${name} PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=2;OMP_WAIT_POLICY=passive")
 endforeach()
 
 # Differential tests against the original WRF Fortran (gfortran; slow): physics schemes, the
