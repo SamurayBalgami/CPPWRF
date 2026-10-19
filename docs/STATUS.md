@@ -2,14 +2,14 @@
 
 CPPWRF reproduces WRF-ARW v4.8.0 statement by statement. This page lists what is implemented, how it
 is verified against WRF, and the current results. All numbers come from `tests/verify/wrf_suite.py`
-(85 cases, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
+(90 cases, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
 
 ## Implemented
 
 | Component | WRF options |
 |---|---|
-| Dynamics | RK3 split-explicit, hybrid_opt 0/2, hypsometric_opt 1/2, map factors, Coriolis and curvature, terrain, specified (spec_zone 1, relax_zone 4), open and periodic lateral boundaries, w_damping, damp_opt 2 and 3 (damp_opt 1: kernel tests), h_adv_order 5/6, v_adv_order 3/4, positive-definite moisture and scalar advection |
-| Diffusion | diff_opt 1 with km_opt 1 (constant K) and 4 (2-D Smagorinsky); diff_opt 2 with km_opt 2 (1.5-order TKE, advected TKE); 6th-order diffusion |
+| Dynamics | RK3 split-explicit, hybrid_opt 0/2, hypsometric_opt 1/2, map factors, Coriolis and curvature, terrain, specified (spec_zone 1, relax_zone 4), open and periodic lateral boundaries, w_damping, damp_opt 1, 2 and 3, h_adv_order 5/6, v_adv_order 3/4, positive-definite moisture and scalar advection |
+| Diffusion | diff_opt 1 with km_opt 1 (constant K) and 4 (2-D Smagorinsky); diff_opt 2 with km_opt 2 (1.5-order TKE, advected TKE); 6th-order diffusion (diff_6th_opt 1, 2) |
 | Microphysics | Kessler (1), WSM6 (6, with effective radii), Thompson (8) |
 | Cumulus | Kain-Fritsch (1), Grell-Freitas-Li (3, deep and shallow), Tiedtke (6), New Tiedtke (16) |
 | PBL, surface layer, land surface | YSU (1), MYJ (2), revised MM5 surface layer (1), Eta surface layer (2), Noah LSM (2, including glacial and sea-ice points), Noah-MP v5.1.2 (4, default options), fractional sea ice (fractional_seaice = 1), SST update (sst_update = 1, wrflowinp), gravity wave drag (gwd_opt = 1, GWDO) |
@@ -69,6 +69,7 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | P9 | P1 with MYJ PBL and the Eta surface layer | 1 h |
 | NMP1 | P1 with Noah-MP | 1 h |
 | T1 | R1 with diff_opt 2 / km_opt 2 (TKE) | 5 steps |
+| R1D6 | R1 with diff_opt 1 / km_opt 4, damp_opt 1, diff_6th_opt 2 | 10 min |
 | N1 | one-way nest (both domains) | 3 parent steps |
 | N2 | two-way nest (both domains) | 1 h |
 | V1 | tropics (Bay of Bengal), Mercator, 15 km, P4 physics | 6 h |
@@ -79,6 +80,7 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | F1 / F2 | V2 with fractional sea ice (real.exe with fractional_seaice 1), sfclayrev + YSU / Eta + MYJ | 3 h |
 | D0 / D0V | WRF's default em_real namelist (physics_suite CONUS, fractional sea ice, gwd_opt 1, diff_opt 2 / km_opt 4, w_damping 0) on the P2 / V2 domains, configuration from tools/wrf2cppwrf.py | 6 h |
 | SU1 / SU2 | D0V with sst_update 1 (wrflowinp from real.exe, read every 6 h); SU2: changed sea ice at the start (water/ice transitions) | 7 h / 20 min |
+| HY1 | P1 with hypsometric_opt 1 (real.exe and wrf.exe) | 1 h |
 
 V1-V3, T6, G2, F1, F2, D0, D0V, SU1 and SU2 are compared in every wrfout variable over the whole run; V1-V3 start from the
 global GFS of 2026-10-12 00 UTC through WPS, so the domains, projections and surface types differ from the P
@@ -91,9 +93,9 @@ different last bits on AMD EPYC (all scalar libm functions and the other libmvec
 WRF itself therefore differs between the two; on AMD, CPPWRF differs from Intel-made references by
 about 1e-14 after one step. The suite runs on Intel machines (`tools/gcp/gcp_run.sh`).
 
-Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8, P9, T1).
+Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8, P9, NMP1, T1; P1 also in FP32 on the GPU).
 
-Output files: the `wrfout_d0N` files of P1-P9, NMP1, mp8, V1-V3, T6, G2, F1, F2, D0, D0V, SU1, R1, T1, N1 and N2 (both
+Output files: the `wrfout_d0N` files of P1-P9, NMP1, mp8, V1-V3, T6, G2, F1, F2, D0, D0V, SU1, HY1, R1, T1, N1 and N2 (both
 domains) and the `wrfrst_d0N` files of P1, P3, P4, P6, P7, P8, P9, NMP1, mp8, N2, T6, G2, F1, F2, D0, D0V and SU1 are
 identical to WRF v4.8.0's. This covers
 every variable, value, dimension, attribute and global attribute
@@ -126,7 +128,7 @@ roundoff over an hour, which is why P2 and P4 show larger CUDA FP64 differences 
 build is the reference for bit identity.
 
 Ideal cases (CPPWRF's port of WRF's ideal.exe, `run.case = em_*`), CPU FP64 against WRF v4.8.0
-real*8: em_hill2d_x (1 h), em_grav2d_x (Straka, 900 s), em_quarter_ss (Kessler supercell, 2 h) and
+real*8: em_hill2d_x (1 h), em_grav2d_x (Straka, 900 s), em_quarter_ss (Kessler supercell, 2 h, periodic and with open boundaries in x and y) and
 em_squall2d_x / em_squall2d_y (open lateral boundaries in x / y, TKE diffusion, 10 min) are bit-identical
 in every field. On the GPU em_squall2d_x is at roundoff in FP64 (U 1.3e-13 relative L2 at 10 min) and
 within WRF's own single/double difference in FP32 (U 6.8e-5; WRF real*8 vs. WRF FP32: 8.2e-5).

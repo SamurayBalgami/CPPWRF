@@ -65,16 +65,16 @@ members' values, then all members' tendencies.
 `${CPPWRF_WRF_RUNS}/real/<case>`. `tests/init_real/run_real_test.sh [BUILD_DIR]` then runs
 `cppwrf_real` on each case and compares the files with `tests/init_real/compare_real.py`. `ctest -R real_vs_wrf` runs the same test. The test is skipped when `${CPPWRF_WRF_RUNS}/real` does not exist.
 
-The reference set covers 42 cases:
+The reference set covers 43 cases:
 
 - single domains with Kessler, WSM6 and Thompson microphysics;
 - Noah, Noah-MP and no LSM;
-- `hybrid_opt` 0 and 2;
+- `hybrid_opt` 0 and 2, `hypsometric_opt` 1 and 2;
 - 6 h and 12 h boundaries;
 - `sst_update = 1` (`wrflowinp_d01`);
 - two-domain nests.
 
-All 42 are identical.
+All 43 are identical.
 
 ## Not covered
 
