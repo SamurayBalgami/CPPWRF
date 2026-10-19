@@ -80,30 +80,30 @@ ACHFX, ACLHF, ACGRDFLX), R*BLTEN (decoupled), EXCH_H/M. QGH, CHS, CHS2, CQS2, CP
 surface_driver and psim, psih, gz1oz0, chklowq, th_phy, pi_phy, p_phy, dz8w, p8w, t8w locals
 of solve_em: they are recomputed each step (scratch members in C++).
 
-## 2. Call map (WRF file:line -> C++ file:line)
+## 2. Call map (WRF file:line -> C++ file)
 
 | WRF v4.8.0 | C++ |
 |---|---|
-| solve_em.F:371 `itimestep + 1` | src/phys/driver/suite.cpp:605 (`PhysicsSuite::part1`) |
+| solve_em.F:371 `itimestep + 1` | src/phys/driver/suite.cpp (`PhysicsSuite::part1`) |
 | module_big_step_utilities_em.F:4730 `phy_prep` | src/phys/driver/phy_prep.cpp:16 (`KPhyPrep`), :88 |
-| module_surface_driver.F:1539-1570 zeroed locals, RAINBL | suite.cpp:46 (`KSfcAlways`) |
-| module_surface_driver.F:1855-1895, 1955-1975 run decision, DTBL | suite.cpp:630 |
-| module_surface_driver.F:1980-1997 PSFC, u/v_phytmp | suite.cpp:68 (`KSfcPrep`) |
-| module_surface_driver.F:2116 `SFCLAYREV` (module_sf_sfclayrev.F:16) | suite.cpp:641 -> src/phys/sf_sfclayrev |
-| module_surface_driver.F:2133 `ch = chs` | suite.cpp:652 |
-| module_sf_noahdrv.F:747-1100 lsm before SFLX | suite.cpp:101 (`KLsmPre`) |
-| module_sf_noahdrv.F:1105 `SFLX` | suite.cpp:716 -> src/phys/lsm_noah/noah.hpp (`NoahKernel`) |
-| module_sf_noahdrv.F:1140-1170 ICE == -1, `SFLX_GLACIAL` | suite.cpp:255 (`KLsmGlacial`), src/phys/driver/noah_ice.hpp:284 |
-| module_sf_noahdrv.F:1215-1600 lsm after SFLX | suite.cpp:309 (`KLsmPost`) |
-| module_sf_noah_seaice_drv.F:14 `seaice_noah`, module_sf_noah_seaice.F `SFLX_SEAICE` | suite.cpp:366 (`KSeaiceNoah`), noah_ice.hpp:627 |
-| module_surface_driver.F:2984-2994 accumulations, `SFCDIAGS` (module_sf_sfcdiags.F:7) | suite.cpp:461 (`KLsmDiag`) |
-| module_surface_driver.F:4436-4453 RAINBL = 0, Q2 limit | suite.cpp:491 (`KSfcEnd`) |
-| module_pbl_driver.F:930-1045 run decision, phytmp, PSFC, zeroed R*BLTEN | suite.cpp:791, :505 (`KPblPrep`) |
-| module_pbl_driver.F:1217 `ysu` (module_bl_ysu.F:398 `bl_ysu_run`) | suite.cpp:802 -> src/phys/bl_ysu/ysu.hpp |
+| module_surface_driver.F:1539-1570 zeroed locals, RAINBL | surface_driver.cpp (`KSfcAlways`) |
+| module_surface_driver.F:1855-1895, 1955-1975 run decision, DTBL | surface_driver.cpp (`PhysicsSuite::surface_driver`) |
+| module_surface_driver.F:1980-1997 PSFC, u/v_phytmp | surface_driver.cpp (`KSfcPrep`) |
+| module_surface_driver.F:2116 `SFCLAYREV` (module_sf_sfclayrev.F:16) | surface_driver.cpp -> src/phys/sf_sfclayrev |
+| module_surface_driver.F:2133 `ch = chs` | surface_driver.cpp |
+| module_sf_noahdrv.F:747-1100 lsm before SFLX | surface_driver.cpp (`KLsmPre`) |
+| module_sf_noahdrv.F:1105 `SFLX` | surface_driver.cpp -> src/phys/lsm_noah/noah.hpp (`NoahKernel`) |
+| module_sf_noahdrv.F:1140-1170 ICE == -1, `SFLX_GLACIAL` | surface_driver.cpp (`KLsmGlacial`), src/phys/driver/noah_ice.hpp |
+| module_sf_noahdrv.F:1215-1600 lsm after SFLX | surface_driver.cpp (`KLsmPost`) |
+| module_sf_noah_seaice_drv.F:14 `seaice_noah`, module_sf_noah_seaice.F `SFLX_SEAICE` | surface_driver.cpp (`KSeaiceNoah`), noah_ice.hpp |
+| module_surface_driver.F:2984-2994 accumulations, `SFCDIAGS` (module_sf_sfcdiags.F:7) | surface_driver.cpp (`KLsmDiag`) |
+| module_surface_driver.F:4436-4453 RAINBL = 0, Q2 limit | surface_driver.cpp (`KSfcEnd`) |
+| module_pbl_driver.F:930-1045 run decision, phytmp, PSFC, zeroed R*BLTEN | pbl_driver.cpp (`PhysicsSuite::pbl_driver`, `KPblPrep`) |
+| module_pbl_driver.F:1217 `ysu` (module_bl_ysu.F:398 `bl_ysu_run`) | pbl_driver.cpp -> src/phys/bl_ysu/ysu.hpp |
 | module_em.F:2079 `calculate_phy_tend` | src/phys/driver/tendency_coupling.cpp:81 |
 | module_physics_addtendc.F:28/210 `update_phy_ten`/`phy_bl_ten` (add_a2a :2285, add_a2c_u :2381, add_a2c_v :2435) | tendency_coupling.cpp:96 |
 | module_big_step_utilities_em.F:6674 `conv_t_tendf_to_moist` | tendency_coupling.cpp:111 |
-| module_big_step_utilities_em.F:4980 `phy_prep_part2` | tendency_coupling.cpp:116 (from suite.cpp:618 `after_rk`) |
+| module_big_step_utilities_em.F:4980 `phy_prep_part2` | tendency_coupling.cpp:116 (from suite.cpp `after_rk`) |
 
 Constants are `module_model_constants` evaluated in the working precision
 (src/phys/driver/wrf_constants.hpp). All fields are allocated once in the constructor; the Noah
@@ -225,7 +225,7 @@ thresholds), so the CUDA builds differ from WRF by more than in the dry case. Th
    - `calculate_phy_tend` (`dyn_em/module_em.F:2208-2261`): multiplies `RUCUTEN, RVCUTEN, RTHCUTEN, RQVCUTEN` (and `RQCCUTEN, RQRCUTEN, RQICUTEN, RQSCUTEN` when the corresponding `P_Q* >= 0`) by `mu = c1h(k)*mut + c2h(k)`.
    - `update_phy_ten` / `phy_cu_ten` (`phys/module_physics_addtendc.F:1185-1225`): adds `RTHCUTEN` to `t_tendf`, `RQVCUTEN` to `moist_tend(P_QV)` (and `RQCCUTEN, RQRCUTEN, RQICUTEN, RQSCUTEN` when `P_Q* >= 0`) before `conv_t_tendf_to_moist`.
 4. **After the RK loop (`solve_em.F:3560`, before `phy_prep_part2`)**:
-   - `advance_ppt` (`phys/module_physics_addtendc.F:2059-2235`, `PhysicsSuite::advance_ppt` / `KAdvancePpt` in `src/phys/driver/suite.cpp`):
+   - `advance_ppt` (`phys/module_physics_addtendc.F:2059-2235`, `PhysicsSuite::advance_ppt` / `KAdvancePpt` in `src/phys/driver/cumulus_driver.cpp`):
      - `RAINCV = DT * PRATEC`, `RAINSHV = DT * PRATESH`
      - `RAINC += DT * PRATEC`, `RAINSH += DT * PRATESH`, `CUPPT += DT * PRATEC / 1000`
      - Updates `HTOP = max(CUTOP, HTOP)` and `HBOT = min(CUBOT, HBOT)` where `RAINCV > 0`
@@ -377,7 +377,7 @@ Port: `src/phys/cu_ntiedtke/ntiedtke.hpp` = WRF 4.8.0 `phys/physics_mmm/cu_ntied
 (cumastrn and the routines it calls, statement for statement; integer powers as products, cutypen's
 INTEGER `zcbase`, cuflxn's `ktopm2 = 2`). The flags WRF computes over a row of columns (llo3, the
 early exits) do not depend on the other columns: a whole row (lq = 119) through WRF's object gives
-the same result as one column at a time. Driver glue (`src/phys/driver/suite.cpp`, `KNTiedtke`) =
+the same result as one column at a time. Driver glue (`src/phys/driver/cumulus_driver.cpp`, `KNTiedtke`) =
 `module_cu_ntiedtke.F` cu_ntiedtke_driver: pre_run (zi from dz8w, omega = -0.5 g rho (w(k)+w(k+1)),
 arrays flipped top to bottom, the forcing zeroed at itimestep 1), cu_ntiedtke_run, post_run
 (R*CUTEN = (new - old) / (stepcu dt), RTHCUTEN divided by pi, RAINCV = rn / stepcu, PRATEC).
@@ -413,7 +413,7 @@ Port: `src/phys/cu_gfl/` = WRF 4.8.0 `phys/GFL/module_cu_gfl_deep.F90` (`cu_gfl_
 `phys/GFL/WRF/module_cu_gfl_wrf.F90` (`cu_grell_freitas_li`) with WRF's settings (`imid = 0`,
 `sub3d = 0`, `dicycle = 0`, `irainevap = 1`, `icoldpool = 1`, `autoconv = 1`, `aeroevap = 1`,
 `ccn = 1500.`, `ccnclean = 250.`, no stochastic perturbations, `clos_choice` = `phys.clos_choice`).
-Driver glue `KGrellFreitas` in `src/phys/driver/suite.cpp`; it uses the same `RTHFTEN`/`RQVFTEN`
+Driver glue `KGrellFreitas` in `src/phys/driver/cumulus_driver.cpp`; it uses the same `RTHFTEN`/`RQVFTEN`
 forcing as New Tiedtke (`cu_grell_freitas_li` combines it with `RTHRATEN`/`RTHBLTEN` itself). All
 columns in the domain are active (`its..itf`, `jts..jtf`), `RUCUTEN`/`RVCUTEN` are computed (including
 cold-pool gust-front momentum impact and ECMWF-style kinetic energy dissipation heating) and added to the
