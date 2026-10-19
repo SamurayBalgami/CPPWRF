@@ -102,7 +102,7 @@ struct SwColumnIn {
   bool has_qc, has_qi, has_qs;
 };
 
-// CAM relcalc for one layer (rrtmg_relcalc_single of rrtmg_common.hpp)
+// CAM relcalc (module_ra_rrtmg_sw.F) for one layer
 CPPWRF_HD inline double rrtmg_sw_relcalc(double t_lay, double xland, double snow, double xice) {
   constexpr double tmelt = 273.16, rliqocean = 14.0, rliqice = 14.0, rliqland = 8.0;
   double landfrac = 2.0 - xland;

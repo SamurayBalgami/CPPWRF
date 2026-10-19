@@ -67,5 +67,7 @@ LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu
 
 // Comma-separated list (whitespace trimmed, empty entries dropped).
 std::vector<std::string> split_list(const std::string& s);
+// domain.bc_x / bc_y: periodic | symmetric | specified | open
+BC parse_bc(const std::string& s);
 
 }  // namespace cppwrf::cases

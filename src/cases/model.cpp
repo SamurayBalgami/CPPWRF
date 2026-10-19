@@ -10,7 +10,7 @@
 
 namespace cppwrf::cases {
 
-static BC parse_bc(const std::string& s) {
+BC parse_bc(const std::string& s) {
   if (s == "periodic") return BC::Periodic;
   if (s == "symmetric") return BC::Symmetric;
   if (s == "specified") return BC::Specified;

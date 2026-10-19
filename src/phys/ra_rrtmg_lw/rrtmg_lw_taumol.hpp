@@ -57,9 +57,8 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb01(
     const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
-  constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b01;
-  int lay, ind0, ind1, inds, indf, indm, ig;
+  int ind0, ind1, inds, indf, indm;
   double pp, corradj, scalen2, tauself, taufor, taun2;
   for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   ind0 = ((jp[lay]-1)*5+(jt[lay]-1))*1 + 1;
@@ -148,9 +147,8 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb02(
     const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
-  constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b02;
-  int lay, ind0, ind1, inds, indf, ig;
+  int ind0, ind1, inds, indf;
   double pp, corradj, tauself, taufor;
   for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   ind0 = ((jp[lay]-1)*5+(jt[lay]-1))*1 + 1;
@@ -230,11 +228,11 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb03(
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b03;
-  int lay, ind0, ind1, inds, indf, indm, ig;
+  int ind0, ind1, inds, indf, indm;
   int js, js1, jmn2o, jpl;
   double speccomb, specparm, specmult, fs;
   double speccomb1, specparm1, specmult1, fs1;
-  double speccomb_mn2o, specparm_mn2o, specmult_mn2o, fmn2o, fmn2omf, chi_n2o, ratn2o, adjfac, adjcoln2o;
+  double speccomb_mn2o, specparm_mn2o, specmult_mn2o, fmn2o, chi_n2o, ratn2o, adjfac, adjcoln2o;
   double speccomb_planck, specparm_planck, specmult_planck, fpl;
   double p, p4, fk0, fk1, fk2;
   double fac000, fac100, fac200, fac010, fac110, fac210;
@@ -265,7 +263,6 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb03(
   specmult_mn2o = 8.*specparm_mn2o;
   jmn2o = 1 + static_cast<int>(specmult_mn2o);
   fmn2o = std::fmod(specmult_mn2o, 1.0);
-  fmn2omf = minorfrac[lay]*fmn2o;
   chi_n2o = coln2o[lay]/coldry[lay];
   ratn2o = 1.e20*chi_n2o/get_chi_mls(tables, 4, jp[lay]+1);
   if (ratn2o  >  1.5) {
@@ -397,7 +394,6 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb03(
   specmult_mn2o = 4.*specparm_mn2o;
   jmn2o = 1 + static_cast<int>(specmult_mn2o);
   fmn2o = std::fmod(specmult_mn2o, 1.0);
-  fmn2omf = minorfrac[lay]*fmn2o;
   chi_n2o = coln2o[lay]/coldry[lay];
   ratn2o = 1.e20*chi_n2o/get_chi_mls(tables, 4, jp[lay]+1);
   if (ratn2o  >  1.5) {
@@ -478,7 +474,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb04(
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b04;
-  int lay, ind0, ind1, inds, indf, ig;
+  int ind0, ind1, inds, indf;
   int js, js1, jpl;
   double speccomb, specparm, specmult, fs;
   double speccomb1, specparm1, specmult1, fs1;
@@ -690,7 +686,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb05(
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b05;
-  int lay, ind0, ind1, inds, indf, indm, ig;
+  int ind0, ind1, inds, indf, indm;
   int js, js1, jmo3, jpl;
   double speccomb, specparm, specmult, fs;
   double speccomb1, specparm1, specmult1, fs1;
@@ -905,9 +901,8 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb06(
     const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
-  constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b06;
-  int lay, ind0, ind1, inds, indf, indm, ig;
+  int ind0, ind1, inds, indf, indm;
   double chi_co2, ratco2, adjfac, adjcolco2;
   double tauself, taufor, absco2;
   for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
@@ -992,7 +987,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb07(
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b07;
-  int lay, ind0, ind1, inds, indf, indm, ig;
+  int ind0, ind1, inds, indf, indm;
   int js, js1, jmco2, jpl;
   double speccomb, specparm, specmult, fs;
   double speccomb1, specparm1, specmult1, fs1;
@@ -1205,9 +1200,8 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb08(
     const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
-  constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b08;
-  int lay, ind0, ind1, inds, indf, indm, ig;
+  int ind0, ind1, inds, indf, indm;
   double tauself, taufor, absco2, abso3, absn2o;
   double chi_co2, ratco2, adjfac, adjcolco2;
   for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
@@ -1307,7 +1301,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb09(
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b09;
-  int lay, ind0, ind1, inds, indf, indm, ig;
+  int ind0, ind1, inds, indf, indm;
   int js, js1, jmn2o, jpl;
   double speccomb, specparm, specmult, fs;
   double speccomb1, specparm1, specmult1, fs1;
@@ -1514,9 +1508,8 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb10(
     const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
-  constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b10;
-  int lay, ind0, ind1, inds, indf, ig;
+  int ind0, ind1, inds, indf;
   double tauself, taufor;
   for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   ind0 = ((jp[lay]-1)*5+(jt[lay]-1))*1 + 1;
@@ -1592,9 +1585,8 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb11(
     const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
-  constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b11;
-  int lay, ind0, ind1, inds, indf, indm, ig;
+  int ind0, ind1, inds, indf, indm;
   double scaleo2, tauself, taufor, tauo2;
   for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   ind0 = ((jp[lay]-1)*5+(jt[lay]-1))*1 + 1;
@@ -1678,7 +1670,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb12(
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b12;
-  int lay, ind0, ind1, inds, indf, ig;
+  int ind0, ind1, inds, indf;
   int js, js1, jpl;
   double speccomb, specparm, specmult, fs;
   double speccomb1, specparm1, specmult1, fs1;
@@ -1854,7 +1846,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb13(
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b13;
-  int lay, ind0, ind1, inds, indf, indm, ig;
+  int ind0, ind1, inds, indf, indm;
   int js, js1, jmco2, jmco, jpl;
   double speccomb, specparm, specmult, fs;
   double speccomb1, specparm1, specmult1, fs1;
@@ -2063,9 +2055,8 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb14(
     const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1) of the column
 ) {
-  constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b14;
-  int lay, ind0, ind1, inds, indf, ig;
+  int ind0, ind1, inds, indf;
   double tauself, taufor;
   for (int lay = lay0; lay < (laytrop < lay1 ? laytrop : lay1); ++lay) {
   ind0 = ((jp[lay]-1)*5+(jt[lay]-1))*1 + 1;
@@ -2141,7 +2132,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb15(
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b15;
-  int lay, ind0, ind1, inds, indf, indm, ig;
+  int ind0, ind1, inds, indf, indm;
   int js, js1, jmn2, jpl;
   double speccomb, specparm, specmult, fs;
   double speccomb1, specparm1, specmult1, fs1;
@@ -2330,7 +2321,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb16(
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
   const auto& b = tables.b16;
-  int lay, ind0, ind1, inds, indf, ig;
+  int ind0, ind1, inds, indf;
   int js, js1, jpl;
   double speccomb, specparm, specmult, fs;
   double speccomb1, specparm1, specmult1, fs1;

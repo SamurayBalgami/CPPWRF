@@ -22,6 +22,18 @@ struct SI {
   CPPWRF_FORCEINLINE int& operator[](int i) const { return p[std::ptrdiff_t(i) * s]; }
 };
 
+// read-only arrays seen through the (non-const) views: one column (stride 1) and column col of a
+// batch of ncol columns
+CPPWRF_FORCEINLINE SD sd_const(const double* p) { return SD{const_cast<double*>(p), 1}; }
+CPPWRF_FORCEINLINE SD col_view(const double* a, int col, int ncol) { return SD{const_cast<double*>(a) + col, ncol}; }
+
+// grows a workspace's double and int buffers to a layout's sizes (lay.nd, lay.ni)
+template <class Workspace, class Layout>
+inline void ensure_workspace(Workspace& ws, const Layout& lay) {
+  if (ws.d.size() < lay.nd) ws.d.assign(lay.nd, 0.0);
+  if (ws.i.size() < lay.ni) ws.i.assign(lay.ni, 0);
+}
+
 struct SD2 {
   double* p;
   int s;
@@ -72,6 +84,5 @@ struct CSD2 {
 // views of local stride-1 arrays
 CPPWRF_FORCEINLINE SD sd(double* p) { return SD{p, 1}; }
 CPPWRF_FORCEINLINE SI si(int* p) { return SI{p, 1}; }
-CPPWRF_FORCEINLINE SD2 sd2(double* p, int n) { return SD2{p, 1, n}; }
 
 }  // namespace cppwrf::phys

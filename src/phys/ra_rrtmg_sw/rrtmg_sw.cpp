@@ -1,6 +1,5 @@
 #include "phys/ra_rrtmg_sw/rrtmg_sw.hpp"
 #include "phys/ra_rrtmg_lw/rrtmg_lw.hpp"
-#include "phys/ra_rrtmg_common/rrtmg_common.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -13,11 +12,6 @@
 namespace cppwrf::phys {
 
 namespace {
-void ensure(RrtmgSwWorkspace& ws, const SwLayout& lay) {
-  if (ws.d.size() < lay.nd) ws.d.assign(lay.nd, 0.0);
-  if (ws.i.size() < lay.ni) ws.i.assign(lay.ni, 0);
-}
-SD cv(const double* p) { return SD{const_cast<double*>(p), 1}; }
 constexpr double rrsw_scon = 1.36822e+03;
 }  // namespace
 
@@ -45,7 +39,7 @@ void rrtmg_sw_core(int nlayers, double heatfac, const double* play, const double
                    double* sibvisdir, double* sibvisdif, double* sibnirdir, double* sibnirdif, RrtmgSwWorkspace& ws,
                    const RrtmgSwTables& tables, int inflag, int iceflag, int liqflag) {
   SwLayout lay(nlayers);
-  ensure(ws, lay);
+  ensure_workspace(ws, lay);
   const SwViews v = lay.views(ws.d.data(), ws.i.data(), 0, 1);
   v.pz[0] = plev[0];
   v.tz[0] = tlev[0];
@@ -136,22 +130,22 @@ void rrtmg_sw_column(
   (void)xlat; (void)dz8w; (void)rho3d; (void)qr3d; (void)qg3d;
   const RrtmgSwCallConfig c = rrtmg_sw_call_config(num_levels, config);
   SwLayout lay(c.nlayers);
-  ensure(ws, lay);
+  ensure_workspace(ws, lay);
   const SwViews v = lay.views(ws.d.data(), ws.i.data(), 0, 1);
   std::vector<double> zero;
   if (!cldfra3d || config.icloud == 0) zero.assign(num_levels, 0.0);
   SwColumnIn in{};
   in.coszen = coszen; in.albedo = albedo; in.xland = xland; in.xice = xice; in.snow = snow;
-  in.p8w = cv(p8w); in.t8w = cv(t8w); in.p3d = cv(p3d); in.pi3d = cv(pi3d); in.t3d = cv(t3d); in.qv3d = cv(qv3d);
-  in.qc3d = cv(qc3d); in.qi3d = cv(qi3d); in.qs3d = cv(qs3d);
-  in.cldfra3d = cv(zero.empty() ? cldfra3d : zero.data());
-  in.o33d = cv(o33d ? o33d : qv3d);
-  in.re_cloud = cv(re_cloud); in.re_ice = cv(re_ice); in.re_snow = cv(re_snow);
+  in.p8w = sd_const(p8w); in.t8w = sd_const(t8w); in.p3d = sd_const(p3d); in.pi3d = sd_const(pi3d); in.t3d = sd_const(t3d); in.qv3d = sd_const(qv3d);
+  in.qc3d = sd_const(qc3d); in.qi3d = sd_const(qi3d); in.qs3d = sd_const(qs3d);
+  in.cldfra3d = sd_const(zero.empty() ? cldfra3d : zero.data());
+  in.o33d = sd_const(o33d ? o33d : qv3d);
+  in.re_cloud = sd_const(re_cloud); in.re_ice = sd_const(re_ice); in.re_snow = sd_const(re_snow);
   in.has_qc = in.has_qi = in.has_qs = true;  // absent species are passed as zero arrays
   rrtmg_sw_prep(c, in, v, tables, rrtmg_lw_consts());
   for (int g = 0; g < 112; ++g) rrtmg_sw_gpoint(c, g, v, tables);
   for (int lev = 0; lev <= c.nlayers; ++lev) rrtmg_sw_level(lev, v, tables);
-  const SwColumnOut o = rrtmg_sw_finish(c, v, cv(pi3d), SD{rthratensw, 1}, SD{rthratenswc, 1});
+  const SwColumnOut o = rrtmg_sw_finish(c, v, sd_const(pi3d), SD{rthratensw, 1}, SD{rthratenswc, 1});
   gsw = o.gsw; swcf = o.swcf; swupt = o.swupt; swuptc = o.swuptc; swdnt = o.swdnt; swdntc = o.swdntc;
   swupb = o.swupb; swupbc = o.swupbc; swdnb = o.swdnb; swdnbc = o.swdnbc; swvisdir = o.swvisdir;
   swvisdif = o.swvisdif; swnirdir = o.swnirdir; swnirdif = o.swnirdif;

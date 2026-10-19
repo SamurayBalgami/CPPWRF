@@ -117,13 +117,6 @@ RrtmgLwCallConfig rrtmg_lw_call_config(int num_levels, const RrtmgLwConfig& conf
   return c;
 }
 
-namespace {
-void ensure(RrtmgLwWorkspace& ws, const LwLayout& lay) {
-  if (ws.d.size() < lay.nd) ws.d.assign(lay.nd, 0.0);
-  if (ws.i.size() < lay.ni) ws.i.assign(lay.ni, 0);
-}
-SD cv(const double* p) { return SD{const_cast<double*>(p), 1}; }
-}  // namespace
 
 // WRF rrtmg_lw (inatm, cldprmc, setcoef, taumol, rtrnmc) for one column whose McICA subcolumn
 // cloud arrays are already in ws (cldfmc, ciwpmc, clwpmc, cswpmc, taucmc). Layer arrays have
@@ -137,7 +130,7 @@ void rrtmg_lw_core(int nlayers, double cp, const double* play, const double* ple
                    const RrtmgLwTables& tables, int inflag, int iceflag, int liqflag) {
   constexpr double grav = 9.8066;
   LwLayout lay(nlayers);
-  ensure(ws, lay);
+  ensure_workspace(ws, lay);
   const LwViews v = lay.views(ws.d.data(), ws.i.data(), 0, 1);
   v.pz[0] = plev[0];
   v.tz[0] = tlev[0];
@@ -227,20 +220,20 @@ void rrtmg_lw_column(
   (void)qr3d; (void)qg3d; (void)xlat; (void)rho3d; (void)dz8w;
   const RrtmgLwCallConfig c = rrtmg_lw_call_config(num_levels, config, re_cloud, re_ice, re_snow);
   LwLayout lay(c.nlayers);
-  ensure(ws, lay);
+  ensure_workspace(ws, lay);
   const LwViews v = lay.views(ws.d.data(), ws.i.data(), 0, 1);
   LwColumnIn in{};
   in.tsk = tsk; in.emiss = emiss; in.xland = xland; in.xice = xice; in.snow = snow; in.xlat = xlat;
-  in.p8w = cv(p8w); in.t8w = cv(t8w); in.p3d = cv(p3d); in.pi3d = cv(pi3d); in.dz8w = cv(dz8w); in.t3d = cv(t3d);
-  in.rho3d = cv(rho3d); in.qv3d = cv(qv3d); in.qc3d = cv(qc3d); in.qi3d = cv(qi3d); in.qs3d = cv(qs3d);
-  in.cldfra3d = cv(cldfra3d); in.o33d = cv(o33d ? o33d : qv3d);
-  in.re_cloud = cv(re_cloud); in.re_ice = cv(re_ice); in.re_snow = cv(re_snow);
+  in.p8w = sd_const(p8w); in.t8w = sd_const(t8w); in.p3d = sd_const(p3d); in.pi3d = sd_const(pi3d); in.dz8w = sd_const(dz8w); in.t3d = sd_const(t3d);
+  in.rho3d = sd_const(rho3d); in.qv3d = sd_const(qv3d); in.qc3d = sd_const(qc3d); in.qi3d = sd_const(qi3d); in.qs3d = sd_const(qs3d);
+  in.cldfra3d = sd_const(cldfra3d); in.o33d = sd_const(o33d ? o33d : qv3d);
+  in.re_cloud = sd_const(re_cloud); in.re_ice = sd_const(re_ice); in.re_snow = sd_const(re_snow);
   in.has_qc = in.has_qi = in.has_qs = true;  // absent species are passed as zero arrays
   rrtmg_lw_prep(c, in, v, tables, rrtmg_lw_consts());
   for (int l = 0; l < c.nlayers; ++l) rrtmg_lw_layer(c.nlayers, l, v, tables);
   for (int b = 0; b < 16; ++b) rrtmg_lw_bandstage(c.nlayers, b, v, tables);
   for (int lev = 0; lev <= c.nlayers; ++lev) rrtmg_lw_level(lev, v, tables);
-  const LwColumnOut o = rrtmg_lw_finish(c, v, cv(pi3d), SD{rthratenlw, 1}, SD{rthratenlwc, 1});
+  const LwColumnOut o = rrtmg_lw_finish(c, v, sd_const(pi3d), SD{rthratenlw, 1}, SD{rthratenlwc, 1});
   glw = o.glw; olr = o.olr; lwcf = o.lwcf; lwupt = o.lwupt; lwuptc = o.lwuptc; lwdnt = o.lwdnt;
   lwdntc = o.lwdntc; lwupb = o.lwupb; lwupbc = o.lwupbc; lwdnb = o.lwdnb; lwdnbc = o.lwdnbc;
 }

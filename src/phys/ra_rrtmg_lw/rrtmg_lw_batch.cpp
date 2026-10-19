@@ -32,10 +32,6 @@ struct LwChunk {
   CPPWRF_FORCEINLINE LwViews views(int ci) const { return lay.views(d, ip, ci, n); }
 };
 
-CPPWRF_FORCEINLINE SD col_view(const double* a, int col, int ncol) {
-  return SD{const_cast<double*>(a) + col, ncol};
-}
-
 struct KLwPrep {
   LwChunk ch;
   RrtmgLwCallConfig c;

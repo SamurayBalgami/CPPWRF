@@ -1,4 +1,5 @@
 #include "cases/wrf_ideal.hpp"
+#include "cases/model.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -34,14 +35,6 @@ Ideal ideal_of(const std::string& name) {
   if (name == "em_squall2d_y") return Ideal::squall2d_y;
   if (name == "em_grav2d_x") return Ideal::grav2d_x;
   throw std::runtime_error("unknown WRF ideal case " + name);
-}
-
-BC parse_bc(const std::string& s) {
-  if (s == "periodic") return BC::Periodic;
-  if (s == "symmetric") return BC::Symmetric;
-  if (s == "specified") return BC::Specified;
-  if (s == "open") return BC::Open;
-  throw std::runtime_error("unknown boundary condition '" + s + "' (periodic|symmetric|specified|open)");
 }
 
 // 1-based Fortran-style vector: v(1..n)
