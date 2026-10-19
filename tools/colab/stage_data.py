@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(REPO, "tests", "verify"))
 import wrf_suite  # noqa: E402
 
 WR = os.environ["CPPWRF_WRF_RUNS"]
+WREF = os.environ.get("CPPWRF_WRF_REF", os.path.expanduser("~/wrf_ref480"))
 SKIP = ["wrfout*", "wrfrst*", "rsl.*", "met_em*", "*.exe", "*.log", "namelist.output", "steps", "README*",
         "p3_lookup*", "ishmael*", "snicar*", "CAM_ABS_DATA", "CAM_AEROPT_DATA", "aerosol*.formatted",
         "CLM_*", "BROADBAND*", "ETAMPNEW*", "CCN_ACTIVATE*", "kernels*", "*.f90*", "eclipse*", "HLC.TBL",
@@ -74,8 +75,19 @@ def main():
     want = a.only.split(",")
     dirs = {}  # run directory -> history files to keep, Thompson tables needed
     ref_times = {}  # reference wrfout -> compared times
+    ideal = set()  # files under CPPWRF_WRF_REF: ideal-case soundings and reference wrfout files
+    if any("straka" in o for o in want):
+        ideal.add(os.path.join(WREF, "run_straka_d1", "wrfout_d01_0001-01-01_00:00:00"))
     for name, key, cfg, sets, wo, t, tol in wrf_suite.CASES:
         if not any(o in name for o in want):
+            continue
+        snd = config_value(cfg, "case", "sounding_file")
+        refs = list(wo.values()) if isinstance(wo, dict) else [wo]
+        if snd and "${CPPWRF_WRF_REF}" in snd or any(r.startswith(WREF) for r in refs):
+            if snd:
+                ideal.add(snd.replace("${CPPWRF_WRF_REF}", WREF))
+            ideal.update(r for r in refs if r.startswith(WREF))
+            print(f"{name}: ideal ({len(refs)} reference files)")
             continue
         rd = next((s.split("=", 1)[1] for s in sets if s.startswith("real.dir=")), None)
         rd = rd or config_value(cfg, "real", "dir")
@@ -107,6 +119,11 @@ def main():
                         tf.add(q, arcname=arc)
                 elif f in THOMPSON or not any(fnmatch.fnmatch(f, s) for s in SKIP):
                     tf.add(p, arcname=arc, recursive=False)
+        for p in sorted(ideal):
+            if os.path.exists(p):
+                tf.add(p, arcname=os.path.join("wrf_ref", os.path.relpath(p, WREF)), recursive=False)
+            else:
+                print(f"missing: {p}")
     print(f"{a.out}: {os.path.getsize(a.out) / 2**20:.0f} MiB, {len(dirs)} directories")
 
 
