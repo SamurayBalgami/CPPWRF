@@ -200,8 +200,8 @@ CPPWRF_HD inline Real compT_fr_The(Real thelcl_K, Real pres_Pa) {
     return thwlcl_K * std::pow(pres_Pa / Real(100000.0), Real(0.286));
 }
 
-// Single-source Thompson column kernel
-template <typename Real>
+// Single-source Thompson column kernel; NL >= nz sizes the column arrays (thread-local memory on the GPU)
+template <typename Real, int NL = kMaxLevels>
 struct ThompsonKernel {
     ThompsonTablesView<Real> tables;
     Real dt;
@@ -242,7 +242,7 @@ struct ThompsonKernel {
         const Real obmr = Real(1.0) / Real(bm_r);
         const Real obmi = Real(1.0) / Real(bm_i);
         const Real nc = Real(Nt_c);  // .NOT. is_aerosol_aware
-        Real rc[kMaxLevels], ri[kMaxLevels], ni_c[kMaxLevels], rs[kMaxLevels];
+        Real rc[NL], ri[NL], ni_c[NL], rs[NL];
         bool has_qc = false, has_qi = false, has_qs = false;
         for (int k = 0; k < nz; ++k) {  // re_qc1d etc. live in re_cloud, re_ice, re_snow
             re_cloud(i, j, k) = re_qc_bg;
@@ -310,39 +310,39 @@ struct ThompsonKernel {
     }
 
     CPPWRF_HD void operator()(int i, int j) const {
-        if (nz > kMaxLevels) return;
+        if (nz > NL) return;
 
-        Real temp[kMaxLevels], twet[kMaxLevels], pres[kMaxLevels], qv_loc[kMaxLevels];
-        Real qc1d[kMaxLevels], qi1d[kMaxLevels], qr1d[kMaxLevels], qs1d[kMaxLevels], qg1d[kMaxLevels], qb1d[kMaxLevels];
-        Real nc1d[kMaxLevels], ni1d[kMaxLevels], nr1d[kMaxLevels], ng1d[kMaxLevels];
-        Real rc[kMaxLevels], ri[kMaxLevels], rr[kMaxLevels], rs[kMaxLevels], rg[kMaxLevels], rb[kMaxLevels];
-        Real ni_loc[kMaxLevels], nr_loc[kMaxLevels], nc[kMaxLevels], ns[kMaxLevels], ng[kMaxLevels];
-        Real rho[kMaxLevels], rhof[kMaxLevels], rhof2[kMaxLevels];
-        Real qvs[kMaxLevels], qvsi[kMaxLevels], delQvs[kMaxLevels];
-        Real satw[kMaxLevels], sati[kMaxLevels], ssatw[kMaxLevels], ssati[kMaxLevels];
-        Real diffu[kMaxLevels], visco[kMaxLevels], vsc2[kMaxLevels], tcond[kMaxLevels], lvap[kMaxLevels], ocp[kMaxLevels], lvt2[kMaxLevels];
-        Real ilamr[kMaxLevels], ilamg[kMaxLevels], N0_r[kMaxLevels], N0_g[kMaxLevels];
-        Real mvd_r[kMaxLevels], mvd_c[kMaxLevels], mvd_g[kMaxLevels];
-        Real smo0[kMaxLevels], smo1[kMaxLevels], smo2[kMaxLevels], smob[kMaxLevels], smoc[kMaxLevels], smod[kMaxLevels], smoe[kMaxLevels], smof[kMaxLevels], smog[kMaxLevels];
-        Real vts_boost[kMaxLevels];
-        Real vtik[kMaxLevels + 1], vtnik[kMaxLevels + 1], vtrk[kMaxLevels + 1], vtnrk[kMaxLevels + 1];
-        Real vtsk[kMaxLevels + 1], vtgk[kMaxLevels + 1], vtngk[kMaxLevels + 1], vtck[kMaxLevels + 1], vtnck[kMaxLevels + 1];
-        Real sed_r[kMaxLevels], sed_s[kMaxLevels], sed_g[kMaxLevels], sed_i[kMaxLevels], sed_n[kMaxLevels], sed_c[kMaxLevels], sed_b[kMaxLevels];
+        Real temp[NL], twet[NL], pres[NL], qv_loc[NL];
+        Real qc1d[NL], qi1d[NL], qr1d[NL], qs1d[NL], qg1d[NL], qb1d[NL];
+        Real nc1d[NL], ni1d[NL], nr1d[NL], ng1d[NL];
+        Real rc[NL], ri[NL], rr[NL], rs[NL], rg[NL], rb[NL];
+        Real ni_loc[NL], nr_loc[NL], nc[NL], ns[NL], ng[NL];
+        Real rho[NL], rhof[NL], rhof2[NL];
+        Real qvs[NL], qvsi[NL], delQvs[NL];
+        Real satw[NL], sati[NL], ssatw[NL], ssati[NL];
+        Real diffu[NL], visco[NL], vsc2[NL], tcond[NL], lvap[NL], ocp[NL], lvt2[NL];
+        Real ilamr[NL], ilamg[NL], N0_r[NL], N0_g[NL];
+        Real mvd_r[NL], mvd_c[NL], mvd_g[NL];
+        Real smo0[NL], smo1[NL], smo2[NL], smob[NL], smoc[NL], smod[NL], smoe[NL], smof[NL], smog[NL];
+        Real vts_boost[NL];
+        Real vtik[NL + 1], vtnik[NL + 1], vtrk[NL + 1], vtnrk[NL + 1];
+        Real vtsk[NL + 1], vtgk[NL + 1], vtngk[NL + 1], vtck[NL + 1], vtnck[NL + 1];
+        Real sed_r[NL], sed_s[NL], sed_g[NL], sed_i[NL], sed_n[NL], sed_c[NL], sed_b[NL];
 
-        Real tten[kMaxLevels], qvten[kMaxLevels], qcten[kMaxLevels], qiten[kMaxLevels], qrten[kMaxLevels];
-        Real qsten[kMaxLevels], qgten[kMaxLevels], qbten[kMaxLevels], niten[kMaxLevels], nrten[kMaxLevels], ncten[kMaxLevels], ngten[kMaxLevels];
+        Real tten[NL], qvten[NL], qcten[NL], qiten[NL], qrten[NL];
+        Real qsten[NL], qgten[NL], qbten[NL], niten[NL], nrten[NL], ncten[NL], ngten[NL];
 
-        Real prw_vcd[kMaxLevels], pnc_wcd[kMaxLevels], pnc_wau[kMaxLevels], pnc_rcw[kMaxLevels], pnc_scw[kMaxLevels], pnc_gcw[kMaxLevels];
-        Real prr_wau[kMaxLevels], prr_rcw[kMaxLevels], prr_rcs[kMaxLevels], prr_rcg[kMaxLevels], prr_sml[kMaxLevels], prr_gml[kMaxLevels], prr_rci[kMaxLevels], prv_rev[kMaxLevels];
-        Real pnr_wau[kMaxLevels], pnr_rcs[kMaxLevels], pnr_rcg[kMaxLevels], pnr_rci[kMaxLevels], pnr_sml[kMaxLevels], pnr_gml[kMaxLevels], pnr_rev[kMaxLevels], pnr_rcr[kMaxLevels], pnr_rfz[kMaxLevels];
-        Real pri_inu[kMaxLevels], pni_inu[kMaxLevels], pri_ihm[kMaxLevels], pni_ihm[kMaxLevels], pri_wfz[kMaxLevels], pni_wfz[kMaxLevels], pri_rfz[kMaxLevels], pni_rfz[kMaxLevels];
-        Real pri_ide[kMaxLevels], pni_ide[kMaxLevels], pri_rci[kMaxLevels], pni_rci[kMaxLevels], pni_sci[kMaxLevels], pni_iau[kMaxLevels], pri_iha[kMaxLevels], pni_iha[kMaxLevels];
-        Real prs_iau[kMaxLevels], prs_sci[kMaxLevels], prs_rcs[kMaxLevels], prs_scw[kMaxLevels], prs_sde[kMaxLevels], prs_ihm[kMaxLevels], prs_ide[kMaxLevels];
-        Real prg_scw[kMaxLevels], prg_rfz[kMaxLevels], prg_gde[kMaxLevels], prg_gcw[kMaxLevels], prg_rci[kMaxLevels], prg_rcs[kMaxLevels], prg_rcg[kMaxLevels], prg_ihm[kMaxLevels];
-        Real png_scw[kMaxLevels], png_rcs[kMaxLevels], png_rcg[kMaxLevels], png_gde[kMaxLevels];
-        Real pbg_scw[kMaxLevels], pbg_rfz[kMaxLevels], pbg_gcw[kMaxLevels], pbg_rci[kMaxLevels], pbg_rcs[kMaxLevels], pbg_rcg[kMaxLevels], pbg_sml[kMaxLevels], pbg_gml[kMaxLevels];
+        Real prw_vcd[NL], pnc_wcd[NL], pnc_wau[NL], pnc_rcw[NL], pnc_scw[NL], pnc_gcw[NL];
+        Real prr_wau[NL], prr_rcw[NL], prr_rcs[NL], prr_rcg[NL], prr_sml[NL], prr_gml[NL], prr_rci[NL], prv_rev[NL];
+        Real pnr_wau[NL], pnr_rcs[NL], pnr_rcg[NL], pnr_rci[NL], pnr_sml[NL], pnr_gml[NL], pnr_rev[NL], pnr_rcr[NL], pnr_rfz[NL];
+        Real pri_inu[NL], pni_inu[NL], pri_ihm[NL], pni_ihm[NL], pri_wfz[NL], pni_wfz[NL], pri_rfz[NL], pni_rfz[NL];
+        Real pri_ide[NL], pni_ide[NL], pri_rci[NL], pni_rci[NL], pni_sci[NL], pni_iau[NL], pri_iha[NL], pni_iha[NL];
+        Real prs_iau[NL], prs_sci[NL], prs_rcs[NL], prs_scw[NL], prs_sde[NL], prs_ihm[NL], prs_ide[NL];
+        Real prg_scw[NL], prg_rfz[NL], prg_gde[NL], prg_gcw[NL], prg_rci[NL], prg_rcs[NL], prg_rcg[NL], prg_ihm[NL];
+        Real png_scw[NL], png_rcs[NL], png_rcg[NL], png_gde[NL];
+        Real pbg_scw[NL], pbg_rfz[NL], pbg_gcw[NL], pbg_rci[NL], pbg_rcs[NL], pbg_rcg[NL], pbg_sml[NL], pbg_gml[NL];
 
-        bool L_qc[kMaxLevels], L_qi[kMaxLevels], L_qr[kMaxLevels], L_qs[kMaxLevels], L_qg[kMaxLevels];
+        bool L_qc[NL], L_qi[NL], L_qr[NL], L_qs[NL], L_qg[NL];
 
         Real pptrain = Real(0.0);
         Real pptsnow = Real(0.0);
@@ -2149,10 +2149,10 @@ struct ThompsonKernel {
         // Precipitation totals
         Real rain_step = pptrain + pptsnow + pptgraul + pptice;
         rainncv(i, j) = rain_step;
-        rainnc(i, j) += rain_step;
+        rainnc(i, j) = rainnc(i, j) + pptrain + pptsnow + pptgraul + pptice;  // left to right, as WRF
         Real snow_step = pptsnow + pptice;
         snowncv(i, j) = snow_step;
-        snownc(i, j) += snow_step;
+        snownc(i, j) = snownc(i, j) + pptsnow + pptice;
         graupelncv(i, j) = pptgraul;
         graupelnc(i, j) += pptgraul;
         sr(i, j) = (pptsnow + pptgraul + pptice) / (rain_step + Real(1.0e-12));

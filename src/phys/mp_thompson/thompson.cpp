@@ -1,5 +1,6 @@
 #include "thompson.hpp"
 #include <cassert>
+#include <type_traits>
 
 namespace cppwrf::phys::mp_thompson {
 
@@ -33,36 +34,43 @@ void run_thompson(
     View3<Real> re_ice,
     View3<Real> re_snow) {
     assert(nz <= kMaxLevels);
-    ThompsonKernel<Real> kernel{
-        tables,
-        dt,
-        nz,
-        th,
-        qv,
-        qc,
-        qr,
-        qi,
-        qs,
-        qg,
-        ni,
-        nr,
-        pii,
-        p,
-        w,
-        dz,
-        rainnc,
-        rainncv,
-        snownc,
-        snowncv,
-        graupelnc,
-        graupelncv,
-        sr,
-        re_cloud.p != nullptr,
-        re_cloud,
-        re_ice,
-        re_snow
+    // the column arrays sized to the next tier above nz: FP64 with 128 levels needs ~160 KB of local
+    // memory per thread, which the GPU reserves for every resident thread
+    auto launch = [&](auto nl) {
+        ThompsonKernel<Real, decltype(nl)::value> kernel{
+            tables,
+            dt,
+            nz,
+            th,
+            qv,
+            qc,
+            qr,
+            qi,
+            qs,
+            qg,
+            ni,
+            nr,
+            pii,
+            p,
+            w,
+            dz,
+            rainnc,
+            rainncv,
+            snownc,
+            snowncv,
+            graupelnc,
+            graupelncv,
+            sr,
+            re_cloud.p != nullptr,
+            re_cloud,
+            re_ice,
+            re_snow
+        };
+        column_for(range, kernel);
     };
-    column_for(range, kernel);
+    if (nz <= 48) launch(std::integral_constant<int, 48>{});
+    else if (nz <= 64) launch(std::integral_constant<int, 64>{});
+    else launch(std::integral_constant<int, kMaxLevels>{});
 }
 
 template void run_thompson<double>(
