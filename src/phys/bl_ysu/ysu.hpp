@@ -1,5 +1,4 @@
 #pragma once
-#include <cstdio>
 
 #include <algorithm>
 #include <cassert>
@@ -234,7 +233,6 @@ struct YSUKernel {
   real xlv;
   real rv;
 
-  int dbg_i = -1, dbg_j = -1;  // debug print of one column (host)
   CPPWRF_HD void operator()(int i, int j) const { compute<kMaxLevels>(i, j); }
 
   template <int MaxLevels = kMaxLevels>
@@ -974,15 +972,6 @@ struct YSUKernel {
       ad[0] = real(1.0) + fric;
     }
 
-#if !defined(__CUDA_ARCH__)
-    if (i == dbg_i && j == dbg_j) {
-      std::printf("CY fric ad1 vconvfx pblh_ysu hpbl ust wspd1 wspd rhox %24.16E%24.16E%24.16E%24.16E%24.16E%24.16E%24.16E%24.16E%24.16E\n",
-                  double(fric), double(ad[0]), double(vconvfx), double(pblh_ysu), double(hpbl(i, j)), double(ust(i, j)),
-                  double(wspd1), double(wspd(i, j)), double(rhox));
-      std::printf("CY hgamu ufxpbl xkzm1 xkzm2 zfacent1 del1 %24.16E%24.16E%24.16E%24.16E%24.16E%24.16E\n", double(hgamu),
-                  double(ufxpbl), double(xkzm[0]), double(xkzm[1]), double(zfacent[0]), double(del[0]));
-    }
-#endif
     f1[0] = ux(i, j, 0) + uoxl * (ust(i, j) * ust(i, j)) * rhox * g / del[0] * dt2 / wspd1 * (wspd_ratio * wspd_ratio);
     f2[0] = vx(i, j, 0) + voxl * (ust(i, j) * ust(i, j)) * rhox * g / del[0] * dt2 / wspd1 * (wspd_ratio * wspd_ratio);
 

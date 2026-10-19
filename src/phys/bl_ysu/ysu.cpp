@@ -1,5 +1,3 @@
-#include <cstdlib>
-#include <cstdio>
 #include "phys/bl_ysu/ysu.hpp"
 
 namespace cppwrf::phys::ysu {
@@ -77,7 +75,6 @@ void run_ysu(
       dt, nz, f_qc, f_qi, ysu_topdown_pblmix, have_ctopo, have_surface_diag,
       cp, g, rovcp, rd, rovg, ep1, ep2, karman, xlv, rv};
 
-  if (const char* e = std::getenv("CPPWRF_YSU_DBG")) std::sscanf(e, "%d,%d", &kernel.dbg_i, &kernel.dbg_j);
   if (nz <= 48) {
     column_for(range, YSURunner<48>{kernel});
   } else {
