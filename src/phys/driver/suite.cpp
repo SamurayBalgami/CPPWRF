@@ -11,6 +11,7 @@
 #include "phys/bl_ysu/ysu.hpp"
 #include "phys/cu_gfl/gfl_driver.hpp"
 #include "phys/cu_ntiedtke/ntiedtke.hpp"
+#include "phys/cu_tiedtke/tiedtke.hpp"
 #include "phys/driver/noah_ice.hpp"
 #include "phys/driver/suite_internal.hpp"
 #include "phys/driver/wrf_constants.hpp"
@@ -85,7 +86,7 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       tshltr(g, Stagger::M, "tshltr"), th10(g, Stagger::M, "th10"), qshltr(g, Stagger::M, "qshltr"),
       q10(g, Stagger::M, "q10"), pshltr(g, Stagger::M, "pshltr"), u10e(g, Stagger::M, "u10e"),
       v10e(g, Stagger::M, "v10e"), mixht(g, Stagger::M, "mixht"),
-      ivgtyp(g, "ivgtyp"), isltyp(g, "isltyp"), kpbl(g, "kpbl"), lowlyr(g, "lowlyr"), pt(g), prep(g),
+      ivgtyp(g, "ivgtyp"), isltyp(g, "isltyp"), kpbl(g, "kpbl"), lowlyr(g, "lowlyr"), td_icum(g, "td_icum"), td_row_icum(g, "td_row_icum"), oc12d(g, Stagger::M, "oc12d"), oa1(g, Stagger::M, "oa1"), oa2(g, Stagger::M, "oa2"), oa3(g, Stagger::M, "oa3"), oa4(g, Stagger::M, "oa4"), ol1(g, Stagger::M, "ol1"), ol2(g, Stagger::M, "ol2"), ol3(g, Stagger::M, "ol3"), ol4(g, Stagger::M, "ol4"), elvmax(g, Stagger::M, "elvmax"), dusfcg(g, Stagger::M, "dusfcg"), dvsfcg(g, Stagger::M, "dvsfcg"), dtaux3d(g, Stagger::M, "dtaux3d"), dtauy3d(g, Stagger::M, "dtauy3d"), pt(g), prep(g),
       psim(g, Stagger::M, "psim"), psih(g, Stagger::M, "psih"), gz1oz0(g, Stagger::M, "gz1oz0"),
       chklowq(g, Stagger::M, "chklowq"), qgh(g, Stagger::M, "qgh"), chs(g, Stagger::M, "chs"),
       chs2(g, Stagger::M, "chs2"), cqs2(g, Stagger::M, "cqs2"), cpm(g, Stagger::M, "cpm"),
@@ -94,17 +95,25 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       (o.sf_surface_physics != 2 && o.sf_surface_physics != 4) ||
       (o.bl_pbl_physics != 1 && o.bl_pbl_physics != 2))
     throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1|2, sf_surface_physics=2|4, bl_pbl_physics=1|2");
-  if (o.cu_physics != 0 && o.cu_physics != 1 && o.cu_physics != 3 && o.cu_physics != 16)
-    throw std::runtime_error("PhysicsSuite: only cu_physics=0, 1 (Kain-Fritsch), 3 (Grell-Freitas-Li) or 16 (New Tiedtke)");
+  if (o.cu_physics != 0 && o.cu_physics != 1 && o.cu_physics != 3 && o.cu_physics != 6 && o.cu_physics != 16)
+    throw std::runtime_error("PhysicsSuite: only cu_physics=0, 1 (Kain-Fritsch), 3 (Grell-Freitas-Li), 6 (Tiedtke) or 16 (New Tiedtke)");
   if (o.cu_physics == 3 && g.nz > cu_gfl::kMaxLevels)
     throw std::runtime_error("PhysicsSuite: nz exceeds the Grell-Freitas-Li column limit");
   if (o.cu_physics == 3 && o.ishallow != 0 && o.ishallow != 1)
     throw std::runtime_error("PhysicsSuite: ishallow must be 0 or 1");
+  if (o.cu_physics == 6 && g.nz > cu_tiedtke::kMaxLevels)
+    throw std::runtime_error("PhysicsSuite: nz exceeds the Tiedtke column limit");
   if (o.cu_physics == 16 && g.nz > cu_ntiedtke::kMaxLevels)
     throw std::runtime_error("PhysicsSuite: nz exceeds the New Tiedtke column limit");
   if (o.cu_physics == 1 && o.kfeta_trigger != 1 && o.kfeta_trigger != 3)
     throw std::runtime_error("PhysicsSuite: kfeta_trigger=2 is not supported");
-  if (o.fractional_seaice != 0) throw std::runtime_error("PhysicsSuite: fractional_seaice=1 is not ported");
+  if (o.fractional_seaice != 0 && o.fractional_seaice != 1)
+    throw std::runtime_error("PhysicsSuite: fractional_seaice must be 0 or 1");
+  if (o.fractional_seaice == 1) {
+    sst = Field2(g, Stagger::M, "sst");
+    tsk_save = Field2(g, Stagger::M, "tsk_save");
+    sea_ = std::make_unique<SeaIceFields>(g);
+  }
   if (o.seaice_thickness_opt != 0 || o.seaice_snowdepth_opt != 0)
     throw std::runtime_error("PhysicsSuite: seaice_thickness_opt/seaice_snowdepth_opt 1 need ICEDEPTH/SNOWSI input");
   if (o.num_soil_layers > noah::kMaxSoilLevels) throw std::runtime_error("PhysicsSuite: too many soil layers");
@@ -298,6 +307,17 @@ PhysicsSuite::~PhysicsSuite() {
   if (d_kf_tables_) dev_free(d_kf_tables_);
 }
 
+PhysicsSuite::SeaIceFields::SeaIceFields(const Grid& g) {
+  for (Field2* f : {&tsk_local, &tsk_sea, &xland_sea, &mavail_sea, &znt_sea, &z0base_sea, &br_sea, &chs_sea, &chs2_sea,
+                    &cqs2_sea, &cpm_sea, &flhc_sea, &flqc_sea, &gz1oz0_sea, &hfx_sea, &qfx_sea, &lh_sea, &mol_sea,
+                    &psim_sea, &psih_sea, &fm_sea, &fh_sea, &qgh_sea, &qsfc_sea, &regime_sea, &rmol_sea, &ust_sea,
+                    &ustm_sea, &wspd_sea, &zol_sea, &u10_sea, &v10_sea, &th2_sea, &t2_sea, &q2_sea, &ck_sea, &cka_sea,
+                    &cd_sea, &cda_sea, &qz0_sea, &thz0_sea, &uz0_sea, &vz0_sea, &pblh_sea, &akhs_sea, &akms_sea,
+                    &ct_sea, &tshltr_sea, &th10_sea, &qshltr_sea, &q10_sea, &pshltr_sea, &u10e_sea, &v10e_sea,
+                    &regime_hold})
+    *f = Field2(g, Stagger::M, "seaice_scratch");
+}
+
 std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
   std::vector<std::pair<std::string, Field2*>> v;
   for (Field2* f : {&tsk, &xland, &xice, &lakemask, &water_depth, &mavail, &tmn, &vegfra, &shdmin, &shdmax, &snoalb,
@@ -314,8 +334,12 @@ std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
     for (Field2* f : {&thz0, &uz0, &vz0, &akhs, &akms, &ct, &tshltr, &th10, &qshltr, &q10, &pshltr, &u10e, &v10e, &mixht})
       v.emplace_back("sfc_" + f->name(), f);
   }
+  if (o_.fractional_seaice == 1) {
+    v.emplace_back("sfc_sst", &sst);
+    v.emplace_back("sfc_tsk_save", &tsk_save);
+  }
   if (rad_)  // radiation diagnostics and their accumulations
-    for (Field2* f : {&lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &olr, &swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc, &aclwupt, &aclwuptc, &aclwdnt, &aclwdntc, &aclwupb, &aclwupbc, &aclwdnb, &aclwdnbc, &acswupt, &acswuptc, &acswdnt, &acswdntc, &acswupb, &acswupbc, &acswdnb, &acswdnbc})
+    for (Field2* f : {&lwcf, &swcf, &lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &olr, &swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc, &aclwupt, &aclwuptc, &aclwdnt, &aclwdntc, &aclwupb, &aclwupbc, &aclwdnb, &aclwdnbc, &acswupt, &acswuptc, &acswdnt, &acswdntc, &acswupb, &acswupbc, &acswdnb, &acswdnbc})
       v.emplace_back("sfc_" + f->name(), f);
   if (o_.sf_surface_physics == 4) {
     for (Field2* f : {&xlat_sfc, &xlong_sfc, &tvxy, &tgxy, &canicexy, &canliqxy, &eahxy, &tahxy, &cmxy, &chxy,
@@ -352,11 +376,14 @@ std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
     v.emplace_back("sfc_cldfra", &cldfra);
     v.emplace_back("sfc_rthratenlw", &rthratenlw);
     v.emplace_back("sfc_rthratensw", &rthratensw);
+    v.emplace_back("sfc_rthratenlwc", &rthratenlwc);
+    v.emplace_back("sfc_rthratenswc", &rthratenswc);
   }
   if (o_.cu_physics == 16 || o_.cu_physics == 3) {
     v.emplace_back("sfc_rthften", &pt.rthften);
     v.emplace_back("sfc_rqvften", &pt.rqvften);
   }
+  if (o_.cu_physics == 6) v.emplace_back("sfc_rqvften", &pt.rqvften);  // read by the next step's cu_tiedtke
   for (Field3* f : {re_cloud_, re_ice_, re_snow_})
     if (f) v.emplace_back("sfc_" + f->name(), f);
   return v;
@@ -446,6 +473,8 @@ std::vector<const Field2*> PhysicsSuite::fields2() const {
                        &evcxy, &chleafxy, &chucxy, &chv2xy, &chb2xy, &chstarxy, &acc_ssoilxy, &acc_qinsurxy,
                        &acc_qsevaxy, &eflxbxy, &acc_dwaterxy, &acc_prcpxy, &acc_ecanxy, &acc_etranxy, &acc_edirxy, &acc_glaflwxy});
   }
+  if (o_.gwd_opt == 1) v.insert(v.end(), {&dusfcg, &dvsfcg});
+  if (o_.fractional_seaice == 1) v.insert(v.end(), {&sst, &tsk_save});
   return v;
 }
 
@@ -454,6 +483,7 @@ std::vector<const Field3*> PhysicsSuite::fields3() const {
   if (o_.sf_surface_physics == 4) {
     v.insert(v.end(), {&tsnoxy, &snicexy, &snliqxy, &zsnsoxy, &albsoildirxy, &albsoildifxy, &smoiseq, &acc_etranixy});
   }
+  if (o_.gwd_opt == 1) v.insert(v.end(), {&dtaux3d, &dtauy3d});
   return v;
 }
 

@@ -1,6 +1,7 @@
 // PhysicsSuite::pbl_driver (WRF phys/module_pbl_driver.F)
 #include "phys/driver/suite.hpp"
 
+#include "phys/bl_gwdo/gwdo.hpp"
 #include "phys/bl_myj/myjpbl.hpp"
 #include "phys/bl_ysu/ysu.hpp"
 #include "phys/driver/wrf_constants.hpp"
@@ -36,6 +37,46 @@ struct KPblPrep {
     }
     if (flag_qi)
       for (int k = 0; k < nz; ++k) rqiblten(i, j, k) = real(0.);
+  }
+};
+
+// module_pbl_driver.F gwdo (gwd_opt = 1) after the PBL scheme: module_bl_gwdo.F -> bl_gwdo_run
+struct KGwdo {
+  int nz;
+  real dt, dx_factor, cp, g, rd, ep1, pi;
+  bool if_nonhyd;
+  C3 u, v, t, qv, p, p8w, pi3d, z;
+  V3 rublten, rvblten, dtaux3d, dtauy3d;
+  C2 var, oc1, oa1, oa2, oa3, oa4, ol1, ol2, ol3, ol4, omax, dx;
+  BView2<const real> sina, cosa;
+  V2 dusfcg, dvsfcg;
+  CPPWRF_HD void operator()(int i, int j) const {
+    bl_gwdo::GwdoColumn<real> c;
+    for (int k = 0; k <= nz; ++k) c.prsi[k + 1] = p8w(i, j, k);
+    for (int k = 0; k < nz; ++k) {
+      c.rublten[k + 1] = rublten(i, j, k);
+      c.rvblten[k + 1] = rvblten(i, j, k);
+      c.uproj[k + 1] = u(i, j, k);
+      c.vproj[k + 1] = v(i, j, k);
+      c.t1[k + 1] = t(i, j, k);
+      c.q1[k + 1] = qv(i, j, k);
+      c.prsl[k + 1] = p(i, j, k);
+      c.prslk[k + 1] = pi3d(i, j, k);
+      c.zl[k + 1] = z(i, j, k);
+    }
+    c.dxmeter = dx(i, j); c.var = var(i, j); c.oc1 = oc1(i, j); c.sina = sina(i, j); c.cosa = cosa(i, j);
+    c.oa2d1 = oa1(i, j); c.oa2d2 = oa2(i, j); c.oa2d3 = oa3(i, j); c.oa2d4 = oa4(i, j);
+    c.ol2d1 = ol1(i, j); c.ol2d2 = ol2(i, j); c.ol2d3 = ol3(i, j); c.ol2d4 = ol4(i, j);
+    c.omax = omax(i, j);
+    bl_gwdo::bl_gwdo_run<real>(c, nz, dx_factor, if_nonhyd, g, cp, rd, ep1, pi, dt);
+    for (int k = 0; k < nz; ++k) {
+      rublten(i, j, k) = c.rublten[k + 1];
+      rvblten(i, j, k) = c.rvblten[k + 1];
+      dtaux3d(i, j, k) = c.dtaux3d[k + 1];
+      dtauy3d(i, j, k) = c.dtauy3d[k + 1];
+    }
+    dusfcg(i, j) = c.dusfcg;
+    dvsfcg(i, j) = c.dvsfcg;
   }
 };
 
@@ -80,6 +121,21 @@ void PhysicsSuite::pbl_driver(const dyn::State& s, const dyn::BaseState& b) {
         qsfc.view(), thz0.view(), qz0.view(), ct.view(), tke_pbl.view(), exch_h.view(), el_pbl.view(), pblh.view(),
         kpbl.view(), mixht.view(), pt.rublten.view(), pt.rvblten.view(), pt.rthblten.view(), pt.rqvblten.view(),
         pt.rqcblten.view(), pt.rqiblten.view(), cols, dt, stepbl, g_.nz, /*has_qi=*/true);
+  }
+  if (o_.gwd_opt == 1) {
+    using namespace wrfc;
+    KGwdo k{};
+    k.nz = g_.nz; k.dt = dtbl; k.dx_factor = real(o_.gwd_dx_factor); k.if_nonhyd = o_.gwd_if_nonhyd;
+    k.cp = cp; k.g = g; k.rd = r_d; k.ep1 = ep_1; k.pi = real(3.141592653);
+    k.u = prep.u_phy.cview(); k.v = prep.v_phy.cview(); k.t = prep.t_phy.cview(); k.qv = s.q_2[s.P_QV].cview();
+    k.p = prep.p_hyd.cview(); k.p8w = prep.p_hyd_w.cview(); k.pi3d = prep.pi_phy.cview(); k.z = prep.z.cview();
+    k.rublten = pt.rublten.view(); k.rvblten = pt.rvblten.view();
+    k.dtaux3d = dtaux3d.view(); k.dtauy3d = dtauy3d.view();
+    k.var = var2d.cview(); k.oc1 = oc12d.cview(); k.oa1 = oa1.cview(); k.oa2 = oa2.cview(); k.oa3 = oa3.cview();
+    k.oa4 = oa4.cview(); k.ol1 = ol1.cview(); k.ol2 = ol2.cview(); k.ol3 = ol3.cview(); k.ol4 = ol4.cview();
+    k.omax = elvmax.cview(); k.dx = dx2d.cview(); k.sina = b.sina.view(); k.cosa = b.cosa.view();
+    k.dusfcg = dusfcg.view(); k.dvsfcg = dvsfcg.view();
+    column_for(cols, k);
   }
 }
 

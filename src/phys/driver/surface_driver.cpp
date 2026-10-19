@@ -81,12 +81,25 @@ struct KNoahRa {
   V2 ra;
   CPPWRF_HD void operator()(int i, int j) const { ra(i, j) = wspd(i, j) / (ust(i, j) * ust(i, j)); }
 };
-// rc2 = RC on the Noah land points (RS)
+// rc2 = RC (RS) after SFLX and after SFLX_GLACIAL: SFLX_GLACIAL leaves the local RC alone, so a land-ice point
+// gets the RC of the last SFLX point before it in lsm's loop order (j, then i); one thread walks the domain
 struct KNoahRs {
   C2 rc;
-  CI2 active;
+  CI2 active, ice;
   V2 rs;
-  CPPWRF_HD void operator()(int i, int j) const { if (active(i, j) == 1) rs(i, j) = rc(i, j); }
+  int i0, i1, j0, j1;
+  CPPWRF_HD void operator()(int, int) const {
+    real last = real(0.);  // WRF: uninitialised before the first SFLX point
+    for (int j = j0; j < j1; ++j)
+      for (int i = i0; i < i1; ++i) {
+        if (active(i, j) == 1) {
+          last = rc(i, j);
+          rs(i, j) = last;
+        } else if (ice(i, j) == -1) {
+          rs(i, j) = last;
+        }
+      }
+  }
 };
 
 struct KCopy2 {
@@ -564,6 +577,213 @@ struct KSfcEnd {
   }
 };
 
+// ---------------------------------------------------------------- fractional_seaice = 1
+// the sea-ice points of the fractional treatment: XICE_THRESHOLD <= XICE <= 1
+CPPWRF_HD inline bool frac_ice(real xice, real xice_threshold) { return xice >= xice_threshold && xice <= real(1.0); }
+
+// get_local_ice_tsk: SST under ice raised to 271.4 (and capped in the first steps), TSK_SEA = SST and the ice
+// portion's skin temperature from the blended TSK; land and open-water points keep TSK
+CPPWRF_HD inline void local_ice_tsk(real xice, real xice_threshold, real tsk, long itimestep, bool sfc_layer_values,
+                                    bool tice2tsk_if2cold, real& sst, real& tsk_sea, real& tsk_ice) {
+  const real tice_min = real(221.4);
+  if (xice >= xice_threshold && xice <= real(1.0)) {
+    if (sst < real(271.4)) sst = real(271.4);
+    if (sfc_layer_values) {
+      if (sst > real(273.) && itimestep <= 3) {
+        if (xice >= real(0.6)) {
+          sst = real(271.4);
+        } else if (xice >= real(0.4)) {
+          sst = real(273.);
+        } else if (xice >= real(0.2) && sst > real(275.)) {
+          sst = real(275.);
+        } else if (sst > real(278.)) {
+          sst = real(278.);
+        }
+      }
+    }
+    tsk_sea = sst;
+    if (tice2tsk_if2cold) {
+      tsk_ice = tsk < real(273.15) ? tsk : real(273.15);
+    } else {
+      tsk_ice = (tsk - (real(1.0) - xice) * sst) / xice;
+      if (tsk_ice < tice_min) tsk_ice = tice_min;
+    }
+    if ((xice < real(0.2)) && (tsk < real(253.15))) tsk_ice = real(253.15);
+    if ((xice < real(0.1)) && (tsk < real(263.15))) tsk_ice = real(263.15);
+  } else {
+    tsk_sea = tsk;
+    tsk_ice = tsk;
+  }
+}
+
+// sfclayrev_seaice_wrapper before the two SFCLAYREV calls: local ice TSK, the *_HOLD copies (the open-water
+// call starts from them) and the open-water surface (XLAND 2, MAVAIL 1, TSK = SST)
+struct KSfclayrevSeaPre {
+  C2 xice, tsk, xland, mavail, br, chs2, chs, cpm, cqs2, flhc, flqc, gz1oz0, hfx, lh, mol, psih, psim, fh, fm, qfx, qgh,
+      regime, rmol, ust, wspd, zol, znt, qsfc;
+  V2 sst, tsk_local, tsk_sea, xland_sea, mavail_sea, br_sea, chs2_sea, chs_sea, cpm_sea, cqs2_sea, flhc_sea, flqc_sea,
+      gz1oz0_sea, hfx_sea, lh_sea, mol_sea, psih_sea, psim_sea, fh_sea, fm_sea, qfx_sea, qgh_sea, regime_sea,
+      regime_hold, rmol_sea, ust_sea, wspd_sea, zol_sea, znt_sea, qsfc_sea;
+  real xice_threshold;
+  long itimestep;
+  bool tice2tsk_if2cold;
+  CPPWRF_HD void operator()(int i, int j) const {
+    real ss = sst(i, j), ts, tl;
+    local_ice_tsk(xice(i, j), xice_threshold, tsk(i, j), itimestep, true, tice2tsk_if2cold, ss, ts, tl);
+    br_sea(i, j) = br(i, j); chs2_sea(i, j) = chs2(i, j); chs_sea(i, j) = chs(i, j); cpm_sea(i, j) = cpm(i, j);
+    cqs2_sea(i, j) = cqs2(i, j); flhc_sea(i, j) = flhc(i, j); flqc_sea(i, j) = flqc(i, j);
+    gz1oz0_sea(i, j) = gz1oz0(i, j); hfx_sea(i, j) = hfx(i, j); lh_sea(i, j) = lh(i, j); mol_sea(i, j) = mol(i, j);
+    psih_sea(i, j) = psih(i, j); psim_sea(i, j) = psim(i, j); fh_sea(i, j) = fh(i, j); fm_sea(i, j) = fm(i, j);
+    qfx_sea(i, j) = qfx(i, j); qgh_sea(i, j) = qgh(i, j); regime_sea(i, j) = regime(i, j);
+    regime_hold(i, j) = regime(i, j); rmol_sea(i, j) = rmol(i, j); ust_sea(i, j) = ust(i, j);
+    wspd_sea(i, j) = wspd(i, j); zol_sea(i, j) = zol(i, j); qsfc_sea(i, j) = qsfc(i, j);
+    znt_sea(i, j) = znt(i, j);  // the wrapper's ZNT_SEA = 0.0001 is replaced by ZNT_HOLD before the call
+    if (frac_ice(xice(i, j), xice_threshold)) {
+      xland_sea(i, j) = real(2.);
+      mavail_sea(i, j) = real(1.);
+      ts = ss;
+      if (ss < real(271.4)) {
+        ss = real(271.4);
+        ts = ss;
+      }
+    } else {
+      xland_sea(i, j) = xland(i, j);
+      mavail_sea(i, j) = mavail(i, j);
+      ts = tl;
+    }
+    sst(i, j) = ss;
+    tsk_sea(i, j) = ts;
+    tsk_local(i, j) = tl;
+  }
+};
+
+// sfclayrev_seaice_wrapper after the open-water call: ice/open-water averages (REGIME of the ice call when
+// XICE >= 0.5, else of the open-water call)
+struct KSfclayrevSeaBlend {
+  C2 xice, br_sea, gz1oz0_sea, mol_sea, psih_sea, psim_sea, fh_sea, fm_sea, regime_hold, rmol_sea, ust_sea, wspd_sea,
+      zol_sea, cd_sea, cda_sea, ck_sea, cka_sea, q2_sea, t2_sea, th2_sea, u10_sea, ustm_sea, v10_sea;
+  V2 br, gz1oz0, mol, psih, psim, fh, fm, regime, rmol, ust, wspd, zol, cd, cda, ck, cka, q2, t2, th2, u10, ustm, v10;
+  real xice_threshold;
+  CPPWRF_HD void operator()(int i, int j) const {
+    const real x = xice(i, j);
+    if (!frac_ice(x, xice_threshold)) return;
+    auto bl = [&](V2 f, C2 fs) { f(i, j) = (f(i, j) * x) + ((real(1.0) - x) * fs(i, j)); };
+    bl(br, br_sea); bl(gz1oz0, gz1oz0_sea); bl(mol, mol_sea); bl(psih, psih_sea); bl(psim, psim_sea);
+    bl(fh, fh_sea); bl(fm, fm_sea);
+    if (x >= real(0.5)) regime(i, j) = regime_hold(i, j);
+    bl(rmol, rmol_sea); bl(ust, ust_sea); bl(wspd, wspd_sea); bl(zol, zol_sea);
+    bl(cd, cd_sea); bl(cda, cda_sea); bl(ck, ck_sea); bl(cka, cka_sea);
+    bl(q2, q2_sea); bl(t2, t2_sea); bl(th2, th2_sea); bl(u10, u10_sea);
+    bl(ustm, ustm_sea);  // WRF: USTM_SEA is an uninitialised local (zero here)
+    bl(v10, v10_sea);
+  }
+};
+
+// myjsfc_seaice_wrapper before the two MYJSFC calls: TSK becomes the local ice TSK, QSFC the ice portion's,
+// *_HOLD copies and the open-water surface (XLAND 2, MAVAIL 1, Z0 = 0.0001, TSK = SST)
+struct KMyjsfcSeaPre {
+  C2 xice, xland, mavail, z0, znt, qz0, thz0, uz0, vz0, ust, pblh, rmol, akhs, akms, hfx, qfx, lh;
+  C3 pint;
+  CI2 lowlyr;
+  V2 tsk, qsfc, sst, tsk_sea, xland_sea, mavail_sea, znt_sea, z0base_sea, qsfc_sea, qz0_sea, thz0_sea, uz0_sea,
+      vz0_sea, ust_sea, pblh_sea, rmol_sea, akhs_sea, akms_sea, hfx_sea, qfx_sea, lh_sea;
+  real xice_threshold;
+  long itimestep;
+  bool tice2tsk_if2cold;
+  CPPWRF_HD void operator()(int i, int j) const {
+    // module_sf_myjsfc.F parameters
+    constexpr real a2s = real(17.2693882), a3s = real(273.16), a4s = real(35.86);
+    constexpr real pq0sea = real(379.90516) * real(0.98);
+    real ss = sst(i, j), ts, tl;
+    local_ice_tsk(xice(i, j), xice_threshold, tsk(i, j), itimestep, true, tice2tsk_if2cold, ss, ts, tl);
+    tsk(i, j) = tl;
+    const bool ice = frac_ice(xice(i, j), xice_threshold);
+    const real psfc = pint(i, j, lowlyr(i, j) - 1);
+    if (ice) {
+      const real qs = pq0sea / psfc * std::exp(a2s * (tsk(i, j) - a3s) / (tsk(i, j) - a4s));
+      qsfc(i, j) = (qsfc(i, j) - (real(1.0) - xice(i, j)) * qs) / xice(i, j);
+      hfx_sea(i, j) = hfx(i, j);
+      qfx_sea(i, j) = qfx(i, j);
+      lh_sea(i, j) = lh(i, j);
+    }
+    qz0_sea(i, j) = qz0(i, j); thz0_sea(i, j) = thz0(i, j); uz0_sea(i, j) = uz0(i, j); vz0_sea(i, j) = vz0(i, j);
+    ust_sea(i, j) = ust(i, j); pblh_sea(i, j) = pblh(i, j); rmol_sea(i, j) = rmol(i, j);
+    akhs_sea(i, j) = akhs(i, j); akms_sea(i, j) = akms(i, j);
+    if (ice) {
+      xland_sea(i, j) = real(2.);
+      mavail_sea(i, j) = real(1.);
+      znt_sea(i, j) = real(0.0001);
+      z0base_sea(i, j) = znt_sea(i, j);
+      if (ss < real(271.4)) ss = real(271.4);
+      ts = ss;
+      qsfc_sea(i, j) = pq0sea / psfc * std::exp(a2s * (ts - a3s) / (ts - a4s));
+    } else {
+      xland_sea(i, j) = xland(i, j);
+      mavail_sea(i, j) = mavail(i, j);
+      znt_sea(i, j) = znt(i, j);
+      z0base_sea(i, j) = z0(i, j);
+      ts = tsk(i, j);
+      qsfc_sea(i, j) = qsfc(i, j);
+    }
+    sst(i, j) = ss;
+    tsk_sea(i, j) = ts;
+  }
+};
+
+// myjsfc_seaice_wrapper after the open-water call
+struct KMyjsfcSeaBlend {
+  C2 xice, ct_sea, pshltr_sea, qshltr_sea, q2_sea, q10_sea, th2_sea, th10_sea, tshltr_sea, t2_sea, u10_sea, v10_sea,
+      thz0_sea, uz0_sea, vz0_sea, ust_sea, pblh_sea, rmol_sea, akhs_sea, akms_sea;
+  V2 ct, pshltr, qshltr, q2, q10, th2, th10, tshltr, t2, u10, v10, u10e, v10e, thz0, uz0, vz0, ust, pblh, rmol, akhs,
+      akms;
+  real xice_threshold;
+  CPPWRF_HD void operator()(int i, int j) const {
+    const real x = xice(i, j);
+    if (!frac_ice(x, xice_threshold)) return;
+    auto bl = [&](V2 f, C2 fs) { f(i, j) = f(i, j) * x + (real(1.0) - x) * fs(i, j); };
+    bl(ct, ct_sea); bl(pshltr, pshltr_sea); bl(qshltr, qshltr_sea); bl(q2, q2_sea); bl(q10, q10_sea);
+    bl(th2, th2_sea); bl(th10, th10_sea); bl(tshltr, tshltr_sea); bl(t2, t2_sea); bl(u10, u10_sea);
+    bl(v10, v10_sea);
+    u10e(i, j) = u10(i, j);
+    v10e(i, j) = v10(i, j);
+    bl(thz0, thz0_sea); bl(uz0, uz0_sea); bl(vz0, vz0_sea); bl(ust, ust_sea); bl(pblh, pblh_sea);
+    bl(rmol, rmol_sea); bl(akhs, akhs_sea); bl(akms, akms_sea);
+  }
+};
+
+// LSM / Noah-MP entry: ALBEDO and EMISS of the ice portion (open water 0.08 and 0.98)
+struct KSeaiceLsmPre {
+  C2 xice;
+  V2 albedo, emiss;
+  real xice_threshold;
+  CPPWRF_HD void operator()(int i, int j) const {
+    const real x = xice(i, j);
+    if (!(x >= xice_threshold && x <= real(1))) return;
+    albedo(i, j) = (albedo(i, j) - (real(1.) - x) * real(0.08)) / x;
+    emiss(i, j) = (emiss(i, j) - (real(1.) - x) * real(0.98)) / x;
+  }
+};
+
+// after seaice_noah: back to the ice/open-water averages (the surface layer ran for both portions)
+struct KSeaiceLsmPost {
+  C2 xice, flhc_sea, flqc_sea, cpm_sea, cqs2_sea, chs2_sea, chs_sea, qsfc_sea, qgh_sea, qz0_sea, hfx_sea, qfx_sea,
+      lh_sea, tsk_sea;
+  V2 albedo, emiss, flhc, flqc, cpm, cqs2, chs2, chs, qsfc, qgh, qz0, hfx, qfx, lh, tsk_save, tsk;
+  real xice_threshold;
+  CPPWRF_HD void operator()(int i, int j) const {
+    const real x = xice(i, j);
+    if (!frac_ice(x, xice_threshold)) return;
+    albedo(i, j) = (albedo(i, j) * x) + ((real(1.0) - x) * real(0.08));
+    emiss(i, j) = (emiss(i, j) * x) + ((real(1.0) - x) * real(0.98));
+    auto bl = [&](V2 f, C2 fs) { f(i, j) = (f(i, j) * x) + ((real(1.0) - x) * fs(i, j)); };
+    bl(flhc, flhc_sea); bl(flqc, flqc_sea); bl(cpm, cpm_sea); bl(cqs2, cqs2_sea); bl(chs2, chs2_sea);
+    bl(chs, chs_sea); bl(qsfc, qsfc_sea); bl(qgh, qgh_sea); bl(qz0, qz0_sea); bl(hfx, hfx_sea); bl(qfx, qfx_sea);
+    bl(lh, lh_sea);
+    tsk_save(i, j) = tsk(i, j);
+    bl(tsk, tsk_sea);
+  }
+};
+
 }  // namespace
 
 // module_surface_driver.F surface_driver for SFCLAYREVSCHEME / MYJSFCSCHEME + LSMSCHEME / NOAHMPSCHEME
@@ -581,34 +801,123 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
 
   column_for(cols, KSfcPrep{psfc.view(), prep.p_hyd_w.cview(), prep.u_phy.cview(), prep.v_phy.cview(),
                             uoce.cview(), voce.cview(), u_phytmp.view(), v_phytmp.view(), nz});
+  const bool frac = o_.fractional_seaice == 1;
   if (o_.sf_sfclay_physics == 1) {
     // SFCLAYREV (module_sf_sfclayrev.F wrapper: level kts of u_phytmp, v_phytmp, t_phy, qv,
     // P_PHY = grid%p_hyd, dz8w)
     using namespace wrfc;
-    sfclayrev::run_sfclayrev(
-        slice0(u_phytmp), slice0(v_phytmp), slice0(prep.t_phy), slice0(s.q_2[s.P_QV]), slice0(prep.p_hyd),
-        slice0(prep.dz8w), psfc.cview(), tsk.cview(), xland.cview(), dx2d.cview(), mavail.cview(), pblh.cview(),
-        lakemask.cview(), water_depth.cview(), regime.view(), hfx.view(), qfx.view(), qsfc.view(), mol.view(),
-        rmol.view(), gz1oz0.view(), wspd.view(), br.view(), psim.view(), psih.view(), fm.view(), fh.view(),
-        znt.view(), zol.view(), ust.view(), cpm.view(), chs2.view(), cqs2.view(), chs.view(), flhc.view(),
-        flqc.view(), qgh.view(), ustm.view(), lh.view(), u10.view(), v10.view(), th2.view(), t2.view(), q2.view(),
-        ck.view(), cka.view(), cd.view(), cda.view(), d_sfclay_tables_, cols, o_.isfflx != 0, o_.shalwater_z0 != 0,
-        o_.isftcflx, o_.iz0tlnd, o_.scm_force_flux != 0, cp, g, rcp, r_d, xlv, svp1, svp2, svp3, svpt0, ep_1,
-        ep_2, karman, p1000mb, var2d.cview(), o_.kim_tofd, real(o_.tofd_factor));
+    auto sfclayrev_call = [&](C2 tsk_v, C2 xland_v, C2 mavail_v, V2 regime_v, V2 hfx_v, V2 qfx_v, V2 qsfc_v, V2 mol_v,
+                              V2 rmol_v, V2 gz1oz0_v, V2 wspd_v, V2 br_v, V2 psim_v, V2 psih_v, V2 fm_v, V2 fh_v,
+                              V2 znt_v, V2 zol_v, V2 ust_v, V2 cpm_v, V2 chs2_v, V2 cqs2_v, V2 chs_v, V2 flhc_v,
+                              V2 flqc_v, V2 qgh_v, V2 ustm_v, V2 lh_v, V2 u10_v, V2 v10_v, V2 th2_v, V2 t2_v, V2 q2_v,
+                              V2 ck_v, V2 cka_v, V2 cd_v, V2 cda_v) {
+      sfclayrev::run_sfclayrev(
+          slice0(u_phytmp), slice0(v_phytmp), slice0(prep.t_phy), slice0(s.q_2[s.P_QV]), slice0(prep.p_hyd),
+          slice0(prep.dz8w), psfc.cview(), tsk_v, xland_v, dx2d.cview(), mavail_v, pblh.cview(), lakemask.cview(),
+          water_depth.cview(), regime_v, hfx_v, qfx_v, qsfc_v, mol_v, rmol_v, gz1oz0_v, wspd_v, br_v, psim_v,
+          psih_v, fm_v, fh_v, znt_v, zol_v, ust_v, cpm_v, chs2_v, cqs2_v, chs_v, flhc_v, flqc_v, qgh_v, ustm_v, lh_v,
+          u10_v, v10_v, th2_v, t2_v, q2_v, ck_v, cka_v, cd_v, cda_v, d_sfclay_tables_, cols, o_.isfflx != 0,
+          o_.shalwater_z0 != 0, o_.isftcflx, o_.iz0tlnd, o_.scm_force_flux != 0, cp, g, rcp, r_d, xlv, svp1, svp2,
+          svp3, svpt0, ep_1, ep_2, karman, p1000mb, var2d.cview(), o_.kim_tofd, real(o_.tofd_factor));
+    };
+    if (!frac) {
+      sfclayrev_call(tsk.cview(), xland.cview(), mavail.cview(), regime.view(), hfx.view(), qfx.view(), qsfc.view(),
+                     mol.view(), rmol.view(), gz1oz0.view(), wspd.view(), br.view(), psim.view(), psih.view(),
+                     fm.view(), fh.view(), znt.view(), zol.view(), ust.view(), cpm.view(), chs2.view(), cqs2.view(),
+                     chs.view(), flhc.view(), flqc.view(), qgh.view(), ustm.view(), lh.view(), u10.view(), v10.view(),
+                     th2.view(), t2.view(), q2.view(), ck.view(), cka.view(), cd.view(), cda.view());
+    } else {  // sfclayrev_seaice_wrapper: the ice portion, then the open-water portion of the sea-ice points
+      SeaIceFields& w = *sea_;
+      column_for(cols, KSfclayrevSeaPre{
+          xice.cview(), tsk.cview(), xland.cview(), mavail.cview(), br.cview(), chs2.cview(), chs.cview(),
+          cpm.cview(), cqs2.cview(), flhc.cview(), flqc.cview(), gz1oz0.cview(), hfx.cview(), lh.cview(),
+          mol.cview(), psih.cview(), psim.cview(), fh.cview(), fm.cview(), qfx.cview(), qgh.cview(), regime.cview(),
+          rmol.cview(), ust.cview(), wspd.cview(), zol.cview(), znt.cview(), qsfc.cview(), sst.view(),
+          w.tsk_local.view(), w.tsk_sea.view(), w.xland_sea.view(), w.mavail_sea.view(), w.br_sea.view(),
+          w.chs2_sea.view(), w.chs_sea.view(), w.cpm_sea.view(), w.cqs2_sea.view(), w.flhc_sea.view(),
+          w.flqc_sea.view(), w.gz1oz0_sea.view(), w.hfx_sea.view(), w.lh_sea.view(), w.mol_sea.view(),
+          w.psih_sea.view(), w.psim_sea.view(), w.fh_sea.view(), w.fm_sea.view(), w.qfx_sea.view(),
+          w.qgh_sea.view(), w.regime_sea.view(), w.regime_hold.view(), w.rmol_sea.view(), w.ust_sea.view(),
+          w.wspd_sea.view(), w.zol_sea.view(), w.znt_sea.view(), w.qsfc_sea.view(), xice_threshold, itimestep,
+          o_.tice2tsk_if2cold});
+      sfclayrev_call(w.tsk_local.cview(), xland.cview(), mavail.cview(), regime.view(), hfx.view(), qfx.view(),
+                     qsfc.view(), mol.view(), rmol.view(), gz1oz0.view(), wspd.view(), br.view(), psim.view(),
+                     psih.view(), fm.view(), fh.view(), znt.view(), zol.view(), ust.view(), cpm.view(), chs2.view(),
+                     cqs2.view(), chs.view(), flhc.view(), flqc.view(), qgh.view(), ustm.view(), lh.view(), u10.view(),
+                     v10.view(), th2.view(), t2.view(), q2.view(), ck.view(), cka.view(), cd.view(), cda.view());
+      sfclayrev_call(w.tsk_sea.cview(), w.xland_sea.cview(), w.mavail_sea.cview(), w.regime_sea.view(),
+                     w.hfx_sea.view(), w.qfx_sea.view(), w.qsfc_sea.view(), w.mol_sea.view(), w.rmol_sea.view(),
+                     w.gz1oz0_sea.view(), w.wspd_sea.view(), w.br_sea.view(), w.psim_sea.view(), w.psih_sea.view(),
+                     w.fm_sea.view(), w.fh_sea.view(), w.znt_sea.view(), w.zol_sea.view(), w.ust_sea.view(),
+                     w.cpm_sea.view(), w.chs2_sea.view(), w.cqs2_sea.view(), w.chs_sea.view(), w.flhc_sea.view(),
+                     w.flqc_sea.view(), w.qgh_sea.view(), w.ustm_sea.view(), w.lh_sea.view(), w.u10_sea.view(),
+                     w.v10_sea.view(), w.th2_sea.view(), w.t2_sea.view(), w.q2_sea.view(), w.ck_sea.view(),
+                     w.cka_sea.view(), w.cd_sea.view(), w.cda_sea.view());
+      column_for(cols, KSfclayrevSeaBlend{
+          xice.cview(), w.br_sea.cview(), w.gz1oz0_sea.cview(), w.mol_sea.cview(), w.psih_sea.cview(),
+          w.psim_sea.cview(), w.fh_sea.cview(), w.fm_sea.cview(), w.regime_hold.cview(), w.rmol_sea.cview(),
+          w.ust_sea.cview(), w.wspd_sea.cview(), w.zol_sea.cview(), w.cd_sea.cview(), w.cda_sea.cview(),
+          w.ck_sea.cview(), w.cka_sea.cview(), w.q2_sea.cview(), w.t2_sea.cview(), w.th2_sea.cview(),
+          w.u10_sea.cview(), w.ustm_sea.cview(), w.v10_sea.cview(), br.view(), gz1oz0.view(), mol.view(),
+          psih.view(), psim.view(), fh.view(), fm.view(), regime.view(), rmol.view(), ust.view(), wspd.view(),
+          zol.view(), cd.view(), cda.view(), ck.view(), cka.view(), q2.view(), t2.view(), th2.view(), u10.view(),
+          ustm.view(), v10.view(), xice_threshold});
+    }
     column_for(cols, KCopy2{ch.view(), chs.cview()});  // ch = chs (EM_CORE)
   } else if (o_.sf_sfclay_physics == 2) {
     // MYJSFC (module_sf_myjsfc.F: u_phy, v_phy, p_phy=grid%p_hyd, p8w=grid%p_hyd_w)
     const C2 ht_v = b.ht.uniform() ? slice0(zero3_) : C2{b.ht.data(), int(b.ht.layout().sj)};
-    sf_myjsfc::run_myjsfc(
-        ht_v, prep.dz8w.cview(), prep.p_hyd.cview(), prep.p_hyd_w.cview(), prep.th_phy.cview(), prep.t_phy.cview(),
-        s.q_2[s.P_QV].cview(), s.P_QC >= 0 ? s.q_2[s.P_QC].cview() : zero3_.cview(), prep.u_phy.cview(),
-        prep.v_phy.cview(), tke_pbl.cview(), tsk.cview(), xland.cview(), ivgtyp.cview(), z0.cview(), mavail.cview(),
-        lowlyr.cview(), qsfc.view(), thz0.view(), qz0.view(), uz0.view(), vz0.view(), ust.view(), znt.view(),
-        pblh.view(), rmol.view(), akhs.view(), akms.view(), br.view(), chs.view(), chs2.view(), cqs2.view(),
-        hfx.view(), qfx.view(), lh.view(), flhc.view(), flqc.view(), qgh.view(), cpm.view(), ct.view(), u10.view(),
-        v10.view(), t2.view(), th2.view(), tshltr.view(), th10.view(), q2.view(), qshltr.view(), q10.view(),
-        pshltr.view(), u10e.view(), v10e.view(), myjsfc_tables_.get_tables(), cols, int(itimestep), o_.isurban,
-        o_.iz0tlnd, wrfc::p1000mb, nz);
+    auto myjsfc_call = [&](C2 tsk_v, C2 xland_v, C2 z0_v, C2 mavail_v, V2 qsfc_v, V2 thz0_v, V2 qz0_v, V2 uz0_v,
+                           V2 vz0_v, V2 ust_v, V2 znt_v, V2 pblh_v, V2 rmol_v, V2 akhs_v, V2 akms_v, V2 br_v, V2 chs_v,
+                           V2 chs2_v, V2 cqs2_v, V2 hfx_v, V2 qfx_v, V2 lh_v, V2 flhc_v, V2 flqc_v, V2 qgh_v,
+                           V2 cpm_v, V2 ct_v, V2 u10_v, V2 v10_v, V2 t2_v, V2 th2_v, V2 tshltr_v, V2 th10_v, V2 q2_v,
+                           V2 qshltr_v, V2 q10_v, V2 pshltr_v, V2 u10e_v, V2 v10e_v) {
+      sf_myjsfc::run_myjsfc(
+          ht_v, prep.dz8w.cview(), prep.p_hyd.cview(), prep.p_hyd_w.cview(), prep.th_phy.cview(),
+          prep.t_phy.cview(), s.q_2[s.P_QV].cview(), s.P_QC >= 0 ? s.q_2[s.P_QC].cview() : zero3_.cview(),
+          prep.u_phy.cview(), prep.v_phy.cview(), tke_pbl.cview(), tsk_v, xland_v, ivgtyp.cview(), z0_v, mavail_v,
+          lowlyr.cview(), qsfc_v, thz0_v, qz0_v, uz0_v, vz0_v, ust_v, znt_v, pblh_v, rmol_v, akhs_v, akms_v, br_v,
+          chs_v, chs2_v, cqs2_v, hfx_v, qfx_v, lh_v, flhc_v, flqc_v, qgh_v, cpm_v, ct_v, u10_v, v10_v, t2_v, th2_v,
+          tshltr_v, th10_v, q2_v, qshltr_v, q10_v, pshltr_v, u10e_v, v10e_v, myjsfc_tables_.get_tables(), cols,
+          int(itimestep), o_.isurban, o_.iz0tlnd, wrfc::p1000mb, nz);
+    };
+    if (frac) {  // myjsfc_seaice_wrapper: TSK and QSFC become the ice portion's before the ice call
+      SeaIceFields& w = *sea_;
+      column_for(cols, KMyjsfcSeaPre{
+          xice.cview(), xland.cview(), mavail.cview(), z0.cview(), znt.cview(), qz0.cview(), thz0.cview(),
+          uz0.cview(), vz0.cview(), ust.cview(), pblh.cview(), rmol.cview(), akhs.cview(), akms.cview(),
+          hfx.cview(), qfx.cview(), lh.cview(), prep.p_hyd_w.cview(), lowlyr.cview(), tsk.view(), qsfc.view(),
+          sst.view(), w.tsk_sea.view(), w.xland_sea.view(), w.mavail_sea.view(), w.znt_sea.view(),
+          w.z0base_sea.view(), w.qsfc_sea.view(), w.qz0_sea.view(), w.thz0_sea.view(), w.uz0_sea.view(),
+          w.vz0_sea.view(), w.ust_sea.view(), w.pblh_sea.view(), w.rmol_sea.view(), w.akhs_sea.view(),
+          w.akms_sea.view(), w.hfx_sea.view(), w.qfx_sea.view(), w.lh_sea.view(), xice_threshold, itimestep,
+          o_.tice2tsk_if2cold});
+    }
+    myjsfc_call(tsk.cview(), xland.cview(), z0.cview(), mavail.cview(), qsfc.view(), thz0.view(), qz0.view(),
+                uz0.view(), vz0.view(), ust.view(), znt.view(), pblh.view(), rmol.view(), akhs.view(), akms.view(),
+                br.view(), chs.view(), chs2.view(), cqs2.view(), hfx.view(), qfx.view(), lh.view(), flhc.view(),
+                flqc.view(), qgh.view(), cpm.view(), ct.view(), u10.view(), v10.view(), t2.view(), th2.view(),
+                tshltr.view(), th10.view(), q2.view(), qshltr.view(), q10.view(), pshltr.view(), u10e.view(),
+                v10e.view());
+    if (frac) {
+      SeaIceFields& w = *sea_;
+      myjsfc_call(w.tsk_sea.cview(), w.xland_sea.cview(), w.z0base_sea.cview(), w.mavail_sea.cview(),
+                  w.qsfc_sea.view(), w.thz0_sea.view(), w.qz0_sea.view(), w.uz0_sea.view(), w.vz0_sea.view(),
+                  w.ust_sea.view(), w.znt_sea.view(), w.pblh_sea.view(), w.rmol_sea.view(), w.akhs_sea.view(),
+                  w.akms_sea.view(), w.br_sea.view(), w.chs_sea.view(), w.chs2_sea.view(), w.cqs2_sea.view(),
+                  w.hfx_sea.view(), w.qfx_sea.view(), w.lh_sea.view(), w.flhc_sea.view(), w.flqc_sea.view(),
+                  w.qgh_sea.view(), w.cpm_sea.view(), w.ct_sea.view(), w.u10_sea.view(), w.v10_sea.view(),
+                  w.t2_sea.view(), w.th2_sea.view(), w.tshltr_sea.view(), w.th10_sea.view(), w.q2_sea.view(),
+                  w.qshltr_sea.view(), w.q10_sea.view(), w.pshltr_sea.view(), w.u10e_sea.view(), w.v10e_sea.view());
+      column_for(cols, KMyjsfcSeaBlend{
+          xice.cview(), w.ct_sea.cview(), w.pshltr_sea.cview(), w.qshltr_sea.cview(), w.q2_sea.cview(),
+          w.q10_sea.cview(), w.th2_sea.cview(), w.th10_sea.cview(), w.tshltr_sea.cview(), w.t2_sea.cview(),
+          w.u10_sea.cview(), w.v10_sea.cview(), w.thz0_sea.cview(), w.uz0_sea.cview(), w.vz0_sea.cview(),
+          w.ust_sea.cview(), w.pblh_sea.cview(), w.rmol_sea.cview(), w.akhs_sea.cview(), w.akms_sea.cview(),
+          ct.view(), pshltr.view(), qshltr.view(), q2.view(), q10.view(), th2.view(), th10.view(), tshltr.view(),
+          t2.view(), u10.view(), v10.view(), u10e.view(), v10e.view(), thz0.view(), uz0.view(), vz0.view(),
+          ust.view(), pblh.view(), rmol.view(), akhs.view(), akms.view(), xice_threshold});
+    }
     column_for(cols, KMyjsfcPost{ustm.view(), wspd.view(), ch.view(), ust.cview(), chs.cview(),
                                  prep.u_phy.cview(), prep.v_phy.cview()});
   }
@@ -639,8 +948,24 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
       column_for(cols, si);
     };
 
+    auto seaice_lsm_pre = [&]() {
+      if (frac) column_for(cols, KSeaiceLsmPre{xice.cview(), albedo.view(), emiss.view(), xice_threshold});
+    };
+    auto seaice_lsm_post = [&]() {
+      if (!frac) return;
+      SeaIceFields& w = *sea_;
+      column_for(cols, KSeaiceLsmPost{xice.cview(), w.flhc_sea.cview(), w.flqc_sea.cview(), w.cpm_sea.cview(),
+                                      w.cqs2_sea.cview(), w.chs2_sea.cview(), w.chs_sea.cview(), w.qsfc_sea.cview(),
+                                      w.qgh_sea.cview(), w.qz0_sea.cview(), w.hfx_sea.cview(), w.qfx_sea.cview(),
+                                      w.lh_sea.cview(), w.tsk_sea.cview(), albedo.view(), emiss.view(), flhc.view(),
+                                      flqc.view(), cpm.view(), cqs2.view(), chs2.view(), chs.view(), qsfc.view(),
+                                      qgh.view(), qz0.view(), hfx.view(), qfx.view(), lh.view(), tsk_save.view(),
+                                      tsk.view(), xice_threshold});
+    };
+
     if (o_.sf_surface_physics == 2) {
       // ---- lsm (module_sf_noahdrv.F) ----
+      seaice_lsm_pre();
       KLsmPre pre{};
       pre.dz8w = prep.dz8w.cview(); pre.qv3d = s.q_2[s.P_QV].cview(); pre.p8w3d = prep.p_hyd_w.cview();
       pre.t3d = prep.t_phy.cview();
@@ -749,7 +1074,8 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
         std::fclose(fp);
       }
       noah::run_noah(nk, cols);
-      column_for(cols, KNoahRs{n_rc.cview(), n_active.cview(), rs.view()});
+      column_for(Range2D{0, 1, 0, 1}, KNoahRs{n_rc.cview(), n_active.cview(), n_ice.cview(), rs.view(), cols.i0, cols.i1,
+                                             cols.j0, cols.j1});
       if (do_ndump) {
         std::FILE* fp = std::fopen((std::string(ndump) + "/noah_out_c.bin").c_str(), "wb");
         const int hdr[2] = {int(ncol.size()), nsoil};
@@ -802,6 +1128,7 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
       column_for(cols, post);
 
       run_seaice();
+      seaice_lsm_post();
 
       column_for(cols, KLsmDiag{qfx.cview(), chs.cview(), hfx.cview(), lh.cview(), grdflx.cview(), tsk.cview(),
                                 qsfc.cview(), chs2.cview(), cqs2.cview(), psfc.cview(), prep.t_phy.cview(),
@@ -969,9 +1296,11 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
       nmp.nsoil = nsoil;
       nmp.nsnow = noahmp::kMaxSnowLayers;
       for (int k = 0; k < nsoil; ++k) nmp.dzs[k] = real(dzs[k]);
+      seaice_lsm_pre();
       noahmp::run_noahmp(nmp, cols);
 
       run_seaice();
+      seaice_lsm_post();
 
       KNoahmpDiag nd{};
       nd.ivgtyp = ivgtyp.cview();

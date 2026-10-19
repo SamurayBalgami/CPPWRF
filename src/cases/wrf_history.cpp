@@ -205,7 +205,8 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
       const std::string tables = cfg.get_string("phys.table_dir", real_dir);
       if (std::filesystem::exists(tables + "/LANDUSE.TBL")) {
         const LanduseInit li = landuse_init(tables, mminlu, att_i("JULDAY", 0), cen_lat, att_i("ISWATER", 17),
-                                            att_i("ISICE", 15), lu, xice, snowc);
+                                            att_i("ISICE", 15), lu, xice, snowc,
+                                            int(cfg.get_int("phys.fractional_seaice", 0)));
         auto rl = [](const std::vector<double>& v) {  // WRF REAL
           std::vector<double> r(v.size());
           for (std::size_t p = 0; p < v.size(); ++p) r[p] = double(real(v[p]));

@@ -63,7 +63,7 @@ struct LanduseInit {
 };
 LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu, int julday, double cen_lat,
                          int iswater, int isice, const std::vector<double>& lu, const std::vector<double>& xice,
-                         const std::vector<double>& snowc);
+                         const std::vector<double>& snowc, int fractional_seaice);
 
 // Comma-separated list (whitespace trimmed, empty entries dropped).
 std::vector<std::string> split_list(const std::string& s);

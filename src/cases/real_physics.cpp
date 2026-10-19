@@ -34,7 +34,7 @@ bool wants_column_physics(const io::Config& cfg) {
 
 LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu, int julday, double cen_lat,
                          int iswater, int isice, const std::vector<double>& lu, const std::vector<double>& xice,
-                         const std::vector<double>& snowc) {
+                         const std::vector<double>& snowc, int fractional_seaice) {
   phys::driver::LanduseTables lt;
   if (!phys::driver::read_landuse_table(table_dir + "/LANDUSE.TBL", mminlu, lt))
     throw std::runtime_error("real physics: LANDUSE.TBL lacks " + mminlu);
@@ -42,7 +42,7 @@ LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu
   if (julday < 105 || julday > 288) isn = 2;
   if (cen_lat < 0.0) isn = 3 - isn;
   if (lt.n_seasons == 1) isn = 1;
-  const double xice_threshold = 0.5;  // fractional_seaice = 0
+  const double xice_threshold = fractional_seaice == 0 ? 0.5 : 0.02;
   const std::size_t n2 = lu.size();
   LanduseInit r;
   std::vector<double>&albbck = r.albbck, &albedo = r.albedo, &z0 = r.z0, &embck = r.embck, &emiss = r.emiss,
@@ -87,8 +87,13 @@ LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu
       xland[p] = 1.0;
       albbck[p] = ci.albd / 100.;
       embck[p] = ci.sfem;
-      albedo[p] = albbck[p];
-      emiss[p] = embck[p];
+      if (fractional_seaice == 1) {  // open water: albedo 0.08, emissivity 0.98
+        albedo[p] = (xice[p] * albbck[p]) + ((1.0 - xice[p]) * 0.08);
+        emiss[p] = (xice[p] * embck[p]) + ((1.0 - xice[p]) * 0.98);
+      } else {
+        albedo[p] = albbck[p];
+        emiss[p] = embck[p];
+      }
       z0[p] = ci.sfz0 / 100.;
       mavail[p] = ci.slmo;
       r.thc[p] = double(ci.therin / real(100.));
@@ -169,6 +174,11 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.isfflx = int(cfg.get_int("phys.isfflx", 1));
   o.ysu_topdown_pblmix = int(cfg.get_int("phys.ysu_topdown_pblmix", 1));
   o.kim_tofd = cfg.get_bool("phys.kim_tofd", false);
+  o.fractional_seaice = int(cfg.get_int("phys.fractional_seaice", 0));
+  o.tice2tsk_if2cold = cfg.get_bool("phys.tice2tsk_if2cold", false);
+  o.gwd_opt = int(cfg.get_int("dyn.gwd_opt", 0));
+  o.gwd_dx_factor = cfg.get_double("dyn.gwd_dx_factor", 2.0);
+  o.gwd_if_nonhyd = cfg.get_bool("dyn.gwd_if_nonhyd", true);
   o.tofd_factor = cfg.get_double("phys.tofd_factor", 0.003);
   o.mminlu = in.att_str("MMINLU", o.mminlu);
   o.iswater = int(in.att_num("ISWATER", o.iswater));
@@ -243,6 +253,19 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   put2(su.snow, snow); put2(su.snowc, snowc); put2(su.lai, rd2("LAI"));
   put2(su.lakemask, in.has("LAKEMASK") ? rd2("LAKEMASK") : std::vector<double>(n2, 0.0));
   if (in.has("VAR")) put2(su.var2d, rd2("VAR"));  // subgrid orography std. dev. (kim_tofd; history VAR)
+  if (o.gwd_opt == 1) {  // package gwd_used_1
+    const std::pair<const char*, Field2*> gw[] = {{"CON", &su.oc12d}, {"OA1", &su.oa1}, {"OA2", &su.oa2}, {"OA3", &su.oa3},
+                                                  {"OA4", &su.oa4}, {"OL1", &su.ol1}, {"OL2", &su.ol2}, {"OL3", &su.ol3},
+                                                  {"OL4", &su.ol4}, {"ELVMAX", &su.elvmax}};
+    for (const auto& [n, f] : gw) {
+      if (!in.has(n)) throw std::runtime_error(std::string("gwd_opt = 1: wrfinput lacks ") + n);
+      put2(*f, rd2(n));
+    }
+  }
+  if (o.fractional_seaice == 1) {  // phy_init: TSK_SAVE = TSK
+    put2(su.sst, rd2("SST"));
+    put2(su.tsk_save, rd2("TSK"));
+  }
   put2(su.water_depth, in.has("WATER_DEPTH") ? rd2("WATER_DEPTH") : std::vector<double>(n2, 0.0));
   const std::pair<const char*, Field2*> diag[] = {{"T2", &su.t2}, {"TH2", &su.th2}, {"Q2", &su.q2},
                                                    {"U10", &su.u10}, {"V10", &su.v10}, {"PSFC", &su.psfc}};
@@ -271,7 +294,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   }
   // landuse_init
   const LanduseInit li = landuse_init(o.table_dir, o.mminlu, int(in.att_num("JULDAY", 0)), in.att_num("CEN_LAT", 0.0),
-                                      o.iswater, o.isice, lu, xice, snowc);
+                                      o.iswater, o.isice, lu, xice, snowc, o.fractional_seaice);
   const std::vector<double>&albbck = li.albbck, &albedo = li.albedo, &z0 = li.z0, &embck = li.embck,
                             &emiss = li.emiss, &mavail = li.mavail, &xland = li.xland;
   put2(su.albbck, albbck); put2(su.albedo, albedo); put2(su.z0, z0); put2(su.znt, z0);

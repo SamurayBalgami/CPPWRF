@@ -8,6 +8,7 @@
 
 #include "phys/cu_gfl/gfl_driver.hpp"
 #include "phys/cu_ntiedtke/ntiedtke.hpp"
+#include "phys/cu_tiedtke/tiedtke.hpp"
 #include "phys/driver/wrf_constants.hpp"
 
 #include "phys/driver/suite_internal.hpp"
@@ -238,6 +239,86 @@ struct KNTiedtke {
   }
 };
 
+// ---------------------------------------------------------------- Tiedtke
+// module_cu_tiedtke.F cu_tiedtke (TIEDTKESCHEME, cu_physics = 6): the column inputs of tiecnv. Pass 1
+// (first = true) stores the column's icum after the first cloud ascent in icum1; pass 2 runs tiecnv with
+// the row's icum (row_icum) and writes the tendencies.
+struct KTiedtke {
+  cu_tiedtke::TdConst<real> c;
+  int nz, nx; long itimestep; int stepcu; real dt;
+  bool first;
+  C3 u, v, w, t, pi, rho, dz8w, pcps, p8w, qv, qc, qi, rqvften, rqvblten;
+  View1<const real> znu;
+  C2 xland, qfx;
+  I2 icum1;
+  CI2 row_icum;
+  V2 raincv, pratec;
+  V3 rthcuten, rqvcuten, rqccuten, rqicuten, rucuten, rvcuten;
+  bool flag_qc, flag_qi;
+  CPPWRF_HD void operator()(int i, int j) const {
+    using cu_tiedtke::KM;
+    using namespace wrfc;
+    const real delt = dt * real(stepcu);
+    const real rdelt = real(1.) / delt;
+    real zi[KM], zl[KM];
+    zi[0] = real(0.0);  // zi(kts) = 0, zi(k) = zi(k-1) + dz8w(k-1), k = kts+1 .. kte
+    for (int k = 1; k < nz; ++k) zi[k] = zi[k - 1] + dz8w(i, j, k - 1);
+    for (int k = 1; k < nz; ++k) zl[k - 1] = (zi[k] + zi[k - 1]) * real(0.5);
+    zl[nz - 1] = real(2.) * zi[nz - 1] - zl[nz - 2];
+    const int slimsk = int(std::fabs(xland(i, j) - real(2.)));
+    cu_tiedtke::TdInput<real> in;
+    for (int k = 0; k < nz; ++k) {
+      const int zz = nz - k;
+      in.pu[zz] = u(i, j, k);
+      in.pv[zz] = v(i, j, k);
+      in.pt[zz] = t(i, j, k);
+      in.pqv[zz] = qv(i, j, k);
+      in.pqvf[zz] = itimestep == 1 ? real(0.) : rqvften(i, j, k);
+      in.pqvbl[zz] = itimestep == 1 ? real(0.) : rqvblten(i, j, k);
+      in.pqc[zz] = qc(i, j, k);
+      in.pqi[zz] = qi(i, j, k);
+      in.pomg[zz] = -real(0.5) * g * rho(i, j, k) * (w(i, j, k) + w(i, j, k + 1));
+      in.poz[zz] = zl[k];
+      in.pap[zz] = pcps(i, j, k);
+      in.sig1[zz] = znu(k);
+    }
+    for (int k = 0; k <= nz; ++k) in.paph[nz + 1 - k] = p8w(i, j, k);
+    const real evap = qfx(i, j);
+    if (first) {
+      icum1(i, j) = cu_tiedtke::tiedtke_first_ascent<real>(c, nz, in, evap, slimsk, delt, i, nx);
+      return;
+    }
+    real u1[KM], v1[KM], t1[KM], q1[KM], q2[KM], q3[KM];
+    for (int k = 1; k <= nz; ++k) {
+      u1[k] = in.pu[k]; v1[k] = in.pv[k]; t1[k] = in.pt[k]; q1[k] = in.pqv[k]; q2[k] = in.pqc[k]; q3[k] = in.pqi[k];
+    }
+    const real rn = cu_tiedtke::tiecnv<real>(c, nz, in, u1, v1, t1, q1, q2, q3, evap, slimsk, delt, i, nx, row_icum(0, j));
+    raincv(i, j) = rn / real(stepcu);
+    pratec(i, j) = rn / (real(stepcu) * dt);
+    for (int k = 0; k < nz; ++k) {
+      const int zz = nz - k;
+      rthcuten(i, j, k) = (t1[zz] - t(i, j, k)) / pi(i, j, k) * rdelt;
+      rqvcuten(i, j, k) = (q1[zz] - qv(i, j, k)) * rdelt;
+      rucuten(i, j, k) = (u1[zz] - u(i, j, k)) * rdelt;
+      rvcuten(i, j, k) = (v1[zz] - v(i, j, k)) * rdelt;
+      if (flag_qc) rqccuten(i, j, k) = (q2[zz] - qc(i, j, k)) * rdelt;
+      if (flag_qi) rqicuten(i, j, k) = (q3[zz] - qi(i, j, k)) * rdelt;
+    }
+  }
+};
+
+// row_icum(0, j) = OR of icum1(i, j) over the row (cumastr_new's icum for the row)
+struct KRowAny {
+  CI2 icum1;
+  I2 row_icum;
+  int nx;
+  CPPWRF_HD void operator()(int, int j) const {
+    int any = 0;
+    for (int i = 0; i < nx; ++i) any = any || icum1(i, j) != 0;
+    row_icum(0, j) = any;
+  }
+};
+
 // ---------------------------------------------------------------- advance_ppt
 // phys/module_physics_addtendc.F advance_ppt (CASE KFETASCHEME)
 struct KAdvancePpt {
@@ -366,6 +447,31 @@ void PhysicsSuite::cumulus_driver(const dyn::State& s, const dyn::BaseState& b) 
       w2(raincv); w2(pratec); w2(cutop); w2(cubot);
       std::fclose(f);
     }
+    return;
+  }
+  if (o_.cu_physics == 6) {
+    KTiedtke k{};
+    k.c = cu_tiedtke::make_tdconst<real>(r_d, r_v, cp, xlv, xls, xlf, g);
+    k.nz = g_.nz; k.nx = g_.nx; k.itimestep = itimestep; k.stepcu = stepcu; k.dt = real(g_.dt);
+    k.u = prep.u_phy.cview(); k.v = prep.v_phy.cview(); k.w = s.w_2.cview(); k.t = prep.t_phy.cview();
+    k.pi = prep.pi_phy.cview(); k.rho = prep.rho.cview(); k.dz8w = prep.dz8w.cview(); k.pcps = prep.p_hyd.cview();
+    k.p8w = prep.p_hyd_w.cview();
+    k.qv = s.q_2[s.P_QV].cview();
+    k.qc = s.P_QC >= 0 ? s.q_2[s.P_QC].cview() : zero3_.cview();
+    k.qi = s.P_QI >= 0 ? s.q_2[s.P_QI].cview() : zero3_.cview();
+    k.rqvften = pt.rqvften.cview(); k.rqvblten = pt.rqvblten.cview();
+    k.znu = b.znu.view();
+    k.xland = xland.cview(); k.qfx = qfx.cview();
+    k.icum1 = td_icum.view(); k.row_icum = td_row_icum.cview();
+    k.raincv = raincv.view(); k.pratec = pratec.view();
+    k.rthcuten = pt.rthcuten.view(); k.rqvcuten = pt.rqvcuten.view(); k.rqccuten = pt.rqccuten.view();
+    k.rqicuten = pt.rqicuten.view(); k.rucuten = pt.rucuten.view(); k.rvcuten = pt.rvcuten.view();
+    k.flag_qc = s.P_QC >= 0; k.flag_qi = s.P_QI >= 0;
+    k.first = true;
+    column_for(g_.columns(), k);
+    column_for(Range2D{0, 1, 0, g_.ny}, KRowAny{td_icum.cview(), td_row_icum.view(), g_.nx});
+    k.first = false;
+    column_for(g_.columns(), k);
     return;
   }
   if (o_.cu_physics == 16) {

@@ -60,7 +60,8 @@ std::vector<std::string> wrf_names(const std::string& n) {
   static const std::map<std::string, std::string> renamed = {
       {"t_1", "THM_1"}, {"t_2", "THM_2"}, {"sfc_t1_lag", "THM_1"},  // grid%t_1 of first_rk_step_part2
       {"sfc_xice", "SEAICE"}, {"sfc_sfcrunoff", "SFROFF"}, {"sfc_udrunoff", "UDROFF"},
-      {"sfc_xlat_sfc", "XLAT"}, {"sfc_xlong_sfc", "XLONG"},
+      {"sfc_xlat_sfc", "XLAT"}, {"sfc_xlong_sfc", "XLONG"}, {"sfc_rthratenlw", "RTHRATLW"},
+      {"sfc_rthratensw", "RTHRATSW"}, {"sfc_rthratenlwc", "RTHRATLWC"}, {"sfc_rthratenswc", "RTHRATSWC"},
       {"sfc_t2mvxy", "T2V"}, {"sfc_t2mbxy", "T2B"}, {"sfc_q2mvxy", "Q2V"}, {"sfc_q2mbxy", "Q2B"}};
   auto r = renamed.find(n);
   if (r != renamed.end()) return {r->second};
@@ -443,6 +444,8 @@ void DomainRunner::prepare_output() {
       if (m_.st->P_QS >= 0) extra_3d_.push_back(&su.pt.rqscuten);
       if (su.options().cu_physics == 16 || su.options().cu_physics == 3)
         extra_3d_.insert(extra_3d_.end(), {&su.pt.rucuten, &su.pt.rvcuten, &su.pt.rthften, &su.pt.rqvften});
+      if (su.options().cu_physics == 6)
+        extra_3d_.insert(extra_3d_.end(), {&su.pt.rucuten, &su.pt.rvcuten, &su.pt.rqvften});
     }
     if (m_.st->P_QC >= 0) extra_3d_.push_back(&su.pt.rqcblten);
     if (m_.st->P_QI >= 0) extra_3d_.push_back(&su.pt.rqiblten);

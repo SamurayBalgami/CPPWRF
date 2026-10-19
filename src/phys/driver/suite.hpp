@@ -64,7 +64,10 @@ struct SuiteOptions {
   int sf_sfclay_physics = 1;     // 1 = SFCLAYREVSCHEME, 2 = MYJSFCSCHEME
   int sf_surface_physics = 2;    // 2 = LSMSCHEME (Noah), 4 = NOAHMPSCHEME (Noah-MP v5.1.2)
   int bl_pbl_physics = 1;        // 1 = YSUSCHEME, 2 = MYJPBLSCHEME
-  int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME, 3 = GFLSCHEME, 16 = NTIEDTKESCHEME
+  int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME, 3 = GFLSCHEME, 6 = TIEDTKESCHEME, 16 = NTIEDTKESCHEME
+  int gwd_opt = 0;                // 1 = KIM orographic gravity wave drag (bl_gwdo)
+  double gwd_dx_factor = 2.0;     // effective grid factor of the gwd stress (WRF gwd_dx_factor)
+  bool gwd_if_nonhyd = true;      // nonhydrostatic effect (WRF gwd_if_nonhyd)
   int ishallow = 0;              // Grell-Freitas-Li shallow convection (WRF ishallow)
   int gf_ichoice = 0;            // Grell-Freitas-Li closure (WRF clos_choice)
   int num_soil_layers = 4;
@@ -78,6 +81,7 @@ struct SuiteOptions {
   int isfflx = 1;
   int ifsnow = 1;
   int fractional_seaice = 0;
+  bool tice2tsk_if2cold = false;  // fractional_seaice: ice temperature = min(TSK, 273.15)
   int use_theta_m = 1;
   int ysu_topdown_pblmix = 1;
   int isftcflx = 0, iz0tlnd = 0, shalwater_z0 = 0, scm_force_flux = 0;
@@ -108,7 +112,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   Field3* th_forcing() override { return o_.cu_physics == 16 || o_.cu_physics == 3 ? &pt.rthften : nullptr; }
   // rk_scalar_tend sets RQVFTEN for Kain-Fritsch too (module_em.F), though KF does not use it
   Field3* qv_forcing() override {
-    return o_.cu_physics == 16 || o_.cu_physics == 3 || o_.cu_physics == 1 ? &pt.rqvften : nullptr;
+    return o_.cu_physics == 16 || o_.cu_physics == 3 || o_.cu_physics == 1 || o_.cu_physics == 6 ? &pt.rqvften : nullptr;
   }
 
   long itimestep = 0;  // WRF grid%itimestep (incremented in part1, as solve_em does per step)
@@ -130,6 +134,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
       acgrdflx, dx2d, var2d, uoce, voce, ctopo, ctopo2, ck, cka, cd, cda, wstar, delta, hol,
       thz0, uz0, vz0, akhs, akms, ct, tshltr, th10, qshltr, q10, pshltr, u10e, v10e, mixht;
   IntField2 ivgtyp, isltyp, kpbl, lowlyr;
+  IntField2 td_icum, td_row_icum;  // Tiedtke: the column's and the row's icum after the first ascent
   Field3 tslb, smois, sh2o, smcrel;  // (i, j, soil layer)
   // ---- Noah-MP persistent state and diagnostics (allocated when sf_surface_physics == 4) ----
   Field2 xlat_sfc, xlong_sfc, tvxy, tgxy, canicexy, canliqxy, eahxy, tahxy, cmxy, chxy, fwetxy, sneqvoxy, alboldxy,
@@ -144,6 +149,22 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   std::vector<double> dzs;            // soil layer thicknesses (m)
   Field3 exch_h, exch_m;              // M (WRF kme-sized; levels 0..nz-1 used)
   Field3 tke_pbl, el_pbl;             // MYJ PBL 3D TKE and master length scale
+  // gwd_opt = 1: subgrid orography statistics (wrfinput CON, OA1-4, OL1-4, ELVMAX) and the drag diagnostics
+  Field2 oc12d, oa1, oa2, oa3, oa4, ol1, ol2, ol3, ol4, elvmax, dusfcg, dvsfcg;
+  Field3 dtaux3d, dtauy3d;
+  // fractional_seaice = 1: SST (the surface layer wrappers raise it to 271.4 under ice) and TSK_SAVE
+  Field2 sst, tsk_save;
+  // the open-water halves of the sea-ice points (module_surface_driver.F *_SEA and *_HOLD locals)
+  struct SeaIceFields {
+    explicit SeaIceFields(const Grid& g);
+    Field2 tsk_local, tsk_sea, xland_sea, mavail_sea, znt_sea, z0base_sea, br_sea, chs_sea, chs2_sea, cqs2_sea,
+        cpm_sea, flhc_sea, flqc_sea, gz1oz0_sea, hfx_sea, qfx_sea, lh_sea, mol_sea, psim_sea, psih_sea, fm_sea,
+        fh_sea, qgh_sea, qsfc_sea, regime_sea, rmol_sea, ust_sea, ustm_sea, wspd_sea, zol_sea, u10_sea, v10_sea,
+        th2_sea, t2_sea, q2_sea, ck_sea, cka_sea, cd_sea, cda_sea, qz0_sea, thz0_sea, uz0_sea, vz0_sea, pblh_sea,
+        akhs_sea, akms_sea, ct_sea, tshltr_sea, th10_sea, qshltr_sea, q10_sea, pshltr_sea, u10e_sea, v10e_sea,
+        regime_hold;
+  };
+  std::unique_ptr<SeaIceFields> sea_;
   Field3 w0avg, cldfra_dp, cldfra_sh, qc_cu, qi_cu, gd_cloud, gd_cloud2, gd_cloud_a, gd_cloud2_a, gd_cldfr;  // cumulus 3D state and diagnostics
   // every persistent field above, the physics tendencies and the phy_prep diagnostics (by WRF name)
   std::vector<const Field2*> fields2() const;
