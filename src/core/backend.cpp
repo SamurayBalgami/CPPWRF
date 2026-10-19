@@ -86,7 +86,7 @@ Reducer::~Reducer() { dev_free(dpart_); }
 namespace {
 // Threaded memset/memcpy in contiguous static chunks: the same thread-to-memory mapping as the
 // static parallel_for over (k, j), so first-touch places pages on the NUMA node that uses them
-// (review X2), and the per-step field copies of RK3 use all cores.
+// and the per-step field copies of RK3 use all cores.
 constexpr std::size_t kChunk = std::size_t(1) << 16;
 void par_set0(void* p, std::size_t n) {
   const long nc = long((n + kChunk - 1) / kChunk);

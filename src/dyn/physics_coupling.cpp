@@ -98,7 +98,7 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
     wp_.rv = real(pc::r_v); wp_.t0c = real(pc::svpt0); wp_.ep1 = real(pc::ep_1); wp_.ep2 = real(pc::ep_2);
     wp_.qmin = real(1e-15); wp_.xls = real(pc::xls); wp_.xlv0 = real(pc::xlv); wp_.xlf0 = real(pc::xlf);
     wp_.cliq = real(pc::cliq); wp_.cice = real(pc::cice); wp_.psat = real(610.78);
-    // wsm6init (WRF microphysics_driver arguments); once, not every step (review P1)
+    // wsm6init (WRF microphysics_driver arguments); once, not every step
     wp_.init(real(pc::rhoair0), real(pc::rhowater), real(pc::rhosnow), real(pc::cliq), real(4.0 * pc::r_v),
              p_.hail_opt);
 #if defined(CPPWRF_USE_CUDA)

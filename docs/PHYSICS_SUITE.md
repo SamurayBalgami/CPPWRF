@@ -120,13 +120,13 @@ and `phy_init` provide; the test takes it from WRF after `start_domain`).
 ## 3. Corrections found by the test (all now bit-identical to WRF)
 
 - **`P_PHY = grid%p_hyd`.** WRF 4.8.0 passes the hydrostatic pressure (and `P8W = p_hyd_w`) to
-  surface_driver and pbl_driver; sfclayrev and YSU see p_hyd, not p+pb. The draft's "SFCLAYREV
+  surface_driver and pbl_driver; sfclayrev and YSU see p_hyd, not p+pb. The first port's note "SFCLAYREV
   gets p_hyd instead of p_phy" is what WRF does; the C++ suite keeps it.
 - **conv_t_tendf_to_moist** (use_theta_m = 1) was missing.
 - **YSU** (src/phys/bl_ysu/ysu.hpp): the `ysu_topdown_pblmix` PBL-height pass runs for every
   column in WRF (it can switch pblflg on), the port only ran it where pblflg was already true
   -> e.g. PBLH 61 m vs 97 m and 518 m vs 69 m in columns with zero or negative buoyancy flux
-  (the likely source of the 10-50 % PBLH/RTHBLTEN differences reported for the draft); RTHBLTEN is `(ttend*pi)/pi` as in the WRF wrapper;
+  (the likely source of the 10-50 % PBLH/RTHBLTEN differences of the first port); RTHBLTEN is `(ttend*pi)/pi` as in the WRF wrapper;
   `-3.*x**2./hpbl**2.` and `ust**2` keep WRF's grouping. The YSU wind/temperature outputs go to
   grid%wstar_ysu / delta_ysu.
 - **Noah SFLX** (src/phys/lsm_noah/noah.hpp): `T14 = T1*T1; T14 = T14*T14` grouping in SNOPAC;

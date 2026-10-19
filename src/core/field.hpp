@@ -101,7 +101,7 @@ template <int R> class FieldT {
     copy_to_host(h.data(), buf_.get(), bytes());
   }
   void copy_from(const FieldT& o) { copy_dev(buf_.get(), o.buf_.get(), bytes()); }
-  // Swaps the storage (data, layout, stagger); each field keeps its name (review D3).
+  // Swaps the storage (data, layout, stagger); each field keeps its name.
   friend void swap(FieldT& a, FieldT& b) noexcept {
     std::swap(a.st_, b.st_); std::swap(a.L_, b.L_); std::swap(a.buf_, b.buf_);
   }
