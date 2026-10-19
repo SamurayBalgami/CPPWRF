@@ -4,6 +4,7 @@ reference run, with the tolerance that the current code meets. Run after every c
 dycore, boundaries, diffusion or physics coupling.
 
   wrf_suite.py --cpu-dp <build>/cppwrf --cuda <build>/cppwrf [--cuda-dp <build>/cppwrf] [--out DIR] [--only NAME[,NAME]]
+               [--exact] [--jobs N]   (N CPU cases at once, each with OMP_NUM_THREADS threads)
 
 Exit status 0 = all PASS. Cases whose reference or binary is missing are SKIPped (reported).
 """
@@ -365,30 +366,25 @@ def main():
     ap.add_argument("--cuda")
     ap.add_argument("--cuda-dp")
     ap.add_argument("--out", default=os.path.expanduser("~/cppwrf_scratch/wrf_suite"))
-    ap.add_argument("--only")
+    ap.add_argument("--only", help="comma-separated substrings of case names")
+    ap.add_argument("--exact", action="store_true", help="--only names are exact case names")
+    ap.add_argument("--jobs", type=int, default=1, help="CPU cases run at the same time (GPU cases: one at a time)")
     ap.add_argument("--keep", action="store_true", help="keep the outputs of passing cases (default: deleted)")
     a = ap.parse_args()
+    only = a.only.split(",") if a.only else None
+
+    def wanted(name):
+        return not only or (name in only if a.exact else any(o in name for o in only))
 
     def done(path, good):  # the outputs of passing cases are deleted (they take tens of GB)
         if good and not a.keep:
             shutil.rmtree(path, ignore_errors=True)
 
-    bins = {"cpu_dp": a.cpu_dp, "cuda": a.cuda, "cuda_dp": a.cuda_dp}
-    ok = True
-    for name, key, cfg, sets, wo, t, tol in CASES:
-        if a.only and not any(o in name for o in a.only.split(",")):
-            continue
-        b = bins.get(key)
-        refs = wo if isinstance(wo, dict) else {"": wo}  # nested runs: {domain: wrfout}
-        if not b or not os.path.exists(b) or not all(os.path.exists(w) for w in refs.values()):
-            print(f"SKIP  {name:22s} (binary or reference missing)")
-            continue
+    def case(name, b, cfg, sets, refs, t, tol):
         out = os.path.join(a.out, name)
         rc, log = run(b, cfg, sets, out)
         if rc != 0:
-            print(f"FAIL  {name:22s} run failed: {log[-200:]}")
-            ok = False
-            continue
+            return False, f"FAIL  {name:22s} run failed: {log[-200:]}"
         res = {}
         for dom, w in refs.items():  # nested: out/<domain>, tolerance keys "<domain>.<var>"
             for v, x in compare(w, os.path.join(out, dom) if dom else out, t).items():
@@ -396,18 +392,31 @@ def main():
         bad = [f"{v} {res.get(v, float('nan')):.2e}>{tl:.0e}" for v, tl in tol.items()
                if not (res.get(v, float("inf")) <= tl)]
         txt = " ".join(f"{v}={res.get(v, float('nan')):.1e}" for v in tol)
-        print(f"{'PASS' if not bad else 'FAIL'}  {name:22s} t={t:g}s {txt}" + (f"  [{'; '.join(bad)}]" if bad else ""))
-        ok &= not bad
         done(out, not bad)
-    if (not a.only or any("straka" in o for o in a.only.split(","))) and a.cpu_dp and os.path.exists(a.cpu_dp):
-        good, msg = straka(a.cpu_dp, os.path.join(a.out, "straka"))
+        return not bad, f"{'PASS' if not bad else 'FAIL'}  {name:22s} t={t:g}s {txt}" + (f"  [{'; '.join(bad)}]" if bad else "")
+
+    def special(name, fn, path):
+        good, msg = fn()
         if good is None:
-            print(f"SKIP  straka_wrf             ({msg})")
-        else:
-            print(f"{'PASS' if good else 'FAIL'}  straka_wrf             {msg}")
-            ok &= good
-            done(os.path.join(a.out, "straka"), good)
+            return True, f"SKIP  {name:22s} ({msg})"
+        done(path, good)
+        return good, f"{'PASS' if good else 'FAIL'}  {name:22s} {msg}"
+
+    bins = {"cpu_dp": a.cpu_dp, "cuda": a.cuda, "cuda_dp": a.cuda_dp}
+    cpu, gpu, ok = [], [], True
+    for name, key, cfg, sets, wo, t, tol in CASES:
+        if not wanted(name):
+            continue
+        b = bins.get(key)
+        refs = wo if isinstance(wo, dict) else {"": wo}  # nested runs: {domain: wrfout}
+        if not b or not os.path.exists(b) or not all(os.path.exists(w) for w in refs.values()):
+            print(f"SKIP  {name:22s} (binary or reference missing)", flush=True)
+            continue
+        (cpu if key == "cpu_dp" else gpu).append((t, lambda n=name, b=b, c=cfg, s=sets, r=refs, t=t, tl=tol: case(n, b, c, s, r, t, tl)))
     if a.cpu_dp and os.path.exists(a.cpu_dp):
+        if not only or wanted("straka_wrf"):
+            p = os.path.join(a.out, "straka")
+            cpu.append((0, lambda p=p: special("straka_wrf", lambda: straka(a.cpu_dp, p), p)))
         for tag, cfg, rd in (("p1", "configs/real_p1_r8.ini", "run_P1_r8"),
                              ("p7", "configs/real_p7_r8.ini", "run_P7_r8"),
                              ("p8", "configs/real_p8_r8.ini", "run_P8_r8"),
@@ -415,15 +424,20 @@ def main():
                              ("nmp1", "configs/real_nmp1_r8.ini", "run_NMP1_r8"),
                              ("t1", "configs/real_t1.ini", "run_R1_r8")):
             rname = f"restart_{tag}_fp64"
-            if a.only and not any(o in rname for o in a.only.split(",")):
+            if not wanted(rname):
                 continue
-            good, msg = restart_p1(a.cpu_dp, os.path.join(a.out, f"restart_{tag}"), cfg, rd)
-            if good is None:
-                print(f"SKIP  {rname:22s} ({msg})")
-            else:
-                print(f"{'PASS' if good else 'FAIL'}  {rname:22s} {msg}")
-                ok &= good
-                done(os.path.join(a.out, f"restart_{tag}"), good)
+            p = os.path.join(a.out, f"restart_{tag}")
+            cpu.append((0, lambda r=rname, c=cfg, d=rd, p=p: special(r, lambda: restart_p1(a.cpu_dp, p, c, d), p)))
+    # longest simulated time first; each task prints its line as soon as it ends; GPU cases share the one GPU
+    cpu = [f for _, f in sorted(cpu, key=lambda x: -x[0])]
+    gpu = [f for _, f in gpu]
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    with ThreadPoolExecutor(max(1, a.jobs)) as pc, ThreadPoolExecutor(1) as pg:
+        futs = [pc.submit(f) for f in cpu] + [pg.submit(f) for f in gpu]
+        for f in as_completed(futs):
+            good, line = f.result()
+            print(line, flush=True)
+            ok &= good
     sys.exit(0 if ok else 1)
 
 
