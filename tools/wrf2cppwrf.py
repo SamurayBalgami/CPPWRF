@@ -262,6 +262,7 @@ SUPPORTED_OPTIONS = {
         0: "None / off",
         1: "Kain-Fritsch cumulus parameterization",
         3: "Grell-Freitas cumulus parameterization",
+        6: "Tiedtke cumulus parameterization",
         16: "New Tiedtke cumulus parameterization",
     },
     "ra_lw_physics": {
@@ -291,6 +292,14 @@ SUPPORTED_OPTIONS = {
     },
     "h_adv_order": {5: "5th-order upwind", 6: "6th-order centered"},
     "v_adv_order": {3: "3rd-order upwind", 4: "4th-order centered"},
+}
+
+# share/module_check_a_mundo.F setup_physics_suite: the -1 options of each suite
+PHYSICS_SUITES = {
+    "conus": {"mp_physics": 8, "cu_physics": 6, "ra_lw_physics": 4, "ra_sw_physics": 4,
+              "bl_pbl_physics": 2, "sf_sfclay_physics": 2, "sf_surface_physics": 2},
+    "tropical": {"mp_physics": 6, "cu_physics": 16, "ra_lw_physics": 4, "ra_sw_physics": 4,
+                 "bl_pbl_physics": 1, "sf_sfclay_physics": 1, "sf_surface_physics": 2},
 }
 
 SUPPORTED_NOAHMP_OPTIONS = {
@@ -330,7 +339,6 @@ UNSUPPORTED_PHYSICS_SWITCHES = {
     "slope_rad": "Slope-dependent radiation",
     "topo_shading": "Topographic shading",
     "swint_opt": "Shortwave radiation interpolation between radt calls",
-    "fractional_seaice": "Fractional sea-ice treatment",
     "seaice_thickness_opt": "Variable sea-ice thickness option",
     "seaice_snowdepth_opt": "Sea-ice snow depth option",
     "seaice_albedo_opt": "Sea-ice albedo option",
@@ -388,6 +396,10 @@ IGNORED_WRF_OPTIONS = {
     "s_sn": "Domain starting index in Y (always 1)",
     "s_vert": "Domain starting index in Z (always 1)",
     "p_top_requested": "Real case p_top read directly from wrfinput_d01",
+    "dzbot": "real.exe vertical level generation (eta levels read from wrfinput_d01)",
+    "dzstretch_s": "real.exe vertical level generation (eta levels read from wrfinput_d01)",
+    "dzstretch_u": "real.exe vertical level generation (eta levels read from wrfinput_d01)",
+    "num_land_cat": "Land-use category count (land use read from wrfinput_d01)",
     "dx": "Real case grid spacing read directly from wrfinput",
     "dy": "Real case grid spacing read directly from wrfinput",
     # &physics
@@ -498,6 +510,26 @@ class WrfTranslator:
         grp = self.nml.get(group, {})
         return key in grp and len(grp[key]) > 0
 
+    def apply_physics_suite(self):
+        """WRF setup_physics_suite: the -1 physics options take the values of physics_suite (CONUS, tropical)."""
+        suite = str(self.get_opt("physics", "physics_suite", "none")).strip().lower()
+        phys = self.nml.get("physics", {})
+        if suite == "none":
+            for key in PHYSICS_SUITES["conus"]:
+                if -1 in phys.get(key, []):
+                    self.error(f"WRF {key} = -1 needs a physics_suite (CONUS or tropical).")
+            return
+        if suite not in PHYSICS_SUITES:
+            self.error(f"WRF physics_suite = '{suite}' is not recognized (CONUS, tropical or none).")
+            return
+        for key, val in PHYSICS_SUITES[suite].items():
+            vals = phys.get(key)
+            if not vals:  # Registry default -1
+                phys[key] = [val] * self._max_dom
+            else:
+                phys[key] = [val if v == -1 else v for v in vals]
+        self.notice(f"physics_suite = '{suite}': " + ", ".join(f"{k} = {phys[k][0]}" for k in PHYSICS_SUITES[suite]))
+
     def translate(self) -> Dict[str, Dict[str, Any]]:
         """Perform the translation and return INI sections dict."""
         sections: Dict[str, Dict[str, Any]] = {
@@ -512,6 +544,7 @@ class WrfTranslator:
         else:
             max_dom = max_dom_raw
         self._max_dom = max_dom
+        self.apply_physics_suite()
 
         # 2. Determine Case
         ideal_case = self.get_opt("ideal", "ideal_case", None)
@@ -714,6 +747,13 @@ class WrfTranslator:
         kvdif = self.get_opt("dynamics", "kvdif", 0.0)
         sections["dyn"]["khdif"] = int(khdif) if isinstance(khdif, (int, float)) and float(khdif).is_integer() else khdif
         sections["dyn"]["kvdif"] = int(kvdif) if isinstance(kvdif, (int, float)) and float(kvdif).is_integer() else kvdif
+        if self.get_opt("dynamics", "gwd_opt", 0) == 1:  # GWDO in the PBL driver (needs CON, OA1-4, OL1-4, ELVMAX in wrfinput)
+            sections["dyn"]["gwd_opt"] = 1
+            gdx = self.get_opt("dynamics", "gwd_dx_factor", 2.0)
+            if gdx != 2.0:
+                sections["dyn"]["gwd_dx_factor"] = gdx
+            if not self.get_opt("dynamics", "gwd_if_nonhyd", True):
+                sections["dyn"]["gwd_if_nonhyd"] = False
 
         w_damping = self.get_opt("dynamics", "w_damping", 0)
         if w_damping not in (0, 1):
@@ -900,8 +940,8 @@ class WrfTranslator:
             self.warn("WRF use_theta_m = 0 is unsupported; CPPWRF always uses moist potential temperature (theta_m).")
 
         gwd_opt = self.get_opt("dynamics", "gwd_opt", 0)
-        if gwd_opt != 0:
-            self.warn(f"WRF gravity wave drag (gwd_opt = {gwd_opt}) is not implemented in CPPWRF.")
+        if gwd_opt not in (0, 1):
+            self.error(f"WRF gwd_opt = {gwd_opt} is not supported; CPPWRF supports 0 and 1 (GWDO).")
 
         chem_adv = self.get_opt("dynamics", "chem_adv_opt", 0)
         if chem_adv != 0:
@@ -972,12 +1012,14 @@ class WrfTranslator:
                 tbl_dir = self.table_dir
                 if not tbl_dir:
                     wrf_runs = os.environ.get("CPPWRF_WRF_RUNS")
+                    # the WRF run directory first: wrf.exe reads its tables there (including the Thompson
+                    # .dat tables, which CPPWRF otherwise computes)
                     candidates = []
+                    if self.namelist_path:
+                        candidates.append(os.path.dirname(os.path.abspath(self.namelist_path)))
+                        candidates.append(os.path.join(os.path.dirname(self.namelist_path), "wrf_run"))
                     if wrf_runs:
                         candidates.append(os.path.join(wrf_runs, "wrf_run"))
-                    if self.namelist_path:
-                        candidates.append(os.path.join(os.path.dirname(self.namelist_path), "wrf_run"))
-                        candidates.append(os.path.dirname(self.namelist_path))
                     req_tbls = ["LANDUSE.TBL"]
                     if sf_surface == 4:
                         req_tbls.append("NoahmpTable.TBL")
@@ -990,6 +1032,15 @@ class WrfTranslator:
                 sections["phys"]["table_dir"] = tbl_dir
 
                 # WRF 4.8 turbulent orographic form drag of sfclayrev (needs VAR in wrfinput)
+                fsi = self.get_opt("physics", "fractional_seaice", 0)
+                if fsi not in (0, 1):
+                    self.error(f"WRF fractional_seaice = {fsi} is not supported; CPPWRF supports 0 and 1.")
+                elif fsi == 1:
+                    if sf_surface not in (2, 4) or sf_sfclay not in (1, 2):
+                        self.error("WRF fractional_seaice = 1 needs sf_surface_physics 2 or 4 and sf_sfclay_physics 1 or 2.")
+                    sections["phys"]["fractional_seaice"] = 1
+                    if self.get_opt("physics", "tice2tsk_if2cold", False):
+                        sections["phys"]["tice2tsk_if2cold"] = True
                 if self.get_opt("physics", "kim_tofd", False):
                     sections["phys"]["kim_tofd"] = True
                     tofd_factor = self.get_opt("physics", "tofd_factor", 0.003)
@@ -1405,6 +1456,7 @@ class WrfTranslator:
                     ("v_mom_adv_order", "v_adv_order"),
                     ("c_s", "c_s"),
                     ("c_k", "c_k"),
+                    ("gwd_opt", "gwd_opt"),
                 )
                 for nml_k, ini_k in dyn_dom_map:
                     if self.has_opt("dynamics", nml_k):

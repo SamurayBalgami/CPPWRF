@@ -53,10 +53,13 @@ class WrfConfig {
   int dom_ = 1;
 };
 
-// Values WRF derives from the namelist before its I/O (setup_physics_suite with physics_suite = 'none',
+// Values WRF derives from the namelist before its I/O (setup_physics_suite,
 // set_physics_rconfigs, check_nml_consistency) that the Registry package conditions use. real_exe: as
 // real.exe sets them (use_wps_input = 1); otherwise as wrf.exe.
 void derive_config(WrfConfig& c, int max_dom, bool real_exe);
+// setup_physics_suite (module_check_a_mundo.F): a -1 physics option takes the scheme of physics_suite
+// ('CONUS', 'tropical'; any case and quoting); other values, options and suites are returned unchanged.
+int physics_suite_option(std::string physics_suite, const std::string& option, int value);
 
 // One variable as written to a file.
 struct OutVar {

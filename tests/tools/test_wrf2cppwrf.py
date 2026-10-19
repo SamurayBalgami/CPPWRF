@@ -535,6 +535,43 @@ class TestValidationAndWarnings(unittest.TestCase):
         self.assertEqual(d["emdiv"], 0.02)
         self.assertEqual(d["etac"], 0.25)
 
+    def test_physics_suite_conus(self):
+        """WRF's default test/em_real namelist: physics_suite CONUS, -1 options, gwd_opt and fractional_seaice."""
+        text = ("&time_control /\n&domains time_step = 90, max_dom = 1 /\n"
+                "&physics physics_suite = 'CONUS', mp_physics = -1, cu_physics = -1, ra_lw_physics = -1,\n"
+                " ra_sw_physics = -1, bl_pbl_physics = -1, sf_sfclay_physics = -1, sf_surface_physics = -1,\n"
+                " radt = 15, fractional_seaice = 1 /\n&dynamics gwd_opt = 1, diff_opt = 2, km_opt = 4 /\n")
+        t = WrfTranslator(parse_namelist(text))
+        sec = t.translate()
+        self.assertEqual(t.errors, [])
+        expect = {"mp_physics": 8, "cu_physics": 6, "ra_lw_physics": 4, "ra_sw_physics": 4, "bl_pbl_physics": 2,
+                  "sf_sfclay_physics": 2, "sf_surface_physics": 2, "fractional_seaice": 1}
+        for k, v in expect.items():
+            self.assertEqual(sec["phys"][k], v, k)
+        self.assertEqual(sec["dyn"]["gwd_opt"], 1)
+
+    def test_physics_suite_tropical_keeps_explicit_values(self):
+        text = ("&time_control /\n&domains time_step = 60 /\n"
+                "&physics physics_suite = 'tropical', cu_physics = 1 /\n")
+        t = WrfTranslator(parse_namelist(text))
+        sec = t.translate()
+        self.assertEqual(t.errors, [])
+        self.assertEqual(sec["phys"]["mp_physics"], 6)
+        self.assertEqual(sec["phys"]["cu_physics"], 1)
+        self.assertEqual(sec["phys"]["bl_pbl_physics"], 1)
+        self.assertEqual(sec["phys"]["sf_sfclay_physics"], 1)
+
+    def test_physics_suite_errors(self):
+        for fragment, expected_err in [
+                ("&physics mp_physics = -1 /", "needs a physics_suite"),
+                ("&physics physics_suite = 'arctic' /", "not recognized"),
+                ("&dynamics gwd_opt = 3 /", "gwd_opt = 3"),
+                ("&physics sf_sfclay_physics = 1, sf_surface_physics = 2, fractional_seaice = 2 /",
+                 "fractional_seaice = 2")]:
+            t = WrfTranslator(parse_namelist(f"&time_control /\n&domains time_step = 60 /\n{fragment}\n"))
+            t.translate()
+            self.assertIn(expected_err, " ".join(t.errors), fragment)
+
     def test_unsupported_physics_and_dynamics_errors(self):
         cases = [
             ("&physics cu_physics = 1, ishallow = 1 /", "ishallow = 1 requires cu_physics = 3"),

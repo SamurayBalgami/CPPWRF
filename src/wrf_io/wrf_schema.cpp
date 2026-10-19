@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
+#include <map>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -85,10 +86,29 @@ double WrfConfig::num(const std::string& name, int dom) const {
 
 bool WrfConfig::logical(const std::string& name, int dom) const { return is_true(get(name, dom)); }
 
+int physics_suite_option(std::string suite, const std::string& option, int value) {
+  if (value != -1) return value;
+  suite.erase(std::remove_if(suite.begin(), suite.end(), [](char ch) { return ch == '\'' || ch == '"' || ch == ' '; }),
+              suite.end());
+  suite = to_lower(suite);
+  static const std::map<std::string, std::map<std::string, int>> suites = {
+      {"conus", {{"mp_physics", 8}, {"cu_physics", 6}, {"ra_lw_physics", 4}, {"ra_sw_physics", 4},
+                 {"bl_pbl_physics", 2}, {"sf_sfclay_physics", 2}, {"sf_surface_physics", 2}}},
+      {"tropical", {{"mp_physics", 6}, {"cu_physics", 16}, {"ra_lw_physics", 4}, {"ra_sw_physics", 4},
+                    {"bl_pbl_physics", 1}, {"sf_sfclay_physics", 1}, {"sf_surface_physics", 2}}}};
+  auto it = suites.find(suite);
+  if (it == suites.end()) return value;
+  auto o = it->second.find(option);
+  return o == it->second.end() ? value : o->second;
+}
+
 void derive_config(WrfConfig& c, int max_dom, bool real_exe) {
   for (const char* p : {"mp_physics", "cu_physics", "ra_lw_physics", "ra_sw_physics", "sf_sfclay_physics",
-                        "sf_surface_physics", "bl_pbl_physics"})
-    if (c.integer(p) < 0) c.set(p, "0");
+                        "sf_surface_physics", "bl_pbl_physics"}) {
+    const int v = c.integer(p);
+    const int w = std::max(0, physics_suite_option(c.get("physics_suite"), p, v));  // no suite: -1 is no package
+    if (w != v) c.set(p, std::to_string(w));
+  }
   c.set("cu_used", c.integer("cu_physics") != 0 ? "1" : "0");
   c.set("shcu_used", c.integer("shcu_physics") != 0 ? "1" : "0");
   c.set("gwd_used", c.integer("gwd_opt") == 1 ? "1" : c.integer("gwd_opt") == 3 ? "3" : "0");

@@ -1,4 +1,5 @@
 #include "init_real/real_domain.hpp"
+#include "wrf_io/wrf_schema.hpp"
 
 #include <cstdio>
 #include <iostream>
@@ -76,11 +77,13 @@ RealOptions RealOptions::from_namelist(const Namelist& nl, int dom) {
   o.base_pres_strat = nl.get_real(Y, "base_pres_strat", o.base_pres_strat, dom);
   o.base_lapse_strat = nl.get_real(Y, "base_lapse_strat", o.base_lapse_strat, dom);
   const char* P = "physics";
-  o.sf_surface_physics = nl.get_int(P, "sf_surface_physics", o.sf_surface_physics, dom);
+  const std::string suite = nl.get_str(P, "physics_suite", "none", dom);
+  o.sf_surface_physics = wrf_io::physics_suite_option(
+      suite, "sf_surface_physics", nl.get_int(P, "sf_surface_physics", o.sf_surface_physics, dom));
   o.num_soil_layers = nl.get_int(P, "num_soil_layers", o.num_soil_layers, dom);
   o.surface_input_source = nl.get_int(P, "surface_input_source", o.surface_input_source, dom);
   o.sf_urban_physics = nl.get_int(P, "sf_urban_physics", o.sf_urban_physics, dom);
-  o.mp_physics = nl.get_int(P, "mp_physics", o.mp_physics, dom);
+  o.mp_physics = wrf_io::physics_suite_option(suite, "mp_physics", nl.get_int(P, "mp_physics", o.mp_physics, dom));
   o.fractional_seaice = nl.get_int(P, "fractional_seaice", o.fractional_seaice, dom);
   o.seaice_threshold = nl.get_real(P, "seaice_threshold", o.seaice_threshold, dom);
   o.use_tavg_for_tsk = nl.get_bool(P, "use_tavg_for_tsk", o.use_tavg_for_tsk, dom);
