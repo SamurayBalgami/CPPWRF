@@ -248,6 +248,13 @@ CASES = [
     ("real_su1_r8_fp64_cuda_1h", "cuda_dp", "configs/real_su1_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_SU1_r8", "output.out_interval=30", "output.diag_interval=30"],
      f"{WR}/run_SU1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-2, "W": 1e-1, "THM": 1e-4, "QV": 1e-2}),
+    # HY1 = P1 with hypsometric_opt = 1 (real.exe and wrf.exe; the model takes it from the wrfinput attribute)
+    ("real_hy1_r8_fp64_cpu", "cpu_dp", "configs/real_p1_r8.ini", ["real.dir=" + f"{WR}/run_HY1_r8/steps"],
+     f"{WR}/run_HY1_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
+    ("real_hy1_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p1_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_HY1_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_HY1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
     # NMP1 = P1 with Noah-MP v5.1.2 (sf_surface_physics = 4) against WRF v4.8.0 real*8 and single precision.
     ("real_nmp1_r8_fp64_cpu", "cpu_dp", "configs/real_nmp1_r8.ini", [],
      f"{WR}/run_NMP1_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
@@ -439,6 +446,9 @@ def main():
                 continue
             p = os.path.join(a.out, f"restart_{tag}")
             cpu.append((0, lambda r=rname, c=cfg, d=rd, p=p: special(r, lambda: restart_p1(a.cpu_dp, p, c, d), p)))
+    if a.cuda and os.path.exists(a.cuda) and wanted("restart_p1_fp32_cuda"):  # single precision, GPU
+        p = os.path.join(a.out, "restart_p1_fp32_cuda")
+        gpu.append((0, lambda p=p: special("restart_p1_fp32_cuda", lambda: restart_p1(a.cuda, p), p)))
     # longest simulated time first; each task prints its line as soon as it ends; GPU cases share the one GPU
     cpu = [f for _, f in sorted(cpu, key=lambda x: -x[0])]
     gpu = [f for _, f in gpu]

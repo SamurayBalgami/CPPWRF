@@ -915,14 +915,14 @@ class WrfTranslator:
             elif case_name != "real" and hybrid_opt != 0:
                 sections["dyn"]["hybrid_opt"] = hybrid_opt
 
-        if self.has_opt("dynamics", "hypsometric_opt"):
-            hypso = self.get_opt("dynamics", "hypsometric_opt", 2 if case_name == "real" else 1)
+        # hypsometric_opt is a &domains option (Registry.EM_COMMON). wrf.exe takes it from the input file
+        # (the HYPSOMETRIC_OPT attribute real.exe writes), as CPPWRF's real case does: nothing to write
+        if self.has_opt("domains", "hypsometric_opt"):
+            hypso = self.get_opt("domains", "hypsometric_opt", 2)
             if hypso not in (1, 2):
                 self.error(f"WRF hypsometric_opt = {hypso} is not supported; CPPWRF supports 1 and 2.")
             elif case_name != "real" and hypso != 1:
                 sections["dyn"]["hypsometric_opt"] = hypso
-            elif case_name == "real" and hypso != 2:
-                self.error(f"WRF hypsometric_opt = {hypso} is not supported for real-data runs (real.exe uses 2).")
 
         # WRF 4.8 options without a CPPWRF implementation
         if self.get_opt("time_control", "iau", 0):
@@ -941,7 +941,7 @@ class WrfTranslator:
 
         use_thm = self.get_opt("dynamics", "use_theta_m", 1)
         if use_thm == 0:
-            self.warn("WRF use_theta_m = 0 is unsupported; CPPWRF always uses moist potential temperature (theta_m).")
+            self.error("WRF use_theta_m = 0 is not supported; CPPWRF requires use_theta_m = 1.")
 
         gwd_opt = self.get_opt("dynamics", "gwd_opt", 0)
         if gwd_opt not in (0, 1):

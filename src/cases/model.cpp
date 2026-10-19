@@ -234,6 +234,7 @@ Model Model::build(const io::Config& cfg) {
   dc.isfflx = int(cfg.get_int("phys.isfflx", 1));
   if (dc.isfflx != 0 && dc.isfflx != 1) throw std::runtime_error("phys.isfflx must be 0 or 1");
   dc.use_theta_m = int(cfg.get_int("dyn.use_theta_m", 1));
+  if (dc.use_theta_m != 1) throw std::runtime_error("dyn.use_theta_m must be 1 (use_theta_m = 0 is not verified against WRF)");
   if (cfg.has("dyn.legacy_diffusion"))
     throw std::runtime_error("dyn.legacy_diffusion was removed; use dyn.diff_opt = 1 (WRF horizontal/vertical_diffusion)");
   sp.h_adv_order = lp.h_adv_order; sp.v_adv_order = lp.v_adv_order;

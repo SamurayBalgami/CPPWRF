@@ -155,13 +155,11 @@ void init_real_case(const io::Config& cfg, Model& m) {
   b.msfuy.fill_host_halo(u2(d.mapfac_uy));
   b.msfvx.fill_host_halo(v2(d.mapfac_vx));
   b.msfvy.fill_host_halo(v2(d.mapfac_vy));
-  {  // WRF reads MF_VX_INV from the input (registry 'i'); 1/MAPFAC_VX only if absent
-    const std::vector<double> inv = read_var_if_present(dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01"),
-                                                        "MF_VX_INV", std::size_t(nx) * nys);
-    if (!inv.empty())
-      b.msfvx_inv.fill_host_halo(v2(inv));
-    else
-      b.msfvx_inv.fill_host_halo([&](int i, int j, int) { return 1.0 / d.mapfac_vx[std::size_t(cl(j, 0, nys - 1)) * nx + cl(i, 0, nx - 1)]; });
+  {  // WRF reads MF_VX_INV from the input (registry 'i'); real.exe of WRF v4 writes it
+    const std::string wi = dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01");
+    const std::vector<double> inv = read_var_if_present(wi, "MF_VX_INV", std::size_t(nx) * nys);
+    if (inv.empty()) throw std::runtime_error("real: " + wi + " lacks MF_VX_INV (needs real.exe of WRF v4)");
+    b.msfvx_inv.fill_host_halo(v2(inv));
   }
 
   auto m3 = [&](const std::vector<double>& v, int nk) {
@@ -238,12 +236,9 @@ void init_real_case(const io::Config& cfg, Model& m) {
   if (s.P_QV < 0) throw std::runtime_error("case = real needs qv in moist.species");
   const std::vector<double>& qv = d.qvapor;
   const std::string wi_path = dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01");
-  // t_2 = theta_m - t0: WRF reads it from wrfinput (Registry dataname THM); older inputs: from T, qv
-  std::vector<double> thm = read_var_if_present(wi_path, "THM", qv.size());
-  if (thm.empty()) {
-    thm.resize(qv.size());
-    for (std::size_t n = 0; n < thm.size(); ++n) thm[n] = (d.t[n] + cst::t0) * (1.0 + cst::rvovrd * qv[n]) - cst::t0;
-  }
+  // t_2 = theta_m - t0: WRF reads it from wrfinput (Registry dataname THM)
+  const std::vector<double> thm = read_var_if_present(wi_path, "THM", qv.size());
+  if (thm.empty()) throw std::runtime_error("real: " + wi_path + " lacks THM (needs real.exe of WRF v4)");
   auto idx3 = [&](int i, int j, int k, int ni, int nj) { return (std::size_t(k) * nj + j) * ni + i; };
   s.u_2.fill_host([&](int i, int j, int k) { return d.u[idx3(i, j, k, nxs, ny)]; });
   s.v_2.fill_host([&](int i, int j, int k) { return d.v[idx3(i, j, k, nx, nys)]; });
@@ -280,7 +275,9 @@ void init_real_case(const io::Config& cfg, Model& m) {
           const double phm = d.c3h[k] * mt + d.c4h[k] + d.p_top;
           a = (d.ph[n1] - d.ph[n] + phb[n1] - phb[n]) / phm / std::log(pfd / pfu) - alb[n];
         } else {
-          a = -1.0 / (d.c1h[k] * mt + d.c2h[k]) * (alb[n] * (d.c1h[k] * mu) + d.rdnw[k] * (d.ph[n1] - d.ph[n]));
+          // start_em.F:812: (c1h mub + c2h) + c1h mu_1, not c1h (mub + mu_1) + c2h
+          const double mb = mub[std::size_t(j) * nx + i];
+          a = -1.0 / ((d.c1h[k] * mb + d.c2h[k]) + d.c1h[k] * mu) * (alb[n] * (d.c1h[k] * mu) + d.rdnw[k] * (d.ph[n1] - d.ph[n]));
         }
         al[n] = a;
         p[n] = cst::p1000mb * std::pow((cst::r_d * (cst::t0 + thm[n])) / (cst::p1000mb * (a + alb[n])), cst::cpovcv) - pb[n];
