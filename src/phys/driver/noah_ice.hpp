@@ -198,8 +198,6 @@ CPPWRF_HD inline void snopac(real& etp, real& eta, real prcp, real& prcpf, bool 
   esnow = real(0.);
   real esnow1 = real(0.);
   real esnow2 = real(0.);
-  real prcp1 = prcpf * real(0.001);
-  (void)prcp1;
   real etanrg;
   if (etp <= real(0.0)) {
     if ((ribb >= real(0.1)) && (fdown > real(150.0))) {

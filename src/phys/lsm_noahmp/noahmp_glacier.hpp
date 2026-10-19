@@ -262,13 +262,11 @@ CPPWRF_HD inline void SurfaceEnergyFluxGlacier(NoahmpType& noahmp) {
   int MoStabParaSgn = 0;
   energy.state.MoStabCorrShBare2m = real(0.0);
   real HeatSensibleTmp = real(0.0);
-  real MoistureFluxSfc = real(0.0);
   energy.state.FrictionVelBare = real(0.1);
   real LwRadCoeff = energy.state.EmissivityGrd * ConstStefanBoltzmann;
   real GrdHeatCoeff = real(2.0) * energy.state.ThermConductSoilSnow(domain.NumSnowLayerNeg + 1) /
                       domain.ThicknessSnowSoilLayer(domain.NumSnowLayerNeg + 1);
 
-  real ExchCoeffMomTmp = real(0.0);
   real ExchCoeffShTmp = real(0.0);
   real ShCoeff = real(0.0);
   real LhCoeff = real(0.0);
@@ -282,9 +280,7 @@ CPPWRF_HD inline void SurfaceEnergyFluxGlacier(NoahmpType& noahmp) {
 
     ResistanceBareGroundMOST(noahmp, IndIter, HeatSensibleTmp, MoStabParaSgn);
 
-    ExchCoeffMomTmp = real(1.0) / energy.state.ResistanceMomBareGrd;
     ExchCoeffShTmp = real(1.0) / energy.state.ResistanceShBareGrd;
-    (void)ExchCoeffMomTmp;
 
     real TempTmp = TempUnitConv(energy.state.TemperatureGrdBare);
     real VapPresSatWatTmp = real(0.0);
@@ -342,8 +338,6 @@ CPPWRF_HD inline void SurfaceEnergyFluxGlacier(NoahmpType& noahmp) {
     energy.state.SpecHumiditySfc =
         real(0.622) * (energy.state.VapPresSatGrdBare * energy.state.RelHumidityGrd) /
         (forcing.PressureAirRefHeight - real(0.378) * (energy.state.VapPresSatGrdBare * energy.state.RelHumidityGrd));
-    MoistureFluxSfc = (energy.state.SpecHumiditySfc - forcing.SpecHumidityRefHeight) * LhCoeff *
-                      energy.state.PsychConstGrd / ConstHeatCapacAir;
   }
 
   real max_soil_ice_tmp = real(-1.0e30);
@@ -365,8 +359,6 @@ CPPWRF_HD inline void SurfaceEnergyFluxGlacier(NoahmpType& noahmp) {
       energy.state.SpecHumiditySfc =
           real(0.622) * (energy.state.VapPresSatGrdBare * energy.state.RelHumidityGrd) /
           (forcing.PressureAirRefHeight - real(0.378) * (energy.state.VapPresSatGrdBare * energy.state.RelHumidityGrd));
-      MoistureFluxSfc = (energy.state.SpecHumiditySfc - forcing.SpecHumidityRefHeight) * LhCoeff *
-                        energy.state.PsychConstGrd / ConstHeatCapacAir;
       energy.flux.RadLwNetBareGrd =
           LwRadCoeff * cppwrf::powi(energy.state.TemperatureGrdBare, 4) -
           energy.state.EmissivityGrd * forcing.RadLwDownRefHeight;
@@ -379,7 +371,6 @@ CPPWRF_HD inline void SurfaceEnergyFluxGlacier(NoahmpType& noahmp) {
           (energy.flux.RadLwNetBareGrd + energy.flux.HeatSensibleBareGrd + energy.flux.HeatLatentBareGrd);
     }
   }
-  (void)MoistureFluxSfc;
 
   energy.state.WindStressEwBare = -energy.state.DensityAirRefHeight * energy.state.ExchCoeffMomBare *
                                   energy.state.WindSpdRefHeight * forcing.WindEastwardRefHeight;

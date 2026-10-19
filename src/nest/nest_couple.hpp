@@ -24,21 +24,6 @@
 
 namespace cppwrf::nest {
 
-// Compute column mass terms mutf (full levels) and muth (half levels)
-CPPWRF_HD inline void compute_column_mut(
-    double mub, double mu_2,
-    const double* c1f, const double* c2f,
-    const double* c1h, const double* c2h,
-    int nz, double* mutf, double* muth) {
-
-  for (int k = 0; k <= nz; ++k) {
-    mutf[k] = (c1f[k] * mub + c2f[k]) + (c1f[k] * mu_2);
-  }
-  for (int k = 0; k < nz; ++k) {
-    muth[k] = (c1h[k] * mub + c2h[k]) + (c1h[k] * mu_2);
-  }
-}
-
 // ============================================================================
 // Routine couple_or_uncouple_em matching WRF dyn_em/couple_or_uncouple_em.F
 // Modifies fields in-place using exact reciprocal multiplication on uncoupling.

@@ -583,41 +583,6 @@ inline void force_nest_bdy_scalar_field3(
   }
 }
 
-// ============================================================================
-// Routine to force LateralBC from raw host double arrays (used in unit tests)
-// ============================================================================
-inline void force_nest_lateral_bc(
-    dyn::LateralBC& lbc,
-    dyn::LateralBC::Var v,
-    const double* cfld,
-    int c_nx, int c_ny, int c_nz,
-    const double* nfld,
-    int n_nx, int n_ny, int n_nz,
-    int ipos, int jpos,
-    int ratio_x, int ratio_y,
-    double cdt,
-    int spec_zone = 1, int relax_zone = 4) {
-
-  const bool xstag = (v == dyn::LateralBC::U);
-  const bool ystag = (v == dyn::LateralBC::V);
-  const int nk = (v == dyn::LateralBC::PH || v == dyn::LateralBC::W) ? (n_nz + 1) : ((v == dyn::LateralBC::MU) ? 1 : n_nz);
-  const int c_nk = (v == dyn::LateralBC::PH || v == dyn::LateralBC::W) ? (c_nz + 1) : ((v == dyn::LateralBC::MU) ? 1 : c_nz);
-  const int width = lbc.width();
-
-  LateralBCSlabs slabs = compute_lateral_bc_slabs(
-      cfld, c_nx, c_ny, c_nk,
-      nfld, n_nx, n_ny, nk,
-      ipos, jpos,
-      ratio_x, ratio_y,
-      cdt, xstag, ystag,
-      width, spec_zone, relax_zone);
-
-  lbc.set(v, dyn::LateralBC::XS, slabs.val_xs, slabs.tend_xs);
-  lbc.set(v, dyn::LateralBC::XE, slabs.val_xe, slabs.tend_xe);
-  lbc.set(v, dyn::LateralBC::YS, slabs.val_ys, slabs.tend_ys);
-  lbc.set(v, dyn::LateralBC::YE, slabs.val_ye, slabs.tend_ye);
-}
-
 inline void force_nest_lateral_bc_scalar(
     dyn::LateralBC& lbc,
     int scalar_idx,

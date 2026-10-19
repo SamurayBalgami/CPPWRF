@@ -1305,7 +1305,6 @@ CPPWRF_HD inline void SnowpackHydrology(NoahmpType& noahmp) {
 // ============================================================================
 CPPWRF_HD inline void SnowWaterMain(NoahmpType& noahmp) {
   real SnowDensBulk            = real(0.0);
-  real GlacierExcessRemainFrac = real(1.0);
 
   const int&  NumSnowLayerMax        = noahmp.config.domain.NumSnowLayerMax;
   const int&  NumSoilLayer           = noahmp.config.domain.NumSoilLayer;
@@ -1328,8 +1327,6 @@ CPPWRF_HD inline void SnowWaterMain(NoahmpType& noahmp) {
   GlacierExcessFlow       = real(0.0);
   PondSfcThinSnwComb      = real(0.0);
   PondSfcThinSnwTrans     = real(0.0);
-  GlacierExcessRemainFrac = real(1.0);
-  (void)GlacierExcessRemainFrac;
 
   SnowfallAfterCanopyIntercept(noahmp);
 
@@ -2083,7 +2080,6 @@ CPPWRF_HD inline void SoilWaterMain(NoahmpType& noahmp) {
   real SoilWaterMin      = real(0.0);
   real DrainSoilBotAcc   = real(0.0);
   real RunoffSurfaceAcc  = real(0.0);
-  real InfilSfcAcc       = real(1.0e-06);
   constexpr real SoilImpPara = real(4.0);
 
   FArray1D<real, 1, kMaxSoilLayers> MatRight;
@@ -2127,8 +2123,6 @@ CPPWRF_HD inline void SoilWaterMain(NoahmpType& noahmp) {
   RunoffSubsurface = real(0.0);
   InfilRateSfc     = real(0.0);
   SoilSatExcAcc    = real(0.0);
-  InfilSfcAcc      = real(1.0e-06);
-  (void)InfilSfcAcc;
 
   for (int LoopInd1 = 1; LoopInd1 <= NumSoilLayer; ++LoopInd1) {
     SoilEffPorosity(LoopInd1) = std::max(real(1.0e-4), (SoilMoistureSat(LoopInd1) - SoilIce(LoopInd1)));
@@ -2170,7 +2164,6 @@ CPPWRF_HD inline void SoilWaterMain(NoahmpType& noahmp) {
   }
   TimeStepFine = SoilTimeStep / static_cast<real>(NumIterSoilWat);
 
-  InfilSfcAcc      = real(1.0e-06);
   DrainSoilBotAcc  = real(0.0);
   RunoffSurfaceAcc = real(0.0);
 

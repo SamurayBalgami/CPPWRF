@@ -414,7 +414,7 @@ struct SFClayRevKernel {
       zl = zol0;
     }
 
-    real psim10, psih10, psim2, psih2, pq, pq2, pq10;
+    real psim10, psih10, psih2, pq, pq2, pq10;  // WRF's psim2 is never read
 
     // WRF lines 418-500: Regimes
     if (br(i, j) > real(0.0)) {
@@ -424,7 +424,6 @@ struct SFClayRevKernel {
       psih(i, j) = psih_stable(zolzz, tbl) - psih_stable(zol0, tbl);
       psim10 = psim_stable(zol10, tbl) - psim_stable(zol0, tbl);
       psih10 = psih_stable(zol10, tbl) - psih_stable(zol0, tbl);
-      psim2 = psim_stable(zol2, tbl) - psim_stable(zol0, tbl);
       psih2 = psih_stable(zol2, tbl) - psih_stable(zol0, tbl);
 
       pq = psih_stable(zol(i, j), tbl) - psih_stable(zl, tbl);
@@ -438,7 +437,6 @@ struct SFClayRevKernel {
       psih(i, j) = real(0.0);
       psim10 = real(0.0);
       psih10 = real(0.0);
-      psim2 = real(0.0);
       psih2 = real(0.0);
 
       pq = real(0.0);
@@ -453,7 +451,6 @@ struct SFClayRevKernel {
       psih(i, j) = psih_unstable(zolzz, tbl) - psih_unstable(zol0, tbl);
       psim10 = psim_unstable(zol10, tbl) - psim_unstable(zol0, tbl);
       psih10 = psih_unstable(zol10, tbl) - psih_unstable(zol0, tbl);
-      psim2 = psim_unstable(zol2, tbl) - psim_unstable(zol0, tbl);
       psih2 = psih_unstable(zol2, tbl) - psih_unstable(zol0, tbl);
 
       pq = psih_unstable(zol(i, j), tbl) - psih_unstable(zl, tbl);

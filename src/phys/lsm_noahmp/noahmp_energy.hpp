@@ -716,8 +716,6 @@ CPPWRF_HD inline void SurfaceEnergyFluxVegetated(NoahmpType& noahmp) {
   energy.state.MoStabCorrShVeg2m = real(0.0);
   real ShGrdTmp = real(0.0);
   real ShCanTmp = real(0.0);
-  real MoistureFluxSfc = real(0.0);
-  (void)MoistureFluxSfc;
 
   real VegAreaIndTmp = std::min(real(6.0), energy.state.VegAreaIndEff);
   real LeafAreaIndSunEff = std::min(real(6.0), energy.state.LeafAreaIndSunlit);
@@ -1015,8 +1013,6 @@ CPPWRF_HD inline void SurfaceEnergyFluxBareGround(NoahmpType& noahmp) {
   energy.state.MoStabParaBare = real(0.0);
   int MoStabParaSgn = 0;
   energy.state.MoStabCorrShBare2m = real(0.0);
-  real MoistureFluxSfc = real(0.0);
-  (void)MoistureFluxSfc;
   energy.state.FrictionVelBare = real(0.1);
   real HeatSensibleTmp = real(0.0);
   real LwRadCoeff = energy.state.EmissivityGrd * ConstStefanBoltzmann;
@@ -1037,8 +1033,6 @@ CPPWRF_HD inline void SurfaceEnergyFluxBareGround(NoahmpType& noahmp) {
     if (nml.OptSurfaceDrag == 1) ResistanceBareGroundMOST(noahmp, IndIter, HeatSensibleTmp, MoStabParaSgn);
     if (nml.OptSurfaceDrag == 2) ResistanceBareGroundChen97(noahmp, IndIter);
 
-    real ExchCoeffMomTmp = real(1.0) / energy.state.ResistanceMomBareGrd;
-    (void)ExchCoeffMomTmp;
     ExchCoeffShTmp = real(1.0) / energy.state.ResistanceShBareGrd;
 
     real TempTmp = TempUnitConv(energy.state.TemperatureGrdBare);
@@ -1095,8 +1089,6 @@ CPPWRF_HD inline void SurfaceEnergyFluxBareGround(NoahmpType& noahmp) {
     energy.state.SpecHumiditySfc =
         real(0.622) * (energy.state.VapPresSatGrdBare * energy.state.RelHumidityGrd) /
         (forcing.PressureAirRefHeight - real(0.378) * (energy.state.VapPresSatGrdBare * energy.state.RelHumidityGrd));
-    MoistureFluxSfc = (energy.state.SpecHumiditySfc - forcing.SpecHumidityRefHeight) * LhCoeff *
-                      energy.state.PsychConstGrd / ConstHeatCapacAir;
   }
 
   if (nml.OptSnowSoilTempTime == 1 || nml.OptSnowSoilTempTime == 3) {

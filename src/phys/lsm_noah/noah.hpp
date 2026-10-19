@@ -1114,7 +1114,6 @@ struct NoahKernel {
     real fxexp = tables.fxexp_data;
     real refkdt = tables.refkdt_data;
     real kdt = refkdt * dksat / refdk;
-    real czil = tables.czil_data;
     real slope = tables.slope_data[slop - 1];
     real lvcoef = tables.lvcoef_data;
 
