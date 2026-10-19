@@ -2,7 +2,7 @@
 
 CPPWRF reproduces WRF-ARW v4.8.0 statement by statement. This page lists what is implemented, how it
 is verified against WRF, and the current results. All numbers come from `tests/verify/wrf_suite.py`
-(62 cases, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
+(65 cases, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
 
 ## Implemented
 
@@ -70,10 +70,16 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | T1 | R1 with diff_opt 2 / km_opt 2 (TKE) | 5 steps |
 | N1 | one-way nest (both domains) | 3 parent steps |
 | N2 | two-way nest (both domains) | 1 h |
+| V1 | tropics (Bay of Bengal), Mercator, 15 km, P4 physics | 6 h |
+| V2 | Arctic (Svalbard), polar stereographic, 15 km, P4 physics (sea ice, glacier land ice) | 6 h |
+| V3 | Alps, Lambert, 3 km, Thompson + MYJ + Eta + Noah-MP + RRTMG (radt 5), no cumulus | 2 h |
+
+V1-V3 are compared in every wrfout variable over the whole run; they start from the global GFS of
+2026-10-12 00 UTC through WPS, so the domains, projections and surface types differ from the P cases.
 
 Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8, P9, T1).
 
-Output files: the `wrfout_d0N` files of P1-P9, NMP1, mp8, R1, T1, N1 and N2 (both domains) and the
+Output files: the `wrfout_d0N` files of P1-P9, NMP1, mp8, V1-V3, R1, T1, N1 and N2 (both domains) and the
 `wrfrst_d0N` files of P1, P3, P4, P6, P7, P8, P9, NMP1, mp8 and N2 are identical to WRF v4.8.0's. This covers
 every variable, value, dimension, attribute and global attribute
 (`tests/verify/run_wrf_files_test.sh`). Runs of these cases resumed from WRF's
