@@ -8,12 +8,13 @@
 # `gcloud storage cp`; --data names it, default suite_data.tar); the source is the committed HEAD.
 # The VM is a spot VM (Debian 13: the same gcc and glibc as the reference workstation) that powers
 # itself off at the end and is deleted here; --max-run-duration deletes it in any case. The zones are tried
-# in order until one has the machine (spot capacity varies).
+# in order until one has the machine (spot capacity varies). Use Intel machines (c3, n2, n1): glibc's
+# libmvec log differs on AMD, so AMD runs are not bit-identical to Intel-made WRF references.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_GCP_PROJECT:?set CPPWRF_GCP_PROJECT}" "${CPPWRF_GCP_BUCKET:?set CPPWRF_GCP_BUCKET}"
 P=$CPPWRF_GCP_PROJECT BK=$CPPWRF_GCP_BUCKET
-MACHINE=c3d-highcpu-180 ZONES=us-central1-a,us-central1-b,us-central1-c,us-central1-f,us-east1-b,us-east1-c,us-east1-d,us-east4-a,us-east4-b,us-east4-c,europe-west4-a,europe-west4-b,europe-west4-c JOBS=12 THREADS=15 CASES= DATA=suite_data.tar OUT= MAXH=8
+MACHINE=c3-highcpu-22 ZONES=us-central1-a,us-central1-b,us-central1-c,us-central1-f,us-east1-b,us-east1-c,us-east1-d,us-east4-a,us-east4-b,us-east4-c,europe-west4-a,europe-west4-b,europe-west4-c JOBS=5 THREADS=4 CASES= DATA=suite_data.tar OUT= MAXH=8
 while [ $# -gt 0 ]; do
   case $1 in
     --machine) MACHINE=$2; shift 2 ;; --zones) ZONES=$2; shift 2 ;; --jobs) JOBS=$2; shift 2 ;;
