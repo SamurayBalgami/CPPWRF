@@ -199,8 +199,7 @@ Model Model::build(const io::Config& cfg) {
       lp.h_adv_order != 5)
     throw std::runtime_error("positive-definite advection is implemented for h_adv_order = 5 only");
   // Diffusion: WRF diff_opt / km_opt / diff_6th_opt. diff_opt defaults to 1 when khdif or kvdif
-  // is set (older configs). dyn.legacy_diffusion = true keeps the old constant-K kernels (flat,
-  // m = 1 only) for A/B checks.
+  // is set (older configs); diff_opt = 0 is no diffusion whatever khdif / kvdif (WRF).
   dyn::DiffusionConfig dc;
   dc.diff_opt = int(cfg.get_int("dyn.diff_opt", (lp.khdif > 0 || lp.kvdif > 0) ? 1 : 0));
   dc.km_opt = int(cfg.get_int("dyn.km_opt", 1));
@@ -233,10 +232,10 @@ Model Model::build(const io::Config& cfg) {
   dc.pbl = cfg.get_int("phys.bl_pbl_physics", 0) != 0;
   dc.sf_sfclay_physics = int(cfg.get_int("phys.sf_sfclay_physics", 0));
   dc.isfflx = int(cfg.get_int("phys.isfflx", 1));
+  if (dc.isfflx != 0 && dc.isfflx != 1) throw std::runtime_error("phys.isfflx must be 0 or 1");
   dc.use_theta_m = int(cfg.get_int("dyn.use_theta_m", 1));
-  const bool legacy = cfg.get_bool("dyn.legacy_diffusion", false);
-  if (legacy && (dc.km_opt != 1 || dc.diff_6th_opt != 0)) throw std::runtime_error("dyn.legacy_diffusion: km_opt 1 only");
-  sp.khdif = lp.khdif; sp.kvdif = lp.kvdif; sp.pr_inv = lp.pr_inv;
+  if (cfg.has("dyn.legacy_diffusion"))
+    throw std::runtime_error("dyn.legacy_diffusion was removed; use dyn.diff_opt = 1 (WRF horizontal/vertical_diffusion)");
   sp.h_adv_order = lp.h_adv_order; sp.v_adv_order = lp.v_adv_order;
   const int tss = int(cfg.get_int("time.time_step_sound", 0));
   m.n_sound = tss > 0 ? tss : dyn::RK3::auto_sound_steps(g.dt, g.dx, g.dy, g.two_d());
@@ -257,7 +256,7 @@ Model Model::build(const io::Config& cfg) {
       init_real_physics(cfg, m);
     }
     if (m.bc) m.rk->set_lateral_bc(m.bc.get());
-    if (!legacy && dc.on()) {
+    if (dc.on()) {
       m.diff = std::make_unique<dyn::DiffusionDriver>(g, dc);
       if (m.suite) m.diff->set_physics_suite(m.suite.get());
       m.rk->set_diffusion(m.diff.get());

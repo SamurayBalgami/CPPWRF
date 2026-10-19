@@ -53,7 +53,7 @@ struct KSixthOrderU {
                                  (c1(k) * mut(i - 1, j + 1) + c2(k)) + (c1(k) * mut(i, j + 1) + c2(k)));
     real tend_y = diff_6th_coef * msfuy(i, j) * (mu_y_p1 * dflux_y_p1 - mu_y_p0 * dflux_y_p0);
 
-    tendency(i, j, k) += tend_x + tend_y;
+    tendency(i, j, k) = tendency(i, j, k) + tend_x + tend_y;  // module_big_step_utilities_em.F:6624
   }
 };
 
@@ -101,7 +101,7 @@ struct KSixthOrderV {
     real mu_y_p1 = c1(k) * mut(i, j) + c2(k);
     real tend_y = diff_6th_coef * msfvy(i, j) * (mu_y_p1 * dflux_y_p1 - mu_y_p0 * dflux_y_p0);
 
-    tendency(i, j, k) += tend_x + tend_y;
+    tendency(i, j, k) = tendency(i, j, k) + tend_x + tend_y;  // module_big_step_utilities_em.F:6624
   }
 };
 
@@ -147,7 +147,7 @@ struct KSixthOrderM {
     real mu_y_p1 = real(0.5) * ((c1(k) * mut(i, j) + c2(k)) + (c1(k) * mut(i, j + 1) + c2(k)));
     real tend_y = diff_6th_coef * msfty(i, j) * (mu_y_p1 * dflux_y_p1 - mu_y_p0 * dflux_y_p0);
 
-    tendency(i, j, k) += tend_x + tend_y;
+    tendency(i, j, k) = tendency(i, j, k) + tend_x + tend_y;  // module_big_step_utilities_em.F:6624
   }
 };
 

@@ -27,6 +27,10 @@ CASES = [
     # summation orders and halo schedule reproduced)
     ("real_r1_fp64_cpu", "cpu_dp", "configs/real_r1.ini", [], f"{WR}/run_R1_r8/wrfout_d01_2026-10-12_00:00:00", 300,
      {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
+    # R1D6 = R1 + diff_opt = 1, km_opt = 4, damp_opt = 1 (cal_dampkm), diff_6th_opt = 2 (u, v, w, theta, qv)
+    ("real_r1d6_fp64_cpu", "cpu_dp", "configs/real_r1_d6.ini", [],
+     f"{WR}/run_R1D6_r8/wrfout_d01_2026-10-12_00:00:00", 600,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "PH": 0.0, "MU": 0.0, "P": 0.0, "QV": 0.0, "THM": 0.0}),
     ("real_r1_fp64_cuda", "cuda_dp", "configs/real_r1.ini", [], f"{WR}/run_R1_r8/wrfout_d01_2026-10-12_00:00:00", 300,
      {"U": 1e-12, "W": 1e-10, "PH": 1e-13, "THM": 1e-13, "QV": 1e-13, "MU": 1e-13}),
     # T1 = R1 + diff_opt = 2, km_opt = 2 (1.5-order TKE, full metric stress tensor diffusion):
@@ -284,6 +288,13 @@ CASES = [
     ("ideal_quarter_ss_fp64_cpu", "cpu_dp", "configs/wrf_quarter_ss.ini",
      ["run.run_time=7200", "output.out_interval=50", "output.diag_interval=50"],
      f"{WREF}/r8/run_qss/wrfout_d01_0001-01-01_00:00:00", 7200,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "PH": 0.0, "MU": 0.0, "P": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0,
+      "QRAIN": 0.0, "RAINNC": 0.0}),
+    # em_quarter_ss with WRF's default open_xs/xe/ys/ye (3-D open lateral boundaries, corners included)
+    ("ideal_quarter_ss_open_fp64_cpu", "cpu_dp", "configs/wrf_quarter_ss.ini",
+     ["domain.bc_x=open", "domain.bc_y=open", "run.run_time=7200", "output.out_interval=50",
+      "output.diag_interval=50"],
+     f"{WREF}/r8/run_qss_open/wrfout_d01_0001-01-01_00:00:00", 7200,
      {"U": 0.0, "V": 0.0, "W": 0.0, "PH": 0.0, "MU": 0.0, "P": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0,
       "QRAIN": 0.0, "RAINNC": 0.0}),
     ("ideal_squall2d_x_fp64_cpu", "cpu_dp", "configs/wrf_squall2d_x.ini", ["output.out_interval=20"],

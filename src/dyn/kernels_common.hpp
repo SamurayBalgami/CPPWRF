@@ -101,33 +101,4 @@ struct MoistCoef {
   CPPWRF_HD real cq1(int i, int j, int k) const { return real(1) / (real(1) + cqw(i, j, k)); }
 };
 
-// Constant-K diffusion of a mass-point scalar f - base (WRF horizontal_diffusion[_3dmp] 'm' and
-// vertical_diffusion[_3dmp|_mp], diff_opt = 1), zero-flux bottom and top. Mass-coupled output.
-struct KDiffM {
-  View3<const real> f, alt; BView3<const real> base; View2<const real> mut; VCoef c;
-  View3<real> out; real kh, kv, rdx, rdy; int nz; bool do_y, hbase, vbase;  // base removed in h / v terms
-  CPPWRF_HD real d(int i, int j, int k) const { return hbase ? f(i, j, k) - base(i, j, k) : f(i, j, k); }
-  CPPWRF_HD real dv(int i, int j, int k) const { return vbase ? f(i, j, k) - base(i, j, k) : f(i, j, k); }
-  CPPWRF_HD real m(int i, int j, int k) const { return c.c1h(k) * mut(i, j) + c.c2h(k); }
-  CPPWRF_HD real vf(int i, int j, int k) const {
-    // WRF vertical_diffusion(_3dmp): vflux(0) = vflux(1) (no vertical diffusion tendency in the
-    // lowest level), vflux(top) = 0
-    if (k == nz) return 0;
-    if (k == 0) k = 1;
-    return kv * c.rdn(k) / (real(0.5) * (alt(i, j, k) + alt(i, j, k - 1))) * (dv(i, j, k) - dv(i, j, k - 1));
-  }
-  CPPWRF_HD void operator()(int i, int j, int k) const {
-    constexpr real H = real(0.5), Gr = real(cst::g);
-    real r = rdx * rdx * kh *
-             (H * (m(i + 1, j, k) + m(i, j, k)) * (d(i + 1, j, k) - d(i, j, k)) -
-              H * (m(i, j, k) + m(i - 1, j, k)) * (d(i, j, k) - d(i - 1, j, k)));
-    if (do_y)
-      r += rdy * rdy * kh *
-           (H * (m(i, j + 1, k) + m(i, j, k)) * (d(i, j + 1, k) - d(i, j, k)) -
-            H * (m(i, j, k) + m(i, j - 1, k)) * (d(i, j, k) - d(i, j - 1, k)));
-    r += Gr * Gr / (m(i, j, k) * alt(i, j, k)) * c.rdnw(k) * (vf(i, j, k + 1) - vf(i, j, k));
-    out(i, j, k) += r;  // accumulates into the held tendency (zeroed at stage 1)
-  }
-};
-
 }  // namespace cppwrf::dyn::kern

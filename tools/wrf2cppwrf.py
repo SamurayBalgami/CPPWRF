@@ -783,6 +783,8 @@ class WrfTranslator:
             sections["dyn"]["damp_opt"] = 0
 
         diff_opt = self.get_opt("dynamics", "diff_opt", 0)
+        if diff_opt == 0 and (float(khdif) != 0.0 or float(kvdif) != 0.0):
+            sections["dyn"]["diff_opt"] = 0  # WRF: no diffusion; CPPWRF's default with khdif/kvdif is 1
         if diff_opt != 0:
             sections["dyn"]["diff_opt"] = diff_opt
             if diff_opt not in SUPPORTED_OPTIONS["diff_opt"]:
@@ -1226,6 +1228,17 @@ class WrfTranslator:
             spec_bdy = self.get_opt("bdy_control", "spec_bdy_width", 5)
             if case_name == "real" and max_dom == 1 and spec_bdy != 5:
                 self.error(f"WRF spec_bdy_width = {spec_bdy} is not supported; CPPWRF requires spec_bdy_width = 5.")
+        # lbc_fcx_gcx (dyn_em/module_bc_em.F:1320): CPPWRF's relaxation weights assume spec_exp = 0
+        spec_exp = self.get_opt("bdy_control", "spec_exp", 0.0)
+        if float(spec_exp) != 0.0:
+            self.error(f"WRF spec_exp = {spec_exp} is not supported; CPPWRF requires spec_exp = 0.")
+        # with specified = .true. WRF sets spec_zone = 1, relax_zone = spec_bdy_width - 1
+        # (share/module_check_a_mundo.F:248-250); otherwise the namelist values are used
+        spec_zone = self.get_opt("bdy_control", "spec_zone", 1)
+        relax_zone = self.get_opt("bdy_control", "relax_zone", 4)
+        if not specified and (spec_zone != 1 or relax_zone != 4):
+            self.error(f"WRF spec_zone = {spec_zone}, relax_zone = {relax_zone} are not supported; "
+                       "CPPWRF requires spec_zone = 1 and relax_zone = 4.")
 
         # 12. Output Section [output]
         sections["output"] = {}

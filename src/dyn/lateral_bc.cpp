@@ -184,6 +184,9 @@ LateralBC::LateralBC(const Grid& g, double dt, int width, int spec_zone, int rel
     : g_(g), width_(width), spec_zone_(spec_zone), relax_zone_(relax_zone), nested_(nested),
       coef_(2 * std::size_t(width)) {
   if (g.two_d()) throw std::runtime_error("LateralBC: specified boundaries need a 3D grid");
+  // share/module_check_a_mundo.F:248-250: spec_zone = 1, relax_zone = spec_bdy_width - 1
+  if (width != 5 || spec_zone != 1 || relax_zone != 4)
+    throw std::runtime_error("LateralBC: spec_bdy_width must be 5 (spec_zone 1, relax_zone 4)");
   // lbc_fcx_gcx (module_bc_em.F): the same ramp for specified (spongeweight = 1 with spec_exp = 0)
   // and nested domains
   fcx_h_.assign(width, 0.0);

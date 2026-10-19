@@ -270,8 +270,6 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
   const Range3D mr = g.mass_cells();
   const bool do_y = !g.two_d();
   const real hup = p_.h_adv_order == 5 ? real(1) : real(0), vup = p_.v_adv_order == 3 ? real(1) : real(0);
-  const bool diff = !dd_ && (p_.khdif > 0 || p_.kvdif > 0);  // legacy constant-K kernels
-  if (b.mapped && diff) throw std::runtime_error("scalar diffusion with map factors is not implemented yet");
   for (int n = 0; n < ns; ++n) {
     Field3 &q1 = s.q_1[n], &q2 = s.q_2[n], &tf = t.q_tendf[n];
     const bool moist = n < s.n_moist;
@@ -284,12 +282,6 @@ void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int
     const V3 ften = want_ften ? fsink->view() : V3{};
     if (rk == 1) {  // rk_scalar_tend, rk_step == 1: diffusion into the held tendency (diff_opt = 1)
       // q_tendf was zeroed by zero_tendf and holds the physics tendencies (update_phy_ten)
-      if (diff) {
-        const bool is_qv = n == s.P_QV;  // vertical_diffusion_mp diffuses qv - qv_base
-        parallel_for(mr, kern::KDiffM{q2.cview(), s.alt.cview(), b.qv_base.view(), s.muts.cview(), c, tf.view(),
-                                      p_.khdif * p_.pr_inv, p_.kvdif * p_.pr_inv, real(b.rdx), real(b.rdy), g.nz,
-                                      do_y, false, is_qv});
-      }
       if (dd_) dd_->scalar(s, b, n, tf, dt_rk);  // diff_opt 1 / sixth order (rk_scalar_tend, rk_step 1)
       if (bc_) bc_->relax_scalar(n, tf, q2, s, b);  // relax_bdy_scalar (rk 1): scalars with boundary data
     }

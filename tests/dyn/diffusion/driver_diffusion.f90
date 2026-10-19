@@ -49,6 +49,10 @@ PROGRAM driver_diffusion
   REAL(8), ALLOCATABLE :: nba_rij(:,:,:,:), nba_mij(:,:,:,:)
 
   REAL(8) :: max_vert_cfl, max_horiz_cfl
+  INTEGER :: itm, isfflx_sv, theta_m_sv
+  REAL(8) :: drag_sv, heat_sv
+  REAL(8), ALLOCATABLE :: hfx_sv(:,:)
+  CHARACTER(LEN=1) :: tag_sfx
   CHARACTER(LEN=256) :: in_path, out_path
   TYPE(grid_config_rec_type) :: config_flags
 
@@ -515,6 +519,34 @@ PROGRAM driver_diffusion
   CALL write_chunk(out_unit, "t_6th_opt2", rt_tend(1:nx, 1:nz, 1:ny), nx*nz*ny)
   CALL write_chunk(out_unit, "m_6th_opt2", moist_tend(1:nx, 1:nz, 1:ny, 1), nx*nz*ny)
 
+  ! Case C: diff_6th_opt = 2 accumulated onto the non-zero Case B tendencies
+  ! (WRF: tendency = tendency + tendency_x + tendency_y, evaluated left to right)
+  CALL sixth_order_diffusion('u', u, ru_tend, mut, dt, config_flags, c1_h, c2_h, &
+                             2, 0.12_8, phb, ph, 1.0_8/dx, 1.0_8/dy, &
+                             msftx, msfty, msfux, msfuy, msfvx, msfvy, &
+                             ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+  CALL sixth_order_diffusion('v', v, rv_tend, mut, dt, config_flags, c1_h, c2_h, &
+                             2, 0.12_8, phb, ph, 1.0_8/dx, 1.0_8/dy, &
+                             msftx, msfty, msfux, msfuy, msfvx, msfvy, &
+                             ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+  CALL sixth_order_diffusion('w', w, rw_tend, mut, dt, config_flags, c1f_h, c2f_h, &
+                             2, 0.12_8, phb, ph, 1.0_8/dx, 1.0_8/dy, &
+                             msftx, msfty, msfux, msfuy, msfvx, msfvy, &
+                             ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+  CALL sixth_order_diffusion('m', theta, rt_tend, mut, dt, config_flags, c1_h, c2_h, &
+                             2, 0.12_8, phb, ph, 1.0_8/dx, 1.0_8/dy, &
+                             msftx, msfty, msfux, msfuy, msfvx, msfvy, &
+                             ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+  CALL sixth_order_diffusion('m', moist(:,:,:,1), moist_tend(:,:,:,1), mut, dt, config_flags, c1_h, c2_h, &
+                             2, 0.12_8, phb, ph, 1.0_8/dx, 1.0_8/dy, &
+                             msftx, msfty, msfux, msfuy, msfvx, msfvy, &
+                             ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+  CALL write_chunk(out_unit, "u_6th_opt2_acc", ru_tend(1:nx+1, 1:nz, 1:ny), (nx+1)*nz*ny)
+  CALL write_chunk(out_unit, "v_6th_opt2_acc", rv_tend(1:nx, 1:nz, 1:ny+1), nx*nz*(ny+1))
+  CALL write_chunk(out_unit, "w_6th_opt2_acc", rw_tend(1:nx, 1:nz+1, 1:ny), nx*(nz+1)*ny)
+  CALL write_chunk(out_unit, "t_6th_opt2_acc", rt_tend(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  CALL write_chunk(out_unit, "m_6th_opt2_acc", moist_tend(1:nx, 1:nz, 1:ny, 1), nx*nz*ny)
+
   ! ============================================================================
   ! TEST 7: w_damp
   ! ============================================================================
@@ -692,6 +724,41 @@ PROGRAM driver_diffusion
   CALL write_chunk(out_unit, "t_vdiff2_kmopt2", rt_tend(1:nx, 1:nz, 1:ny), nx*nz*ny)
   CALL write_chunk(out_unit, "m_vdiff2_kmopt2", moist_tend(1:nx, 1:nz, 1:ny, 2), nx*nz*ny)
   CALL write_chunk(out_unit, "tke_vdiff2_kmopt2", tke_tend(1:nx, 1:nz, 1:ny), nx*nz*ny)
+
+  ! TEST 10b: vertical_diffusion_2 with isfflx = 0 (constant drag coefficient and heat flux),
+  ! use_theta_m = 1 and 0, and isfflx = 1 with use_theta_m = 0
+  isfflx_sv = config_flags%isfflx; theta_m_sv = config_flags%use_theta_m
+  drag_sv = config_flags%tke_drag_coefficient; heat_sv = config_flags%tke_heat_flux
+  hfx_sv = hfx
+  config_flags%tke_drag_coefficient = 0.0015_8
+  config_flags%tke_heat_flux = 0.05_8
+  DO itm = 2, 0, -1
+    ! itm = 2: isfflx = 1 with use_theta_m = 0 (hfx from the surface routine); 1, 0: isfflx = 0
+    config_flags%isfflx = MERGE(1, 0, itm == 2)
+    config_flags%use_theta_m = MERGE(0, itm, itm == 2)
+    ru_tend = 0.0_8; rv_tend = 0.0_8; rw_tend = 0.0_8; rt_tend = 0.0_8; moist_tend = 0.0_8
+    tke_tend = tke_tend_rhs
+    nba_mij = 0.0_8
+    CALL vertical_diffusion_2(ru_tend, rv_tend, rw_tend, rt_tend, tke_tend, &
+                              moist_tend, 2, dummy4d, 0, dummy4d, 0, dummy4d, 0, &
+                              u, v, thp, u_base, v_base, t_base, qv_base, tke, theta, &
+                              config_flags, defor13, defor23, defor33, nba_mij, 1, div, &
+                              moist, dummy4d, dummy4d, dummy4d, &
+                              xkmv, xkhv, xkmh, config_flags%km_opt, fnm, fnp, dn, dnw, rdz, rdzw, &
+                              hfx, qfx, ust, rho, &
+                              ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ide, jts, jde, kts, kte)
+    WRITE(tag_sfx, '(I1)') itm
+    CALL write_chunk(out_unit, "u_vdiff2_sfc"//tag_sfx, ru_tend(1:nx+1, 1:nz, 1:ny), (nx+1)*nz*ny)
+    CALL write_chunk(out_unit, "v_vdiff2_sfc"//tag_sfx, rv_tend(1:nx, 1:nz, 1:ny+1), nx*nz*(ny+1))
+    CALL write_chunk(out_unit, "w_vdiff2_sfc"//tag_sfx, rw_tend(1:nx, 1:nz+1, 1:ny), nx*(nz+1)*ny)
+    CALL write_chunk(out_unit, "t_vdiff2_sfc"//tag_sfx, rt_tend(1:nx, 1:nz, 1:ny), nx*nz*ny)
+    CALL write_chunk(out_unit, "m_vdiff2_sfc"//tag_sfx, moist_tend(1:nx, 1:nz, 1:ny, 2), nx*nz*ny)
+    CALL write_chunk(out_unit, "tke_vdiff2_sfc"//tag_sfx, tke_tend(1:nx, 1:nz, 1:ny), nx*nz*ny)
+  ENDDO
+  ! vertical_diffusion_2 with isfflx = 0 overwrote hfx (heat_flux*cpm*rho, output only)
+  hfx = hfx_sv
+  config_flags%isfflx = isfflx_sv; config_flags%use_theta_m = theta_m_sv
+  config_flags%tke_drag_coefficient = drag_sv; config_flags%tke_heat_flux = heat_sv
 
   ! ============================================================================
   ! TEST 11: rk_rayleigh_damp (damp_opt = 2)

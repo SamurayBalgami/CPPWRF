@@ -985,6 +985,78 @@ int main(int argc, char* argv[]) {
     write_field(out, "w_6th_opt2", rw_tend);
     write_field(out, "t_6th_opt2", rt_tend);
     write_field(out, "m_6th_opt2", moist_tend);
+
+    // Case C: diff_6th_opt = 2 accumulated onto the non-zero Case B tendencies
+    sixth_order_diffusion('u', p, make_const_view3(u.data(), nx + 1, nz),
+                          make_view3(ru_tend.data(), nx + 1, nz),
+                          make_view2(mut.data(), nx),
+                          dt,
+                          make_view1(c1.data()), make_view1(c2.data()),
+                          make_bview2(msftx.data(), nx),
+                          make_bview2(msfty.data(), nx),
+                          make_bview2(msfux.data(), nx + 1),
+                          make_bview2(msfuy.data(), nx + 1),
+                          make_bview2(msfvx.data(), nx),
+                          make_bview2(msfvy.data(), nx),
+                          nx, ny, nz);
+
+    sixth_order_diffusion('v', p, make_const_view3(v.data(), nx, nz),
+                          make_view3(rv_tend.data(), nx, nz),
+                          make_view2(mut.data(), nx),
+                          dt,
+                          make_view1(c1.data()), make_view1(c2.data()),
+                          make_bview2(msftx.data(), nx),
+                          make_bview2(msfty.data(), nx),
+                          make_bview2(msfux.data(), nx + 1),
+                          make_bview2(msfuy.data(), nx + 1),
+                          make_bview2(msfvx.data(), nx),
+                          make_bview2(msfvy.data(), nx),
+                          nx, ny, nz);
+
+    sixth_order_diffusion('w', p, make_const_view3(w.data(), nx, nz + 1),
+                          make_view3(rw_tend.data(), nx, nz + 1),
+                          make_view2(mut.data(), nx),
+                          dt,
+                          make_view1(c1f.data()), make_view1(c2f.data()),
+                          make_bview2(msftx.data(), nx),
+                          make_bview2(msfty.data(), nx),
+                          make_bview2(msfux.data(), nx + 1),
+                          make_bview2(msfuy.data(), nx + 1),
+                          make_bview2(msfvx.data(), nx),
+                          make_bview2(msfvy.data(), nx),
+                          nx, ny, nz);
+
+    sixth_order_diffusion('m', p, make_const_view3(theta.data(), nx, nz),
+                          make_view3(rt_tend.data(), nx, nz),
+                          make_view2(mut.data(), nx),
+                          dt,
+                          make_view1(c1.data()), make_view1(c2.data()),
+                          make_bview2(msftx.data(), nx),
+                          make_bview2(msfty.data(), nx),
+                          make_bview2(msfux.data(), nx + 1),
+                          make_bview2(msfuy.data(), nx + 1),
+                          make_bview2(msfvx.data(), nx),
+                          make_bview2(msfvy.data(), nx),
+                          nx, ny, nz);
+
+    sixth_order_diffusion('m', p, make_const_view3(moist.data(), nx, nz),
+                          make_view3(moist_tend.data(), nx, nz),
+                          make_view2(mut.data(), nx),
+                          dt,
+                          make_view1(c1.data()), make_view1(c2.data()),
+                          make_bview2(msftx.data(), nx),
+                          make_bview2(msfty.data(), nx),
+                          make_bview2(msfux.data(), nx + 1),
+                          make_bview2(msfuy.data(), nx + 1),
+                          make_bview2(msfvx.data(), nx),
+                          make_bview2(msfvy.data(), nx),
+                          nx, ny, nz);
+
+    write_field(out, "u_6th_opt2_acc", ru_tend);
+    write_field(out, "v_6th_opt2_acc", rv_tend);
+    write_field(out, "w_6th_opt2_acc", rw_tend);
+    write_field(out, "t_6th_opt2_acc", rt_tend);
+    write_field(out, "m_6th_opt2_acc", moist_tend);
   }
 
   // ============================================================================
@@ -1331,6 +1403,58 @@ int main(int argc, char* argv[]) {
     write_field(out, "t_vdiff2_kmopt2", rt_tend);
     write_field(out, "m_vdiff2_kmopt2", moist_tend);
     write_field(out, "tke_vdiff2_kmopt2", tke_tend);
+
+    // TEST 10b: vertical_diffusion_2 with isfflx = 0 (constant drag coefficient and heat flux),
+    // use_theta_m = 1 and 0, and isfflx = 1 with use_theta_m = 0
+    p_cfg.tke_drag_coefficient = 0.0015;
+    p_cfg.tke_heat_flux = 0.05;
+    for (int itm = 2; itm >= 0; --itm) {
+      // itm = 2: isfflx = 1 with use_theta_m = 0 (hfx from the surface routine)
+      p_cfg.isfflx = itm == 2 ? 1 : 0;
+      p_cfg.use_theta_m = itm == 2 ? 0 : itm;
+      ru_tend.fill(0.0);
+      rv_tend.fill(0.0);
+      rw_tend.fill(0.0);
+      rt_tend.fill(0.0);
+      moist_tend.fill(0.0);
+      copy_dev(tke_tend.data(), tke_tend_rhs.data(), tke_tend.size() * sizeof(double));
+      vertical_diffusion_2(p_cfg,
+                           make_const_view3(titau13.data(), nx + 1, nz + 1),
+                           make_const_view3(titau23.data(), nx, nz + 1),
+                           make_const_view3(titau33.data(), nx, nz),
+                           make_const_view3(thp.data(), nx, nz),
+                           make_view1(t_base.data()),
+                           make_const_view3(xkhv.data(), nx, nz),
+                           make_const_view3(rho.data(), nx, nz),
+                           make_const_view3(rdz.data(), nx, nz),
+                           make_view1(fnm.data()), make_view1(fnp.data()),
+                           make_view1(dn.data()), make_view1(dnw.data()),
+                           make_view3(ru_tend.data(), nx + 1, nz),
+                           make_view3(rv_tend.data(), nx, nz),
+                           make_view3(rw_tend.data(), nx, nz + 1),
+                           make_view3(rt_tend.data(), nx, nz),
+                           make_const_view3(moist.data(), nx, nz),
+                           make_view3(moist_tend.data(), nx, nz),
+                           true, nx, ny, nz,
+                           make_const_view3(tke.data(), nx, nz),
+                           make_view3(tke_tend.data(), nx, nz),
+                           make_const_view3(xkmv.data(), nx, nz),
+                           true,
+                           make_const_view3(u.data(), nx + 1, nz),
+                           make_const_view3(v.data(), nx, nz),
+                           make_const_view3(theta.data(), nx, nz),
+                           make_view1(qv_base.data()), true,
+                           make_view2(ust.data(), nx), true,
+                           make_view2(hfx.data(), nx), true,
+                           make_view2(qfx.data(), nx), true);
+      const std::string sfx = "_sfc" + std::to_string(itm);  // sfc2: isfflx 1, sfc1/sfc0: isfflx 0
+      write_field(out, "u_vdiff2" + sfx, ru_tend);
+      write_field(out, "v_vdiff2" + sfx, rv_tend);
+      write_field(out, "w_vdiff2" + sfx, rw_tend);
+      write_field(out, "t_vdiff2" + sfx, rt_tend);
+      write_field(out, "m_vdiff2" + sfx, moist_tend);
+      write_field(out, "tke_vdiff2" + sfx, tke_tend);
+    }
   }
 
   // ============================================================================

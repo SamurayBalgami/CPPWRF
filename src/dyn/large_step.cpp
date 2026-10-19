@@ -635,75 +635,6 @@ struct KTendPh {
   }
 };
 
-// ---------------------------------------------------------------- constant-K diffusion
-// Horizontal: along eta surfaces, mass-weighted (WRF horizontal_diffusion, diff_opt=1).
-// Vertical: physical-space flux via dz = -alpha mu deta / g (WRF vertical_diffusion*), with
-// zero-flux (free-slip / insulating) bottom and top for u, v, theta and w = 0 at both ends.
-struct KDiffU {
-  C3 u, alt; C2 mut, muu; VCoef c; V3 out; real kh, kv, rdx, rdy; int nz; bool do_y;
-  CPPWRF_HD real m(int i, int j, int k) const { return c.c1h(k) * mut(i, j) + c.c2h(k); }
-  CPPWRF_HD real vf(int i, int j, int k) const {  // vertical flux at w level k
-    if (k == nz) return 0;
-    if (k == 0) k = 1;  // WRF vertical_diffusion_u/v: vflux(0) = vflux(1)
-    real a = real(0.25) * (alt(i, j, k) + alt(i - 1, j, k) + alt(i, j, k - 1) + alt(i - 1, j, k - 1));
-    return kv * c.rdn(k) / a * (u(i, j, k) - u(i, j, k - 1));
-  }
-  CPPWRF_HD void operator()(int i, int j, int k) const {
-    real t = rdx * rdx * kh * (m(i, j, k) * (u(i + 1, j, k) - u(i, j, k)) - m(i - 1, j, k) * (u(i, j, k) - u(i - 1, j, k)));
-    if (do_y) {
-      real mp = real(0.25) * (m(i, j, k) + m(i, j + 1, k) + m(i - 1, j + 1, k) + m(i - 1, j, k));
-      real mm = real(0.25) * (m(i, j, k) + m(i, j - 1, k) + m(i - 1, j - 1, k) + m(i - 1, j, k));
-      t += rdy * rdy * kh * (mp * (u(i, j + 1, k) - u(i, j, k)) - mm * (u(i, j, k) - u(i, j - 1, k)));
-    }
-    real mu_u = c.c1h(k) * muu(i, j) + c.c2h(k);
-    if (k < nz - 1)  // WRF: the top level gets no vertical diffusion (tendency loop to ktf-1)
-      t += Gr * Gr * c.rdnw(k) / (mu_u * H * (alt(i - 1, j, k) + alt(i, j, k))) * (vf(i, j, k + 1) - vf(i, j, k));
-    out(i, j, k) += t;  // *_tendf zeroed at stage 1 (init_zero_tendency)
-  }
-};
-
-struct KDiffV {
-  C3 v, alt; C2 mut, muv; VCoef c; V3 out; real kh, kv, rdx, rdy; int nz;
-  CPPWRF_HD real m(int i, int j, int k) const { return c.c1h(k) * mut(i, j) + c.c2h(k); }
-  CPPWRF_HD real vf(int i, int j, int k) const {
-    if (k == nz) return 0;
-    if (k == 0) k = 1;  // WRF vertical_diffusion_u/v: vflux(0) = vflux(1)
-    real a = real(0.25) * (alt(i, j, k) + alt(i, j - 1, k) + alt(i, j, k - 1) + alt(i, j - 1, k - 1));
-    return kv * c.rdn(k) / a * (v(i, j, k) - v(i, j, k - 1));
-  }
-  CPPWRF_HD void operator()(int i, int j, int k) const {
-    real t = rdy * rdy * kh * (m(i, j, k) * (v(i, j + 1, k) - v(i, j, k)) - m(i, j - 1, k) * (v(i, j, k) - v(i, j - 1, k)));
-    real mp = real(0.25) * (m(i, j, k) + m(i + 1, j, k) + m(i + 1, j - 1, k) + m(i, j - 1, k));
-    real mm = real(0.25) * (m(i, j, k) + m(i - 1, j, k) + m(i - 1, j - 1, k) + m(i, j - 1, k));
-    t += rdx * rdx * kh * (mp * (v(i + 1, j, k) - v(i, j, k)) - mm * (v(i, j, k) - v(i - 1, j, k)));
-    real mu_v = c.c1h(k) * muv(i, j) + c.c2h(k);
-    if (k < nz - 1)  // WRF: the top level gets no vertical diffusion (tendency loop to ktf-1)
-      t += Gr * Gr * c.rdnw(k) / (mu_v * H * (alt(i, j - 1, k) + alt(i, j, k))) * (vf(i, j, k + 1) - vf(i, j, k));
-    out(i, j, k) += t;  // *_tendf zeroed at stage 1 (init_zero_tendency)
-  }
-};
-
-struct KDiffW {  // levels 1..nz-1 (w = 0 at the rigid bottom and lid)
-  C3 w, alt; C2 mut; VCoef c; V3 out; real kh, kv, rdx, rdy; int nz; bool do_y;
-  CPPWRF_HD real m(int i, int j, int k) const { return c.c1f(k) * mut(i, j) + c.c2f(k); }
-  CPPWRF_HD real vf(int i, int j, int mm) const {  // flux at mass level mm
-    if (mm == nz - 1) return 0;  // WRF vertical_diffusion('w'): vflux(ktf) = 0
-    return kv / alt(i, j, mm) * c.rdnw(mm) * (w(i, j, mm + 1) - w(i, j, mm));
-  }
-  CPPWRF_HD void operator()(int i, int j, int k) const {
-    real t = rdx * rdx * kh *
-             (H * (m(i + 1, j, k) + m(i, j, k)) * (w(i + 1, j, k) - w(i, j, k)) -
-              H * (m(i, j, k) + m(i - 1, j, k)) * (w(i, j, k) - w(i - 1, j, k)));
-    if (do_y)
-      t += rdy * rdy * kh *
-           (H * (m(i, j + 1, k) + m(i, j, k)) * (w(i, j + 1, k) - w(i, j, k)) -
-            H * (m(i, j, k) + m(i, j - 1, k)) * (w(i, j, k) - w(i, j - 1, k)));
-    t += c.rdn(k) * Gr * Gr / m(i, j, k) / (H * (alt(i, j, k) + alt(i, j, k - 1))) * (vf(i, j, k) - vf(i, j, k - 1));
-    out(i, j, k) += t;  // *_tendf zeroed at stage 1 (init_zero_tendency)
-  }
-};
-
-
 }  // namespace
 
 VCoef VCoef::from(const BaseState& b) {
@@ -753,20 +684,16 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
   const VCoef c = VCoef::from(b);
   const real rdx = real(b.rdx), rdy = real(b.rdy);
   const bool do_y = !g.two_d();
-  const bool diff = !dd_ && (p_.khdif > 0 || p_.kvdif > 0);  // legacy constant-K kernels
   const int nz = g.nz;
   // open boundaries: the boundary faces are advanced too (radiation condition)
   const Range3D ur{g.open_x() ? 0 : g.u_i0(), g.open_x() ? g.nx + 1 : g.u_i1(), 0, g.ny, 0, nz};
   const Range3D vr{0, g.nx, g.open_y() ? 0 : g.v_j0(), g.open_y() ? g.ny + 1 : g.v_j1(), 0, nz};
   const Range3D wr{0, g.nx, 0, g.ny, 1, nz + 1};
-  const Range3D wri{0, g.nx, 0, g.ny, 1, nz};
   const Range3D mr = g.mass_cells();
-  const real kh = p_.khdif, kv = p_.kvdif;
   // even orders (6 / 4) = the same fluxes without the upwind dissipation term (WRF flux6/flux4)
   const real hup = p_.h_adv_order == 5 ? real(1) : real(0), vup = p_.v_adv_order == 3 ? real(1) : real(0);
   const MapC m = MapC::from(b, b.mapped || b.coriolis);
   const kern::Spec sp = kern::Spec::of(g);
-  if (b.mapped && diff) throw std::runtime_error("diffusion with map factors is not implemented yet");
   // init_zero_tendency at stage 1 (with column physics the RK driver did it before part1)
   if (rk_step == 1 && !cp_) zero_tendf(t);
   if (bc_) {  // WRF zero_tend: mu_tend every stage
@@ -778,22 +705,10 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
   // (diff_opt = 1 in rk_tendency, diff_opt = 2 later in part2)
   if (cp_ && rk_step == 1) cp_->part2(s, b, t);
   if (dd_ && rk_step == 1) dd_->dynamics(s, b, t);  // diff_opt 1 / sixth order (rk_tendency, rk_step 1)
-  if (diff && rk_step == 1) {  // WRF: diffusion only in the first RK stage, held in *_tendf
-    parallel_for(ur, KDiffU{s.u_2.cview(), s.alt.cview(), s.mut.cview(), s.muu.cview(), c, t.ru_tendf.view(), kh, kv,
-                            rdx, rdy, nz, do_y});
-    if (do_y)
-      parallel_for(vr, KDiffV{s.v_2.cview(), s.alt.cview(), s.mut.cview(), s.muv.cview(), c, t.rv_tendf.view(), kh,
-                              kv, rdx, rdy, nz});
-    parallel_for(wri, KDiffW{s.w_2.cview(), s.alt.cview(), s.mut.cview(), c, t.rw_tendf.view(), kh, kv, rdx, rdy, nz,
-                             do_y});
-    // theta: horizontal/vertical_diffusion_3dmp on theta - t_init with khdq = kvdq = K / prandtl
-    parallel_for(mr, kern::KDiffM{s.t_2.cview(), s.alt.cview(), b.t_init.view(), s.mut.cview(), c, t.t_tendf.view(),
-                                  kh * p_.pr_inv, kv * p_.pr_inv, rdx, rdy, nz, do_y, true, true});
-  }
   if (rk_step == 1) vmdump::dump("vm_prerelax", 0, {&t.t_tendf});
   if (bc_ && rk_step == 1) bc_->relax_dry(s, t, b);  // relax_bdy_dry -> *_save -> *_tendf (rk_addtend_dry)
   if (rk_step == 1) vmdump::dump("vm_addtend_in", 0, {&t.t_tendf, &s.h_diabatic});
-  const bool tendf = diff || bc_ != nullptr || cp_ != nullptr || dd_ != nullptr;
+  const bool tendf = bc_ != nullptr || cp_ != nullptr || dd_ != nullptr;
   Field3* thf_field = cp_ ? cp_->th_forcing() : nullptr;
   const bool thf_on = thf_field != nullptr;
   const V3 thf = thf_on ? thf_field->view() : V3{};
