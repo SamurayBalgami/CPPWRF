@@ -342,7 +342,6 @@ UNSUPPORTED_PHYSICS_SWITCHES = {
     "seaice_thickness_opt": "Variable sea-ice thickness option",
     "seaice_snowdepth_opt": "Sea-ice snow depth option",
     "seaice_albedo_opt": "Sea-ice albedo option",
-    "sst_update": "Time-varying SST update",
     "grav_settling": "Fog/droplet gravitational settling",
     "ra_call_offset": "Radiation call offset",
     "isftcflx": "Alternative tropical cyclone surface flux formulation",
@@ -400,6 +399,9 @@ IGNORED_WRF_OPTIONS = {
     "dzstretch_s": "real.exe vertical level generation (eta levels read from wrfinput_d01)",
     "dzstretch_u": "real.exe vertical level generation (eta levels read from wrfinput_d01)",
     "num_land_cat": "Land-use category count (land use read from wrfinput_d01)",
+    "io_form_auxinput4": "wrflowinp format (NetCDF); used with sst_update = 1",
+    "auxinput4_inname": "wrflowinp file name; used with sst_update = 1",
+    "auxinput4_interval": "wrflowinp interval; used with sst_update = 1",
     "dx": "Real case grid spacing read directly from wrfinput",
     "dy": "Real case grid spacing read directly from wrfinput",
     # &physics
@@ -975,6 +977,8 @@ class WrfTranslator:
                 sections["moist"]["species"] = "qv, qc, qr"
 
         # 11. Physics Section [phys]
+        if self.get_opt("physics", "sst_update", 0) != 0 and not (mp_physics != 0 or has_physics_suite):
+            self.error("WRF sst_update = 1 needs the physics suite (mp_physics /= 0) in CPPWRF.")
         if mp_physics != 0 or has_physics_suite:
             sections["phys"] = {}
             if mp_physics != 0:
@@ -1032,6 +1036,20 @@ class WrfTranslator:
                 sections["phys"]["table_dir"] = tbl_dir
 
                 # WRF 4.8 turbulent orographic form drag of sfclayrev (needs VAR in wrfinput)
+                sstu = self.get_opt("physics", "sst_update", 0)
+                if sstu not in (0, 1):
+                    self.error(f"WRF sst_update = {sstu} is not supported; CPPWRF supports 0 and 1.")
+                elif sstu == 1:
+                    if self.get_opt("time_control", "io_form_auxinput4", 0) == 0:
+                        self.error("WRF sst_update = 1 needs io_form_auxinput4 /= 0 (as WRF).")
+                    iv = self.get_opt("time_control", "auxinput4_interval", 0)
+                    if not iv:
+                        self.error("WRF sst_update = 1 needs auxinput4_interval (minutes).")
+                    sections["phys"]["sst_update"] = 1
+                    sections["phys"]["auxinput4_interval"] = iv
+                    inname = str(self.get_opt("time_control", "auxinput4_inname", "wrflowinp_d<domain>")).strip("'\"")
+                    if inname != "wrflowinp_d<domain>":
+                        sections["real"]["wrflowinp"] = inname.replace("<domain>", "01")
                 fsi = self.get_opt("physics", "fractional_seaice", 0)
                 if fsi not in (0, 1):
                     self.error(f"WRF fractional_seaice = {fsi} is not supported; CPPWRF supports 0 and 1.")

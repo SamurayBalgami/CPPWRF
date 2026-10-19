@@ -550,6 +550,18 @@ class TestValidationAndWarnings(unittest.TestCase):
             self.assertEqual(sec["phys"][k], v, k)
         self.assertEqual(sec["dyn"]["gwd_opt"], 1)
 
+    def test_sst_update(self):
+        """sst_update = 1: the auxinput4 interval and a custom wrflowinp name."""
+        text = ("&time_control auxinput4_inname = 'lowinp_d<domain>', auxinput4_interval = 180,\n"
+                " io_form_auxinput4 = 2 /\n&domains time_step = 60 /\n&physics sst_update = 1, mp_physics = 6, sf_sfclay_physics = 1,\n"
+                " sf_surface_physics = 2, bl_pbl_physics = 1 /\n")
+        t = WrfTranslator(parse_namelist(text))
+        sec = t.translate()
+        self.assertEqual(t.errors, [])
+        self.assertEqual(sec["phys"]["sst_update"], 1)
+        self.assertEqual(sec["phys"]["auxinput4_interval"], 180)
+        self.assertEqual(sec["real"]["wrflowinp"], "lowinp_d01")
+
     def test_physics_suite_tropical_keeps_explicit_values(self):
         text = ("&time_control /\n&domains time_step = 60 /\n"
                 "&physics physics_suite = 'tropical', cu_physics = 1 /\n")

@@ -58,12 +58,18 @@ static int run(const RealOptions& o, const Namelist& nl, const WrfSchema& sc, co
     stuff(bm, 'M', w, 1, 1, d, [&](int i, int k, int j) { return mb1(i, k, j); });
   };
   std::unique_ptr<WrfBdyWriter<T>> bdy;
+  std::unique_ptr<WrfLowinpWriter<T>> lowinp;  // real_em.F: output_auxinput4 at every time with sst_update = 1
   std::string date = o.start_date, prev = o.start_date;
   for (int loop = 1; loop <= time_loop_max; ++loop) {
     const MetEm m = MetEm::read(met_dir + "/met_em." + dn + "." + date + ".nc");
     dom.read_input(m);
     if (loop == 1) cfg.set("num_land_cat", std::to_string(m.att_int("NUM_LAND_CAT", 21)));
     dom.init_domain(loop, date);
+    if (cfg.integer("sst_update") == 1) {
+      if (!lowinp)
+        lowinp = std::make_unique<WrfLowinpWriter<T>>(out_dir + "/wrflowinp_" + dn, dom, m, sc, cfg, o.start_date);
+      lowinp->write(dom, m, date);
+    }
     if (loop == 1) {
       write_wrfinput(dom, m, sc, cfg, out_dir + "/wrfinput_" + dn, date);
       std::cout << "cppwrf_real: wrote " << out_dir << "/wrfinput_" << dn << "\n";

@@ -109,11 +109,13 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
     throw std::runtime_error("PhysicsSuite: kfeta_trigger=2 is not supported");
   if (o.fractional_seaice != 0 && o.fractional_seaice != 1)
     throw std::runtime_error("PhysicsSuite: fractional_seaice must be 0 or 1");
-  if (o.fractional_seaice == 1) {
+  if (o.sst_update != 0 && o.sst_update != 1) throw std::runtime_error("PhysicsSuite: sst_update must be 0 or 1");
+  if (o.fractional_seaice == 1 || o.sst_update == 1) {
     sst = Field2(g, Stagger::M, "sst");
     tsk_save = Field2(g, Stagger::M, "tsk_save");
-    sea_ = std::make_unique<SeaIceFields>(g);
   }
+  if (o.fractional_seaice == 1) sea_ = std::make_unique<SeaIceFields>(g);
+  if (o.sst_update == 1) xicem = Field2(g, Stagger::M, "xicem");
   if (o.seaice_thickness_opt != 0 || o.seaice_snowdepth_opt != 0)
     throw std::runtime_error("PhysicsSuite: seaice_thickness_opt/seaice_snowdepth_opt 1 need ICEDEPTH/SNOWSI input");
   if (o.num_soil_layers > noah::kMaxSoilLevels) throw std::runtime_error("PhysicsSuite: too many soil layers");
@@ -334,10 +336,11 @@ std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
     for (Field2* f : {&thz0, &uz0, &vz0, &akhs, &akms, &ct, &tshltr, &th10, &qshltr, &q10, &pshltr, &u10e, &v10e, &mixht})
       v.emplace_back("sfc_" + f->name(), f);
   }
-  if (o_.fractional_seaice == 1) {
+  if (o_.fractional_seaice == 1 || o_.sst_update == 1) {
     v.emplace_back("sfc_sst", &sst);
     v.emplace_back("sfc_tsk_save", &tsk_save);
   }
+  if (o_.sst_update == 1) v.emplace_back("sfc_xicem", &xicem);
   if (rad_)  // radiation diagnostics and their accumulations
     for (Field2* f : {&lwcf, &swcf, &lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &olr, &swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc, &aclwupt, &aclwuptc, &aclwdnt, &aclwdntc, &aclwupb, &aclwupbc, &aclwdnb, &aclwdnbc, &acswupt, &acswuptc, &acswdnt, &acswdntc, &acswupb, &acswupbc, &acswdnb, &acswdnbc})
       v.emplace_back("sfc_" + f->name(), f);
@@ -474,7 +477,8 @@ std::vector<const Field2*> PhysicsSuite::fields2() const {
                        &acc_qsevaxy, &eflxbxy, &acc_dwaterxy, &acc_prcpxy, &acc_ecanxy, &acc_etranxy, &acc_edirxy, &acc_glaflwxy});
   }
   if (o_.gwd_opt == 1) v.insert(v.end(), {&dusfcg, &dvsfcg});
-  if (o_.fractional_seaice == 1) v.insert(v.end(), {&sst, &tsk_save});
+  if (o_.fractional_seaice == 1 || o_.sst_update == 1) v.insert(v.end(), {&sst, &tsk_save});
+  if (o_.sst_update == 1) v.push_back(&xicem);
   return v;
 }
 

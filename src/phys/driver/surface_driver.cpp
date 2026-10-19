@@ -563,6 +563,74 @@ struct KNoahmpDiag {
   }
 };
 
+// sst_update = 1, every surface_driver call (module_surface_driver.F:1697-1850, lakemodel = 0): ice and water
+// points follow the SEAICE read from wrflowinp; TSK and the top soil level take the SST over water
+struct KSstUpdate {
+  C2 sst, xice;
+  V2 xicem, tsk_save, tsk, xland, vegfra, tmn, albedo, albbck, emiss, embck, snow, snowc, snowh;
+  I2 ivgtyp, isltyp;
+  V3 tslb, smois, sh2o;
+  real xice_threshold, seaice_albedo_default;
+  int nsoil, isice, iswater;
+  bool fractional;
+  CPPWRF_HD void operator()(int i, int j) const {
+    const real x = xice(i, j);
+    if (fractional) {
+      if ((x != xicem(i, j)) && (xicem(i, j) > xice_threshold)) {
+        // ALBEDO and EMISS hold the averages of the previous ice fraction XICEM
+        albedo(i, j) = real(0.08) + x / xicem(i, j) * (albedo(i, j) - real(0.08));
+        emiss(i, j) = real(0.98) + x / xicem(i, j) * (emiss(i, j) - real(0.98));
+        tsk(i, j) = tsk_save(i, j) * x + (real(1.) - x) * sst(i, j);  // the ice part of the last TSK
+      }
+    }
+    if (xland(i, j) > real(1.5) && x >= xice_threshold && xicem(i, j) < xice_threshold) {  // water turns to ice
+      xicem(i, j) = x;
+      xland(i, j) = real(1.);
+      ivgtyp(i, j) = isice;
+      isltyp(i, j) = 16;
+      vegfra(i, j) = real(0.);
+      tmn(i, j) = real(271.4);
+      albedo(i, j) = seaice_albedo_default * x + real(0.08) * (real(1.0) - x);  // seaice_albedo_opt 0
+      albbck(i, j) = seaice_albedo_default;
+      emiss(i, j) = real(0.98) * x + real(0.98) * (real(1.0) - x);
+      embck(i, j) = real(0.98);
+      for (int nk = 0; nk < nsoil; ++nk) {
+        tslb(i, j, nk) = tsk(i, j);
+        smois(i, j, nk) = real(1.0);
+        sh2o(i, j, nk) = real(0.0);
+      }
+    }
+    if (xland(i, j) > real(1.5)) {
+      if (sst(i, j) < real(350.) && sst(i, j) > real(250.)) {
+        tsk(i, j) = sst(i, j);
+        tslb(i, j, 0) = sst(i, j);
+      }
+    }
+    if (xland(i, j) < real(1.5) && xicem(i, j) >= xice_threshold && x < xice_threshold) {  // ice turns to water
+      xicem(i, j) = x;
+      xland(i, j) = real(2.);
+      ivgtyp(i, j) = iswater;
+      isltyp(i, j) = 14;
+      vegfra(i, j) = real(0.);
+      snow(i, j) = real(0.);
+      snowc(i, j) = real(0.);
+      snowh(i, j) = real(0.);
+      tmn(i, j) = sst(i, j);
+      albedo(i, j) = real(0.08);
+      albbck(i, j) = real(0.08);
+      emiss(i, j) = real(0.98);
+      embck(i, j) = real(0.98);
+      for (int nk = 0; nk < nsoil; ++nk) {
+        tslb(i, j, nk) = sst(i, j);
+        smois(i, j, nk) = real(1.0);
+        sh2o(i, j, nk) = real(1.0);
+      }
+    }
+    xicem(i, j) = x;
+    tsk_save(i, j) = tsk(i, j);
+  }
+};
+
 // end of surface_driver: RAINBL reset, Q2 limited over land
 struct KSfcEnd {
   V2 rainbl, q2;
@@ -793,6 +861,12 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
   const real xice_threshold = o_.fractional_seaice == 0 ? real(0.5) : real(0.02);
   column_for(cols, KSfcAlways{rainbl.view(), qgh.view(), chs.view(), cpm.view(), chs2.view(), cqs2.view(),
                               raincv.cview(), rainncv.cview(), rainshv.cview(), u_phytmp.view(), v_phytmp.view(), nz});
+  if (o_.sst_update == 1)
+    column_for(cols, KSstUpdate{sst.cview(), xice.cview(), xicem.view(), tsk_save.view(), tsk.view(), xland.view(),
+                                vegfra.view(), tmn.view(), albedo.view(), albbck.view(), emiss.view(), embck.view(),
+                                snow.view(), snowc.view(), snowh.view(), ivgtyp.view(), isltyp.view(), tslb.view(),
+                                smois.view(), sh2o.view(), xice_threshold, real(o_.seaice_albedo_default),
+                                o_.num_soil_layers, o_.isice, o_.iswater, o_.fractional_seaice == 1});
   // run_param: itimestep == 1, bldt == 0 or stepbl == 1, mod(itimestep, stepbl) == 0
   const bool run_param = itimestep == 1 || o_.bldt == 0 || stepbl == 1 || itimestep % stepbl == 0;
   if (!run_param) return;

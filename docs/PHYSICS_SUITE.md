@@ -93,6 +93,8 @@ of solve_em: they are recomputed each step (scratch members in C++).
 | module_surface_driver.F:2133 `ch = chs` | surface_driver.cpp |
 | module_surface_driver.F:2159 `SFCLAYREV_SEAICE_WRAPPER`, :2248 `MYJSFC_SEAICE_WRAPPER`, :7258 `get_local_ice_tsk` | surface_driver.cpp (`KSfclayrevSeaPre`/`Blend`, `KMyjsfcSeaPre`/`Blend`, `local_ice_tsk`) |
 | module_surface_driver.F:2694-2727, 3023-3076 fractional sea ice around the LSM | surface_driver.cpp (`KSeaiceLsmPre`, `KSeaiceLsmPost`) |
+| module_surface_driver.F:1698-1854 sst_update (every call, before the run decision) | surface_driver.cpp (`KSstUpdate`) |
+| mediation_integrate.F:188-259 `med_auxinput_in` (AUXINPUT4: wrflowinp_d0N) | src/cases/domain_runner.cpp (`before_step`), real_physics.cpp (`read_wrflowinp`) |
 | module_sf_noahdrv.F:747-1100 lsm before SFLX | surface_driver.cpp (`KLsmPre`) |
 | module_sf_noahdrv.F:1105 `SFLX` | surface_driver.cpp -> src/phys/lsm_noah/noah.hpp (`NoahKernel`) |
 | module_sf_noahdrv.F:1140-1170 ICE == -1, `SFLX_GLACIAL` | surface_driver.cpp (`KLsmGlacial`), src/phys/driver/noah_ice.hpp |
@@ -612,3 +614,31 @@ ice portion and once for open water (XLAND 2, MAVAIL 1, TSK = SST), and the two 
 points): CPU FP64 bit-identical to WRF in every wrfout variable over 3 h with sfclayrev + YSU (F1,
 `configs/real_f1_r8.ini`) and with MYJ + Eta (F2), and in the wrfrst files except QZ0 and USTM of F1, which
 WRF averages with never-set open-water values (QZ0_SEA is set only by the MYJ wrapper).
+
+## 19. SST update (sst_update = 1)
+
+`med_before_solve_io` reads the auxinput4 stream (`wrflowinp_d0N`, written by real.exe and `cppwrf_real`)
+after the history output, every `auxinput4_interval` minutes from the start, the start included:
+SST, SEAICE (XICE), VEGFRA, ALBBCK, LAI, UOCE and VOCE of the record with the current time
+(`read_wrflowinp`, called from `DomainRunner::before_step`; `real.wrflowinp` names the file, by default the
+wrfinput name with `wrflowinp`). The surface driver then runs WRF's sst_update block on every call, before
+the radiation/PBL run decision (`KSstUpdate`):
+
+- with fractional sea ice and XICE != XICEM (XICEM > threshold): ALBEDO and EMISS rescaled from the old
+  fraction, TSK = TSK_SAVE XICE + (1 - XICE) SST;
+- water turning to ice (XLAND 2, XICE >= threshold, XICEM < threshold): XLAND 1, IVGTYP ISICE, ISLTYP 16,
+  VEGFRA 0, TMN 271.4, ALBEDO/ALBBCK from seaice_albedo_default, EMISS/EMBCK 0.98, TSLB = TSK, SMOIS 1,
+  SH2O 0;
+- water points with 250 < SST < 350 K: TSK and the first soil layer = SST;
+- ice turning to water: XLAND 2, IVGTYP ISWATER, ISLTYP 14, snow 0, TMN = SST, ALBEDO/ALBBCK 0.08, EMISS
+  0.98, TSLB = SST, SMOIS = SH2O = 1;
+- XICEM = XICE and TSK_SAVE = TSK (both state: wrfout XICEM, wrfrst).
+
+The wrfrst files carry the AUXINPUT4 alarm (`WRF_ALARM_SECS_TIL_NEXT_RING_30`).
+
+**Acceptance** (D0V + sst_update, `configs/real_su1_r8.ini`, run_SU1_r8: wrflowinp from real.exe with 12 h
+of boundaries): CPU FP64 bit-identical to WRF in every wrfout variable over 7 h, the 6 h update included
+(new SST at 8169 points), and in the wrfout/wrfrst files of the 3-minute run and its resumed run. The GFS
+sea ice does not change at 6 h, so SU2 (`run_SU2_r8/steps`, a copy of SU1's steps whose wrflowinp has a
+changed SEAICE at the start: water to ice at 162 points, ice to water at 860, a new fraction at 1685) checks
+the transitions: every wrfout variable bit-identical over 20 minutes.

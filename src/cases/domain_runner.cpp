@@ -636,6 +636,21 @@ void DomainRunner::before_step(long n) {
   }
   step_start_ = std::chrono::steady_clock::now();
   if (m_.before_step) m_.before_step(n);
+#ifdef CPPWRF_HAVE_NETCDF
+  // sst_update: med_before_solve_io reads auxinput4 after the history output, every auxinput4_interval
+  // (minutes) from the start
+  if (m_.suite && m_.suite->options().sst_update == 1) {
+    const double t = double(n - 1) * m_.g.dt;
+    const double iv = cfg_.get_double("phys.auxinput4_interval", 360.0) * 60.0;
+    if (iv > 0 && std::fabs(t - iv * std::round(t / iv)) < 1e-6) {
+      const std::string wi = cfg_.get_string("real.wrfinput", "wrfinput_d01");
+      std::string lw = wi;
+      if (lw.rfind("wrfinput", 0) == 0) lw.replace(0, 8, "wrflowinp");
+      read_wrflowinp(cfg_.get_string("real.dir") + "/" + cfg_.get_string("real.wrflowinp", lw),
+                     io_netcdf::format_wrf_date(start_date_, t), *m_.suite);
+    }
+  }
+#endif
 }
 
 bool DomainRunner::after_step(long n) {

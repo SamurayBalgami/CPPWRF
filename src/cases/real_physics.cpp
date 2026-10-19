@@ -104,6 +104,9 @@ LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu
 
 #ifndef CPPWRF_HAVE_NETCDF
 void init_real_physics(const io::Config&, Model&) { throw std::runtime_error("column physics needs NetCDF"); }
+void read_wrflowinp(const std::string&, const std::string&, phys::driver::PhysicsSuite&) {
+  throw std::runtime_error("sst_update needs NetCDF");
+}
 #else
 namespace {
 class NcIn {
@@ -144,6 +147,45 @@ class NcIn {
 };
 }  // namespace
 
+// med_auxinput_in for auxinput4 (wrflowinp_d0N): the record at `date` overwrites the fields of the stream
+// that the file holds (SST, SEAICE, VEGFRA, ALBBCK, LAI, UOCE, VOCE)
+void read_wrflowinp(const std::string& path, const std::string& date, phys::driver::PhysicsSuite& su) {
+  int id = -1;
+  if (nc_open(path.c_str(), NC_NOWRITE, &id) != NC_NOERR) throw std::runtime_error("sst_update: cannot open " + path);
+  int vt = -1, dims[2];
+  std::size_t nt = 0, sl = 0;
+  if (nc_inq_varid(id, "Times", &vt) != NC_NOERR) throw std::runtime_error("sst_update: " + path + " has no Times");
+  nc_inq_vardimid(id, vt, dims);
+  nc_inq_dimlen(id, dims[0], &nt);
+  nc_inq_dimlen(id, dims[1], &sl);
+  long rec = -1;
+  for (std::size_t t = 0; t < nt && rec < 0; ++t) {
+    std::string s(sl, '\0');
+    const std::size_t st[2] = {t, 0}, ct[2] = {1, sl};
+    nc_get_vara_text(id, vt, st, ct, s.data());
+    if (s.compare(0, date.size(), date) == 0) rec = long(t);
+  }
+  if (rec < 0) {
+    nc_close(id);
+    throw std::runtime_error("sst_update: " + path + " has no record for " + date);
+  }
+  const Layout& L = su.sst.layout();
+  const int nx = L.nx, ny = L.ny;
+  const std::pair<const char*, Field2*> fields[] = {
+      {"SST", &su.sst}, {"SEAICE", &su.xice}, {"VEGFRA", &su.vegfra}, {"ALBBCK", &su.albbck},
+      {"LAI", &su.lai}, {"UOCE", &su.uoce}, {"VOCE", &su.voce}};
+  std::vector<double> buf(std::size_t(nx) * ny);
+  for (const auto& [name, f] : fields) {
+    int v = -1;
+    if (nc_inq_varid(id, name, &v) != NC_NOERR) continue;
+    const std::size_t st[3] = {std::size_t(rec), 0, 0}, ct[3] = {1, std::size_t(ny), std::size_t(nx)};
+    if (nc_get_vara_double(id, v, st, ct, buf.data()) != NC_NOERR)
+      throw std::runtime_error(std::string("sst_update: cannot read ") + name + " of " + path);
+    f->fill_host([&](int i, int j, int) { return buf[i + std::size_t(nx) * j]; });
+  }
+  nc_close(id);
+}
+
 void init_real_physics(const io::Config& cfg, Model& m) {
   using phys::driver::PhysicsSuite;
   using phys::driver::SuiteOptions;
@@ -176,6 +218,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.kim_tofd = cfg.get_bool("phys.kim_tofd", false);
   o.fractional_seaice = int(cfg.get_int("phys.fractional_seaice", 0));
   o.tice2tsk_if2cold = cfg.get_bool("phys.tice2tsk_if2cold", false);
+  o.sst_update = int(cfg.get_int("phys.sst_update", 0));
   o.gwd_opt = int(cfg.get_int("dyn.gwd_opt", 0));
   o.gwd_dx_factor = cfg.get_double("dyn.gwd_dx_factor", 2.0);
   o.gwd_if_nonhyd = cfg.get_bool("dyn.gwd_if_nonhyd", true);
@@ -262,10 +305,9 @@ void init_real_physics(const io::Config& cfg, Model& m) {
       put2(*f, rd2(n));
     }
   }
-  if (o.fractional_seaice == 1) {  // phy_init: TSK_SAVE = TSK
-    put2(su.sst, rd2("SST"));
-    put2(su.tsk_save, rd2("TSK"));
-  }
+  if (o.fractional_seaice == 1 || o.sst_update == 1) put2(su.sst, rd2("SST"));
+  if (o.fractional_seaice == 1) put2(su.tsk_save, rd2("TSK"));  // phy_init: TSK_SAVE = TSK
+  if (o.sst_update == 1) put2(su.xicem, xice);                    // landuse_init: XICEM = XICE
   put2(su.water_depth, in.has("WATER_DEPTH") ? rd2("WATER_DEPTH") : std::vector<double>(n2, 0.0));
   const std::pair<const char*, Field2*> diag[] = {{"T2", &su.t2}, {"TH2", &su.th2}, {"Q2", &su.q2},
                                                    {"U10", &su.u10}, {"V10", &su.v10}, {"PSFC", &su.psfc}};

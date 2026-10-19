@@ -17,10 +17,10 @@
 
 namespace cppwrf::init_real {
 
-// Global attributes of WRF's output_wrf (switch input_only / boundary_only), in WRF's order.
+// The grid values of WRF's output_wrf global attributes.
 template <typename T>
-void write_global_atts(NcOut& nc, const WrfConfig& c, const MetEm& m, const RealDomain<T>& dm,
-                       const std::string& start_date, bool input) {
+wrf_io::DomainAtts domain_atts(const WrfConfig& c, const MetEm& m, const RealDomain<T>& dm,
+                               const std::string& start_date) {
   wrf_io::DomainAtts d;
   d.title = " OUTPUT FROM CPPWRF REAL V4.8.0 PREPROCESSOR";
   d.start_date = start_date;
@@ -38,7 +38,15 @@ void write_global_atts(NcOut& nc, const WrfConfig& c, const MetEm& m, const Real
   d.num_land_cat = m.att_int("NUM_LAND_CAT"); d.iswater = dm.iswater; d.islake = dm.islake;
   d.isice = dm.isice; d.isurban = dm.isurban; d.isoilwater = dm.isoilwater;
   d.real_bytes = int(sizeof(T));
-  wrf_io::write_global_atts(nc, c, d, input ? wrf_io::Stream::input : wrf_io::Stream::boundary);
+  return d;
+}
+
+// Global attributes of WRF's output_wrf (switch input_only / boundary_only), in WRF's order.
+template <typename T>
+void write_global_atts(NcOut& nc, const WrfConfig& c, const MetEm& m, const RealDomain<T>& dm,
+                       const std::string& start_date, bool input) {
+  wrf_io::write_global_atts(nc, c, domain_atts(c, m, dm, start_date),
+                            input ? wrf_io::Stream::input : wrf_io::Stream::boundary);
 }
 
 // wrfinput_d01: every variable of WRF's input stream for this configuration (tools/wrf_schema), with the
@@ -67,6 +75,29 @@ void write_wrfinput(const RealDomain<T>& dm, const MetEm& m, const WrfSchema& sc
     else nc.put(v.name, data);
   }
 }
+
+// wrflowinp_d0N (sst_update = 1): the auxinput4 stream (SST, SEAICE, VEGFRA, ALBBCK, LAI, UOCE, VOCE) of
+// every input time, one record each, values as in wrfinput
+template <typename T>
+class WrfLowinpWriter {
+ public:
+  WrfLowinpWriter(const std::string& path, const RealDomain<T>& dm, const MetEm& m, const WrfSchema& sc,
+                  const WrfConfig& c, const std::string& start_date)
+      : f_(path, sc.stream_vars(c, dm.d.ide, dm.d.jde, dm.d.kde, int(sizeof(T)), 0, 29), c,
+           domain_atts(c, m, dm, start_date), wrf_io::Stream::auxinput, !c.logical("use_netcdf_classic")) {}
+  void write(const RealDomain<T>& dm, const MetEm& m, const std::string& date) {
+    const auto values = wrfinput_values(dm, m);
+    f_.write(date, [&](const OutVar& v, std::vector<double>& out) {
+      auto it = values.find(v.name);
+      if (it == values.end()) return false;
+      out = it->second(v);
+      return true;
+    });
+  }
+
+ private:
+  wrf_io::StreamFile f_;
+};
 
 }  // namespace cppwrf::init_real
 

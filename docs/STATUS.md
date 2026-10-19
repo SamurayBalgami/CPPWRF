@@ -2,7 +2,7 @@
 
 CPPWRF reproduces WRF-ARW v4.8.0 statement by statement. This page lists what is implemented, how it
 is verified against WRF, and the current results. All numbers come from `tests/verify/wrf_suite.py`
-(81 cases, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
+(85 cases, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
 
 ## Implemented
 
@@ -12,7 +12,7 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 | Diffusion | diff_opt 1 with km_opt 1 (constant K) and 4 (2-D Smagorinsky); diff_opt 2 with km_opt 2 (1.5-order TKE, advected TKE); 6th-order diffusion |
 | Microphysics | Kessler (1), WSM6 (6, with effective radii), Thompson (8) |
 | Cumulus | Kain-Fritsch (1), Grell-Freitas-Li (3, deep and shallow), Tiedtke (6), New Tiedtke (16) |
-| PBL, surface layer, land surface | YSU (1), MYJ (2), revised MM5 surface layer (1), Eta surface layer (2), Noah LSM (2, including glacial and sea-ice points), Noah-MP v5.1.2 (4, default options), fractional sea ice (fractional_seaice = 1), gravity wave drag (gwd_opt = 1, GWDO) |
+| PBL, surface layer, land surface | YSU (1), MYJ (2), revised MM5 surface layer (1), Eta surface layer (2), Noah LSM (2, including glacial and sea-ice points), Noah-MP v5.1.2 (4, default options), fractional sea ice (fractional_seaice = 1), SST update (sst_update = 1, wrflowinp), gravity wave drag (gwd_opt = 1, GWDO) |
 | Radiation | RRTMG LW and SW (4), CAM ozone and greenhouse gases, cal_cldfra1, McICA |
 | Nesting | static one-way and two-way nests (interp_fcn_sint, bdy_interp1, copy_fcn feedback, sm121/smdsm smoothers, blend_terrain, adjust_tempqv) |
 | Namelist | physics_suite CONUS and tropical (the -1 options), in tools/wrf2cppwrf.py and in the WRF I/O schema |
@@ -78,16 +78,17 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | G2 | P2 with gravity wave drag (gwd_opt 1; ELVMAX = HGT + 3 VAR, WPS 4.6 writes none) | 3 h |
 | F1 / F2 | V2 with fractional sea ice (real.exe with fractional_seaice 1), sfclayrev + YSU / Eta + MYJ | 3 h |
 | D0 / D0V | WRF's default em_real namelist (physics_suite CONUS, fractional sea ice, gwd_opt 1, diff_opt 2 / km_opt 4, w_damping 0) on the P2 / V2 domains, configuration from tools/wrf2cppwrf.py | 6 h |
+| SU1 / SU2 | D0V with sst_update 1 (wrflowinp from real.exe, read every 6 h); SU2: changed sea ice at the start (water/ice transitions) | 7 h / 20 min |
 
-V1-V3, T6, G2, F1, F2, D0 and D0V are compared in every wrfout variable over the whole run; V1-V3 start from the
+V1-V3, T6, G2, F1, F2, D0, D0V, SU1 and SU2 are compared in every wrfout variable over the whole run; V1-V3 start from the
 global GFS of 2026-10-12 00 UTC through WPS, so the domains, projections and surface types differ from the P
-cases. The Thompson references (P6, mp8, V3, D0, D0V) come from WRF built with -r8 -double-8: with -r8 alone
+cases. The Thompson references (P6, mp8, V3, D0, D0V, SU1, SU2) come from WRF built with -r8 -double-8: with -r8 alone
 gfortran makes Thompson's DOUBLE PRECISION variables 16-byte.
 
 Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8, P9, T1).
 
-Output files: the `wrfout_d0N` files of P1-P9, NMP1, mp8, V1-V3, T6, G2, F1, F2, D0, D0V, R1, T1, N1 and N2 (both
-domains) and the `wrfrst_d0N` files of P1, P3, P4, P6, P7, P8, P9, NMP1, mp8, N2, T6, G2, F1, F2, D0 and D0V are
+Output files: the `wrfout_d0N` files of P1-P9, NMP1, mp8, V1-V3, T6, G2, F1, F2, D0, D0V, SU1, R1, T1, N1 and N2 (both
+domains) and the `wrfrst_d0N` files of P1, P3, P4, P6, P7, P8, P9, NMP1, mp8, N2, T6, G2, F1, F2, D0, D0V and SU1 are
 identical to WRF v4.8.0's. This covers
 every variable, value, dimension, attribute and global attribute
 (`tests/verify/run_wrf_files_test.sh`). Runs of these cases resumed from WRF's

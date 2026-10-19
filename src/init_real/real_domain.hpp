@@ -43,6 +43,9 @@ struct RealOptions {
   // physics
   int sf_surface_physics = 0, num_soil_layers = 5, surface_input_source = 3, sf_urban_physics = 0;
   int mp_physics = 0, fractional_seaice = 0, default_soiltype = 8;
+  // hold_ups beyond the first time: the middle of the domain is processed at every time
+  int sst_update = 0, grid_fdda = 0, qna_update = 0;
+  bool all_ic_times = false, polar = false;
   double seaice_threshold = 100;
   bool use_tavg_for_tsk = false;
   // bdy_control

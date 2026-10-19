@@ -85,6 +85,11 @@ RealOptions RealOptions::from_namelist(const Namelist& nl, int dom) {
   o.sf_urban_physics = nl.get_int(P, "sf_urban_physics", o.sf_urban_physics, dom);
   o.mp_physics = wrf_io::physics_suite_option(suite, "mp_physics", nl.get_int(P, "mp_physics", o.mp_physics, dom));
   o.fractional_seaice = nl.get_int(P, "fractional_seaice", o.fractional_seaice, dom);
+  o.sst_update = nl.get_int(P, "sst_update", o.sst_update, dom);
+  o.grid_fdda = nl.get_int("fdda", "grid_fdda", o.grid_fdda, dom);
+  o.qna_update = nl.get_int(P, "qna_update", o.qna_update, dom);
+  o.all_ic_times = nl.get_bool("time_control", "all_ic_times", o.all_ic_times, dom);
+  o.polar = nl.get_bool("bdy_control", "polar", o.polar, dom);
   o.seaice_threshold = nl.get_real(P, "seaice_threshold", o.seaice_threshold, dom);
   o.use_tavg_for_tsk = nl.get_bool(P, "use_tavg_for_tsk", o.use_tavg_for_tsk, dom);
   o.spec_bdy_width = nl.get_int("bdy_control", "spec_bdy_width", o.spec_bdy_width);
@@ -294,7 +299,7 @@ void RealDomain<T>::init_domain(int loop, const std::string& current_date) {
   const bool lsm = (sfs == 2 || sfs == 4);  // LSMSCHEME, NOAHMPSCHEME: module_initialize_real treats them alike
   SkipCtx sk;
   sk.width = o.spec_bdy_width;
-  sk.hold_ups = (loop == 1);
+  sk.hold_ups = (loop == 1) || o.grid_fdda != 0 || o.sst_update == 1 || o.qna_update == 1 || o.all_ic_times || o.polar;
   auto skip = [&](int i, int j) { return skip_middle(d, i, j, sk.width, sk.hold_ups); };
   const int i1 = std::min(ide - 1, ite), j1 = std::min(jde - 1, jte);
 

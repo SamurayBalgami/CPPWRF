@@ -171,6 +171,8 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
   }
   wrf_io::derive_config(*wc_, std::max(1, wc_->integer("max_dom")), false);
   frames_per_outfile_ = std::max(1, wc_->integer("frames_per_outfile"));
+  if (cfg.get_int("phys.sst_update", 0) == 1)
+    auxinput4_interval_s_ = cfg.get_double("phys.auxinput4_interval", 360.0) * 60.0;
   outname_ = "wrfout_" + domain_tag_ + "_";
   if (!real_dir.empty()) {
     wrfinput_ = real_dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_" + domain_tag_);
@@ -391,7 +393,8 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
       if (s.q_names[std::size_t(q)] == "tke" && base == "TKE") return copy_field(s.q_1[std::size_t(q)], dims, out);
   }
   // landuse_init and the surface driver set XICEM = XICE (the previous step's sea ice)
-  if (name == "XICEM" && value("SEAICE", "SEAICE", dims, out)) return true;
+  if (name == "XICEM" && !(m_.suite && m_.suite->options().sst_update == 1) && value("SEAICE", "SEAICE", dims, out))
+    return true;
   if (name == "U") return copy_field(s.u_2, dims, out);
   if (name == "V") return copy_field(s.v_2, dims, out);
   if (name == "W") return copy_field(s.w_2, dims, out);
@@ -716,6 +719,10 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
       // the last step: med_restart_out runs before med_last_solve_io writes that frame
       // nests: med_restart_out of the parent runs before the nest's next med_before_solve_io turns it off
       if ((step == m_.nsteps || d.grid_id > 1) && el % iv == 0) ring = 1;
+    } else if (a == 30 && auxinput4_interval_s_ > 0) {  // read (and turned off) before med_restart_out
+      const long iv = std::lround(auxinput4_interval_s_);
+      secs = int(iv - el % iv);
+      if (step == m_.nsteps && el % iv == 0) ring = 1;
     } else if (a == 51 && restart_interval_s > 0) {
       ring = 1;
       secs = int(std::lround(restart_interval_s));

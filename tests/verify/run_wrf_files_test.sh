@@ -49,6 +49,7 @@ f1|configs/real_f1_r8.ini|$R/run_F1_r8/steps|$R/rst_F1_r8|
 f2|configs/real_f2_r8.ini|$R/run_F2_r8/steps|$R/rst_F2_r8|
 d0|configs/real_d0_r8.ini|$R/run_D0_r8/steps|$R/rst_D0_r8|
 d0v|configs/real_d0v_r8.ini|$R/run_D0V_r8/steps|$R/rst_D0V_r8|
+su1|configs/real_su1_r8.ini|$R/rst_SU1_r8|$R/rst_SU1_r8|--set run.run_time=180
 "
 want=" $* "
 fail=0 n=0

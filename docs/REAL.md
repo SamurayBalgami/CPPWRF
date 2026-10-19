@@ -1,6 +1,7 @@
 # cppwrf_real: WRF real.exe in C++
 
-`cppwrf_real` makes `wrfinput_d0N` and `wrfbdy_d01` from WPS `met_em` files, as WRF v4.8.0's
+`cppwrf_real` makes `wrfinput_d0N` and `wrfbdy_d01` (and `wrflowinp_d0N` with `sst_update = 1`) from
+WPS `met_em` files, as WRF v4.8.0's
 `real.exe` does. Its output files are identical to real.exe's: every value (tolerance 0, for the
 default single-precision build and the `-r8` build), the variable list and order, dimensions, types,
 attributes and global attributes. The one exception is `TITLE`, which names the program.
@@ -16,12 +17,14 @@ build/src/init_real/cppwrf_real --namelist namelist.input --met-dir /path/to/met
 |---|---|---|
 | `--namelist` | `namelist.input` | WRF namelist (the same file real.exe reads) |
 | `--met-dir` | `.` | Directory of the `met_em.d0N.<date>.nc` files |
-| `--out-dir` | `.` | Where `wrfinput_d0N` and `wrfbdy_d01` are written |
+| `--out-dir` | `.` | Where `wrfinput_d0N`, `wrfbdy_d01` and `wrflowinp_d0N` are written |
 | `--precision` | `double` | WRF's default REAL kind: `float` (standard build) or `double` (`-r8`) |
 | `--schema` | `${CPPWRF_DATA_DIR}/wrf_schema/wrf-4.8.0.tsv` | WRF I/O schema (below) |
 
 Domain 1 is processed for every time from `start_date` to `end_date` with `wrfbdy_d01`. Nests are
-processed for their first time only, as real.exe does.
+processed for their first time only, as real.exe does. With `sst_update = 1`, `wrflowinp_d0N` gets the
+SST, SEAICE, VEGFRA, ALBBCK, LAI, UOCE and VOCE of every time, and, as in real.exe, the later times are
+processed over the whole domain (`hold_ups`, also set by grid_fdda, qna_update, all_ic_times and polar).
 
 ## What is ported
 
@@ -62,15 +65,16 @@ members' values, then all members' tendencies.
 `${CPPWRF_WRF_RUNS}/real/<case>`. `tests/init_real/run_real_test.sh [BUILD_DIR]` then runs
 `cppwrf_real` on each case and compares the files with `tests/init_real/compare_real.py`. `ctest -R real_vs_wrf` runs the same test. The test is skipped when `${CPPWRF_WRF_RUNS}/real` does not exist.
 
-The reference set covers 41 cases:
+The reference set covers 42 cases:
 
 - single domains with Kessler, WSM6 and Thompson microphysics;
 - Noah, Noah-MP and no LSM;
 - `hybrid_opt` 0 and 2;
 - 6 h and 12 h boundaries;
+- `sst_update = 1` (`wrflowinp_d01`);
 - two-domain nests.
 
-All 41 are identical.
+All 42 are identical.
 
 ## Not covered
 

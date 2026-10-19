@@ -11,7 +11,7 @@
 
 namespace cppwrf::wrf_io {
 
-enum class Stream { input, boundary, history, restart };
+enum class Stream { input, boundary, history, restart, auxinput };  // auxinput: e.g. wrflowinp (auxinput4)
 
 // Domain values output_wrf takes from the grid rather than the namelist.
 struct DomainAtts {

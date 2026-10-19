@@ -82,6 +82,7 @@ struct SuiteOptions {
   int ifsnow = 1;
   int fractional_seaice = 0;
   bool tice2tsk_if2cold = false;  // fractional_seaice: ice temperature = min(TSK, 273.15)
+  int sst_update = 0;             // 1: SST, SEAICE, VEGFRA, ALBBCK, LAI from wrflowinp (read_lowinp)
   int use_theta_m = 1;
   int ysu_topdown_pblmix = 1;
   int isftcflx = 0, iz0tlnd = 0, shalwater_z0 = 0, scm_force_flux = 0;
@@ -152,8 +153,9 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   // gwd_opt = 1: subgrid orography statistics (wrfinput CON, OA1-4, OL1-4, ELVMAX) and the drag diagnostics
   Field2 oc12d, oa1, oa2, oa3, oa4, ol1, ol2, ol3, ol4, elvmax, dusfcg, dvsfcg;
   Field3 dtaux3d, dtauy3d;
-  // fractional_seaice = 1: SST (the surface layer wrappers raise it to 271.4 under ice) and TSK_SAVE
-  Field2 sst, tsk_save;
+  // fractional_seaice = 1 or sst_update = 1: SST (the surface layer wrappers raise it to 271.4 under ice)
+  // and TSK_SAVE; sst_update = 1: XICEM, the sea ice of the previous surface_driver call
+  Field2 sst, tsk_save, xicem;
   // the open-water halves of the sea-ice points (module_surface_driver.F *_SEA and *_HOLD locals)
   struct SeaIceFields {
     explicit SeaIceFields(const Grid& g);

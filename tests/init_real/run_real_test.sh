@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # cppwrf_real against WRF real.exe: every reference case in ${CPPWRF_WRF_RUNS}/real
-# (tools/init_real/make_real_refs.sh) must give identical wrfinput_d0N and wrfbdy_d01 files.
+# (tools/init_real/make_real_refs.sh) must give identical wrfinput_d0N, wrfbdy_d01 and (sst_update = 1)
+# wrflowinp_d0N files.
 #   usage: run_real_test.sh [BUILD_DIR] [case ...]
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,7 +24,7 @@ for c in "${cases[@]}"; do
     echo "FAIL $c: cppwrf_real failed"; tail -3 "$WORK/run.log"; fail=1; continue
   fi
   ok=1
-  for f in "$ref"/wrfinput_d0? "$ref"/wrfbdy_d01; do
+  for f in "$ref"/wrfinput_d0? "$ref"/wrfbdy_d01 "$ref"/wrflowinp_d0?; do
     [ -f "$f" ] || continue
     python3 "${SCRIPT_DIR}/compare_real.py" "$WORK/$(basename "$f")" "$f" > "$WORK/cmp.log" 2>&1 \
       || { ok=0; cat "$WORK/cmp.log"; }

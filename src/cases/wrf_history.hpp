@@ -63,6 +63,7 @@ class WrfHistory {
   std::unique_ptr<wrf_io::WrfConfig> wc_;
   std::unique_ptr<wrf_io::StreamFile> file_;
   int frames_per_outfile_ = 10;
+  double auxinput4_interval_s_ = 0;  // sst_update: the AUXINPUT4 alarm
   int wrfinput_id_ = -1;
   std::vector<double> p_hyd0_;  // P_HYD of the initial state (start_em)
   std::unique_ptr<phys::driver::PhyPrepFields> prep_;  // runs without column physics

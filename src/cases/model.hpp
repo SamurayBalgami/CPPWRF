@@ -54,6 +54,8 @@ void init_real_case(const io::Config& cfg, Model& m);
 // initial surface state as WRF start_domain/phy_init and attaches it to m.rk (real_physics.cpp).
 bool wants_column_physics(const io::Config& cfg);
 void init_real_physics(const io::Config& cfg, Model& m);
+// sst_update = 1: the auxinput4 record of `date` (WRF date string) from wrflowinp_d0N into the suite's fields
+void read_wrflowinp(const std::string& path, const std::string& date, phys::driver::PhysicsSuite& su);
 // phy_init's landuse_init (LANDUSE.TBL for the season of julday) on the wrfinput LU_INDEX, SEAICE, SNOWC
 struct LanduseInit {
   std::vector<double> albbck, albedo, z0, embck, emiss, mavail, xland, thc;
