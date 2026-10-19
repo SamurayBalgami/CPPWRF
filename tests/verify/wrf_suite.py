@@ -3,7 +3,7 @@
 reference run, with the tolerance that the current code meets. Run after every change to the
 dycore, boundaries, diffusion or physics coupling.
 
-  wrf_suite.py --cpu-dp <build>/cppwrf --cuda <build>/cppwrf [--cuda-dp <build>/cppwrf] [--out DIR] [--only NAME]
+  wrf_suite.py --cpu-dp <build>/cppwrf --cuda <build>/cppwrf [--cuda-dp <build>/cppwrf] [--out DIR] [--only NAME[,NAME]]
 
 Exit status 0 = all PASS. Cases whose reference or binary is missing are SKIPped (reported).
 """
@@ -358,7 +358,7 @@ def main():
     bins = {"cpu_dp": a.cpu_dp, "cuda": a.cuda, "cuda_dp": a.cuda_dp}
     ok = True
     for name, key, cfg, sets, wo, t, tol in CASES:
-        if a.only and a.only not in name:
+        if a.only and not any(o in name for o in a.only.split(",")):
             continue
         b = bins.get(key)
         refs = wo if isinstance(wo, dict) else {"": wo}  # nested runs: {domain: wrfout}
@@ -381,7 +381,7 @@ def main():
         print(f"{'PASS' if not bad else 'FAIL'}  {name:22s} t={t:g}s {txt}" + (f"  [{'; '.join(bad)}]" if bad else ""))
         ok &= not bad
         done(out, not bad)
-    if (not a.only or "straka" in a.only) and a.cpu_dp and os.path.exists(a.cpu_dp):
+    if (not a.only or any("straka" in o for o in a.only.split(","))) and a.cpu_dp and os.path.exists(a.cpu_dp):
         good, msg = straka(a.cpu_dp, os.path.join(a.out, "straka"))
         if good is None:
             print(f"SKIP  straka_wrf             ({msg})")
@@ -397,7 +397,7 @@ def main():
                              ("nmp1", "configs/real_nmp1_r8.ini", "run_NMP1_r8"),
                              ("t1", "configs/real_t1.ini", "run_R1_r8")):
             rname = f"restart_{tag}_fp64"
-            if a.only and a.only not in rname:
+            if a.only and not any(o in rname for o in a.only.split(",")):
                 continue
             good, msg = restart_p1(a.cpu_dp, os.path.join(a.out, f"restart_{tag}"), cfg, rd)
             if good is None:
