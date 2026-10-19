@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Pack the WRF reference data that the selected wrf_suite.py cases read, for a run on another machine.
 
-  stage_data.py --only NAME[,NAME] OUT.tar
+  stage_data.py --only NAME[,NAME] [--no-thompson-tables] OUT.tar
 
 Each case's run directory (real.dir of its configuration or of its --set overrides) is written under its own
 name, so the remote side sets CPPWRF_WRF_RUNS to the unpacked directory and runs the same suite. Links are
 followed. Left out: other history and restart files, rsl/log files, met_em input, executables and the
-large tables no ported scheme reads; the Thompson .dat tables only for mp_physics = 8. The reference
+large tables no ported scheme reads; the Thompson .dat tables only for mp_physics = 8 (and not with
+--no-thompson-tables: CPPWRF then computes them, close to but not bit-identical with WRF's files). The reference
 wrfout files keep only the frames and variables tests/verify/compare_real.py compares.
 """
 import argparse
@@ -67,6 +68,7 @@ def config_value(cfg, section, key):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", required=True)
+    ap.add_argument("--no-thompson-tables", action="store_true")
     ap.add_argument("out")
     a = ap.parse_args()
     want = a.only.split(",")
@@ -89,7 +91,7 @@ def main():
             d[0].add(os.path.basename(r))
             ref_times.setdefault(r, set()).add(float(t))
         d = dirs.setdefault(rd, [set(), False])
-        d[1] = d[1] or mp.strip() == "8"
+        d[1] = d[1] or (mp.strip() == "8" and not a.no_thompson_tables)
         print(f"{name}: {os.path.relpath(rd, WR)}")
     with tarfile.open(a.out, "w", dereference=True) as tf:
         for d, (keep, thompson) in sorted(dirs.items()):

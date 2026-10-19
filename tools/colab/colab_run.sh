@@ -8,6 +8,7 @@
 #   --bench  suite cases to run again without history output for the stepping time (default: P1 and D0)
 #   --keep   leave the VM running (stop it later with `colab stop -s <session>`)
 #   --out    local results directory (default: ${CPPWRF_SCRATCH:-~/cppwrf_scratch}/colab/<date>_<gpu>)
+#   MAX_UPLOAD_MIN (environment, default 20): stop when the upload would take longer (slow regions)
 #
 # The source is the committed HEAD (git archive); the data come from ${CPPWRF_WRF_RUNS} through
 # tools/colab/stage_data.py (cached per case list). Results: summary.txt (GPU, build times, PASS/FAIL lines
@@ -16,7 +17,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_WRF_RUNS:?set CPPWRF_WRF_RUNS}"
 SCRATCH=${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}
-GPU=L4 KEEP=0 OUT=
+GPU=L4 KEEP=0 OUT= MAX_UPLOAD_MIN=${MAX_UPLOAD_MIN:-20}
 CASES=real_r1_fp64_cuda,real_p1_r8_fp64_cuda_1h,real_p1_fp32_1h,real_p4_r8_fp64_cuda_1h,real_p8_r8_fp64_cuda_1h,real_t6_r8_fp64_cuda_1h,real_d0_r8_fp64_cuda_1h,real_nmp1_r8_fp64_cuda_1h
 BENCH=real_p1_r8_fp64_cuda_1h,real_p1_fp32_1h,real_d0_r8_fp64_cuda_1h
 while [ $# -gt 0 ]; do
@@ -41,7 +42,8 @@ git -C "$REPO" archive --format=tar.gz -o "$OUT/src.tar.gz" HEAD
 git -C "$REPO" rev-parse --short HEAD > "$OUT/commit.txt"
 key=$(echo "$CASES,$BENCH" | tr ',' '\n' | sort -u | tr '\n' ',' | md5sum | cut -c1-12)
 DATA=$SCRATCH/colab/cache/data_$key.tar
-[ -f "$DATA" ] || python3 "$REPO/tools/colab/stage_data.py" --only "$CASES,$BENCH" "$DATA"
+# GPU runs only: CPPWRF computes the Thompson tables on the VM instead of uploading WRF's 370 MB
+[ -f "$DATA" ] || python3 "$REPO/tools/colab/stage_data.py" --only "$CASES,$BENCH" --no-thompson-tables "$DATA"
 
 # ---- remote
 colab usage | tail -3
@@ -58,11 +60,20 @@ upload() {
   local src=$1 dst=$2 parts n=0 sum got
   parts=$(mktemp -d "$SCRATCH/colab/parts.XXXXXX")
   split -b 32M -d -a 4 "$src" "$parts/p"
+  local total t0=$SECONDS
+  total=$(ls "$parts" | wc -l)
   for p in "$parts"/p*; do
     if ! colab upload -s "$S" "$p" "$dst.part.$(basename "$p")" 2>&1 | grep -q "Uploaded"; then
       echo "[colab_run] upload of part $(basename "$p") of $src failed"; rm -rf "$parts"; return 1
     fi
     n=$((n + 1))
+    # the VM bills while it waits: give up when this region's upload would take too long
+    local eta=$(( (SECONDS - t0) * (total - n) / n / 60 ))
+    [ "$total" -gt 1 ] && echo "[colab_run] $(basename "$src"): $n/$total parts, ~${eta} min left"
+    if [ "$n" -ge 2 ] && [ "$eta" -gt "$MAX_UPLOAD_MIN" ]; then
+      echo "[colab_run] upload too slow (~${eta} min left > MAX_UPLOAD_MIN=$MAX_UPLOAD_MIN), giving up"
+      rm -rf "$parts"; return 1
+    fi
   done
   rm -rf "$parts"
   sum=$(md5sum "$src" | cut -c1-32)
@@ -77,10 +88,10 @@ upload() {
     *) echo "[colab_run] $dst: md5 mismatch"; return 1 ;;
   esac
 }
-upload "$OUT/src.tar.gz" /content/src.tar.gz
-upload "$DATA" /content/data.tar
-upload "$OUT/commit.txt" /content/commit.txt
-upload "$REPO/tools/colab/remote_job.py" /content/remote_job.py
+upload "$OUT/src.tar.gz" /content/src.tar.gz || exit 1
+upload "$DATA" /content/data.tar || exit 1
+upload "$OUT/commit.txt" /content/commit.txt || exit 1
+upload "$REPO/tools/colab/remote_job.py" /content/remote_job.py || exit 1
 colab exec -s "$S" --timeout 120 --env CPPWRF_JOB_CASES="$CASES" --env CPPWRF_JOB_BENCH="$BENCH" <<'EOF'
 import os, subprocess
 env = dict(os.environ)
