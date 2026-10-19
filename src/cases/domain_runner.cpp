@@ -500,6 +500,7 @@ bool DomainRunner::start() {
   double restart_interval = cfg_.get_double("restart.interval", cfg_.get_double("output.restart_interval", 0.0));
   if (restart_interval < 0.0) throw std::runtime_error("restart.interval must be >= 0 (got " + std::to_string(restart_interval) + ")");
   rst_iv_ = restart_interval > 0 ? std::max(1L, std::lround(restart_interval / g.dt)) : 0;
+  rst_end_ = std::lround(cfg_.get_double("restart.end", 0.0) / g.dt);
   start_date_ = cfg_.get_string("run.start_date", !m_.start_date.empty() ? m_.start_date : "2000-01-01_00:00:00");
 
 #ifndef CPPWRF_HAVE_NETCDF
@@ -665,7 +666,7 @@ bool DomainRunner::after_step(long n) {
     do_snap(n);
   }
 #ifdef CPPWRF_HAVE_NETCDF
-  if (rst_iv_ > 0 && (n % rst_iv_ == 0 || last)) {
+  if (rst_iv_ > 0 && (n % rst_iv_ == 0 || last) && (rst_end_ <= 0 || n <= rst_end_)) {
     do_restart(n);
   }
 #endif

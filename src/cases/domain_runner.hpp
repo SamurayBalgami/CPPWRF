@@ -76,6 +76,7 @@ class DomainRunner {
   long diag_iv_ = 10;
   long out_iv_ = 1;
   long rst_iv_ = 0;
+  long rst_end_ = 0;  // restart.end: last step with a restart file (0: no end)
   std::string start_date_;
   std::string cname_;
   std::string out_fmt_;

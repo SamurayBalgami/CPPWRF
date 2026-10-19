@@ -256,6 +256,7 @@ Every option supported by the CPPWRF runtime is cataloged below, along with its 
 | `[output]` | `diag_interval` | integer | `10` | Frequency (in steps) for writing rows to `diag.csv` | Diagnostic interval |
 | `[output]` | `out_interval` | integer | `nsteps` | Frequency (in steps) for writing field snapshots | `history_interval` |
 | `[restart]` | `interval` | double | `0.0` | Restart snapshot write frequency in seconds (0 = disabled) | `restart_interval` |
+| `[restart]` | `end` | double | `0.0` | No restart files after this time in seconds (0 = no end) | - |
 | `[tracers]` | `names` | string list | `""` | Comma-separated names of passive scalar tracers | Tracer variables |
 | `[domains]` | `max_dom`, `feedback`, `smooth_option`, `save_topo_from_real`, `blend_width`, `spec_bdy_width` | integer | `1`, `1`, `0`, `1`, `5`, `5` | Multi-domain nesting count, two-way feedback (`0, 1`), feedback smoother (`0..2`), terrain blending | `&domains` / `&bdy_control` |
 | `[d02]`..`[d0N]` | `wrfinput`, `dt`, `out_interval`, `diag_interval`, `parent_id`, `i_parent_start`, `j_parent_start`, `parent_grid_ratio`, `parent_time_step_ratio` | string/int/double | *per-domain* | Child domain input file, timestep, output intervals, parent link, and per-domain dynamics overrides | `&domains` / `&time_control` / `&dynamics` |
@@ -294,6 +295,7 @@ uninitialised.
 `wrfrst_d0N_<date>` files, including the restart stream, the alarm global attributes and every
 nest domain. In CPU FP64 builds these files are identical to WRF's. CPPWRF also writes its own
 `restart_<step>.nc` files, which hold the complete model state at bitwise precision.
+`restart.end` (seconds, default 0 = none) stops writing restart files after that time.
 
 `run.restart_file` resumes a run from either kind of file. A WRF `wrfrst_d01_<date>` file can come
 from WRF or from CPPWRF. CPPWRF reads the restart stream (prognostic state, base state, physics

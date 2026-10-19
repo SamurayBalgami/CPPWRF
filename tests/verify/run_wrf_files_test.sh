@@ -60,6 +60,10 @@ while IFS='|' read -r name cfg ref rst extra; do
   sets=(--set output.format=wrfout --set output.out_interval=1 --set output.dir="$WORK/$name")
   if { [ "$rst" != "-" ] && [ -d "$rst" ]; } || compgen -G "$ref/wrfrst_d0*" > /dev/null; then
     sets+=(--set restart.interval=60)
+    # restart files only up to WRF's last one (they take ~0.5 GB each for the larger domains)
+    last=$( (ls "$rst"/wrfrst_d01_* "$ref"/wrfrst_d01_* 2>/dev/null || true) | sed -E 's/.*_([0-9]{2}):([0-9]{2}):([0-9]{2})$/\1 \2 \3/' |
+            awk '{t = $1 * 3600 + $2 * 60 + $3; if (t > m) m = t} END {print m + 0}')
+    [ "$last" -gt 0 ] && sets+=(--set restart.end="$last")
   fi
   # shellcheck disable=SC2206
   [ -n "$extra" ] && sets+=($extra)
