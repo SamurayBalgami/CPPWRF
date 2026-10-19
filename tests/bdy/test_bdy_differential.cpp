@@ -1169,7 +1169,7 @@ bool test_r0_wrfbdy_verification() {
 // ---------------------------------------------------------------------------
 int main() {
   std::cout << "=================================================================\n";
-  std::cout << "   CPPWRF T4.3: Lateral Boundary Differential Test Suite (C++ vs WRF)\n";
+  std::cout << "   Lateral boundary differential tests (C++ vs WRF)\n";
   std::cout << "=================================================================\n";
 
   bool ok = true;

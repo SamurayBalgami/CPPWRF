@@ -209,25 +209,13 @@ WrfInputData read_wrfinput(const std::string& path) {
   read_required_var("SINALPHA", data.sinalpha, s_2d);
   read_required_var("COSALPHA", data.cosalpha, s_2d);
 
-  // Map factors
-  if (!read_var("MAPFAC_MX", data.mapfac_mx) || data.mapfac_mx.size() != s_2d) {
-    read_required_var("MAPFAC_M", data.mapfac_mx, s_2d);
-  }
-  if (!read_var("MAPFAC_MY", data.mapfac_my) || data.mapfac_my.size() != s_2d) {
-    read_required_var("MAPFAC_M", data.mapfac_my, s_2d);
-  }
-  if (!read_var("MAPFAC_UX", data.mapfac_ux) || data.mapfac_ux.size() != s_2d_u) {
-    read_required_var("MAPFAC_U", data.mapfac_ux, s_2d_u);
-  }
-  if (!read_var("MAPFAC_UY", data.mapfac_uy) || data.mapfac_uy.size() != s_2d_u) {
-    read_required_var("MAPFAC_U", data.mapfac_uy, s_2d_u);
-  }
-  if (!read_var("MAPFAC_VX", data.mapfac_vx) || data.mapfac_vx.size() != s_2d_v) {
-    read_required_var("MAPFAC_V", data.mapfac_vx, s_2d_v);
-  }
-  if (!read_var("MAPFAC_VY", data.mapfac_vy) || data.mapfac_vy.size() != s_2d_v) {
-    read_required_var("MAPFAC_V", data.mapfac_vy, s_2d_v);
-  }
+  // Map factors (real.exe writes the x and y components)
+  read_required_var("MAPFAC_MX", data.mapfac_mx, s_2d);
+  read_required_var("MAPFAC_MY", data.mapfac_my, s_2d);
+  read_required_var("MAPFAC_UX", data.mapfac_ux, s_2d_u);
+  read_required_var("MAPFAC_UY", data.mapfac_uy, s_2d_u);
+  read_required_var("MAPFAC_VX", data.mapfac_vx, s_2d_v);
+  read_required_var("MAPFAC_VY", data.mapfac_vy, s_2d_v);
 
   // 3D Mass fields
   read_required_var("PB", data.pb, s_3d);

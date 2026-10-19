@@ -102,7 +102,4 @@ class ScopedNcFile {
   int id_ = -1;
 };
 
-// Formats seconds into WRF 19-char timestamp "YYYY-MM-DD_hh:mm:ss" starting from base_date
-std::string format_wrf_date(const std::string& base_date, double time_sec);
-
 }  // namespace cppwrf::io_netcdf

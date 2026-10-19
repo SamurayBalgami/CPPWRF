@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# CPPWRF Task T4.3: Lateral Boundary Differential Test Suite Runner
+# Lateral boundary differential tests (C++ vs WRF)
 # Builds and executes the differential tests comparing C++20 vs WRF Fortran
 # ============================================================================
 set -euo pipefail

@@ -20,6 +20,7 @@
 #include "core/halo.hpp"
 #include "core/precision.hpp"
 #include "dyn/diagnostics.hpp"
+#include "wrf_io/global_atts.hpp"
 
 namespace cppwrf::cases {
 
@@ -169,7 +170,7 @@ void DomainRunner::save_restart_file(const std::string& path, long step, double 
   meta.nx = g.nx; meta.ny = g.ny; meta.nz = g.nz;
   meta.dx = g.dx; meta.dy = g.dy; meta.dt = g.dt;
   meta.case_name = cname_;
-  meta.date_str = io_netcdf::format_wrf_date(start_date_, time_sec);
+  meta.date_str = wrf_io::add_seconds(start_date_, std::lround(time_sec));
 
   const io_netcdf::DType dt = sizeof(real) == 8 ? io_netcdf::DType::F64 : io_netcdf::DType::F32;
   std::vector<std::vector<real>> bufs;
@@ -648,7 +649,7 @@ void DomainRunner::before_step(long n) {
       std::string lw = wi;
       if (lw.rfind("wrfinput", 0) == 0) lw.replace(0, 8, "wrflowinp");
       read_wrflowinp(cfg_.get_string("real.dir") + "/" + cfg_.get_string("real.wrflowinp", lw),
-                     io_netcdf::format_wrf_date(start_date_, t), *m_.suite);
+                     wrf_io::add_seconds(start_date_, std::lround(t)), *m_.suite);
     }
   }
 #endif

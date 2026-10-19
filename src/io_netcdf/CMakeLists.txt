@@ -10,7 +10,6 @@ find_path(NETCDF_INCDIR netcdf.h HINTS /usr/include /usr/local/include)
 find_library(NETCDF_LIB NAMES netcdf HINTS /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib)
 
 add_library(cppwrf_io_netcdf STATIC
-  wrfout_writer.cpp
   restart.cpp
   wrf_readers.cpp
 )
