@@ -1,4 +1,5 @@
 #include "phys/driver/landuse_tables.hpp"
+#include "core/strings.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -11,18 +12,6 @@
 namespace cppwrf::phys::driver {
 
 namespace {
-
-std::string trim(const std::string& s) {
-  auto start = s.find_first_not_of(" \t\r\n");
-  if (start == std::string::npos) return "";
-  auto end = s.find_last_not_of(" \t\r\n");
-  return s.substr(start, end - start + 1);
-}
-
-std::string to_upper(std::string s) {
-  for (char& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-  return s;
-}
 
 // Tokenize a line separated by spaces or commas, respecting single quotes
 std::vector<std::string> tokenize(const std::string& line) {

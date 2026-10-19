@@ -11,12 +11,6 @@
 namespace cppwrf::phys::myjpbl {
 
 template <typename T>
-CPPWRF_HD inline T c_min(T a, T b) { return (a < b) ? a : b; }
-
-template <typename T>
-CPPWRF_HD inline T c_max(T a, T b) { return (a > b) ? a : b; }
-
-template <typename T>
 CPPWRF_HD inline T c_abs(T a) { return (a < T(0)) ? -a : a; }
 
 static constexpr int kMaxLevels = 128;

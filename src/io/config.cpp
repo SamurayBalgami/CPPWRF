@@ -1,4 +1,5 @@
 #include "io/config.hpp"
+#include "core/strings.hpp"
 #include "io/output.hpp"
 
 #include <charconv>
@@ -11,18 +12,6 @@
 namespace cppwrf::io {
 
 namespace {
-
-std::string trim(std::string_view s) {
-  size_t start = 0;
-  while (start < s.size() && (s[start] == ' ' || s[start] == '\t' || s[start] == '\r' || s[start] == '\n')) {
-    ++start;
-  }
-  size_t end = s.size();
-  while (end > start && (s[end - 1] == ' ' || s[end - 1] == '\t' || s[end - 1] == '\r' || s[end - 1] == '\n')) {
-    --end;
-  }
-  return std::string(s.substr(start, end - start));
-}
 
 bool is_valid_ident(std::string_view s) {
   if (s.empty()) return false;

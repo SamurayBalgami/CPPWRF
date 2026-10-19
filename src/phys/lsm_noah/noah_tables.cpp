@@ -1,4 +1,5 @@
 #include "phys/lsm_noah/noah_tables.hpp"
+#include "core/strings.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -10,13 +11,6 @@
 namespace cppwrf::phys::noah {
 
 namespace {
-
-std::string trim(const std::string& s) {
-  auto start = s.find_first_not_of(" \t\r\n");
-  if (start == std::string::npos) return "";
-  auto end = s.find_last_not_of(" \t\r\n");
-  return s.substr(start, end - start + 1);
-}
 
 // Tokenize a line separated by spaces or commas
 std::vector<std::string> tokenize(const std::string& line) {

@@ -1,5 +1,6 @@
 #ifdef CPPWRF_HAVE_NETCDF
 #include "cases/wrf_history.hpp"
+#include "core/strings.hpp"
 
 #include <netcdf.h>
 
@@ -25,11 +26,6 @@
 namespace cppwrf::cases {
 
 namespace {
-
-std::string lower(std::string s) {
-  for (char& c : s) c = char(std::tolower(static_cast<unsigned char>(c)));
-  return s;
-}
 
 std::string str(double v) {
   char b[64];
@@ -510,7 +506,7 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     auto it = wn.find(qn);
     if (it != wn.end() && it->second == name) return copy_field(s.q_2[std::size_t(q)], dims, out);
   }
-  const std::string vn = lower(varname);
+  const std::string vn = to_lower(varname);
   if (vn == "rho" && dims.size() == 3) {
     // grid%rho: moist_physics_prep_em sets it on the tile without the spec zone; the spec-zone ring keeps
     // phy_prep's value of the step start

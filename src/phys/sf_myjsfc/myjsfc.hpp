@@ -17,12 +17,6 @@ static constexpr int KZTM2 = KZTM - 2;
 static constexpr int kMaxLevels = 128;
 
 template <typename T>
-CPPWRF_HD inline T c_min(T a, T b) { return (a < b) ? a : b; }
-
-template <typename T>
-CPPWRF_HD inline T c_max(T a, T b) { return (a > b) ? a : b; }
-
-template <typename T>
 CPPWRF_HD inline T c_abs(T a) { return (a < T(0)) ? -a : a; }
 
 // Lookup tables and bounds initialized by MYJSFCINIT (module_sf_myjsfc.F:57-59, 1177-1300)

@@ -239,8 +239,6 @@ struct ThompsonKernel {
     CPPWRF_HD void effect_rad(int i, int j, const Real* t1d, const Real* p1d) const {
         constexpr Real g_ratio[15] = {24, 60, 120, 210, 336, 504, 720, 990, 1320, 1716, 2184, 2730, 3360, 4080, 4896};
         constexpr Real re_qc_bg = Real(2.49E-6), re_qi_bg = Real(4.99E-6), re_qs_bg = Real(9.99E-6);
-        auto c_max = [](Real a, Real b) { return a > b ? a : b; };  // Fortran MAX / MIN
-        auto c_min = [](Real a, Real b) { return a < b ? a : b; };
         const Real obmr = Real(1.0) / Real(bm_r);
         const Real obmi = Real(1.0) / Real(bm_i);
         const Real nc = Real(Nt_c);  // .NOT. is_aerosol_aware

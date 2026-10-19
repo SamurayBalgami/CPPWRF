@@ -1,4 +1,5 @@
 #include "wrf_io/namelist.hpp"
+#include "core/strings.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -9,16 +10,6 @@
 namespace cppwrf::wrf_io {
 
 namespace {
-
-std::string lower(std::string s) {
-  for (char& c : s) c = char(std::tolower(static_cast<unsigned char>(c)));
-  return s;
-}
-
-std::string trim(const std::string& s) {
-  std::size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
-  return a == std::string::npos ? std::string() : s.substr(a, b - a + 1);
-}
 
 // Splits the value list of one assignment at commas/blanks outside quotes; expands n*value.
 std::vector<std::string> split_values(const std::string& s) {
@@ -93,7 +84,7 @@ Namelist Namelist::parse(const std::string& text) {
     if (amp == std::string::npos) break;
     std::size_t e = amp + 1;
     while (e < t.size() && (std::isalnum(static_cast<unsigned char>(t[e])) || t[e] == '_')) ++e;
-    std::string group = lower(t.substr(amp + 1, e - amp - 1));
+    std::string group = to_lower(t.substr(amp + 1, e - amp - 1));
     // body ends at a '/' outside quotes
     std::size_t end = e;
     char quote = 0;
@@ -133,7 +124,7 @@ Namelist Namelist::parse(const std::string& text) {
       }
     }
     for (std::size_t n = 0; n < eqs.size(); ++n) {
-      std::string key = lower(trim(body.substr(eqs[n].first, eqs[n].second - eqs[n].first)));
+      std::string key = to_lower(trim(body.substr(eqs[n].first, eqs[n].second - eqs[n].first)));
       std::size_t vs = eqs[n].second + 1, ve = n + 1 < eqs.size() ? eqs[n + 1].first : body.size();
       grp[key] = split_values(body.substr(vs, ve - vs));
     }
@@ -143,14 +134,14 @@ Namelist Namelist::parse(const std::string& text) {
 }
 
 bool Namelist::has(const std::string& group, const std::string& key) const {
-  auto g = g_.find(lower(group));
-  return g != g_.end() && g->second.count(lower(key));
+  auto g = g_.find(to_lower(group));
+  return g != g_.end() && g->second.count(to_lower(key));
 }
 
 std::vector<std::string> Namelist::values(const std::string& group, const std::string& key) const {
-  auto g = g_.find(lower(group));
+  auto g = g_.find(to_lower(group));
   if (g == g_.end()) return {};
-  auto k = g->second.find(lower(key));
+  auto k = g->second.find(to_lower(key));
   return k == g->second.end() ? std::vector<std::string>{} : k->second;
 }
 
@@ -185,7 +176,7 @@ float Namelist::get_real_f(const std::string& group, const std::string& key, flo
 bool Namelist::get_bool(const std::string& group, const std::string& key, bool def, int dom) const {
   auto r = raw(group, key, dom);
   if (!r) return def;
-  std::string v = lower(*r);
+  std::string v = to_lower(*r);
   if (!v.empty() && v[0] == '.') v = v.substr(1);
   return !v.empty() && v[0] == 't';
 }

@@ -1,4 +1,5 @@
 #include "phys/lsm_noahmp/noahmp_tables.hpp"
+#include "core/strings.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -54,24 +55,6 @@ void validate_noahmp_options(const NoahmpOptions& opt) {
 }
 
 namespace {
-
-std::string trim(const std::string& s) {
-  std::size_t a = 0;
-  while (a < s.size() && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
-  std::size_t b = s.size();
-  while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
-  return s.substr(a, b - a);
-}
-
-std::string to_upper(std::string s) {
-  for (char& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-  return s;
-}
-
-std::string to_lower(std::string s) {
-  for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  return s;
-}
 
 std::string strip_quotes(const std::string& s) {
   std::string t = trim(s);

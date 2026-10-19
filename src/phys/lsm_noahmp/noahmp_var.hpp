@@ -8,51 +8,6 @@
 
 namespace cppwrf::phys::noahmp {
 
-CPPWRF_HD inline float rexp(float a) {
-#if defined(__CUDA_ARCH__)
-  return expf(a);
-#else
-  return std::exp(a);
-#endif
-}
-CPPWRF_HD inline double rexp(double a) {
-#if defined(__CUDA_ARCH__)
-  return ::exp(a);
-#else
-  return std::exp(a);
-#endif
-}
-
-CPPWRF_HD inline float rpow(float a, float b) {
-#if defined(__CUDA_ARCH__)
-  return powf(a, b);
-#else
-  return std::pow(a, b);
-#endif
-}
-CPPWRF_HD inline double rpow(double a, double b) {
-#if defined(__CUDA_ARCH__)
-  return ::pow(a, b);
-#else
-  return std::pow(a, b);
-#endif
-}
-
-CPPWRF_HD inline float rlog(float a) {
-#if defined(__CUDA_ARCH__)
-  return logf(a);
-#else
-  return std::log(a);
-#endif
-}
-CPPWRF_HD inline double rlog(double a) {
-#if defined(__CUDA_ARCH__)
-  return ::log(a);
-#else
-  return std::log(a);
-#endif
-}
-
 // Physical constants from ConstantDefineMod.F90 (in working precision `real`)
 inline constexpr real ConstGravityAcc          = real(9.80616);    // acceleration due to gravity [m/s2]
 inline constexpr real ConstStefanBoltzmann     = real(5.67e-08);   // Stefan-Boltzmann constant [w/m2/k4]

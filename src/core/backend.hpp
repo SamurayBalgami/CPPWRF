@@ -59,6 +59,26 @@ CPPWRF_HD inline double rpow(double a, double b) {
   return std::pow(a, b);
 #endif
 }
+CPPWRF_HD inline float rexp(float a) {
+#if defined(__CUDA_ARCH__)
+  return expf(a);
+#else
+  return std::exp(a);
+#endif
+}
+CPPWRF_HD inline double rexp(double a) {
+#if defined(__CUDA_ARCH__)
+  return ::exp(a);
+#else
+  return std::exp(a);
+#endif
+}
+
+// Fortran MIN / MAX of two values (b on ties and when either is NaN)
+template <class T>
+CPPWRF_HD inline T c_min(T a, T b) { return (a < b) ? a : b; }
+template <class T>
+CPPWRF_HD inline T c_max(T a, T b) { return (a > b) ? a : b; }
 
 // ---- WRF's vectorised libm ----
 // WRF (gfortran -O2 -ftree-vectorize on x86-64) computes exp/log/pow/sin/... inside vectorised loops

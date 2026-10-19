@@ -1,4 +1,5 @@
 #include "wrf_io/wrf_schema.hpp"
+#include "core/strings.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -40,18 +41,13 @@ std::vector<SchemaCond> parse_conds(const std::string& s) {
   return out;
 }
 
-std::string lower(std::string s) {
-  for (char& c : s) c = char(std::tolower(static_cast<unsigned char>(c)));
-  return s;
-}
-
 std::string rtrim(std::string s) {
   while (!s.empty() && (s.back() == ' ' || s.back() == '\0')) s.pop_back();
   return s;
 }
 
 bool is_true(const std::string& v) {
-  std::string t = lower(v);
+  std::string t = to_lower(v);
   if (!t.empty() && t[0] == '.') t = t.substr(1);
   return !t.empty() && t[0] == 't';
 }
@@ -64,7 +60,7 @@ WrfConfig::WrfConfig(const Namelist& nl, const std::map<std::string, std::pair<s
 
 std::string WrfConfig::get(const std::string& name0, int dom) const {
   if (dom == 0) dom = dom_;
-  const std::string name = lower(name0);
+  const std::string name = to_lower(name0);
   auto dv = derived_.find(name);
   if (dv != derived_.end()) return dv->second;
   auto d = defaults_.find(name);
@@ -79,7 +75,7 @@ std::string WrfConfig::get(const std::string& name0, int dom) const {
 double WrfConfig::num(const std::string& name, int dom) const {
   std::string v = get(name, dom);
   if (v.empty()) return 0;
-  std::string t = lower(v);
+  std::string t = to_lower(v);
   if (t == ".true." || t == "t" || t == ".t.") return 1;
   if (t == ".false." || t == "f" || t == ".f.") return 0;
   for (char& c : v)
@@ -130,7 +126,7 @@ WrfSchema WrfSchema::load(const std::string& path) {
     if (line.empty() || line[0] == '#') continue;
     std::vector<std::string> t = split(line, '\t');
     if (t[0] == "RCONFIG" && t.size() >= 5) {
-      s.defaults_[lower(t[1])] = {t[3], t[4]};
+      s.defaults_[to_lower(t[1])] = {t[3], t[4]};
     } else if ((t[0] == "VAR" || t[0] == "ARRAY4D") && t.size() >= 15) {
       SchemaVar v;
       v.array4d = t[0] == "ARRAY4D";
@@ -166,7 +162,7 @@ bool WrfSchema::in_use(const std::vector<SchemaCond>& conds, const WrfConfig& c)
   if (conds.empty()) return true;
   for (const SchemaCond& k : conds) {
     double a = c.num(k.opt), b;
-    std::string v = lower(k.val);
+    std::string v = to_lower(k.val);
     if (v == ".true.") b = 1;
     else if (v == ".false.") b = 0;
     else b = std::strtod(k.val.c_str(), nullptr);
@@ -299,7 +295,7 @@ bool WrfSchema::apply_iofields(const std::string& path) {
   while (std::getline(f, line)) {
     std::vector<std::string> t = split(line, ':');
     if (t.size() < 4 || line[0] == '#') continue;
-    const std::string op = rtrim(t[0]), st = lower(rtrim(t[1]));
+    const std::string op = rtrim(t[0]), st = to_lower(rtrim(t[1]));
     if ((op != "+" && op != "-") || (st != "h" && st != "i")) continue;
     // stream numbers: history = 1, auxhist n = 1 + n, input = 26, auxinput n = 26 + n; bit = number - 1
     const int idx = (st == "h" ? 0 : 25) + std::atoi(t[2].c_str());
@@ -316,12 +312,12 @@ bool WrfSchema::apply_iofields(const std::string& path) {
       if (look.empty()) continue;
       for (SchemaVar& v : vars_) {
         if (v.array4d) continue;
-        std::string dn = lower(v.dataname);
+        std::string dn = to_lower(v.dataname);
         if (v.ntl > 0 && dn.size() > 2) dn = dn.substr(0, dn.size() - 2);
         if (dn == look) apply(v.s1, v.s2);
       }
       for (SchemaMember& m : members_)
-        if (lower(m.dname) == look) apply(m.s1, m.s2);
+        if (to_lower(m.dname) == look) apply(m.s1, m.s2);
     }
   }
   return true;

@@ -1,4 +1,5 @@
 #include "io_netcdf/wrfout_writer.hpp"
+#include "core/strings.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -13,12 +14,6 @@
 namespace cppwrf::io_netcdf {
 
 namespace {
-
-std::string to_upper(std::string_view s) {
-  std::string r(s);
-  for (char& c : r) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-  return r;
-}
 
 const VarView* find_var(const std::vector<VarView>& vars, std::string_view name) {
   // 1. Exact case-sensitive match
