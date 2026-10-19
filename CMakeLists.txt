@@ -49,6 +49,9 @@ file(GLOB CPPWRF_SOURCES CONFIGURE_DEPENDS
 # Column physics used by the dycore (P1/P2 suite: sfclayrev + Noah + YSU + KF and its driver glue)
 list(APPEND CPPWRF_SOURCES
   ${CMAKE_SOURCE_DIR}/src/phys/driver/suite.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/driver/surface_driver.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/driver/pbl_driver.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/driver/cumulus_driver.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/driver/phy_prep.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/driver/tendency_coupling.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/driver/landuse_tables.cpp
@@ -76,6 +79,9 @@ list(APPEND CPPWRF_SOURCES
 set_source_files_properties(
   ${CMAKE_SOURCE_DIR}/src/phys/mp_thompson/thompson.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/driver/suite.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/driver/surface_driver.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/driver/pbl_driver.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/driver/cumulus_driver.cpp
   PROPERTIES COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>")
 
 add_library(cppwrf_core STATIC ${CPPWRF_SOURCES})
