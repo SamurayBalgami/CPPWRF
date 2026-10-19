@@ -11,10 +11,11 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 | Dynamics | RK3 split-explicit, hybrid_opt 0/2, hypsometric_opt 1/2, map factors, Coriolis and curvature, terrain, specified (spec_zone 1, relax_zone 4), open and periodic lateral boundaries, w_damping, damp_opt 2 and 3 (damp_opt 1: kernel tests), h_adv_order 5/6, v_adv_order 3/4, positive-definite moisture and scalar advection |
 | Diffusion | diff_opt 1 with km_opt 1 (constant K) and 4 (2-D Smagorinsky); diff_opt 2 with km_opt 2 (1.5-order TKE, advected TKE); 6th-order diffusion |
 | Microphysics | Kessler (1), WSM6 (6, with effective radii), Thompson (8) |
-| Cumulus | Kain-Fritsch (1), Grell-Freitas-Li (3, deep and shallow), New Tiedtke (16) |
-| PBL, surface layer, land surface | YSU (1), MYJ (2), revised MM5 surface layer (1), Eta surface layer (2), Noah LSM (2, including glacial and sea-ice points), Noah-MP v5.1.2 (4, default options) |
+| Cumulus | Kain-Fritsch (1), Grell-Freitas-Li (3, deep and shallow), Tiedtke (6), New Tiedtke (16) |
+| PBL, surface layer, land surface | YSU (1), MYJ (2), revised MM5 surface layer (1), Eta surface layer (2), Noah LSM (2, including glacial and sea-ice points), Noah-MP v5.1.2 (4, default options), fractional sea ice (fractional_seaice = 1), gravity wave drag (gwd_opt = 1, GWDO) |
 | Radiation | RRTMG LW and SW (4), CAM ozone and greenhouse gases, cal_cldfra1, McICA |
 | Nesting | static one-way and two-way nests (interp_fcn_sint, bdy_interp1, copy_fcn feedback, sm121/smdsm smoothers, blend_terrain, adjust_tempqv) |
+| Namelist | physics_suite CONUS and tropical (the -1 options), in tools/wrf2cppwrf.py and in the WRF I/O schema |
 | I/O | reads wrfinput_d0N / wrfbdy_d01; writes WRF v4.8.0 wrfout_d0N and wrfrst_d0N files (WRF I/O schema, iofields_filename) and its own restart files; native binary output; cppwrf_real (real.exe) |
 | Ideal cases | WRF's ideal.exe for em_hill2d_x, em_quarter_ss, em_squall2d_x/y, em_grav2d_x; CPPWRF's own analytic tests (rest state, warm bubble, Straka, inertia-gravity wave, 2-D squall line) |
 
@@ -73,18 +74,26 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | V1 | tropics (Bay of Bengal), Mercator, 15 km, P4 physics | 6 h |
 | V2 | Arctic (Svalbard), polar stereographic, 15 km, P4 physics (sea ice, glacier land ice) | 6 h |
 | V3 | Alps, Lambert, 3 km, Thompson + MYJ + Eta + Noah-MP + RRTMG (radt 5), no cumulus | 2 h |
+| T6 | P2 with Tiedtke (cu_physics 6) | 3 h |
+| G2 | P2 with gravity wave drag (gwd_opt 1; ELVMAX = HGT + 3 VAR, WPS 4.6 writes none) | 3 h |
+| F1 / F2 | V2 with fractional sea ice (real.exe with fractional_seaice 1), sfclayrev + YSU / Eta + MYJ | 3 h |
+| D0 / D0V | WRF's default em_real namelist (physics_suite CONUS, fractional sea ice, gwd_opt 1, diff_opt 2 / km_opt 4, w_damping 0) on the P2 / V2 domains, configuration from tools/wrf2cppwrf.py | 6 h |
 
-V1-V3 are compared in every wrfout variable over the whole run; they start from the global GFS of
-2026-10-12 00 UTC through WPS, so the domains, projections and surface types differ from the P cases.
+V1-V3, T6, G2, F1, F2, D0 and D0V are compared in every wrfout variable over the whole run; V1-V3 start from the
+global GFS of 2026-10-12 00 UTC through WPS, so the domains, projections and surface types differ from the P
+cases. The Thompson references (P6, mp8, V3, D0, D0V) come from WRF built with -r8 -double-8: with -r8 alone
+gfortran makes Thompson's DOUBLE PRECISION variables 16-byte.
 
 Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8, P9, T1).
 
-Output files: the `wrfout_d0N` files of P1-P9, NMP1, mp8, V1-V3, R1, T1, N1 and N2 (both domains) and the
-`wrfrst_d0N` files of P1, P3, P4, P6, P7, P8, P9, NMP1, mp8 and N2 are identical to WRF v4.8.0's. This covers
+Output files: the `wrfout_d0N` files of P1-P9, NMP1, mp8, V1-V3, T6, G2, F1, F2, D0, D0V, R1, T1, N1 and N2 (both
+domains) and the `wrfrst_d0N` files of P1, P3, P4, P6, P7, P8, P9, NMP1, mp8, N2, T6, G2, F1, F2, D0 and D0V are
+identical to WRF v4.8.0's. This covers
 every variable, value, dimension, attribute and global attribute
 (`tests/verify/run_wrf_files_test.sh`). Runs of these cases resumed from WRF's
-`wrfrst` files, give the same files as WRF's resumed runs. The one exception is RQCBLTEN / RQIBLTEN in runs without
-qc / qi: WRF leaves them uninitialised. `cppwrf_real` output is identical to real.exe for 41 cases
+`wrfrst` files, give the same files as WRF's resumed runs. The exceptions are values WRF leaves uninitialised:
+RQCBLTEN / RQIBLTEN in runs without qc / qi, and QZ0 / USTM at fractional sea-ice points with the revised MM5
+surface layer (restart fields). `cppwrf_real` output is identical to real.exe for 41 cases
 ([REAL.md](REAL.md)).
 
 CUDA (relative L2 at 1 h unless noted):
@@ -97,6 +106,7 @@ CUDA (relative L2 at 1 h unless noted):
 | P7 | FP64 | 4.7e-7 | 1.1e-5 | 6.0e-8 | 1.2e-5 |
 | P2 | FP64 | 5.2e-5 | 1.8e-3 | 9.4e-7 | 4.0e-5 |
 | P4 | FP64 | 2.2e-4 | 3.6e-3 | 2.7e-6 | 2.1e-4 |
+| P6 (Thompson) | FP64 | 7.6e-5 | 2.0e-3 | 5.0e-6 | 2.0e-5 |
 | N2 | FP64 | 4.8e-13 (d01), 2.3e-13 (d02) | | 9.8e-16 | |
 | R0 (dynamics) | FP32 vs WRF FP32 | 1.6e-4 | 4.9e-3 | 1.0e-6 | 2.0e-5 |
 | P1 | FP32 vs WRF FP32 | 1.9e-4 | 3.9e-3 | 7.5e-7 | 4.9e-5 |

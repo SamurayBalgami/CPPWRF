@@ -14,9 +14,13 @@ for c in "$@"; do
   done
   ln -s "$src/wrfrst_d01_2026-10-12_00:01:00" .
   [ -f "$src/wrfrst_d02_2026-10-12_00:01:00" ] && ln -s "$src/wrfrst_d02_2026-10-12_00:01:00" .
-  rm=$(sed -nE 's/^ *run_minutes *= *([0-9]+).*/\1/p' "$src/namelist.input")  # the same end time
+  # the same end time: one minute less of run_seconds when set, else of run_minutes
+  rs=$(sed -nE 's/^ *run_seconds *= *([0-9]+).*/\1/p' "$src/namelist.input")
+  rm=$(sed -nE 's/^ *run_minutes *= *([0-9]+).*/\1/p' "$src/namelist.input")
+  if [ "${rs:-0}" -gt 0 ]; then run_sed="s/^( *run_seconds *= *)[0-9]+/\\1$((rs - 60))/"
+  else run_sed="s/^( *run_minutes *= *)[0-9]+/\\1$((rm - 1))/"; fi
   sed -E -e 's/^( *restart *= *)\.false\./\1.true./' -e 's/^( *start_minute *= *)[0-9]+/\101/' \
-         -e "s/^( *run_minutes *= *)[0-9]+/\\1$((rm - 1))/" -e 's/^( *restart_interval *= *)[0-9]+/\11000/' \
+         -e "$run_sed" -e 's/^( *restart_interval *= *)[0-9]+/\11000/' \
          "$src/namelist.input" > namelist.input
   grep -q start_minute namelist.input || sed -i 's/^\( *start_hour *=.*\)$/\1\n start_minute = 01, 01, 01,/' namelist.input
   # MALLOC_PERTURB_=128: see make_restart_refs.sh (GFL reads an uninitialised buffer)

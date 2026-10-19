@@ -8,7 +8,8 @@
 # ${CPPWRF_WRF_RUNS}/rst_<C>_r8 (tests/verify/make_restart_refs.sh: restart every minute) and
 # ${CPPWRF_WRF_RUNS}/rsm_<C>_r8 (make_resumed_refs.sh: WRF resumed from rst_<C>_r8 at minute 1; CPPWRF
 # resumes from the same wrfrst file).
-# RQCBLTEN and RQIBLTEN are not compared: without qc/qi WRF leaves them uninitialised.
+# RQCBLTEN and RQIBLTEN are not compared: without qc/qi WRF leaves them uninitialised. Neither are QZ0 and
+# USTM of f1 (fractional sea ice with sfclayrev): WRF averages them with uninitialised open-water locals.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -42,6 +43,12 @@ nmp1|configs/real_nmp1_r8.ini|$R/run_NMP1_r8/steps|$R/rst_NMP1_r8|
 v1|configs/real_v1_r8.ini|$R/run_V1_r8/steps|-|--set run.run_time=180
 v2|configs/real_v2_r8.ini|$R/run_V2_r8/steps|-|--set run.run_time=180
 v3|configs/real_v3_r8.ini|$R/run_V3_r8/steps|-|--set run.run_time=54
+t6|configs/real_t6_r8.ini|$R/run_T6_r8/steps|$R/rst_T6_r8|
+g2|configs/real_g2_r8.ini|$R/run_G2_r8/steps|$R/rst_G2_r8|
+f1|configs/real_f1_r8.ini|$R/run_F1_r8/steps|$R/rst_F1_r8|
+f2|configs/real_f2_r8.ini|$R/run_F2_r8/steps|$R/rst_F2_r8|
+d0|configs/real_d0_r8.ini|$R/run_D0_r8/steps|$R/rst_D0_r8|
+d0v|configs/real_d0v_r8.ini|$R/run_D0V_r8/steps|$R/rst_D0V_r8|
 "
 want=" $* "
 fail=0 n=0
@@ -74,7 +81,8 @@ while IFS='|' read -r name cfg ref rst extra; do
       b=$(basename "$f"); dom=${b:7:3}
       ours=$WORK/$name/$b; [ -f "$ours" ] || ours=$WORK/$name/$dom/$b
       if [ ! -f "$ours" ]; then echo "FAIL $name: $b not written"; ok=0; continue; fi
-      $CMP "$ours" "$f" > "$WORK/$name/cmp.log" 2>&1 || { ok=0; echo "FAIL $name $b"; head -20 "$WORK/$name/cmp.log"; }
+      cmp=$CMP; [ "$name" = f1 ] && cmp="$CMP,QZ0,USTM"
+      $cmp "$ours" "$f" > "$WORK/$name/cmp.log" 2>&1 || { ok=0; echo "FAIL $name $b"; head -20 "$WORK/$name/cmp.log"; }
       n=$((n + 1))
     done
   done
@@ -89,7 +97,8 @@ while IFS='|' read -r name cfg ref rst extra; do
     else
       for f in "$rsm"/wrfout_d0*; do
         b=$(basename "$f"); ours=$rdir/$b; [ -f "$ours" ] || ours=$rdir/${b:7:3}/$b
-        $CMP "$ours" "$f" > "$rdir/cmp.log" 2>&1 || { ok=0; echo "FAIL $name resumed $b"; head -20 "$rdir/cmp.log"; }
+        cmp=$CMP; [ "$name" = f1 ] && cmp="$CMP,QZ0,USTM"
+        $cmp "$ours" "$f" > "$rdir/cmp.log" 2>&1 || { ok=0; echo "FAIL $name resumed $b"; head -20 "$rdir/cmp.log"; }
         n=$((n + 1))
       done
     fi

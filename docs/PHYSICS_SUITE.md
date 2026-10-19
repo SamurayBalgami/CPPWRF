@@ -91,6 +91,8 @@ of solve_em: they are recomputed each step (scratch members in C++).
 | module_surface_driver.F:1980-1997 PSFC, u/v_phytmp | surface_driver.cpp (`KSfcPrep`) |
 | module_surface_driver.F:2116 `SFCLAYREV` (module_sf_sfclayrev.F:16) | surface_driver.cpp -> src/phys/sf_sfclayrev |
 | module_surface_driver.F:2133 `ch = chs` | surface_driver.cpp |
+| module_surface_driver.F:2159 `SFCLAYREV_SEAICE_WRAPPER`, :2248 `MYJSFC_SEAICE_WRAPPER`, :7258 `get_local_ice_tsk` | surface_driver.cpp (`KSfclayrevSeaPre`/`Blend`, `KMyjsfcSeaPre`/`Blend`, `local_ice_tsk`) |
+| module_surface_driver.F:2694-2727, 3023-3076 fractional sea ice around the LSM | surface_driver.cpp (`KSeaiceLsmPre`, `KSeaiceLsmPost`) |
 | module_sf_noahdrv.F:747-1100 lsm before SFLX | surface_driver.cpp (`KLsmPre`) |
 | module_sf_noahdrv.F:1105 `SFLX` | surface_driver.cpp -> src/phys/lsm_noah/noah.hpp (`NoahKernel`) |
 | module_sf_noahdrv.F:1140-1170 ICE == -1, `SFLX_GLACIAL` | surface_driver.cpp (`KLsmGlacial`), src/phys/driver/noah_ice.hpp |
@@ -112,7 +114,7 @@ tables are built once and uploaded to the device (`d_sfclay_tables_`). Kernels a
 copyable structs (`column_for`), no host pointers, literals as `real(...)`; the FP32 build
 compiles (`-DCPPWRF_DOUBLE=OFF`).
 
-**Not ported** (the constructor rejects these options): fractional_seaice = 1,
+**Not ported** (the constructor rejects these options):
 seaice_thickness_opt / seaice_snowdepth_opt = 1 (need ICEDEPTH/SNOWSI), urban physics, the obs-nudging diagnostics URATX/VRATX/TRATX (not used by the physics).
 phy_init is not part of the suite: the caller fills the initial surface state (what wrfinput
 and `phy_init` provide; the test takes it from WRF after `start_domain`).
@@ -371,6 +373,10 @@ QRAIN, QICE, QNICE and QNRAIN. CUDA FP32 against single-precision WRF, 1 h: U 2.
 The column replay (CPPWRF's Thompson inputs through WRF's compiled mp_gt_driver) agrees bit for bit.
 wrf_suite: real_p6_r8_fp64_cpu, real_p6_r8_fp64_cpu_1h, real_p6_fp32_1h.
 
+On the GPU the column arrays of the kernel live in thread-local memory, which the device reserves for every
+resident thread; `ThompsonKernel<Real, NL>` sizes them to the next of 48, 64 and 128 levels above nz (FP64 with
+128 levels needed about 160 KB per thread and did not fit a 6 GB card).
+
 ## 12. New Tiedtke cumulus (P7, cu_physics = 16)
 
 Port: `src/phys/cu_ntiedtke/ntiedtke.hpp` = WRF 4.8.0 `phys/physics_mmm/cu_ntiedtke.F90` for one column
@@ -530,6 +536,10 @@ r8d8 objects (WSM6: mp_wsm6; Thompson: mp_gt_driver; Noah: SFLX with SOIL_VEG_GE
   written back; WDFCND `(500*SICEMAX)**3.` is a libm pow.
 - Kain-Fritsch: no clipping of PPTFLX, PRATEC, RAINCV at 0 (WRF has none; a -2e-18 RAINCV reaches the
   LSM).
+- Noah RS (Noah-CMAQ canopy resistance, a restart field): lsm writes `rc2 = RC` after SFLX_GLACIAL too, which
+  does not set RC, so a land-ice point holds the RC of the previous SFLX point in the loop order (j, then i).
+- Thompson: RAINNC and SNOWNC accumulate left to right (`RAINNC + pptrain + pptsnow + pptgraul + pptice`), not
+  RAINNC + RAINNCV.
 - Thompson: libmvec pairs in the rain lambda loops (reversed k) and the SLP-paired
   `(lamr+fv_r)**(-cre)`; table bins `xDx(2)` folded at compile time (correctly rounded) and `xDx(3:)`
   through vector exp; `10.**nn` and `Dc**nu_c` with integer exponents are libgcc's __powidf2
@@ -541,3 +551,64 @@ r8d8 objects (WSM6: mp_wsm6; Thompson: mp_gt_driver; Noah: SFLX with SOIL_VEG_GE
   the recomputed p; lbc_fcx_gcx `0.1/dt*(n)/(relax_zone-1)` left to right; couple_or_uncouple_em reads
   mu's halo at ids/jds; no halo refresh after feedback (update_after_feedback_em is a DM exchange only);
   history of a nest is written in med_before_solve_io, i.e. after the parent's next med_nest_force.
+
+## 16. Tiedtke cumulus (cu_physics = 6, physics_suite CONUS)
+
+Port: `src/phys/cu_tiedtke/tiedtke.hpp` = WRF 4.8.0 `phys/module_cu_tiedtke.F` (tiecnv, cumastr and the
+routines it calls, statement for statement; the saturation look-up `tlucua`/`tlucub`/`tlucuc` and
+`cuadjtq`). Driver glue: `cumulus_driver.cpp` (`KTiedtke`): zi from dz8w, the half levels zl with
+`zl(kte) = 2 zi(kte) - zl(kte-1)`, omega = -0.5 g rho (w(k)+w(k+1)), sigma = znu, delt = dt stepcu, and the
+outputs RTHCUTEN, RQVCUTEN, RQCCUTEN, RQICUTEN, RUCUTEN, RVCUTEN, RAINCV and PRATEC.
+
+**Row coupling.** WRF calls tiecnv for one row of columns (i = its..ite), and cumastr returns for the
+whole row when no column of it has convection after the first ascent (`IF (icum == 0) RETURN`). The
+C++ runs per column, so this is two passes: `cumastr_first` gives each column's icum (`td_icum`),
+`KRowAny` ORs it over the row (`td_row_icum`), and the second pass runs the scheme with the row's flag.
+The only libmvec loop is the zqsat loop of tiecnv (`vm::exp`, lane i of the row).
+
+Forcing and coupling are those of New Tiedtke (section 12): RQVFTEN from the qv advection, `phy_cu_ten`
+for all six tendencies, RQVFTEN carried in the restart.
+
+**Acceptance** (T6 = P2 with cu_physics = 6, `configs/real_t6_r8.ini`, WRF reference run_T6_r8 and its steps/):
+CPU FP64 bit-identical to WRF in every wrfout variable, 10 steps compared step by step and 3 h with active
+convection; the wrfout and wrfrst files and the runs resumed from WRF's restart files are identical
+(run_wrf_files_test.sh).
+
+## 17. Gravity wave drag (gwd_opt = 1, GWDO)
+
+Port: `src/phys/bl_gwdo/gwdo.hpp` = WRF 4.8.0 `phys/physics_mmm/bl_gwdo.F90` (`bl_gwdo_run`) for one
+column; driver glue at the end of `pbl_driver.cpp` (`KGwdo`, module_pbl_driver.F's gwdo call: u_phy,
+v_phy, t_phy, qv, p_hyd, p_hyd_w, pi_phy, z, sina/cosa, dx, dtbl). Inputs from wrfinput: CON (oc12d),
+OA1-OA4, OL1-OL4 and ELVMAX (missing fields stop the run). The tendencies go to RUBLTEN / RVBLTEN; the
+diagnostics DTAUX3D, DTAUY3D, DUSFCG and DVSFCG are written to wrfout.
+
+WPS 4.6 does not write ELVMAX, so with its met_em files WRF 4.8's GWDO gives no drag (omax <= 50 m
+everywhere). The acceptance case therefore takes the wrfinput of P2 + gwd_opt 1 with ELVMAX = HGT + 3 VAR
+(6962 columns above 50 m; G2, `configs/real_g2_r8.ini`, run_G2_r8 and its steps/): CPU FP64 bit-identical in every wrfout
+variable over 3 h, with drag in 5342 columns.
+
+## 18. Fractional sea ice (fractional_seaice = 1)
+
+The surface layer runs twice for the sea-ice points (XICE_THRESHOLD = 0.02 <= XICE <= 1): once for the
+ice portion and once for open water (XLAND 2, MAVAIL 1, TSK = SST), and the two are averaged by XICE.
+
+- `get_local_ice_tsk` (`local_ice_tsk`): SST under ice raised to 271.4 K (and capped while itimestep <= 3),
+  the ice temperature `(TSK - (1-XICE) SST)/XICE` bounded below by 221.4 K (253.15 / 263.15 K for small
+  ice fractions), or `min(TSK, 273.15)` with tice2tsk_if2cold. SST is therefore state (restart, wrfout).
+- `sfclayrev_seaice_wrapper`: the ice call with the local ice TSK (the driver's TSK stays blended), the
+  open-water call from the `*_HOLD` copies, then BR, GZ1OZ0, MOL, PSIH, PSIM, FH, FM, RMOL, UST, WSPD, ZOL,
+  CD, CDA, CK, CKA, Q2, T2, TH2, U10, V10, USTM averaged; REGIME is the ice call's when XICE >= 0.5.
+  WRF's USTM_SEA is an uninitialised local array, so WRF's USTM at these points is undefined (it is only a
+  restart field with a PBL scheme); CPPWRF uses 0 there.
+- `myjsfc_seaice_wrapper`: TSK itself becomes the local ice TSK and QSFC the ice portion's before the ice
+  call; the open-water call has Z0 = ZNT = 1e-4 m and QSFC from SST; CT, the 2 m / 10 m / shelter values,
+  THZ0, UZ0, VZ0, UST, PBLH, RMOL, AKHS, AKMS are averaged and U10E/V10E = U10/V10.
+- Around the LSM (Noah and Noah-MP): ALBEDO and EMISS go to the ice portion's values before the LSM
+  (open water 0.08 and 0.98) and back after seaice_noah; then FLHC, FLQC, CPM, CQS2, CHS2, CHS, QSFC, QGH,
+  QZ0, HFX, QFX, LH and TSK are averaged with the open-water values (TSK_SAVE = the ice TSK).
+- landuse_init: ALBEDO and EMISS of the sea-ice points are the XICE averages with 0.08 and 0.98.
+
+**Acceptance** (V2 domain, Svalbard, real.exe run again with fractional_seaice = 1: 2548 fractional ice
+points): CPU FP64 bit-identical to WRF in every wrfout variable over 3 h with sfclayrev + YSU (F1,
+`configs/real_f1_r8.ini`) and with MYJ + Eta (F2), and in the wrfrst files except QZ0 and USTM of F1, which
+WRF averages with never-set open-water values (QZ0_SEA is set only by the MYJ wrapper).
