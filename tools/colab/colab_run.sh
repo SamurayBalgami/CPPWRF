@@ -52,11 +52,35 @@ cleanup() {
   else colab stop -s "$S" || echo "[colab_run] WARNING: could not stop $S, check: colab sessions"; fi
 }
 trap cleanup EXIT
-for f in "$OUT/src.tar.gz:/content/src.tar.gz" "$DATA:/content/data.tar" "$OUT/commit.txt:/content/commit.txt" \
-         "$REPO/tools/colab/remote_job.py:/content/remote_job.py"; do
-  echo "[colab_run] upload ${f%%:*}"
-  colab upload -s "$S" "${f%%:*}" "${f#*:}"
-done
+# uploads go through Jupyter's contents API, which refuses large files (and `colab upload` exits 0 anyway):
+# send 32 MiB parts, join them on the VM and check the md5
+upload() {
+  local src=$1 dst=$2 parts n=0 sum got
+  parts=$(mktemp -d "$SCRATCH/colab/parts.XXXXXX")
+  split -b 32M -d -a 4 "$src" "$parts/p"
+  for p in "$parts"/p*; do
+    if ! colab upload -s "$S" "$p" "$dst.part.$(basename "$p")" 2>&1 | grep -q "Uploaded"; then
+      echo "[colab_run] upload of part $(basename "$p") of $src failed"; rm -rf "$parts"; return 1
+    fi
+    n=$((n + 1))
+  done
+  rm -rf "$parts"
+  sum=$(md5sum "$src" | cut -c1-32)
+  got=$(printf '%s\n' "import glob, hashlib, os" \
+    "parts = sorted(glob.glob('$dst.part.p*'))" \
+    "o = open('$dst', 'wb')" \
+    "for p in parts: o.write(open(p, 'rb').read()); os.remove(p)" \
+    "o.close()" \
+    "print('MD5', hashlib.md5(open('$dst', 'rb').read()).hexdigest())" | colab exec -s "$S" --timeout 600)
+  case $got in
+    *"MD5 $sum"*) echo "[colab_run] uploaded $src ($n parts)" ;;
+    *) echo "[colab_run] $dst: md5 mismatch"; return 1 ;;
+  esac
+}
+upload "$OUT/src.tar.gz" /content/src.tar.gz
+upload "$DATA" /content/data.tar
+upload "$OUT/commit.txt" /content/commit.txt
+upload "$REPO/tools/colab/remote_job.py" /content/remote_job.py
 colab exec -s "$S" --timeout 120 --env CPPWRF_JOB_CASES="$CASES" --env CPPWRF_JOB_BENCH="$BENCH" <<'EOF'
 import os, subprocess
 env = dict(os.environ)
