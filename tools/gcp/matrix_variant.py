@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""matrix_variant.py RUNS WORK WRFEXE CPPWRF NAME BASE SECTION.key=value ...
+
+One WRF-vs-CPPWRF comparison of a namelist variant: the WRF run RUNS/BASE (inputs and namelist.input) runs
+3 minutes with history every minute and the given namelist changes (key replaced or added in &SECTION), in
+WORK/NAME; CPPWRF runs the configuration tools/wrf2cppwrf.py makes from that namelist; every common variable
+of every common frame (by Times) of each domain's wrfout is compared at tolerance 0. Prints one line:
+NAME d0N frames N differing: none | {VAR: 'time npoints/maxdiff', ...}  (or NAME WRF-FAILED / CPPWRF-FAILED)."""
+import glob, os, re, subprocess, sys
+import netCDF4
+import numpy as np
+
+runs, work, wrfexe, cppwrf, name, base = sys.argv[1:7]
+sets = [a.split("=", 1) for a in sys.argv[7:]]
+repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+R = os.path.join(work, name)
+subprocess.run(["rm", "-rf", R])
+os.makedirs(R)
+src = os.path.join(runs, base)
+for f in os.listdir(src):
+    if not re.match(r"(wrfout.*|wrfrst.*|rsl\..*|namelist\.(output|input)|.*\.log|.*\.exe)$", f):
+        os.symlink(os.path.realpath(os.path.join(src, f)), os.path.join(R, f))
+os.symlink(wrfexe, os.path.join(R, "wrf.exe"))
+nl = open(os.path.join(src, "namelist.input")).read()
+
+
+def setkey(nl, sec, key, val):
+    m = re.search(rf"&{sec}\b(.*?)\n/", nl, re.S | re.I)
+    if not m:
+        raise SystemExit(f"{name} BAD-NAMELIST no &{sec}")
+    body = m.group(1)
+    pat = re.compile(rf"^\s*{key}\s*=.*$", re.M | re.I)
+    line = f" {key} = {val},"
+    body = pat.sub(line, body) if pat.search(body) else body + "\n" + line
+    return nl[:m.start(1)] + body + nl[m.end(1):]
+
+
+for k, v in [("run_days", "0"), ("run_hours", "0"), ("run_minutes", "0"), ("run_seconds", "180"),
+             ("history_interval_s", "60, 60, 60"), ("frames_per_outfile", "10000"), ("restart", ".false.")]:
+    nl = setkey(nl, "time_control", k, v)
+nl = re.sub(r"^\s*history_interval\s*=.*\n", "", nl, flags=re.M)
+for sk, v in sets:
+    sec, k = sk.split(".", 1)
+    nl = setkey(nl, sec, k, v)
+open(os.path.join(R, "namelist.input"), "w").write(nl)
+env = dict(os.environ, OMP_NUM_THREADS="1")
+subprocess.run("./wrf.exe > wrf.log 2>&1", shell=True, cwd=R, env=env)
+if "SUCCESS COMPLETE WRF" not in open(os.path.join(R, "rsl.out.0000") if os.path.exists(os.path.join(R, "rsl.out.0000")) else os.path.join(R, "wrf.log"), errors="replace").read():
+    print(f"{name} WRF-FAILED {open(os.path.join(R, 'wrf.log'), errors='replace').read().strip().splitlines()[-1:]}")
+    sys.exit(0)
+out = os.path.join(R, "cppwrf")
+t = subprocess.run([sys.executable, os.path.join(repo, "tools/wrf2cppwrf.py"), os.path.join(R, "namelist.input"),
+                    "--real-dir", R, "--format", "wrfout", "-o", os.path.join(R, "case.ini")], capture_output=True, text=True)
+if t.returncode != 0:
+    print(f"{name} TRANSLATE-FAILED {t.stderr.strip().splitlines()[-1:]}")
+    sys.exit(0)
+c = subprocess.run([cppwrf, os.path.join(R, "case.ini"), "--set", f"output.dir={out}"], capture_output=True, text=True,
+                   cwd=repo, env=env)
+if c.returncode != 0:
+    print(f"{name} CPPWRF-FAILED {(c.stderr or c.stdout).strip().splitlines()[-1:]}")
+    sys.exit(0)
+
+
+def load(files):
+    m = {}
+    for f in sorted(files):
+        ds = netCDF4.Dataset(f)
+        for t in range(len(ds["Times"])):
+            m[ds["Times"][t].tobytes().decode()] = (ds, t)
+    return m
+
+
+for d in ("d01", "d02", "d03"):
+    w = glob.glob(os.path.join(R, f"wrfout_{d}_*"))
+    if not w:
+        continue
+    cdir = os.path.join(out, d) if os.path.isdir(os.path.join(out, d)) else out
+    A, B = load(glob.glob(os.path.join(cdir, f"wrfout_{d}_*"))), load(w)
+    bad = {}
+    for k in sorted(set(A) & set(B)):
+        (a, ta), (b, tb) = A[k], B[k]
+        for v in b.variables:
+            if v not in a.variables or b[v].dtype.kind == "S" or "Time" not in b[v].dimensions:
+                continue
+            x = np.atleast_1d(np.asarray(a[v][ta], float))
+            y = np.atleast_1d(np.asarray(b[v][tb], float))
+            if x.shape != y.shape:
+                bad.setdefault(v, "shape")
+                continue
+            dd = np.abs(x - y)
+            dd[np.isnan(x) & np.isnan(y)] = 0
+            if dd.max() > 0 and v not in bad:
+                bad[v] = f"{k} {(dd > 0).sum()}/{dd.max():.2e}"
+    print(f"{name} {d} frames {len(set(A) & set(B))} differing: {bad if bad else 'none'}", flush=True)
+subprocess.run(["rm", "-rf", out] + glob.glob(os.path.join(R, "wrfout_*")))
