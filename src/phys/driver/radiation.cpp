@@ -46,8 +46,8 @@ struct KStageAll {
   int nx, nz, ncol, n3;
   View3<const real> f3w[2];
   double* d3w[2];
-  View3<const real> f3[10];
-  double* d3[10];
+  View3<const real> f3[11];
+  double* d3[11];
   View2<const real> f2[6];
   double* d2[6];
   CPPWRF_HD void operator()(int i, int j, int k) const {
@@ -167,6 +167,7 @@ struct RadiationDriver::Impl {
   }
   double *xlat_d = nullptr, *xlong_d = nullptr, *oz_d = nullptr, *pin_d = nullptr;
   // staged inputs, outputs (column fastest)
+  double *dz = nullptr;
   double *p8w, *t8w, *p3d, *pi3d, *t3d, *qv, *qc, *qi, *qs, *rec, *rei, *res, *cf, *o3;
   double *tsk, *emiss, *xland, *xice, *snow, *albedo, *cz;
   double *rlw, *rsw, *glw, *gsw, *olr, *lwd, *swd, *rlwc, *rswc, *lwcf, *swcf;
@@ -227,7 +228,7 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
     q.oz_d = up(q.ozmixm);
     q.pin_d = up(q.ozone.pin);
     q.p8w = q.dev(n3w); q.t8w = q.dev(n3w);
-    for (double** a : {&q.p3d, &q.pi3d, &q.t3d, &q.qv, &q.qc, &q.qi, &q.qs, &q.rec, &q.rei, &q.res, &q.cf, &q.o3,
+    for (double** a : {&q.p3d, &q.pi3d, &q.t3d, &q.qv, &q.qc, &q.qi, &q.qs, &q.rec, &q.rei, &q.res, &q.cf, &q.o3, &q.dz,
                        &q.rlw, &q.rsw, &q.rlwc, &q.rswc})
       *a = q.dev(n3);
     for (double** a : {&q.tsk, &q.emiss, &q.xland, &q.xice, &q.snow, &q.albedo, &q.cz, &q.glw, &q.gsw, &q.olr, &q.lwcf, &q.swcf}) *a = q.dev(nc);
@@ -287,6 +288,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
     add3(in.p_hyd, q.p3d); add3(in.pi_phy, q.pi3d); add3(in.t_phy, q.t3d); add3(in.qv, q.qv);
     add3(in.qc, q.qc); add3(in.qi, q.qi); add3(in.qs, q.qs);
     add3(in.re_cloud, q.rec); add3(in.re_ice, q.rei); add3(in.re_snow, q.res);
+    add3(in.dz8w, q.dz);
     ks.f2[0] = in.tsk->cview();    ks.d2[0] = q.tsk;
     ks.f2[1] = in.emiss->cview();  ks.d2[1] = q.emiss;
     ks.f2[2] = in.xland->cview();  ks.d2[2] = q.xland;
@@ -314,7 +316,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
     LwBatchInput li{};
     li.ncol = ncol; li.tsk = q.tsk; li.emiss = q.emiss; li.xland = q.xland; li.xice = q.xice; li.snow = q.snow;
     li.p8w = q.p8w; li.t8w = q.t8w; li.p3d = q.p3d; li.pi3d = q.pi3d; li.t3d = q.t3d; li.qv = q.qv; li.cldfra = q.cf;
-    li.o3 = q.o3;
+    li.o3 = q.o3; li.xlat = q.xlat_d; li.dz8w = q.dz;
     li.qc = in.qc ? q.qc : nullptr; li.qi = in.qi ? q.qi : nullptr; li.qs = in.qs ? q.qs : nullptr;
     li.re_cloud = in.re_cloud ? q.rec : nullptr; li.re_ice = in.re_ice ? q.rei : nullptr;
     li.re_snow = in.re_snow ? q.res : nullptr;
@@ -322,7 +324,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
     SwBatchInput si{};
     si.ncol = ncol; si.coszen = q.cz; si.albedo = q.albedo; si.xland = q.xland; si.xice = q.xice; si.snow = q.snow;
     si.p8w = q.p8w; si.t8w = q.t8w; si.p3d = q.p3d; si.pi3d = q.pi3d; si.t3d = q.t3d; si.qv = q.qv; si.cldfra = q.cf;
-    si.o3 = q.o3; si.qc = li.qc; si.qi = li.qi; si.qs = li.qs;
+    si.o3 = q.o3; si.xlat = q.xlat_d; si.dz8w = q.dz; si.qc = li.qc; si.qi = li.qi; si.qs = li.qs;
     si.re_cloud = li.re_cloud; si.re_ice = li.re_ice; si.re_snow = li.re_snow;
     q.swb->run(rrtmg_sw_call_config(nz, sc), si, SwBatchOutput{q.rsw, q.gsw, q.swd, q.rswc, q.swcf});
     KRadOut ko{nx, ncol, q.rlw, q.rsw, q.glw, q.gsw, q.cz, q.olr, q.lwd, q.swd, q.rlwc, q.rswc, q.lwcf, q.swcf,

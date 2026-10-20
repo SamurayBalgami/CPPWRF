@@ -11,7 +11,8 @@ namespace cppwrf::phys {
 
 struct LwBatchInput {
   int ncol;
-  const double *tsk, *emiss, *xland, *xice, *snow;              // [ncol]
+  const double *tsk, *emiss, *xland, *xice, *snow, *xlat;       // [ncol]
+  const double *dz8w;                                           // [nz*ncol] m
   const double *p8w, *t8w;                                      // [(nz+1)*ncol] Pa, K
   const double *p3d, *pi3d, *t3d, *qv, *cldfra, *o3;            // [nz*ncol]
   const double *qc, *qi, *qs;                                   // nullptr: species absent (F_Q* false)

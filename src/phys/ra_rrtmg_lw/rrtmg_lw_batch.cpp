@@ -43,7 +43,8 @@ struct KLwPrep {
     const int col = ch.col0 + ci, nc = in.ncol;
     LwColumnIn x{};
     x.tsk = in.tsk[col]; x.emiss = in.emiss[col]; x.xland = in.xland[col]; x.xice = in.xice[col];
-    x.snow = in.snow[col]; x.xlat = 0.0;
+    x.snow = in.snow[col]; x.xlat = in.xlat[col];
+    x.dz8w = col_view(in.dz8w, col, nc);
     x.p8w = col_view(in.p8w, col, nc); x.t8w = col_view(in.t8w, col, nc); x.p3d = col_view(in.p3d, col, nc);
     x.pi3d = col_view(in.pi3d, col, nc); x.t3d = col_view(in.t3d, col, nc); x.qv3d = col_view(in.qv, col, nc);
     x.cldfra3d = col_view(in.cldfra, col, nc); x.o33d = col_view(in.o3, col, nc);

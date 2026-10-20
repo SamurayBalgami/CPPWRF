@@ -53,4 +53,48 @@ struct KissRng {
   }
 };
 
+constexpr int kMcicaMaxLayers = 128;  // RRTMG_LW/SW_MAX_LAYERS (layer heights of the exponential overlaps)
+
+// generate_stochastic_clouds (module_ra_rrtmg_lw.F / _sw.F, irng = 0): the cloud overlap (icld = cldovrlp)
+// 1 random, 2 maximum-random, 3 maximum, 4 exponential, 5 exponential-random. cldf(l): layer cloud fraction
+// (0 below cldmin), alpha(l): exponential overlap parameter of layer l (icld 4/5, l >= 1), out(isub, l, cloudy).
+// The random numbers are drawn subcolumn by subcolumn, level by level (icld 3: one per subcolumn; icld 4/5:
+// CDF then CDF2 at every level), and each level's CDF transform reads the previous level's final CDF.
+template <class CF, class AL, class OUT>
+CPPWRF_HD void mcica_subcolumns(int icld, KissRng& rng, int nsub, int nlay, CF cldf, AL alpha, OUT out) {
+  for (int isub = 0; isub < nsub; ++isub) {
+    double cdf_prev = 0.0, cldf_prev = 0.0;
+    const double r3 = icld == 3 ? rng.step<double>() : 0.0;
+    for (int l = 0; l < nlay; ++l) {
+      const double cf = cldf(l);
+      double cdf;
+      if (icld == 3) {
+        cdf = r3;
+      } else if (icld == 4 || icld == 5) {
+        cdf = rng.step<double>();
+        const double cdf2 = rng.step<double>();
+        if (l > 0 && cdf2 < alpha(l)) cdf = cdf_prev;
+      } else {
+        cdf = rng.step<double>();
+        if (icld == 2 && l > 0) {
+          if (cdf_prev > 1.0 - cldf_prev) cdf = cdf_prev;
+          else cdf = cdf * (1.0 - cldf_prev);
+        }
+      }
+      out(isub, l, cdf >= 1.0 - cf);
+      cdf_prev = cdf;
+      cldf_prev = cf;
+    }
+  }
+}
+
+// decorr_len of mcica_subcol_lw / _sw: idcor 1 from latitude (degrees) and day of year, else 2500 m
+CPPWRF_HD inline double mcica_decorr_len(int idcor, int juldat, double lat) {
+  if (idcor != 1) return 2500.0;
+  constexpr double am1 = 1.4315, am2 = 2.1219, am4 = -25.584, amr = 7.0;
+  const double am3 = juldat > 181 ? -4.0 * amr / 365.0 * double(juldat - 272) : 4.0 * amr / 365.0 * double(juldat - 91);
+  const double d = lat - am3;
+  return (am1 + am2 * exp(-(d * d) / (am4 * am4))) * 1.e3;
+}
+
 }  // namespace cppwrf::phys

@@ -24,6 +24,8 @@ RrtmgSwCallConfig rrtmg_sw_call_config(int num_levels, const RrtmgSwConfig& conf
   c.g = config.g;
   c.heatfac = config.heatfac;
   c.adjflux = 1.0 * (config.solcon / rrsw_scon);  // inatm_sw: adjflux = adjes * (scon / rrsw_scon)
+  c.icld = config.cldovrlp; c.idcor = config.idcor;
+  c.juldat = int(config.julian);  // juldat = julian (INTEGER)
   return c;
 }
 
@@ -127,7 +129,7 @@ void rrtmg_sw_column(
     const double* re_ice,
     const double* re_snow
 ) {
-  (void)xlat; (void)dz8w; (void)rho3d; (void)qr3d; (void)qg3d;
+  (void)rho3d; (void)qr3d; (void)qg3d;
   const RrtmgSwCallConfig c = rrtmg_sw_call_config(num_levels, config);
   SwLayout lay(c.nlayers);
   ensure_workspace(ws, lay);
@@ -135,7 +137,8 @@ void rrtmg_sw_column(
   std::vector<double> zero;
   if (!cldfra3d || config.icloud == 0) zero.assign(num_levels, 0.0);
   SwColumnIn in{};
-  in.coszen = coszen; in.albedo = albedo; in.xland = xland; in.xice = xice; in.snow = snow;
+  in.coszen = coszen; in.albedo = albedo; in.xland = xland; in.xice = xice; in.snow = snow; in.xlat = xlat;
+  in.dz8w = sd_const(dz8w);
   in.p8w = sd_const(p8w); in.t8w = sd_const(t8w); in.p3d = sd_const(p3d); in.pi3d = sd_const(pi3d); in.t3d = sd_const(t3d); in.qv3d = sd_const(qv3d);
   in.qc3d = sd_const(qc3d); in.qi3d = sd_const(qi3d); in.qs3d = sd_const(qs3d);
   in.cldfra3d = sd_const(zero.empty() ? cldfra3d : zero.data());

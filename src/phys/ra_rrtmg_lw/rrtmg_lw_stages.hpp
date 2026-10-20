@@ -41,6 +41,7 @@ struct RrtmgLwCallConfig {
   double g;                    // gravmks of the water paths
   double heatfac;              // rrtmg_lw heatfac = grav*86400/(cp*100)
   int has_reqc, has_reqi, has_reqs;
+  int icld, idcor, juldat;     // McICA overlap (cldovrlp), decorrelation length type, day of year
 };
 
 // Per-column views. nl = layer dimension (>= nlayers), all level arrays nl + 1.
@@ -344,8 +345,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumn
 
   for (int nb = 0; nb < 16; ++nb) v.semiss[nb] = in.emiss;
 
-  // McICA subcolumns (mcica_subcol_lw / generate_stochastic_clouds, KISS, changeSeed = 150,
-  // maximum-random overlap): the random numbers are drawn subcolumn by subcolumn, level by level
+  // McICA subcolumns (mcica_subcol_lw / generate_stochastic_clouds, KISS, changeSeed = 150, overlap icld)
   bool any_cloud = false;
   for (int ilev = 0; ilev < nlayers; ++ilev) {
     if (CSD(v.cldfrac)[ilev] >= 1.0e-20) any_cloud = true;
@@ -361,29 +361,33 @@ CPPWRF_FORCEINLINE void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumn
     rng.init_from_pressure(CSD(v.pavel)[0] * 100.0, CSD(v.pavel)[1] * 100.0, CSD(v.pavel)[2] * 100.0,
                            CSD(v.pavel)[3] * 100.0);
     rng.permute(150);
-    for (int isubcol = 0; isubcol < 140; ++isubcol) {
-      double cdf_prev = 0.0, cldf_prev = 0.0;
-      for (int ilev = 0; ilev < nlayers; ++ilev) {
-        const double cf = CSD(v.cldfrac)[ilev];
-        const double cldf = (cf < 1.0e-20) ? 0.0 : cf;
-        double cdf = rng.step<double>();
-        if (ilev > 0) {
-          if (cdf_prev > 1.0 - cldf_prev) cdf = cdf_prev;
-          else cdf = cdf * (1.0 - cldf_prev);
-        }
-        // cloudy subcolumns get the layer's in-cloud paths (cldprmc reads them through cldfmc)
-        if (cldf > 0.0) {
-          const bool cld = cdf >= 1.0 - cldf;
-          v.cldfmc[isubcol][ilev] = cld ? 1.0 : 0.0;
-          if (cld) {
-            if (ilev < 64) icld_mask_lo |= (std::uint64_t(1) << ilev);
-            else icld_mask_hi |= (std::uint64_t(1) << (ilev - 64));
-          }
-        }
-        cdf_prev = cdf;
-        cldf_prev = cldf;
+    // layer mid-point heights from dz8w (exponential overlaps): above the model top the top layer's dz
+    double hgt[kMcicaMaxLayers];
+    double zo_inv = 0.0;
+    if (c.icld == 4 || c.icld == 5) {
+      double dzsum = 0.0, dz = 0.0;
+      for (int k = 0; k < nlayers; ++k) {
+        if (k < num_levels) dz = in.dz8w[k];
+        hgt[k] = dzsum + 0.5 * dz;
+        dzsum = dzsum + dz;
       }
+      zo_inv = 1.0 / mcica_decorr_len(c.idcor, c.juldat, in.xlat);
     }
+    auto cldf_of = [&](int l) { const double cf = CSD(v.cldfrac)[l]; return cf < 1.0e-20 ? 0.0 : cf; };
+    auto alpha_of = [&](int l) {
+      if (c.icld == 5 && cldf_of(l) == 0.0 && cldf_of(l - 1) > 0.0) return 0.0;
+      return exp(-(hgt[l] - hgt[l - 1]) * zo_inv);
+    };
+    // cloudy subcolumns get the layer's in-cloud paths (cldprmc reads them through cldfmc)
+    mcica_subcolumns(c.icld, rng, 140, nlayers, cldf_of, alpha_of, [&](int isubcol, int ilev, bool cld) {
+      if (cldf_of(ilev) > 0.0) {
+        v.cldfmc[isubcol][ilev] = cld ? 1.0 : 0.0;
+        if (cld) {
+          if (ilev < 64) icld_mask_lo |= (std::uint64_t(1) << ilev);
+          else icld_mask_hi |= (std::uint64_t(1) << (ilev - 64));
+        }
+      }
+    });
   }
   for (int ilev = 0; ilev < nlayers; ++ilev) {
     const int bit = (ilev < 64) ? int((icld_mask_lo >> ilev) & 1u) : int((icld_mask_hi >> (ilev - 64)) & 1u);

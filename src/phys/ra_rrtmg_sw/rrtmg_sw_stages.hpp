@@ -34,6 +34,7 @@ struct RrtmgSwCallConfig {
   double g;                 // gravmks of the water paths
   double heatfac;           // rrsw_con heatfac
   double adjflux;           // adjes*scon/rrsw_scon (dyofyr = 0, adjes = 1)
+  int icld, idcor, juldat;  // McICA overlap (cldovrlp), decorrelation length type, day of year
 };
 
 struct SwViews {
@@ -96,8 +97,8 @@ struct SwLayout {
 };
 
 struct SwColumnIn {
-  double coszen, albedo, xland, xice, snow;
-  SD p8w, t8w, p3d, pi3d, t3d, qv3d, qc3d, qi3d, qs3d, cldfra3d, o33d;
+  double coszen, albedo, xland, xice, snow, xlat;
+  SD p8w, t8w, p3d, pi3d, dz8w, t3d, qv3d, qc3d, qi3d, qs3d, cldfra3d, o33d;
   SD re_cloud, re_ice, re_snow;  // p == nullptr: has_req* = 0
   bool has_qc, has_qi, has_qs;
 };
@@ -298,7 +299,7 @@ CPPWRF_HD inline void rrtmg_sw_prep(const RrtmgSwCallConfig& c, const SwColumnIn
   v.iscal[3] = iceflgsw;
   v.iscal[4] = liqflgsw;
 
-  // 5. McICA subcolumns (KISS, permuteseed = 1, maximum-random overlap), subcolumn by subcolumn
+  // 5. McICA subcolumns (KISS, permuteseed = 1, overlap icld), subcolumn by subcolumn
   bool any_cloud = false;
   for (int ilev = 0; ilev < nlayers; ++ilev) {
     if (CSD(v.cldfrac)[ilev] >= 1.0e-20) any_cloud = true;
@@ -314,23 +315,27 @@ CPPWRF_HD inline void rrtmg_sw_prep(const RrtmgSwCallConfig& c, const SwColumnIn
     rng.init_from_pressure(CSD(v.pavel)[0] * 100.0, CSD(v.pavel)[1] * 100.0, CSD(v.pavel)[2] * 100.0,
                            CSD(v.pavel)[3] * 100.0);
     rng.permute(1);
-    for (int isubcol = 0; isubcol < 112; ++isubcol) {
-      double cdf_prev = 0.0, cldf_prev = 0.0;
-      for (int ilev = 0; ilev < nlayers; ++ilev) {
-        const double cf = CSD(v.cldfrac)[ilev];
-        const double cldf = (cf < 1.0e-20) ? 0.0 : cf;
-        double cdf = rng.step<double>();
-        if (ilev > 0) {
-          if (cdf_prev > 1.0 - cldf_prev) cdf = cdf_prev;
-          else cdf = cdf * (1.0 - cldf_prev);
-        }
-        const bool cld = cdf >= 1.0 - cldf;
-        v.cldfmc[ilev][isubcol] = cld ? 1.0 : 0.0;
-        if (cld) any_cld_subcol = 1;
-        cdf_prev = cdf;
-        cldf_prev = cldf;
+    // layer mid-point heights from dz8w (exponential overlaps): the buffer layer above the top gets the top dz
+    double hgt[kMcicaMaxLayers];
+    double zo_inv = 0.0;
+    if (c.icld == 4 || c.icld == 5) {
+      double dzsum = 0.0, dz = 0.0;
+      for (int k = 0; k < nlayers; ++k) {
+        if (k < c.num_levels) dz = in.dz8w[k];
+        hgt[k] = dzsum + 0.5 * dz;
+        dzsum = dzsum + dz;
       }
+      zo_inv = 1.0 / mcica_decorr_len(c.idcor, c.juldat, in.xlat);
     }
+    auto cldf_of = [&](int l) { const double cf = CSD(v.cldfrac)[l]; return cf < 1.0e-20 ? 0.0 : cf; };
+    auto alpha_of = [&](int l) {
+      if (c.icld == 5 && cldf_of(l) == 0.0 && cldf_of(l - 1) > 0.0) return 0.0;
+      return exp(-(hgt[l] - hgt[l - 1]) * zo_inv);
+    };
+    mcica_subcolumns(c.icld, rng, 112, nlayers, cldf_of, alpha_of, [&](int isubcol, int ilev, bool cld) {
+      v.cldfmc[ilev][isubcol] = cld ? 1.0 : 0.0;
+      if (cld) any_cld_subcol = 1;
+    });
   }
   v.iscal[5] = any_cld_subcol;
 
