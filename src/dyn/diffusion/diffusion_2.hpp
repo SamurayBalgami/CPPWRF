@@ -588,9 +588,11 @@ inline void horizontal_diffusion_2(const DiffusionParams& p,
   // 1. Calculate stress tensor components
   // cal_titau_11_22_33 with is_ext = 1 (titau11 for u) and js_ext = 1 (titau22 for v), WRF
   // module_diffusion_em.F:3238, 3452, 5387-5406: one column / row more on the start side and up to
-  // ite / jte (the halo of a periodic or flat side; unused next to a specified / open side)
-  parallel_for(Range3D{-1, nx + 1, 0, ny, 0, nz}, KCalTitauDiag{rho, xkmh, defor11, titau11});
-  parallel_for(Range3D{0, nx, -1, ny + 1, 0, nz}, KCalTitauDiag{rho, xkmh, defor22, titau22});
+  // ite / jte: the halo of a periodic side, unused next to a specified / open side (and not computed there:
+  // a field without halo may be passed)
+  const int ex = p.periodic_x ? 1 : 0, ey = p.periodic_y ? 1 : 0;
+  parallel_for(Range3D{-ex, nx + ex, 0, ny, 0, nz}, KCalTitauDiag{rho, xkmh, defor11, titau11});
+  parallel_for(Range3D{0, nx, -ey, ny + ey, 0, nz}, KCalTitauDiag{rho, xkmh, defor22, titau22});
   parallel_for(Range3D{0, nx, 0, ny, 0, nz}, KCalTitauDiag{rho, xkmh, defor33, titau33});
 
   int i12_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
