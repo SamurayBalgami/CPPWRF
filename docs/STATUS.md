@@ -72,6 +72,7 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | R1D6 | R1 with diff_opt 1 / km_opt 4, damp_opt 1, diff_6th_opt 2 | 10 min |
 | N1 | one-way nest (both domains) | 3 parent steps |
 | N2 | two-way nest (both domains) | 1 h |
+| N2S1 / N2S2 | N2 with smooth_option 1 / 2 (smoothing of the fed-back fields, ht included) | 1 h |
 | V1 | tropics (Bay of Bengal), Mercator, 15 km, P4 physics | 6 h |
 | V2 | Arctic (Svalbard), polar stereographic, 15 km, P4 physics (sea ice, glacier land ice) | 6 h |
 | V3 | Alps, Lambert, 3 km, Thompson + MYJ + Eta + Noah-MP + RRTMG (radt 5), no cumulus | 2 h |
@@ -130,7 +131,8 @@ build is the reference for bit identity.
 Ideal cases (CPPWRF's port of WRF's ideal.exe, `run.case = em_*`), CPU FP64 against WRF v4.8.0
 real*8: em_hill2d_x (1 h), em_grav2d_x (Straka, 900 s), em_quarter_ss (Kessler supercell, 2 h, periodic and with open boundaries in x and y) and
 em_squall2d_x / em_squall2d_y (open lateral boundaries in x / y, TKE diffusion, 10 min) are bit-identical
-in every field. On the GPU em_squall2d_x is at roundoff in FP64 (U 1.3e-13 relative L2 at 10 min) and
+in every field; em_quarter_ss also with diff_opt 2 / km_opt 2 (and isfflx 0). Their wrfout files equal WRF's in every
+variable and attribute (tests/verify/ideal_files_test.py). On the GPU em_squall2d_x is at roundoff in FP64 (U 1.3e-13 relative L2 at 10 min) and
 within WRF's own single/double difference in FP32 (U 6.8e-5; WRF real*8 vs. WRF FP32: 8.2e-5).
 
 ## Performance
@@ -147,6 +149,7 @@ RRTMG runs on the GPU as a batched pipeline (docs/PHYSICS_SUITE.md section 10).
 
 ## Not yet implemented
 
-sf_sfclay_physics 91, km_opt 3 and 5, Noah-MP options other than the defaults (and crop/irrigation/
+Nests with column physics: one-way nests (P4 physics, 3 min) are bit-identical; two-way nests with physics differ from WRF at
+roundoff from the first step (being traced). sf_sfclay_physics 91, km_opt 3 and 5, Noah-MP options other than the defaults (and crop/irrigation/
 tile drainage), moving nests, and parallel (MPI) runs. Options without a port are rejected by
 `tools/wrf2cppwrf.py` and by the model with an error.
