@@ -84,6 +84,7 @@ struct KGwdo {
 
 // module_pbl_driver.F pbl_driver for YSUSCHEME / MYJPBLSCHEME
 void PhysicsSuite::pbl_driver(const dyn::State& s, const dyn::BaseState& b) {
+  if (o_.bl_pbl_physics == 0) return;  // module_pbl_driver: no PBL scheme (surface fluxes reach diff_opt 2)
   const Range2D cols = g_.columns();
   const bool run_param = itimestep == 1 || o_.bldt == 0 || stepbl == 1 || itimestep % stepbl == 0;
   if (!run_param) return;
