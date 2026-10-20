@@ -42,6 +42,8 @@ class DomainRunner {
   // of step n+1 (after the parent's next med_nest_force, whose couple/uncouple round trip changes
   // the state by an ulp); the last frame after the last step (med_last_solve_io).
   void set_defer_output(bool d) { defer_output_ = d; }
+  // two-way nests: the WRF-field view (WrfHistory) carries the physics feedback, also when no wrfout is written
+  void set_need_history(bool h) { need_history_ = h; }
 
   // Prints completion statistics
   void finish();
@@ -57,6 +59,7 @@ class DomainRunner {
 
  private:
   bool defer_output_ = false;
+  bool need_history_ = false;
   bool output_prepared_ = false;
   long pending_ = -1;  // deferred diag/snap step
   bool do_diag(long n);

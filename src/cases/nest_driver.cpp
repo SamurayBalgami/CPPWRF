@@ -600,6 +600,12 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
 
 #ifdef CPPWRF_HAVE_NETCDF
   // med_nest_initial's feedback (feedback != 0) of the history fields the model does not carry
+  for (int i = 0; i < max_dom; ++i)
+    for (int c_idx : doms[i].children)
+      if (doms[c_idx].spec.feedback != 0) {
+        doms[i].runner->set_need_history(true);
+        doms[c_idx].runner->set_need_history(true);
+      }
   for (int i = 0; i < max_dom; ++i) doms[i].runner->prepare_output();
   for (int i = 0; i < max_dom; ++i)
     for (int c_idx : doms[i].children)
@@ -610,6 +616,15 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
         doms[i].runner->history()->feedback_from(*doms[c_idx].runner->history(), cs.i_parent_start,
                                                  cs.j_parent_start, cs.parent_grid_ratio);
       }
+  // start_domain(parent) after the feedback (start_em, topo_wind = 0): CTOPO = CTOPO2 = 1 again (the fed-back
+  // average of ones is 1 + 1 ulp)
+  for (int i = 0; i < max_dom; ++i)
+    if (doms[i].model.suite)
+      for (int c_idx : doms[i].children)
+        if (doms[c_idx].spec.feedback != 0) {
+          doms[i].model.suite->ctopo.fill_host([](int, int, int) { return 1.0; });
+          doms[i].model.suite->ctopo2.fill_host([](int, int, int) { return 1.0; });
+        }
 #endif
 
   // 3. Root domain (d01) writes its t=0 initial frame before its first step

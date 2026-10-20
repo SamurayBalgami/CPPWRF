@@ -453,7 +453,7 @@ void DomainRunner::prepare_output() {
   }
 
 #ifdef CPPWRF_HAVE_NETCDF
-  if (write_wrfout_ && !wrfout_)
+  if ((write_wrfout_ || need_history_) && !wrfout_)
   {
     std::vector<const Field2*> f2 = extra_2d_;
     std::vector<const Field3*> f3;  // first match wins: the microphysics' grid%rho is the last writer
