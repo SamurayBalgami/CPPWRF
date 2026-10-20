@@ -81,6 +81,8 @@ struct KRadColumn {
   bool has_diag;
   View2<real> hrang_out;
   View3<real> o3_out;
+  bool o3_field;  // a nest: o3rad as the parent forced it (WRF computes it on domain 1 only)
+  View3<const real> o3_in;
   CPPWRF_HD void operator()(int i, int j) const {
     const int col = i + nx * j;
     double hr = 0;
@@ -90,7 +92,9 @@ struct KRadColumn {
     coszen_out(i, j) = real(c);
     constexpr int per = CamOzone::nmon * CamOzone::levsiz;
     auto v = [&](const double* a) { return SD{const_cast<double*>(a) + col, ncol}; };
-    if (o3input == 2)
+    if (o3input == 2 && o3_field)
+      for (int k = 0; k < nz; ++k) o3[std::size_t(k) * ncol + col] = double(o3_in(i, j, k));
+    else if (o3input == 2)
       ozone_column(&ozmixm[std::size_t(col) * per + nm * CamOzone::levsiz],
                    &ozmixm[std::size_t(col) * per + np * CamOzone::levsiz], f1, f2, pin, nz, v(p), v(o3));
     if (clouds) {
@@ -100,7 +104,7 @@ struct KRadColumn {
     }
     if (has_cldfra)
       for (int k = 0; k < nz; ++k) cldfra_out(i, j, k) = real(cf[std::size_t(k) * ncol + col]);
-    if (has_diag && o3input == 2)
+    if (has_diag && o3input == 2 && !o3_field)
       for (int k = 0; k < nz; ++k) o3_out(i, j, k) = real(o3[std::size_t(k) * ncol + col]);
   }
 };
@@ -199,11 +203,15 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
   if (o.ghg_input == 1) p_->gases.load(o.table_dir + "/CAMtr_volume_mixing_ratio");
   p_->xlat = xlat;
   p_->xlong = xlong;
-  if (o.o3input == 2) {  // oznini (phy_init, domain 1)
-    p_->ozone.load(o.table_dir);
+  if (o.o3input == 2) {  // oznini (phy_init, domain 1 only)
     const std::size_t nc = std::size_t(g.nx) * g.ny, per = std::size_t(CamOzone::nmon) * CamOzone::levsiz;
-    p_->ozmixm.resize(nc * per);
-    for (std::size_t c = 0; c < nc; ++c) p_->ozone.column(xlat[c], &p_->ozmixm[c * per]);
+    p_->ozmixm.assign(nc * per, 0.0);
+    if (o.oznini) {
+      p_->ozone.load(o.table_dir);
+      for (std::size_t c = 0; c < nc; ++c) p_->ozone.column(xlat[c], &p_->ozmixm[c * per]);
+    } else {
+      p_->ozone.pin.assign(CamOzone::levsiz, 0.0);
+    }
   }
 #if defined(CPPWRF_USE_CUDA)
   {
@@ -300,6 +308,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
     kc.coszen_out = out.coszen->view();
     kc.has_diag = out.hrang != nullptr;
     if (kc.has_diag) { kc.hrang_out = out.hrang->view(); kc.o3_out = out.o3rad->view(); }
+    kc.o3_field = !o_.oznini && out.o3rad;
+    if (kc.o3_field) kc.o3_in = out.o3rad->cview();
     column_for(Range2D{0, nx, 0, ny}, kc);
     LwBatchInput li{};
     li.ncol = ncol; li.tsk = q.tsk; li.emiss = q.emiss; li.xland = q.xland; li.xice = q.xice; li.snow = q.snow;
@@ -356,6 +366,9 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
       coszen(out.coszen->layout().total, real(0)), cldfra(out.cldfra ? out.cldfra->layout().total : 0, real(0));
   const Layout &Lo3 = out.rthraten->layout(), &Lo2 = out.glw->layout();
   const bool diag = out.rthratlw != nullptr;
+  const bool o3nest = !o_.oznini && out.o3rad;  // a nest: o3rad as the parent forced it
+  std::vector<real> o3h;
+  if (o3nest) out.o3rad->download(o3h);
   std::vector<real> rthlw(diag ? Lo3.total : 0, real(0)), rthsw(diag ? Lo3.total : 0, real(0)),
       rthlwc(diag ? Lo3.total : 0, real(0)), rthswc(diag ? Lo3.total : 0, real(0)),
       o3r(diag ? Lo3.total : 0, real(0));
@@ -399,7 +412,9 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
       const double cz = calc_coszen(julian, xtime + o_.radt * 0.5, o_.gmt, declin, p_->xlong[c], p_->xlat[c], i, nx, &hr);
       if (diag) hrang2[o2i] = real(hr);
       coszen[o2i] = real(cz);
-      if (o_.o3input == 2)
+      if (o_.o3input == 2 && o3nest)
+        for (int k = 0; k < nz; ++k) co3[k] = double(o3h[Lo3.index(i, j, k)]);
+      else if (o_.o3input == 2)
         ozone_column(&p_->ozmixm[c * per + nm * CamOzone::levsiz], &p_->ozmixm[c * per + np * CamOzone::levsiz], f1, f2,
                      p_->ozone.pin.data(), nz, sd(cp.data()), sd(co3.data()));
       double g_lw, olr, lwcf, a1, a2, a3, a4, a5, a6, a7, a8;
@@ -459,7 +474,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
     for (int q = 0; q < 8; ++q) copy_to_dev(out.sw[q]->data() - Lo2.offset, swd[std::size_t(q)].data(), Lo2.total * sizeof(real));
     copy_to_dev(out.rthratlwc->data() - Lo3.offset, rthlwc.data(), rthlwc.size() * sizeof(real));
     copy_to_dev(out.rthratswc->data() - Lo3.offset, rthswc.data(), rthswc.size() * sizeof(real));
-    if (o_.o3input == 2) copy_to_dev(out.o3rad->data() - Lo3.offset, o3r.data(), o3r.size() * sizeof(real));
+    if (o_.o3input == 2 && !o3nest) copy_to_dev(out.o3rad->data() - Lo3.offset, o3r.data(), o3r.size() * sizeof(real));
     copy_to_dev(out.lwcf->data() - Lo2.offset, lwcf2.data(), Lo2.total * sizeof(real));
     copy_to_dev(out.swcf->data() - Lo2.offset, swcf2.data(), Lo2.total * sizeof(real));
     copy_to_dev(out.hrang->data() - Lo2.offset, hrang2.data(), Lo2.total * sizeof(real));

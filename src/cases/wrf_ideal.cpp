@@ -466,6 +466,23 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
     b.z_base[k - 1] = 0.5 * (phb[c3(1, k, 1)] + phb[c3(1, k + 1, 1)] + ph_1[c3(1, k, 1)] + ph_1[c3(1, k + 1, 1)]) / g;
   }
 
+  // ---- ideal_surfacet (module_initialize_ideal.F:1593): TSK from the lowest three levels (dry theta, p of the
+  // initialisation), TMN = TSK - 0.5; and the dry theta of the first history frame
+  {
+    std::vector<double> tsk(std::size_t(im) * jm), tmn(tsk.size()), th(std::size_t(nz) * jm * im);
+    for (int j = 1; j <= jm; ++j)
+      for (int i = 1; i <= im; ++i) {
+        double temp[3];
+        for (int k = 1; k <= 3; ++k)
+          temp[k - 1] = (t_1[c3(i, k, j)] + t0) * std::pow((p[c3(i, k, j)] + pb[c3(i, k, j)]) / p1000mb, rcp);
+        const std::size_t ij = std::size_t(j - 1) * im + (i - 1);
+        tsk[ij] = cf1 * temp[0] + cf2 * temp[1] + cf3 * temp[2];
+        tmn[ij] = tsk[ij] - 0.5;
+        for (int k = 1; k <= nz; ++k) th[(std::size_t(k - 1) * jm + (j - 1)) * im + (i - 1)] = t_1[c3(i, k, j)];
+      }
+    m.init_out["TSK"] = tsk; m.init_out["TMN"] = tmn; m.init_out["T"] = th;
+  }
+
   // ---- use_theta_m = 1: t_2 = theta_m - t0 (t_1 keeps theta until start_em sets t_1 = t_2)
   std::vector<double> t_2(t_1);
   if (cfg.get_int("dyn.use_theta_m", 1) == 1)
@@ -583,6 +600,7 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
   dyn::set_w_surface(s.w_1, s.u_1, s.v_1, b, gr, true);
   dyn::set_w_surface(s.w_2, s.u_2, s.v_2, b, gr, true);
   m.ap.hypsometric_opt = hypsometric_opt;
+  m.start_date = "0001-01-01_00:00:00";  // the start date of WRF's test/em_* namelists (run.start_date overrides)
 }
 
 }  // namespace cppwrf::cases

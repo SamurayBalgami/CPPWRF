@@ -59,6 +59,25 @@ bool copy_field(const F& f, const std::vector<std::size_t>& dims, std::vector<do
   return true;
 }
 
+// NetCDF order (k, j, i) -> field (i, j, k), the inverse of copy_field
+template <class F>
+bool store_field(F& f, const std::vector<std::size_t>& dims, const std::vector<double>& in) {
+  const Layout& L = f.layout();
+  std::size_t nk = 1, nj = 1, ni = 1;
+  if (dims.size() == 3) { nk = dims[0]; nj = dims[1]; ni = dims[2]; }
+  else if (dims.size() == 2) { nj = dims[0]; ni = dims[1]; }
+  else return false;
+  const bool pad = dims.size() == 3 && L.nz > 1 && int(nk) == L.nz + 1;
+  if (int(ni) != L.nx || int(nj) != L.ny || (int(nk) != std::max(1, L.nz) && !pad)) return false;
+  std::vector<real> h;
+  f.download(h);
+  for (std::size_t k = 0; k < (pad ? nk - 1 : nk); ++k)
+    for (std::size_t j = 0; j < nj; ++j)
+      for (std::size_t i = 0; i < ni; ++i) h[L.index(int(i), int(j), int(k))] = real(in[(k * nj + j) * ni + i]);
+  copy_to_dev(f.data() - L.offset, h.data(), L.total * sizeof(real));
+  return true;
+}
+
 // base-state field (horizontally uniform storage broadcast), dims as copy_field
 template <class F>
 bool copy_base(const F& f, const std::vector<std::size_t>& dims, int nx, int ny, int nzl, std::vector<double>& out) {
@@ -117,7 +136,8 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
     }
   } c{*wc_, *nl_, schema_->defaults(), dom};
   const Grid& g = m_.g;
-  c.set("e_we", std::to_string(g.nx + 1)); c.set("e_sn", std::to_string(g.ny + 1));
+  if (real_dir.empty() && g.two_d()) jrep_ = 2;
+  c.set("e_we", std::to_string(g.nx + 1)); c.set("e_sn", std::to_string(g.ny * jrep_ + 1));
   c.set("e_vert", std::to_string(g.nz + 1)); c.set("dx", str(g.dx)); c.set("dy", str(g.dy));
   c.set("diff_opt", std::to_string(m_.diff_opt)); c.set("km_opt", std::to_string(m_.km_opt));
   c.set("hybrid_opt", std::to_string(m_.hybrid_opt));
@@ -227,6 +247,17 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
         phy_init_["LANDUSE_ISN"] = {double(li.isn)};
       }
       if (!m_.suite) phy_init_["UST"] = std::vector<double>(n2, double(real(0.0001)));
+    }
+  }
+  if (wrfinput_id_ < 0 && !m_.suite) {  // ideal: phy_init's landuse_init for MMINLU '    ', land (XLAND = 1)
+    const std::size_t n2 = std::size_t(g.nx) * g.ny;
+    auto c = [&](double v) { return std::vector<double>(n2, double(real(v))); };
+    phy_init_["XLAND"] = c(1.0); phy_init_["ALBBCK"] = c(0.2); phy_init_["ALBEDO"] = c(0.2);
+    phy_init_["EMBCK"] = c(0.85); phy_init_["EMISS"] = c(0.85); phy_init_["THC"] = c(0.04);
+    phy_init_["ZNT"] = c(0.1); phy_init_["Z0"] = c(0.1); phy_init_["MAVAIL"] = c(0.3); phy_init_["UST"] = c(0.0001);
+    for (const char* f : {"TSK", "TMN"}) {
+      auto it = m_.init_out.find(f);
+      if (it != m_.init_out.end()) phy_init_[f] = it->second;
     }
   }
   if (!m_.suite) {  // start_em: ctopo = ctopo2 = 1 (topo_wind = 0)
@@ -365,6 +396,23 @@ bool WrfHistory::from_wrfinput(const std::string& name, std::size_t n, std::vect
   return nc_get_vara_double(wrfinput_id_, id, st.data(), ct.data(), out.data()) == NC_NOERR;
 }
 
+bool WrfHistory::out_value(const wrf_io::OutVar& v, std::vector<double>& out) {
+  const std::string& vn = v.var ? v.var->varname : v.name;
+  const std::size_t nd = v.dimnames.size();
+  if (jrep_ == 1 || nd < 2 || v.dimnames[nd - 2].rfind("south_north", 0) != 0) return value(v.name, vn, v.dimlens, out);
+  std::vector<std::size_t> d = v.dimlens;
+  const std::size_t nj = d[nd - 2], ni = d[nd - 1];
+  d[nd - 2] = std::size_t(m_.g.ny);  // also for south_north_stag: an x-z model has one v row
+  std::vector<double> in;
+  if (!value(v.name, vn, d, in)) return false;
+  const std::size_t sj = d[nd - 2], outer = in.size() / (sj * ni);
+  out.resize(outer * nj * ni);
+  for (std::size_t o = 0; o < outer; ++o)
+    for (std::size_t j = 0; j < nj; ++j)
+      std::copy_n(in.begin() + std::ptrdiff_t((o * sj + j % sj) * ni), ni, out.begin() + std::ptrdiff_t((o * nj + j) * ni));
+  return true;
+}
+
 bool WrfHistory::value(const std::string& name, const std::string& varname, const std::vector<std::size_t>& dims,
                        std::vector<double>& out) {
   const dyn::State& s = *m_.st;
@@ -412,6 +460,10 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     auto it = t_snap_.find(step_);
     if (it != t_snap_.end() && it->second.size() == n) { out = it->second; return true; }
     if (step_ == 0 && from_wrfinput("T", n, out)) return true;  // initial: the input's th_phy_m_t0
+    if (step_ == 0 && wrfinput_id_ < 0) {  // ideal: the dry theta of the initialisation
+      auto t0 = m_.init_out.find("T");
+      if (t0 != m_.init_out.end() && t0->second.size() == n) { out = t0->second; return true; }
+    }
   }
   if (name == "T") {  // th_phy_m_t0: dry potential temperature - t0
     std::vector<real> ht, hq;
@@ -445,6 +497,25 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
       return true;
     }
   }
+  if (wrfinput_id_ < 0) {  // ideal runs: the vertical coordinate and constants of the model (real data: wrfinput)
+    using BS = dyn::BaseState;
+    static const std::map<std::string, Array1 BS::*> a1 = {
+        {"ZNU", &BS::znu}, {"ZNW", &BS::znw}, {"DNW", &BS::dnw}, {"DN", &BS::dn}, {"RDNW", &BS::rdnw}, {"RDN", &BS::rdn},
+        {"FNM", &BS::fnm}, {"FNP", &BS::fnp}, {"C1H", &BS::c1h}, {"C2H", &BS::c2h}, {"C3H", &BS::c3h}, {"C4H", &BS::c4h},
+        {"C1F", &BS::c1f}, {"C2F", &BS::c2f}, {"C3F", &BS::c3f}, {"C4F", &BS::c4f}};
+    if (auto it = a1.find(name); it != a1.end()) {
+      const Array1& v = b.*(it->second);
+      if (std::size_t(v.size()) < n) return false;
+      out.resize(n);
+      for (std::size_t k = 0; k < n; ++k) out[k] = v[int(k)];
+      return true;
+    }
+    static const std::map<std::string, double BS::*> a0 = {
+        {"P_TOP", &BS::p_top}, {"CF1", &BS::cf1}, {"CF2", &BS::cf2}, {"CF3", &BS::cf3}, {"CFN", &BS::cfn},
+        {"CFN1", &BS::cfn1}, {"RDX", &BS::rdx}, {"RDY", &BS::rdy}};
+    if (auto it = a0.find(name); it != a0.end() && n == 1) { out.assign(1, b.*(it->second)); return true; }
+    if (name == "THIS_IS_AN_IDEAL_RUN" && n == 1) { out.assign(1, 1.0); return true; }
+  }
   {  // base state (the model's: blend_terrain and nest feedback change it)
     const Grid& g = m_.g;
     const int nx = g.nx, ny = g.ny, nz = g.nz;
@@ -454,14 +525,21 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     if (name == "T_INIT") return copy_base(b.t_init, dims, nx, ny, nz, out);
     if (name == "MUB") return copy_base(b.mub, dims, nx, ny, 1, out);
     if (name == "HGT") return copy_base(b.ht, dims, nx, ny, 1, out);
-    if (b.mapped) {
+    if (b.mapped || wrfinput_id_ < 0) {  // ideal: m = 1, f = e = 0 (module_initialize_ideal ideal_landmap)
+      if (wrfinput_id_ < 0) {
+        if (name == "COSALPHA") return copy_base(b.cosa, dims, nx, ny, 1, out);
+        if (name == "SINALPHA") return copy_base(b.sina, dims, nx, ny, 1, out);
+        if (name == "F") return copy_base(b.f, dims, nx, ny, 1, out);
+        if (name == "E") return copy_base(b.e, dims, nx, ny, 1, out);
+      }
       if (name == "MAPFAC_MX" || (name == "MAPFAC_M" && same_m_)) return copy_base(b.msftx, dims, nx, ny, 1, out);
       if (name == "MAPFAC_MY") return copy_base(b.msfty, dims, nx, ny, 1, out);
       if (name == "MAPFAC_UX" || (name == "MAPFAC_U" && same_u_)) return copy_base(b.msfux, dims, nx + 1, ny, 1, out);
       if (name == "MAPFAC_UY") return copy_base(b.msfuy, dims, nx + 1, ny, 1, out);
-      if (name == "MAPFAC_VX" || (name == "MAPFAC_V" && same_v_)) return copy_base(b.msfvx, dims, nx, ny + 1, 1, out);
-      if (name == "MAPFAC_VY") return copy_base(b.msfvy, dims, nx, ny + 1, 1, out);
-      if (name == "MF_VX_INV") return copy_base(b.msfvx_inv, dims, nx, ny + 1, 1, out);
+      const int nyv = g.nys(Stagger::V);  // ny + 1 (ny for an x-z run)
+      if (name == "MAPFAC_VX" || (name == "MAPFAC_V" && same_v_)) return copy_base(b.msfvx, dims, nx, nyv, 1, out);
+      if (name == "MAPFAC_VY") return copy_base(b.msfvy, dims, nx, nyv, 1, out);
+      if (name == "MF_VX_INV") return copy_base(b.msfvx_inv, dims, nx, nyv, 1, out);
     }
   }
   if (name == "P_HYD" && step_ > 0) {
@@ -609,6 +687,92 @@ void feedback(const std::string& fn, std::vector<double>& c, int cnx, int cny, c
 
 }  // namespace
 
+void WrfHistory::feedback_physics(WrfHistory& child, int ipos, int jpos, int ratio) {
+  if (!m_.suite || !child.m_.suite) return;
+  const Grid& g = m_.g;
+  const Grid& cg = child.m_.g;
+  std::vector<wrf_io::OutVar> vars = schema_->history_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real)));
+  {
+    std::set<std::string> have;
+    for (const wrf_io::OutVar& v : vars) have.insert(v.name);
+    for (wrf_io::OutVar& v : schema_->restart_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real))))
+      if (!have.count(v.name)) vars.push_back(std::move(v));
+  }
+  const int spec_zone = std::max(1, wc_->integer("spec_zone"));
+  std::set<std::string> done;
+  for (const wrf_io::OutVar& v : vars) {
+    if (!v.var || v.var->nest_up.empty() || v.dimlens.size() < 2 || !done.insert(v.var->varname).second) continue;
+    const std::string fn = v.var->nest_up.substr(0, v.var->nest_up.find(':'));
+    if (fn == "mark_domain") continue;
+    const std::string vn = to_lower(v.var->varname);
+    // the suite's fields, the microphysics accumulations and h_diabatic (state of the dycore)
+    auto find2 = [&](const Model& m, const std::vector<const Field2*>& l) -> Field2* {
+      for (const Field2* f : l)
+        if (f->name() == vn) return const_cast<Field2*>(f);
+      if (m.rk && m.rk->physics()) {
+        dyn::PhysicsCoupling& pc = *m.rk->physics();
+        for (Field2* f : {&pc.rainnc, &pc.snownc, &pc.graupelnc})
+          if (f->name() == vn && f->layout().total > 0) return f;
+      }
+      return nullptr;
+    };
+    auto find3 = [&](const Model& m, const std::vector<const Field3*>& l) -> Field3* {
+      for (const Field3* f : l)
+        if (f->name() == vn) return const_cast<Field3*>(f);
+      if (vn == "h_diabatic" && m.st->n_moist > 0) return &m.st->h_diabatic;
+      return nullptr;
+    };
+    Field2* p2 = find2(m_, f2_);
+    Field3* p3 = p2 ? nullptr : find3(m_, f3_);
+    if (!p2 && !p3) {  // integer fields (copy_fcni / copy_fcnm): land-use and soil categories, Noah-MP's
+      auto ifield = [&](const Model& m) -> phys::driver::IntField2* {
+        phys::driver::PhysicsSuite& su = *m.suite;
+        if (v.name == "IVGTYP") return &su.ivgtyp;
+        if (v.name == "ISLTYP") return &su.isltyp;
+        if (su.options().sf_surface_physics == 4) {
+          if (v.name == "ISNOWXY") return &su.isnowxy;
+          if (v.name == "CROPCAT") return &su.cropcat;
+          if (v.name == "PGSXY") return &su.pgsxy;
+        }
+        return nullptr;
+      };
+      phys::driver::IntField2* pi = ifield(m_);
+      const phys::driver::IntField2* ci = ifield(child.m_);
+      if (!pi || !ci || v.dimlens.size() != 2) continue;
+      auto get = [](const phys::driver::IntField2& fi, int ni, int nj) {
+        std::vector<int> h;
+        fi.download(h);
+        std::vector<double> o(std::size_t(ni) * nj);
+        for (int j = 0; j < nj; ++j)
+          for (int i = 0; i < ni; ++i) o[std::size_t(j) * ni + i] = double(h[fi.layout().index(i, j, 0)]);
+        return o;
+      };
+      std::vector<double> c = get(*pi, g.nx, g.ny), f = get(*ci, cg.nx, cg.ny);
+      feedback(fn, c, g.nx, g.ny, f, cg.nx, cg.ny, 1, ipos, jpos, ratio, ratio, false, false, spec_zone, cg.nx + 1,
+               cg.ny + 1);
+      std::vector<int> h;
+      pi->download(h);
+      for (int j = 0; j < g.ny; ++j)
+        for (int i = 0; i < g.nx; ++i) h[pi->layout().index(i, j, 0)] = int(std::lround(c[std::size_t(j) * g.nx + i]));
+      pi->upload(h);
+      continue;
+    }
+    std::vector<double> c, f;
+    if (!(p2 ? copy_field(*p2, v.dimlens, c) : copy_field(*p3, v.dimlens, c))) continue;
+    const bool xs = v.stagger == "X", ys = v.stagger == "Y";
+    std::vector<std::size_t> cd = v.dimlens;
+    cd[cd.size() - 1] = std::size_t(cg.nx + (xs ? 1 : 0));
+    cd[cd.size() - 2] = std::size_t(cg.ny + (ys ? 1 : 0));
+    const Field2* c2 = p2 ? find2(child.m_, child.f2_) : nullptr;
+    const Field3* c3 = p3 ? find3(child.m_, child.f3_) : nullptr;
+    if (!(c2 ? copy_field(*c2, cd, f) : c3 && copy_field(*c3, cd, f))) continue;
+    const int nk = v.dimlens.size() == 3 ? int(v.dimlens[0]) : 1;
+    feedback(fn, c, int(v.dimlens.back()), int(v.dimlens[v.dimlens.size() - 2]), f, int(cd.back()),
+             int(cd[cd.size() - 2]), nk, ipos, jpos, ratio, ratio, xs, ys, spec_zone, cg.nx + 1, cg.ny + 1);
+    if (p2) store_field(*p2, v.dimlens, c); else store_field(*p3, v.dimlens, c);
+  }
+}
+
 void WrfHistory::feedback_from(WrfHistory& child, int ipos, int jpos, int ratio) {
   const Grid& g = m_.g;
   const Grid& cg = child.m_.g;
@@ -659,11 +823,11 @@ wrf_io::DomainAtts WrfHistory::domain_atts() {
   d.start_date = restart_sec_ > 0 ? wrf_io::add_seconds(start_date_, std::lround(restart_sec_)) : start_date_;
   d.gmt_date = start_date_;
   d.simulation_start_date = wc_->get("simulation_start_date").empty() ? start_date_ : start_date_;
-  d.ide = g.nx + 1; d.jde = g.ny + 1; d.kde = g.nz + 1;
+  d.ide = g.nx + 1; d.jde = g.ny * jrep_ + 1; d.kde = g.nz + 1;
   d.grid_id = wc_->domain();
   d.parent_id = wc_->integer("parent_id"); d.i_parent_start = wc_->integer("i_parent_start");
   d.j_parent_start = wc_->integer("j_parent_start"); d.parent_grid_ratio = wc_->integer("parent_grid_ratio");
-  if (d.grid_id == 1) { d.parent_id = 0; d.i_parent_start = 1; d.j_parent_start = 1; d.parent_grid_ratio = 1; }
+  if (d.grid_id == 1) { d.parent_id = 0; d.parent_grid_ratio = 1; }  // i/j_parent_start: the namelist value (WRF writes it)
   d.dt = g.dt;
   d.real_bytes = int(sizeof(real));
   d.ideal = wrfinput_id_ < 0;
@@ -690,8 +854,9 @@ wrf_io::DomainAtts WrfHistory::domain_atts() {
     d.num_land_cat = gatt_i("NUM_LAND_CAT", 21); d.iswater = gatt_i("ISWATER", 17); d.islake = gatt_i("ISLAKE", -1);
     d.isice = gatt_i("ISICE", 15); d.isurban = gatt_i("ISURBAN", 13); d.isoilwater = gatt_i("ISOILWATER", 14);
     wc_->set("num_land_cat", std::to_string(d.num_land_cat));
-  } else {
+  } else {  // ideal: no land-use attributes (the namelist defaults)
     d.mminlu = "";
+    d.iswater = d.islake = d.isice = d.isurban = d.isoilwater = 0;
   }
   return d;
 }
@@ -732,7 +897,7 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
     d.restart_alarms.push_back({n1, ring});
     d.restart_alarms.push_back({n2, secs});
   }
-  std::vector<wrf_io::OutVar> vars = schema_->restart_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real)));
+  std::vector<wrf_io::OutVar> vars = schema_->restart_vars(*wc_, g.nx + 1, g.ny * jrep_ + 1, g.nz + 1, int(sizeof(real)));
   for (wrf_io::OutVar& v : vars)
     if (v.name == "XTIME") {
       std::string sd = start_date_.substr(0, 19);
@@ -741,7 +906,7 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
     }
   wrf_io::StreamFile f(path, std::move(vars), *wc_, d, wrf_io::Stream::restart, !wc_->logical("use_netcdf_classic"));
   f.write(date, [&](const wrf_io::OutVar& v, std::vector<double>& out) {
-    return value(v.name, v.var ? v.var->varname : v.name, v.dimlens, out);
+    return out_value(v, out);
   });
   last_restart_ = path;
 }
@@ -756,7 +921,7 @@ void WrfHistory::write(long step, double time_sec) {
     last_file_ = out_dir_ + "/" + outname_ + date;
     const Grid& g = m_.g;
     const wrf_io::DomainAtts d = domain_atts();
-    std::vector<wrf_io::OutVar> vars = schema_->history_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real)));
+    std::vector<wrf_io::OutVar> vars = schema_->history_vars(*wc_, g.nx + 1, g.ny * jrep_ + 1, g.nz + 1, int(sizeof(real)));
     for (wrf_io::OutVar& v : vars)
       if (v.name == "XTIME") {  // output_wrf: minutes since the simulation start
         std::string sd = start_date_.substr(0, 19);
@@ -767,7 +932,7 @@ void WrfHistory::write(long step, double time_sec) {
                                                  !wc_->logical("use_netcdf_classic"));
   }
   file_->write(date, [&](const wrf_io::OutVar& v, std::vector<double>& out) {
-    return value(v.name, v.var ? v.var->varname : v.name, v.dimlens, out);
+    return out_value(v, out);
   });
   t_snap_.erase(t_snap_.begin(), t_snap_.lower_bound(step));
   p_hyd_snap_.erase(p_hyd_snap_.begin(), p_hyd_snap_.lower_bound(step));

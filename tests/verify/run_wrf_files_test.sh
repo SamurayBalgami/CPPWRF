@@ -39,6 +39,8 @@ r1|configs/real_r1.ini|$R/run_R1_r8|-|
 t1|configs/real_t1.ini|$R/run_T1_r8|-|--set output.wrf_namelist=$R/run_T1_r8/namelist.input
 n1|configs/real_n1_steps.ini|$R/run_N1_r8/steps|-|
 n2|configs/real_n2_steps.ini|$R/run_N2_r8/steps|$R/rst_N2_r8|
+n2s1|configs/real_n2_steps.ini|$R/run_N2S1_r8/steps|-|--set real.dir=$R/run_N2S1_r8/steps --set domains.smooth_option=1
+n2s2|configs/real_n2_steps.ini|$R/run_N2S2_r8/steps|-|--set real.dir=$R/run_N2S2_r8/steps --set domains.smooth_option=2
 nmp1|configs/real_nmp1_r8.ini|$R/run_NMP1_r8/steps|$R/rst_NMP1_r8|
 v1|configs/real_v1_r8.ini|$R/run_V1_r8/steps|-|--set run.run_time=180
 v2|configs/real_v2_r8.ini|$R/run_V2_r8/steps|-|--set run.run_time=180

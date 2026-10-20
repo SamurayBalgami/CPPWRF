@@ -15,6 +15,7 @@
 
 namespace cppwrf::wrf_io {
 struct DomainAtts;
+struct OutVar;
 class StreamFile;
 class WrfSchema;
 class WrfConfig;
@@ -42,12 +43,17 @@ class WrfHistory {
   // after the solve of step n, before nest feedback changes the state: WRF's T (th_phy_m_t0) of the frame
   void after_solve(long n);
   // med_nest_feedback for the history fields the model does not carry (Registry u= functions)
+  // med_feedback_domain for the column-physics state: every field of the parent's physics suite with a Registry
+  // feedback function (copy_fcn / copy_fcnm / copy_fcni) takes the child's values inside the nest
+  void feedback_physics(WrfHistory& child, int ipos, int jpos, int ratio);
   void feedback_from(WrfHistory& child, int i_parent_start, int j_parent_start, int ratio);
   const std::string& last_file() const { return last_file_; }
   // a run resumed from a restart file at time_sec: START_DATE is the restart time
   void set_restart_time(double time_sec) { restart_sec_ = time_sec; }
 
  private:
+  // value() of a stream variable; ideal x-z runs repeat the model's row (WRF: e_sn = 3, two identical rows)
+  bool out_value(const wrf_io::OutVar& v, std::vector<double>& out);
   bool value(const std::string& name, const std::string& varname, const std::vector<std::size_t>& dims,
              std::vector<double>& out);
   wrf_io::DomainAtts domain_atts();
@@ -63,6 +69,7 @@ class WrfHistory {
   std::unique_ptr<wrf_io::WrfConfig> wc_;
   std::unique_ptr<wrf_io::StreamFile> file_;
   int frames_per_outfile_ = 10;
+  int jrep_ = 1;  // output rows per model row: 2 for ideal x-z runs (ny = 1)
   double auxinput4_interval_s_ = 0;  // sst_update: the AUXINPUT4 alarm
   int wrfinput_id_ = -1;
   std::vector<double> p_hyd0_;  // P_HYD of the initial state (start_em)

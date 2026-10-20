@@ -1290,7 +1290,7 @@ class WrfTranslator:
             if feedback not in (0, 1):
                 self.error(f"WRF feedback = {feedback} is not supported; CPPWRF supports 0 (one-way) and 1 (two-way).")
 
-            smooth_option = self.get_dom_opt("domains", "smooth_option", 0, 0)
+            smooth_option = self.get_dom_opt("domains", "smooth_option", 0, 2)  # Registry default 2
             if smooth_option not in (0, 1, 2):
                 self.error(f"WRF smooth_option = {smooth_option} is not supported; CPPWRF supports 0, 1, and 2.")
 

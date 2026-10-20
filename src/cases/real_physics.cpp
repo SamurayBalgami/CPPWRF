@@ -238,6 +238,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
     r.cldovrlp = int(cfg.get_int("phys.cldovrlp", 2));
     r.idcor = int(cfg.get_int("phys.idcor", 0));
     r.o3input = int(cfg.get_int("phys.o3input", 2));
+    r.oznini = !cfg.get_bool("real.nested", false);
     r.ghg_input = int(cfg.get_int("phys.ghg_input", 1));
     r.aer_opt = int(cfg.get_int("phys.aer_opt", 0));
     r.julday = int(in.att_num("JULDAY", 1));

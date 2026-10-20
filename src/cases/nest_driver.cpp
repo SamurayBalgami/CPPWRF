@@ -1,5 +1,6 @@
 #include "cases/nest_driver.hpp"
 
+#include <cstdlib>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -222,7 +223,7 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
   }
 
   const int def_feedback = static_cast<int>(root_cfg.get_int("domains.feedback", 1));
-  const int def_smooth = static_cast<int>(root_cfg.get_int("domains.smooth_option", 0));
+  const int def_smooth = static_cast<int>(root_cfg.get_int("domains.smooth_option", 2));  // WRF Registry default
   const int def_save_topo = static_cast<int>(root_cfg.get_int("domains.save_topo_from_real", 1));
   const int def_spec_bdy = static_cast<int>(root_cfg.get_int("domains.spec_bdy_width", 5));
   const int def_blend = static_cast<int>(root_cfg.get_int("domains.blend_width", 5));
@@ -487,6 +488,15 @@ void med_nest_force(Model& parent, Model& child, const NestDomainSpec& child_spe
   }
   lbc.dtbc = 0.0;
 
+  // o3rad (Registry rdf=(p2c)): the child's whole field from the parent's, which only domain 1 computes
+  if (parent.suite && child.suite && parent.suite->radiation() && child.suite->radiation()) {
+    fill_halo(parent.suite->o3rad, pg);
+    auto c_o3 = nest::const_view3(parent.suite->o3rad);
+    auto n_o3 = nest::mut_view3(child.suite->o3rad);
+    parallel_for(Range3D{0, cg.nx, 0, cg.ny, 0, cg.nz},
+                 nest::KSintView3D<decltype(c_o3), decltype(n_o3)>{c_o3, n_o3, ipos, jpos, nri, nrj, false, false});
+  }
+
   // 4. Uncouple child and parent in-place (preserving exact reciprocal-multiply roundoff)
   nest::couple_or_uncouple_state(cg, *child.st, *child.base, false);
   nest::couple_or_uncouple_state(pg, *parent.st, *parent.base, false);
@@ -524,12 +534,13 @@ void med_nest_feedback(Model& parent, const Model& child, const NestDomainSpec& 
     nest::feedback_field3(pg, parent.st->q_2[s], child.st->q_2[s], n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm);
   }
 
-  // Base-state fields fed back in inc/nest_feedbackup_interp.inc (ht is never smoothed in nest_feedbackup_smooth.inc)
+  // Base-state fields fed back in inc/nest_feedbackup_interp.inc; inc/nest_feedbackup_smooth.inc smooths them
+  // and ht as well (map factors, f, e, sina, cosa are fed back without smoothing)
   nest::feedback_field3(pg, parent.base->phb, child.base->phb, n_nx, n_ny, n_nz + 1, ipos, jpos, nri, nrj, false, false, sm);
   nest::feedback_field2(pg, parent.base->mub, child.base->mub, n_nx, n_ny, ipos, jpos, nri, nrj, sm);
   nest::feedback_field3(pg, parent.base->alb, child.base->alb, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm);
   nest::feedback_field3(pg, parent.base->pb, child.base->pb, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm);
-  nest::feedback_field2(pg, parent.base->ht, child.base->ht, n_nx, n_ny, ipos, jpos, nri, nrj, 0);
+  nest::feedback_field2(pg, parent.base->ht, child.base->ht, n_nx, n_ny, ipos, jpos, nri, nrj, sm);
 
   if (parent.base->mapped && child.base->mapped) {
     nest::feedback_field2_fcnm(parent.base->msftx, child.base->msftx, n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
@@ -592,9 +603,13 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
   for (int i = 0; i < max_dom; ++i) doms[i].runner->prepare_output();
   for (int i = 0; i < max_dom; ++i)
     for (int c_idx : doms[i].children)
-      if (doms[c_idx].spec.feedback != 0 && doms[i].runner->history() && doms[c_idx].runner->history())
-        doms[i].runner->history()->feedback_from(*doms[c_idx].runner->history(), doms[c_idx].spec.i_parent_start,
-                                                 doms[c_idx].spec.j_parent_start, doms[c_idx].spec.parent_grid_ratio);
+      if (doms[c_idx].spec.feedback != 0 && doms[i].runner->history() && doms[c_idx].runner->history()) {
+        const NestDomainSpec& cs = doms[c_idx].spec;
+        doms[i].runner->history()->feedback_physics(*doms[c_idx].runner->history(), cs.i_parent_start,
+                                                    cs.j_parent_start, cs.parent_grid_ratio);
+        doms[i].runner->history()->feedback_from(*doms[c_idx].runner->history(), cs.i_parent_start,
+                                                 cs.j_parent_start, cs.parent_grid_ratio);
+      }
 #endif
 
   // 3. Root domain (d01) writes its t=0 initial frame before its first step
@@ -647,9 +662,12 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
         med_nest_feedback(d.model, c.model, c.spec);
         dev_sync();
 #ifdef CPPWRF_HAVE_NETCDF
-        if (d.runner->history() && c.runner->history())  // history-only fields fed back (Registry u=)
+        if (d.runner->history() && c.runner->history()) {  // the physics state, then history-only fields (Registry u=)
+          d.runner->history()->feedback_physics(*c.runner->history(), c.spec.i_parent_start, c.spec.j_parent_start,
+                                                c.spec.parent_grid_ratio);
           d.runner->history()->feedback_from(*c.runner->history(), c.spec.i_parent_start, c.spec.j_parent_start,
                                              c.spec.parent_grid_ratio);
+        }
 #endif
       }
     }

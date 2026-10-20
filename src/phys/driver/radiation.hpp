@@ -22,6 +22,9 @@ struct RadiationOptions {
   double radt = 0;          // minutes; stepra = max(nint(radt*60/dt), 1)
   int ra_call_offset = 0;
   int icloud = 1, cldovrlp = 2, idcor = 0, o3input = 2, ghg_input = 1, aer_opt = 0;
+  // oznini and the ozone interpolation run on domain 1 only (module_physics_init.F, module_radiation_driver.F,
+  // EM_CORE): a nest's radiation uses o3rad, which med_nest_force interpolates from the parent (Registry f=p2c)
+  bool oznini = true;
   int julyr = 0, julday = 1;  // start (wrfinput JULYR/JULDAY), gmt start hour
   double gmt = 0;
   double p_top = 0;

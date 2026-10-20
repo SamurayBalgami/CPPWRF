@@ -2,6 +2,7 @@
 // Model assembly from a config (host side): grid, case, vertical levels, base and initial
 // state, scalars, numerical parameters and the RK3 integrator. Shared by main and tests.
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -38,6 +39,8 @@ struct Model {
   double truelat1 = 0.0, truelat2 = 0.0;
   double moad_cen_lat = 0.0, stand_lon = 0.0;
   std::string start_date;
+  // fields only the initialisation sets, for the history output (ideal runs: TSK, TMN, the first frame's T)
+  std::map<std::string, std::vector<double>> init_out;
   std::unique_ptr<dyn::RK3> rk;  // null when nsteps == 0
   std::unique_ptr<dyn::LateralBC> bc;  // real data: specified lateral boundaries
   std::unique_ptr<dyn::DiffusionDriver> diff;

@@ -115,7 +115,8 @@ void write_global_atts(NcOut& nc, const WrfConfig& c, const DomainAtts& d, Strea
         ci(n, o);
       }
     ci("DFI_OPT", "dfi_opt");
-    i("NTASKS_X", 1); i("NTASKS_Y", 1); i("NTASKS_TOTAL", 1);  // serial run
+    // serial run; the ideal build keeps the namelist's nproc_x = nproc_y = -1
+    i("NTASKS_X", d.ideal ? -1 : 1); i("NTASKS_Y", d.ideal ? -1 : 1); i("NTASKS_TOTAL", 1);
   }
   if (input || history || restart)
     nc.att("SIMULATION_INITIALIZATION_TYPE", std::string(d.ideal ? "IDEALIZED DATA" : "REAL-DATA CASE"));
@@ -137,6 +138,7 @@ void write_global_atts(NcOut& nc, const WrfConfig& c, const DomainAtts& d, Strea
     int jy, jd;
     double gm;
     julgmt(d.gmt_date.empty() ? d.start_date : d.gmt_date, jy, jd, gm);  // config_flags%gmt/julyr/julday: this domain's start
+    if (d.ideal) jy = 0;  // output_wrf: nl_get_julyr, which only real.exe's input sets
     r("GMT", gm); i("JULYR", jy); i("JULDAY", jd);
   }
   const int mp = d.map_proj;
@@ -144,7 +146,7 @@ void write_global_atts(NcOut& nc, const WrfConfig& c, const DomainAtts& d, Strea
   nc.att("MAP_PROJ_CHAR", std::string(mp == 0 ? "Cartesian" : mp == 1 ? "Lambert Conformal" : mp == 2 ? "Polar Stereographic"
                                      : mp == 3 ? "Mercator" : mp == 6 ? "Cylindrical Equidistant" : "unknown"));
   std::string mminlu = d.mminlu.substr(0, 4) == "USGS" ? std::string("USGS") : d.mminlu;
-  nc.att("MMINLU", mminlu.empty() || mminlu[0] == ' ' ? std::string("    ") : mminlu);
+  nc.att("MMINLU", d.ideal ? std::string() : mminlu.empty() || mminlu[0] == ' ' ? std::string("    ") : mminlu);
   i("NUM_LAND_CAT", d.num_land_cat); i("ISWATER", d.iswater); i("ISLAKE", d.islake);
   i("ISICE", d.isice); i("ISURBAN", d.isurban); i("ISOILWATER", d.isoilwater);
   ci("HYBRID_OPT", "hybrid_opt"); r("ETAC", c.integer("hybrid_opt") == 0 ? 0.0 : c.num("etac"));
