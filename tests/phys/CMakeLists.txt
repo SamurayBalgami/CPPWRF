@@ -183,7 +183,7 @@ add_test(
   COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/bl_myj/run_test.sh ${CMAKE_CURRENT_BINARY_DIR}/bl_myj_test
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
-set_tests_properties(test_phys_bl_myj PROPERTIES LABELS diff)
+set_tests_properties(test_phys_bl_myj PROPERTIES LABELS diff SKIP_RETURN_CODE 77)
 
 # ==============================================================================
 # Noah LSM ice surfaces (SFLX_GLACIAL land ice, SFLX_SEAICE sea ice)
@@ -210,4 +210,4 @@ add_test(
   COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/lsm_noahmp/run_test.sh ${CMAKE_CURRENT_BINARY_DIR}/lsm_noahmp_test
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
-set_tests_properties(test_phys_lsm_noahmp PROPERTIES LABELS diff)
+set_tests_properties(test_phys_lsm_noahmp PROPERTIES LABELS diff SKIP_RETURN_CODE 77)

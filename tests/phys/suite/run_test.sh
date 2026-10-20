@@ -12,7 +12,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-WRF_DIR="${WRF_DIR:?set WRF_DIR to a WRF v4.8.0 -r8 build (tests/phys/suite/build_wrf_r8.sh)}"
+[ -n "${WRF_DIR:-}" ] || { echo "SKIP: set WRF_DIR to a WRF v4.8.0 -r8 build (tests/phys/suite/build_wrf_r8.sh)"; exit 77; }  # ctest: skipped
 B="$SCRIPT_DIR/build"
 HEAVY="$REPO/tools/heavy.sh"
 [ -x "$HEAVY" ] || HEAVY=""

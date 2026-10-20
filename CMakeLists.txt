@@ -124,13 +124,15 @@ if(TARGET netCDF::netcdf OR NETCDF_FOUND OR NETCDF_INCDIR)
   add_subdirectory(src/wrf_io)
   target_link_libraries(cppwrf_core PUBLIC cppwrf_wrfio)
   add_subdirectory(src/init_real)
-  # cppwrf_real against WRF real.exe output (skips without ${CPPWRF_WRF_RUNS}/real)
+  # cppwrf_real against WRF real.exe output (skipped, exit 77, without ${CPPWRF_WRF_RUNS}/real)
   add_test(NAME real_vs_wrf COMMAND bash ${CMAKE_SOURCE_DIR}/tests/init_real/run_real_test.sh ${CMAKE_BINARY_DIR}
            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-  # wrfout/wrfrst files identical to WRF v4.8.0's (CPU FP64 builds; skips without ${CPPWRF_WRF_RUNS})
+  set_tests_properties(real_vs_wrf PROPERTIES SKIP_RETURN_CODE 77)
+  # wrfout/wrfrst files identical to WRF v4.8.0's (CPU FP64 builds; skipped, exit 77, without ${CPPWRF_WRF_RUNS})
   if(CPPWRF_DOUBLE AND NOT CPPWRF_ENABLE_CUDA)
     add_test(NAME wrf_files_vs_wrf COMMAND bash ${CMAKE_SOURCE_DIR}/tests/verify/run_wrf_files_test.sh ${CMAKE_BINARY_DIR}
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    set_tests_properties(wrf_files_vs_wrf PROPERTIES SKIP_RETURN_CODE 77)
   endif()
 endif()
 
@@ -192,7 +194,7 @@ if(CPPWRF_DIFF_TESTS)
   foreach(t bdy dyn/diffusion phys/suite nest)  # need WRF_DIR (a WRF v4.8.0 -r8 build); nest also NETCDF
     string(REPLACE "/" "_" tname "diff_${t}")
     add_test(NAME ${tname} COMMAND bash ${CMAKE_SOURCE_DIR}/tests/${t}/run_test.sh WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-    set_tests_properties(${tname} PROPERTIES LABELS diff)
+    set_tests_properties(${tname} PROPERTIES LABELS diff SKIP_RETURN_CODE 77)  # 77: no WRF build / runs
   endforeach()
   # column replays of the model's cumulus calls through WRF's objects (CPU FP64 cppwrf; need
   # CPPWRF_WRF_RUNS and WRF_R8D8_DIR, a WRF v4.8.0 -r8 -double-8 build)
@@ -200,7 +202,7 @@ if(CPPWRF_DIFF_TESTS)
     foreach(t cu_gfl cu_ntiedtke)
       add_test(NAME diff_phys_${t} COMMAND bash ${CMAKE_SOURCE_DIR}/tests/phys/${t}/run_test.sh ${CMAKE_BINARY_DIR}
                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-      set_tests_properties(diff_phys_${t} PROPERTIES LABELS diff)
+      set_tests_properties(diff_phys_${t} PROPERTIES LABELS diff SKIP_RETURN_CODE 77)
     endforeach()
   endif()
 endif()

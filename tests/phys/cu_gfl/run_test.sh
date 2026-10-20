@@ -6,8 +6,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 BUILD_DIR=${1:-${REPO_ROOT}/build}
-W=${WRF_R8D8_DIR:?set WRF_R8D8_DIR to a WRF v4.8.0 -r8 -double-8 build}/phys
-: "${CPPWRF_WRF_RUNS:?set CPPWRF_WRF_RUNS}"
+[ -n "${WRF_R8D8_DIR:-}" ] || { echo "SKIP: set WRF_R8D8_DIR to a WRF v4.8.0 -r8 -double-8 build"; exit 77; }  # ctest: skipped
+W="${WRF_R8D8_DIR}/phys"
+[ -n "${CPPWRF_WRF_RUNS:-}" ] || { echo "SKIP: set CPPWRF_WRF_RUNS"; exit 77; }
 WORK=${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}/gfl_test
 rm -rf "$WORK"; mkdir -p "$WORK"; cd "$WORK"
 gfortran -O2 -fdefault-real-8 -fdefault-double-8 -I"$W" -o harness "$SCRIPT_DIR/harness.f90" \

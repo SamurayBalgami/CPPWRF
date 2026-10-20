@@ -4,8 +4,7 @@
 # Builds and executes the differential tests comparing C++20 vs WRF Fortran
 # ============================================================================
 set -euo pipefail
-WRF_DIR="${WRF_DIR:?set WRF_DIR to a WRF v4.8.0 -r8 build}"
-
+[ -n "${WRF_DIR:-}" ] || { echo "SKIP: set WRF_DIR to a WRF v4.8.0 -r8 build"; exit 77; }  # ctest: skipped
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 BUILD_DIR="${DIFF_TEST_BUILD_DIR:-${CPPWRF_SCRATCH:-${HOME}/cppwrf_scratch}/bdy_test}"

@@ -14,7 +14,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 if [ -z "${CPPWRF_WRF_RUNS:-}" ] || [ ! -d "${CPPWRF_WRF_RUNS}" ]; then
-  echo "SKIP: \${CPPWRF_WRF_RUNS} not set"; exit 0
+  echo "SKIP: \${CPPWRF_WRF_RUNS} not set"; exit 77
 fi
 BUILD_DIR=${1:-${REPO_ROOT}/build}; shift || true
 EXE=${BUILD_DIR}/cppwrf

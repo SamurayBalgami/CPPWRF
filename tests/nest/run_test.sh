@@ -26,7 +26,8 @@ if [[ ! -f "${DATASET}" ]]; then
 fi
 
 # 2. Compile Fortran Bridge against the WRF 4.8.0 -r8 reference
-WRF_ROOT="${WRF_DIR:?set WRF_DIR to a WRF v4.8.0 -r8 build}"
+[ -n "${WRF_DIR:-}" ] || { echo "SKIP: set WRF_DIR to a WRF v4.8.0 -r8 build"; exit 77; }  # ctest: skipped
+WRF_ROOT="${WRF_DIR}"
 BRIDGE_OBJ="${OUT_DIR}/fortran_nest_bridge.o"
 if [[ ! -f "${BRIDGE_OBJ}" || "${SCRIPT_DIR}/fortran_nest_bridge.f90" -nt "${BRIDGE_OBJ}" ]]; then
   echo "Compiling Fortran nest bridge against WRF 4.8.0 libraries..."

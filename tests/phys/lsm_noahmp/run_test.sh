@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 HEAVY="${REPO_ROOT}/tools/heavy.sh"
-WRF_DIR="${WRF_DIR:?set WRF_DIR to a WRF v4.8.0 -r8 or -r8d8 build (main/libwrflib.a)}"
+[ -n "${WRF_DIR:-}" ] || { echo "SKIP: set WRF_DIR to a WRF v4.8.0 -r8 or -r8d8 build (main/libwrflib.a)"; exit 77; }  # ctest: skipped
 OUT_DIR="${1:-${PWD}/test_lsm_noahmp}"
 
 mkdir -p "${OUT_DIR}"
