@@ -515,7 +515,7 @@ CPPWRF_HD inline void snopac(real& etp, real prcp, bool snowng, int nsoil, real 
                              real sfctmp, real t24, real th2, real fdown, real& ssoil, real* stc, real rch, real rr,
                              real& sncovr, real& esd, real& sndens, real& snowh, const real* zsoil, real tbot,
                              real& snomlt, real& dew, real& flx1, real& flx2, real& flx3, real& esnow,
-                             real emissi, real& ribb, int seaice_albedo_opt) {
+                             real emissi, real& ribb) {
   constexpr real esdmin = real(1.e-6), lsubc = real(2.501000e+6), lsubs = real(2.83e+6);
   dew = real(0.);
   esnow = real(0.);
@@ -589,29 +589,19 @@ CPPWRF_HD inline void snopac(real& etp, real prcp, bool snowng, int nsoil, real 
   real zz1 = real(1.0);
   real yy = stc[0] - real(0.5) * ssoil * zsoil[0] * zz1 / df1;
   shflx(stc, nsoil, dt, yy, zz1, zsoil, tbot, df1);
-  if (seaice_albedo_opt == 1) {
-    if (esd >= real(0.0001)) {
-      snowpack(esd, dt, snowh, sndens, t1, yy);
-    } else {
-      esd = real(0.0001);
-      snowh = real(0.0005);
-      sncovr = real(0.005);
-    }
+  // seaice_albedo_opt = 0 (PhysicsSuite rejects 1 and 2)
+  if (esd >= real(0.01)) {
+    snowpack(esd, dt, snowh, sndens, t1, yy);
   } else {
-    if (esd >= real(0.01)) {
-      snowpack(esd, dt, snowh, sndens, t1, yy);
-    } else {
-      esd = real(0.01);
-      snowh = real(0.05);
-      sncovr = real(1.0);
-    }
+    esd = real(0.01);
+    snowh = real(0.05);
+    sncovr = real(1.0);
   }
 }
 
+// seaice_albedo_opt = seaice_snowdepth_opt = 0 (PhysicsSuite rejects the others)
 struct Opts {
-  int albedo_opt = 0;
   real albedo_default = real(0.65);
-  int snowdepth_opt = 0;
   real snowdepth_max = real(1.e10);
   real snowdepth_min = real(0.001);
 };
@@ -625,7 +615,7 @@ struct Out {
 CPPWRF_HD inline bool sflx_seaice(const Opts& op, real ffrozp, real dt, int nsoil, real sithick, real lwdn,
                                   real solnet, real sfcprs, real prcp, real sfctmp, real q2, real th2, real q2sat,
                                   real dqsdt2, real snoalb, real tbot, real& z0brd, real& emissi, real& t1,
-                                  real* stc, real& snowh, real& sneqv, real ch, real albedosi, real snowonsi,
+                                  real* stc, real& snowh, real& sneqv, real ch,
                                   real& sncovr, real& ribb, Out& o) {
   constexpr real lvh2o = real(2.501e+6), lsubs = real(2.83e+6), r = real(287.04);
   (void)snoalb;
@@ -635,28 +625,16 @@ CPPWRF_HD inline bool sflx_seaice(const Opts& op, real ffrozp, real dt, int nsoi
   for (int kz = 0; kz < nsoil; ++kz) zsoil[kz] = -sithick * real(kz + 1) / real(nsoil);
   z0brd = real(0.001);
   bool snowng = false, frzgra = false;
-  if (op.albedo_opt == 1) {
-    if (sneqv < real(0.0001)) {
-      sneqv = real(0.0001);
-      snowh = real(0.0005);
-    }
-  } else {
-    if (sneqv < real(0.01)) {
-      sneqv = real(0.01);
-      snowh = real(0.05);
-    }
+  if (sneqv < real(0.01)) {
+    sneqv = real(0.01);
+    snowh = real(0.05);
   }
-  real sndens = real(0);
-  if (op.snowdepth_opt == 0) {
-    sndens = sneqv / snowh;
+  real sndens = sneqv / snowh;
+  {
     real m = snowh < op.snowdepth_max ? snowh : op.snowdepth_max;
     snowh = op.snowdepth_min > m ? op.snowdepth_min : m;
-    sneqv = snowh * sndens;
-  } else if (op.snowdepth_opt == 1) {
-    sndens = real(0.3);
-    snowh = snowonsi;
-    sneqv = snowh * sndens;
   }
+  sneqv = snowh * sndens;
   sndens = sneqv / snowh;
   if (sndens > real(1.0)) return false;
   real sncond;
@@ -678,35 +656,9 @@ CPPWRF_HD inline bool sflx_seaice(const Opts& op, real ffrozp, real dt, int nsoi
     }
     csnow(sncond, sndens);
   }
-  real albedo;
-  if (op.albedo_opt == 1) {
-    real alb_snow, alb_ice;
-    if (t1 < real(268.15)) {
-      alb_snow = real(0.8);
-    } else if ((t1 >= real(268.15)) && (t1 < real(273.15))) {
-      alb_snow = real(0.65) - (real(0.03) * (t1 - real(273.15)));
-    } else {
-      alb_snow = real(0.65);
-    }
-    if (sfctmp <= real(273.15)) {
-      alb_ice = real(0.65);
-    } else if ((sfctmp > real(273.15)) && (sfctmp < real(278.15))) {
-      alb_ice = real(0.65) - (real(0.04) * (sfctmp - real(273.15)));
-    } else {
-      alb_ice = real(0.45);
-    }
-    real z0n = real(0.10);
-    real sncovrr = snowh / (snowh + z0n);
-    albedo = (sncovrr * alb_snow) + ((real(1.0) - sncovrr) * alb_ice);
-  } else if (op.albedo_opt == 2) {
-    sncovr = real(1.0);
-    emissi = real(0.98);
-    albedo = albedosi;
-  } else {
-    sncovr = real(1.0);
-    emissi = real(0.98);
-    albedo = op.albedo_default;
-  }
+  sncovr = real(1.0);
+  emissi = real(0.98);
+  real albedo = op.albedo_default;
   real df1 = real(2.2);
   real dsoil = -(real(0.5) * zsoil[0]);
   real dtot = snowh + dsoil;
@@ -726,18 +678,14 @@ CPPWRF_HD inline bool sflx_seaice(const Opts& op, real ffrozp, real dt, int nsoi
          emissi, t1);
   real esnow = real(0.0), snomlt, dew, flx1, flx3;
   snopac(etp, prcp, snowng, nsoil, dt, df1, t1, sfctmp, t24, th2, fdown, ssoil, stc, rch, rr, sncovr, sneqv,
-         sndens, snowh, zsoil, tbot, snomlt, dew, flx1, flx2, flx3, esnow, emissi, ribb, op.albedo_opt);
+         sndens, snowh, zsoil, tbot, snomlt, dew, flx1, flx2, flx3, esnow, emissi, ribb);
   real eta_kinematic = etp;
-  if (op.snowdepth_opt == 0) {
-    sndens = sneqv / snowh;
+  sndens = sneqv / snowh;
+  {
     real m = snowh < op.snowdepth_max ? snowh : op.snowdepth_max;
     snowh = op.snowdepth_min > m ? op.snowdepth_min : m;
-    sneqv = snowh * sndens;
-  } else if (op.snowdepth_opt == 1) {
-    sndens = real(0.3);
-    snowh = snowonsi;
-    sneqv = snowh * sndens;
   }
+  sneqv = snowh * sndens;
   o.q1 = q2 + eta_kinematic * IceConst::cp / rch;
   o.sheat = -(ch * IceConst::cp * sfcprs) / (r * t2v) * (th2 - t1);
   esnow = esnow * lsubs;

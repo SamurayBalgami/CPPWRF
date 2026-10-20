@@ -118,6 +118,8 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   if (o.sst_update == 1) xicem = Field2(g, Stagger::M, "xicem");
   if (o.seaice_thickness_opt != 0 || o.seaice_snowdepth_opt != 0)
     throw std::runtime_error("PhysicsSuite: seaice_thickness_opt/seaice_snowdepth_opt 1 need ICEDEPTH/SNOWSI input");
+  if (o.seaice_albedo_opt != 0)
+    throw std::runtime_error("PhysicsSuite: seaice_albedo_opt 1 and 2 are not supported (2 needs ALBSI input)");
   if (o.num_soil_layers > noah::kMaxSoilLevels) throw std::runtime_error("PhysicsSuite: too many soil layers");
   if (o.sf_surface_physics == 4) {
     if (o.num_soil_layers != 4) throw std::runtime_error("PhysicsSuite: Noah-MP requires num_soil_layers=4");

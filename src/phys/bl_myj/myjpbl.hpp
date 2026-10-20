@@ -1,5 +1,5 @@
 #pragma once
-// Port of WRF 4.8.0 phys/module_bl_myjpbl.F (myjpbl, mixlen, prodq2, difcof, vdifq, vdifh, vdifv, myjpblinit)
+// Port of WRF 4.8.0 phys/module_bl_myjpbl.F (myjpbl, mixlen, prodq2, difcof, vdifq, vdifh, vdifv)
 // Mellor-Yamada-Janjic (MYJ) PBL scheme (bl_pbl_physics = 2).
 
 #include <cmath>
@@ -829,30 +829,6 @@ struct MYJPBLKernel {
   }
 };
 
-// ----------------------------------------------------------------------
-// Kernel: MYJPBLInitKernel (module_bl_myjpbl.F:1694-1736)
-// ----------------------------------------------------------------------
-struct MYJPBLInitKernel {
-  View3<real> rublten;
-  View3<real> rvblten;
-  View3<real> rthblten;
-  View3<real> rqvblten;
-  View3<real> tke_myj;
-  View3<real> exch_h;
-  int nz;
-
-  CPPWRF_HD void operator()(int i, int j) const {
-    for (int k = 0; k < nz; ++k) {
-      tke_myj(i, j, k) = EPSQ2;
-      rublten(i, j, k) = real(0.);
-      rvblten(i, j, k) = real(0.);
-      rthblten(i, j, k) = real(0.);
-      rqvblten(i, j, k) = real(0.);
-      exch_h(i, j, k) = real(0.);
-    }
-  }
-};
-
 // Host launcher functions
 void run_myjpbl(
     View2<const real> ht,
@@ -904,15 +880,5 @@ void run_myjpbl(
     int stepbl,
     int nz,
     bool has_qi);
-
-void run_myjpblinit(
-    View3<real> rublten,
-    View3<real> rvblten,
-    View3<real> rthblten,
-    View3<real> rqvblten,
-    View3<real> tke_myj,
-    View3<real> exch_h,
-    const Range2D& range,
-    int nz);
 
 }  // namespace cppwrf::phys::myjpbl

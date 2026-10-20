@@ -1,5 +1,5 @@
 #pragma once
-// Port of WRF 4.8.0 phys/module_sf_myjsfc.F (myjsfc, sfcdif, myjsfcinit)
+// Port of WRF 4.8.0 phys/module_sf_myjsfc.F (myjsfc, sfcdif)
 // Mellor-Yamada-Janjic (Eta) surface layer scheme (sf_sfclay_physics = 2).
 
 #include <cmath>
@@ -730,20 +730,6 @@ struct MYJSFCKernel {
   }
 };
 
-// Kernel for MYJSFCINIT (module_sf_myjsfc.F:1059-1171)
-struct MYJSFCInitKernel {
-  View2<int> lowlyr;
-  View2<real> ustar;
-  bool restart;
-
-  CPPWRF_HD void operator()(int i, int j) const {
-    lowlyr(i, j) = 1;
-    if (!restart) {
-      ustar(i, j) = real(0.1);
-    }
-  }
-};
-
 // Dispatcher functions
 void run_myjsfc(
     View2<const real> ht,
@@ -805,11 +791,5 @@ void run_myjsfc(
     int iz0tlnd,
     real p1000mb,
     int nz);
-
-void run_myjsfcinit(
-    View2<int> lowlyr,
-    View2<real> ustar,
-    const Range2D& range,
-    bool restart);
 
 }  // namespace cppwrf::phys::sf_myjsfc

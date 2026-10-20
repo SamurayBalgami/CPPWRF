@@ -168,13 +168,4 @@ void run_myjsfc(
   column_for(range, kernel);
 }
 
-void run_myjsfcinit(
-    View2<int> lowlyr,
-    View2<real> ustar,
-    const Range2D& range,
-    bool restart) {
-  MYJSFCInitKernel kernel{lowlyr, ustar, restart};
-  column_for(range, kernel);
-}
-
 }  // namespace cppwrf::phys::sf_myjsfc

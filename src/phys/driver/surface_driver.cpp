@@ -416,7 +416,6 @@ struct KSeaiceNoah {
     real sfctmp = t3d(i, j, 0);
     real t1 = tsk(i, j);
     real snoalb = snoalb2d(i, j);
-    real albedosi = real(0), snowonsi = real(0);
     real emissi = emiss(i, j);
     real lwdn = glw(i, j) * emissi;
     real sneqv = snow(i, j) * real(0.001);
@@ -460,8 +459,8 @@ struct KSeaiceNoah {
     real ribb = rib(i, j);
     noah_ice::seaice::Out o{};
     noah_ice::seaice::sflx_seaice(op, ffrozp, dt, nsoil, sithick, lwdn, solnet, sfcprs, prcp, sfctmp, q2, th2, q2sat,
-                                  dqsdt2, snoalb, tbot, z0brd, emissi, t1, stc, snowh, sneqv, ch, albedosi,
-                                  snowonsi, sncovr, ribb, o);
+                                  dqsdt2, snoalb, tbot, z0brd, emissi, t1, stc, snowh, sneqv, ch, sncovr,
+                                  ribb, o);
     albedo(i, j) = o.albedo;
     emiss(i, j) = emissi;
     tsk(i, j) = t1;
@@ -1014,8 +1013,8 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
       si.qfx = qfx.view(); si.potevp = potevp.view(); si.grdflx = grdflx.view(); si.qsfc = qsfc.view();
       si.acsnow = acsnow.view(); si.acsnom = acsnom.view(); si.snopcx = snopcx.view();
       si.sfcrunoff = sfcrunoff.view(); si.noahres = noahres.view(); si.tslb = tslb.view();
-      si.op.albedo_opt = o_.seaice_albedo_opt; si.op.albedo_default = real(o_.seaice_albedo_default);
-      si.op.snowdepth_opt = o_.seaice_snowdepth_opt; si.op.snowdepth_max = real(o_.seaice_snowdepth_max);
+      si.op.albedo_default = real(o_.seaice_albedo_default);
+      si.op.snowdepth_max = real(o_.seaice_snowdepth_max);
       si.op.snowdepth_min = real(o_.seaice_snowdepth_min);
       si.thickness_opt = o_.seaice_thickness_opt; si.thickness_default = real(o_.seaice_thickness_default);
       si.dt = dt; si.xice_threshold = xice_threshold; si.nsoil = nsoil; si.frpcpn = true;

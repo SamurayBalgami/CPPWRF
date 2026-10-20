@@ -571,9 +571,6 @@ struct KFKernel {
             const T w0_klcl = w0avg(i, j, klcl);
             wkl = (w0_klclm1 + (w0_klcl - w0_klclm1) * dlp) * dx / static_cast<T>(25.0e3) - wklcl;
             T dtlcl = (wkl < static_cast<T>(0.0001)) ? static_cast<T>(0.0) : static_cast<T>(4.64) * pow(wkl, static_cast<T>(0.33));
-            if (trigger == 2) {
-                dtlcl = static_cast<T>(0.0);
-            }
             T dtrh = static_cast<T>(0.0);
             if (trigger == 3) {
                 T qslcl = qes[k_lcl] + (qes[klcl] - qes[k_lcl]) * dlp;

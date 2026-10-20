@@ -65,19 +65,4 @@ void run_myjpbl(
   column_for(range, kernel);
 }
 
-void run_myjpblinit(
-    View3<real> rublten,
-    View3<real> rvblten,
-    View3<real> rthblten,
-    View3<real> rqvblten,
-    View3<real> tke_myj,
-    View3<real> exch_h,
-    const Range2D& range,
-    int nz) {
-  MYJPBLInitKernel kernel{
-      rublten, rvblten, rthblten, rqvblten, tke_myj, exch_h, nz};
-
-  column_for(range, kernel);
-}
-
 }  // namespace cppwrf::phys::myjpbl
