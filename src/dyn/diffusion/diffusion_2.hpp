@@ -799,7 +799,7 @@ inline void vertical_diffusion_2(const DiffusionParams& p,
     column_for(Range2D{0, nx, 0, ny},
                KVertDiffSfcFluxH2{th_view, rho, moist, hfx, qfx, dnw,
                                   has_moist, has_hfx, has_qfx,
-                                  p.isfflx, p.use_theta_m, p.tke_heat_flux, t_tendf});
+                                  p.isfflx, p.use_theta_m, p.tke_heat_flux, t_tendf, hfx_out});
   }
 
   // 4c. Vertical diffusion of TKE (when km_opt == 2)
