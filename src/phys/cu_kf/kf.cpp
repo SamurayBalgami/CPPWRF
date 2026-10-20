@@ -10,6 +10,7 @@ void run_kf(KFKernel<T> kernel, const Range2D& range) {
     } else {
         column_for(range, KFRunner<T, kMaxLevels>{kernel});
     }
+    fatal_check();
 }
 
 template void run_kf<double>(KFKernel<double>, const Range2D&);

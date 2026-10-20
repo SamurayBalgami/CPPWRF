@@ -1019,6 +1019,7 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
       si.thickness_opt = o_.seaice_thickness_opt; si.thickness_default = real(o_.seaice_thickness_default);
       si.dt = dt; si.xice_threshold = xice_threshold; si.nsoil = nsoil; si.frpcpn = true;
       column_for(cols, si);
+      fatal_check();
     };
 
     auto seaice_lsm_pre = [&]() {
@@ -1097,7 +1098,7 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
       for (int k = 0; k < nsoil; ++k) nk.sldpth[k] = real(dzs[k]);
       nk.isurban = o_.isurban;
       nk.tables = noah_tables_;
-      nk.rdlai2d = o_.rdlai2d; nk.usemonalb = o_.usemonalb;
+      nk.rdlai2d = o_.rdlai2d; nk.usemonalb = o_.usemonalb; nk.opt_thcnd = o_.opt_thcnd;
       nk.active = n_active.cview(); nk.alb_out = n_albbrd.view();
       // debug: CPPWRF_NOAH_DUMP=dir, CPPWRF_NOAH_DUMP_STEP=n: SFLX inputs/outputs of the land columns at step n
       // in the stream format of tests/phys/lsm_noah/fortran/driver_noah.f90 (replay through WRF's SFLX)
@@ -1174,6 +1175,7 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
       gl.dt = dtbl; gl.lvcoef = noah_tables_.lvcoef_data; gl.nsoil = nsoil;
       for (int k = 0; k < nsoil; ++k) gl.sldpth[k] = real(dzs[k]);
       column_for(cols, gl);
+      fatal_check();
 
       KLsmPost post{};
       post.ice = n_ice.cview(); post.xland = xland.cview();

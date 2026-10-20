@@ -89,6 +89,7 @@ struct SuiteOptions {
   bool kim_tofd = false;         // sfclayrev turbulent orographic form drag (WRF 4.8)
   double tofd_factor = 0.003;
   bool rdlai2d = false, usemonalb = false;
+  int opt_thcnd = 1;  // Noah soil thermal conductivity (1 or 2)
   int seaice_albedo_opt = 0;
   double seaice_albedo_default = 0.65;
   int seaice_thickness_opt = 0;

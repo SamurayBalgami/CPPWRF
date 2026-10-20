@@ -1014,6 +1014,11 @@ class WrfTranslator:
                                    f"sf_surface_physics = {sf_surface}; CPPWRF requires 4 soil layers.")
                     else:
                         sections["phys"]["num_soil_layers"] = 4
+                    opt_thcnd = self.get_opt("physics", "opt_thcnd", 1)
+                    if opt_thcnd not in (1, 2):
+                        self.error(f"WRF opt_thcnd = {opt_thcnd} is not supported; CPPWRF supports 1 and 2.")
+                    elif opt_thcnd == 2 and sf_surface == 2:  # Noah only
+                        sections["phys"]["opt_thcnd"] = 2
 
                 tbl_dir = self.table_dir
                 if not tbl_dir:

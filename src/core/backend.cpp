@@ -122,4 +122,25 @@ Reducer::Reducer(int max_k) : max_k_(max_k), hpart_(max_k) {}
 Reducer::~Reducer() {}
 #endif
 
+int fatal_code_host = 0;
+
+const char* fatal_message(int code) {
+  switch (code) {
+    case kFatalSnowDensity: return "Physical snow depth is less than snow water equiv.";
+    case kFatalKfQgSurface: return "QG, QG(NK).LT.0";
+    case kFatalKfIstop: return "KAIN-FRITSCH, istop=1, diags";
+    default: return "unknown fatal condition in a physics kernel";
+  }
+}
+
+void fatal_stop(int code) {
+  // wrf_error_fatal: the block on stdout (wrf_message) and on stderr (wrf_message2)
+  const char* msg = fatal_message(code);
+  for (std::FILE* f : {stdout, stderr}) {
+    std::fprintf(f, "-------------- FATAL CALLED ---------------\n%s\n-------------------------------------------\n", msg);
+    std::fflush(f);
+  }
+  throw FatalError(code, msg);
+}
+
 }  // namespace cppwrf

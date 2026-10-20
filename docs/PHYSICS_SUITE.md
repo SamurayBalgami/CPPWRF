@@ -137,7 +137,13 @@ and `phy_init` provide; the test takes it from WRF after `start_domain`).
   rdlai2d / usemonalb are namelist options (WRF default .false.: LAI and background albedo from
   the table, ALB is INOUT and becomes ALBBCK); the standalone "skip vegtyp 16 / soil 14" test
   must not apply in the driver (MODIS category 16 is barren land): the driver passes an
-  `active` mask instead.
+  `active` mask instead. `opt_thcnd = 2` (McCumber-Pielke conductivity for soil types 3 and 4) is
+  bit-identical to WRF r8 over 1 h (P1T2 = P1 with opt_thcnd = 2). Integer exponents
+  (`ACRT**(CVFRZ-J)`, Thompson `Dc**nu_c`) use `powi` (libgcc `__powidf2`), as gfortran.
+- **Fatal stops**: where WRF calls wrf_error_fatal inside a physics kernel (Noah land, sea ice and
+  glacial ice: SNEQV / SNOWH > 1; Kain-Fritsch: QG(1) < 0 and ISTOP = 1) the kernel calls
+  `raise_fatal` (atomic flag, CPU and CUDA) and the host stops after the call with WRF's message
+  (`fatal_check`, core/backend.hpp; tests/unit/test_fatal.cpp).
 - CHS, CHS2, CQS2 are locals of surface_driver in WRF; CHS is compared through SFCEXC (= CHS),
   CHS2/CQS2 through T2/Q2 (SFCDIAGS divides by them) and Q2SAT/QGH through the Noah outputs.
 

@@ -214,6 +214,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.gf_ichoice = int(cfg.get_int("phys.clos_choice", 0));     // Grell-Freitas closure
   o.warm_rain = cfg.get_int("phys.mp_physics", 0) == 1;  // mp_init: true only for KESSLERSCHEME
   o.isfflx = int(cfg.get_int("phys.isfflx", 1));
+  o.opt_thcnd = int(cfg.get_int("phys.opt_thcnd", 1));
   o.ysu_topdown_pblmix = int(cfg.get_int("phys.ysu_topdown_pblmix", 1));
   o.kim_tofd = cfg.get_bool("phys.kim_tofd", false);
   o.fractional_seaice = int(cfg.get_int("phys.fractional_seaice", 0));

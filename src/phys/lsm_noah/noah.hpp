@@ -103,6 +103,8 @@ struct NoahKernel {
   // The standalone SFLX test runs with both true.
   bool rdlai2d = true;
   bool usemonalb = true;
+  // opt_thcnd: soil thermal conductivity, 1 Peters-Lidard, 2 McCumber-Pielke for soil types 3 and 4
+  int opt_thcnd = 1;
   // Called from the Noah driver (lsm): the driver selects the points (active != 0: land, not
   // ice) and SFLX has no water test of its own; ALB is INOUT (written to alb_out).
   View2<const int> active;
@@ -179,6 +181,17 @@ struct NoahKernel {
 
   CPPWRF_HD static void tdfcnd(real& df, real smc, real qz, real smcmax, real sh2o,
                                real bexp, real psisat, int soiltyp, int opt_thcnd) {
+    if (opt_thcnd == 2 && (soiltyp == 4 || soiltyp == 3)) {
+      // McCumber and Pielke for silt loam (4) and sandy loam (3); PSIF in cm
+      real psif = psisat * real(100.) * std::pow(smcmax / smc, bexp);
+      real pf = std::log10(std::fabs(psif));
+      if (pf <= real(5.1)) {
+        df = real(420.) * std::exp(-(pf + real(2.7)));
+      } else {
+        df = real(0.1744);
+      }
+      return;
+    }
     real satratio = smc / smcmax;
     constexpr real thkice = real(2.2);
     constexpr real thkw = real(0.57);
@@ -436,7 +449,7 @@ struct NoahKernel {
         for (int j = 1; j <= ialp1; ++j) {
           int k = 1;
           for (int jj = j + 1; jj <= ialp1; ++jj) k *= jj;
-          sum += std::pow(acrt, real(cvfrz - j)) / real(k);
+          sum += powi(acrt, cvfrz - j) / real(k);  // ACRT**(CVFRZ-J): integer exponent
         }
         fcr = real(1.0) - std::exp(- acrt) * sum;
       }
@@ -1141,6 +1154,9 @@ struct NoahKernel {
     real cur_shdfac = shdfac(i, j);
     if (vtyp == tables.bare) cur_shdfac = real(0.0);
 
+    // NROOT = 0 (water, USGS 26/27, NLCD 18-21) is kept as in WRF: RTDIS stays unset and the
+    // root loops are empty. CANRES/TRANSP run only with SHDFAC > 0; such a point with SHDFAC > 0
+    // has no defined result in WRF either (ZSOIL(0), SGX / FLOAT(NROOT)).
     real rtdis[kMaxSoilLevels];
     for (int k = 0; k < nroot; ++k) {
       rtdis[k] = - sldpth[k] / zsoil[nroot - 1];
@@ -1212,6 +1228,10 @@ struct NoahKernel {
       sncond = real(1.0);
     } else {
       sndens = cur_sneqv / cur_snowh;
+      if (sndens > real(1.0)) {  // WRF: FATAL_ERROR('Physical snow depth is less than snow water equiv.')
+        raise_fatal(kFatalSnowDensity);
+        return;
+      }
       csnow(sncond, sndens);
     }
 
@@ -1269,7 +1289,6 @@ struct NoahKernel {
       sh2o_col[k] = sh2o(i, j, k);
     }
 
-    int opt_thcnd = 1;
     real df1;
     tdfcnd(df1, smc_col[0], quartz, smcmax, sh2o_col[0], bexp, psisat, styp, opt_thcnd);
     if (vtyp == isurban) df1 = real(3.24);

@@ -477,6 +477,26 @@ class TestValidationAndWarnings(unittest.TestCase):
         self.assertEqual(p["kim_tofd"], True)
         self.assertEqual(p["tofd_factor"], 0.005)
 
+    def test_opt_thcnd(self):
+        base = """
+        &time_control /
+        &domains time_step = 60 /
+        &physics sf_sfclay_physics = 1, sf_surface_physics = 2, num_soil_layers = 4, bl_pbl_physics = 1,
+         opt_thcnd = {} /
+        &dynamics /
+        """
+        t = WrfTranslator(parse_namelist(base.format(2)))
+        gen = t.translate()
+        self.assertEqual(t.errors, [])
+        self.assertEqual(gen["phys"]["opt_thcnd"], 2)
+        t = WrfTranslator(parse_namelist(base.format(1)))
+        gen = t.translate()
+        self.assertEqual(t.errors, [])
+        self.assertNotIn("opt_thcnd", gen["phys"])
+        t = WrfTranslator(parse_namelist(base.format(3)))
+        t.translate()
+        self.assertTrue(any("opt_thcnd = 3" in e for e in t.errors))
+
     def test_extended_dynamics_options_mapping(self):
         text = """
         &time_control /

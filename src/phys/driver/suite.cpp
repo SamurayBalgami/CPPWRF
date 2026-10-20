@@ -105,6 +105,8 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
     throw std::runtime_error("PhysicsSuite: nz exceeds the Tiedtke column limit");
   if (o.cu_physics == 16 && g.nz > cu_ntiedtke::kMaxLevels)
     throw std::runtime_error("PhysicsSuite: nz exceeds the New Tiedtke column limit");
+  if (o.opt_thcnd != 1 && o.opt_thcnd != 2)
+    throw std::runtime_error("PhysicsSuite: opt_thcnd must be 1 or 2");
   if (o.cu_physics == 1 && o.kfeta_trigger != 1 && o.kfeta_trigger != 3)
     throw std::runtime_error("PhysicsSuite: kfeta_trigger=2 is not supported");
   if (o.fractional_seaice != 0 && o.fractional_seaice != 1)

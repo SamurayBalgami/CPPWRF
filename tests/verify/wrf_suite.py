@@ -52,6 +52,11 @@ CASES = [
     ("real_p1_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p1_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P1_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    # P1T2 = P1 with opt_thcnd = 2 (Noah McCumber-Pielke conductivity on soil types 3 and 4)
+    ("real_p1t2_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p1_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P1T2_r8", "phys.opt_thcnd=2", "output.out_interval=10",
+      "output.diag_interval=10"],
+     f"{WR}/run_P1T2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
     ("real_p2_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p2_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P2_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),

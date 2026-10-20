@@ -1258,7 +1258,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
                 for (int n = nbc - 1; n >= 0; --n) {
                     double vol = massc_all[n] * orho_w;
                     double prob = std::max(0.0, 1.0 - std::exp(-120.0 * vol * 5.2e-4 * Texp));
-                    double N_c = N0_c * std::pow(Dc[n], nu_c) * std::exp(-lamc * Dc[n]) * dtc[n];
+                    double N_c = N0_c * powi(Dc[n], nu_c) * std::exp(-lamc * Dc[n]) * dtc[n];
                     sumn2 = std::min(t_Nc[j], sumn2 + prob * N_c);
                     sum1 += prob * N_c * massc_all[n];
                     if (sum1 >= tables.r_c[i]) break;

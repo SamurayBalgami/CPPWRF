@@ -1294,9 +1294,9 @@ struct KFKernel {
             // Check non-negative moisture
             for (int nk = 0; nk <= ltop; ++nk) {
                 if (qg[nk] < static_cast<T>(0.0)) {
-                    if (nk == 0) {
-                        qg[nk] = static_cast<T>(1.0e-9);
-                        break;
+                    if (nk == 0) {  // WRF: wrf_error_fatal('QG, QG(NK).LT.0')
+                        raise_fatal(kFatalKfQgSurface);
+                        return;
                     }
                     int nk1 = (nk == ltop) ? klcl : (nk + 1);
                     T tma = qg[nk1] * ems[nk1];
@@ -1314,7 +1314,9 @@ struct KFKernel {
 
             T topomg = (udr[ltop] - uer[ltop]) * dp[ltop] * emsd[ltop];
             if (abs(topomg - omg[ltop]) > static_cast<T>(1.0e-3)) {
-                break;
+                // WRF: ISTOP = 1, EXIT iter, then wrf_error_fatal('KAIN-FRITSCH, istop=1, diags')
+                raise_fatal(kFatalKfIstop);
+                return;
             }
 
             for (int nk = 0; nk <= ltop; ++nk) {

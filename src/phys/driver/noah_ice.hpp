@@ -294,6 +294,10 @@ CPPWRF_HD inline void sflx_glacial(real ffrozp, real dt, int nsoil, const real* 
     snowh = real(0.50);
   }
   real sndens = sneqv / snowh;
+  if (sndens > real(1.0)) {  // WRF: FATAL_ERROR('Physical snow depth is less than snow water equiv.')
+    raise_fatal(kFatalSnowDensity);
+    return;
+  }
   real sncond;
   csnow(sncond, sndens);
   bool snowng = false, frzgra = false;
@@ -611,7 +615,8 @@ struct Out {
       z0;
 };
 
-// SFLX_SEAICE. Returns false where WRF stops with "Physical snow depth is less than snow water equiv."
+// SFLX_SEAICE. Where WRF stops with "Physical snow depth is less than snow water equiv." it raises
+// kFatalSnowDensity and returns false.
 CPPWRF_HD inline bool sflx_seaice(const Opts& op, real ffrozp, real dt, int nsoil, real sithick, real lwdn,
                                   real solnet, real sfcprs, real prcp, real sfctmp, real q2, real th2, real q2sat,
                                   real dqsdt2, real snoalb, real tbot, real& z0brd, real& emissi, real& t1,
@@ -636,7 +641,10 @@ CPPWRF_HD inline bool sflx_seaice(const Opts& op, real ffrozp, real dt, int nsoi
   }
   sneqv = snowh * sndens;
   sndens = sneqv / snowh;
-  if (sndens > real(1.0)) return false;
+  if (sndens > real(1.0)) {  // WRF: FATAL_ERROR('Physical snow depth is less than snow water equiv.')
+    raise_fatal(kFatalSnowDensity);
+    return false;
+  }
   real sncond;
   csnow(sncond, sndens);
   if (prcp > real(0.0)) {

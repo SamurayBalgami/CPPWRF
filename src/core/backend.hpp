@@ -347,6 +347,54 @@ template <int MaxThreads, int MinBlocks, class K> void column_for_lb(const Range
 }
 #endif
 
+// WRF's wrf_error_fatal inside a physics kernel. A kernel cannot stop the run: it records the
+// condition (raise_fatal; the first code wins, atomic on host and device) and the host calls
+// fatal_check() right after the physics call, which prints WRF's FATAL block and throws FatalError.
+// The device flag is local to each CUDA translation unit: call fatal_check() in the file that
+// launches the kernel.
+enum FatalCode : int {
+  kFatalNone = 0,
+  kFatalSnowDensity = 1,  // Noah land / sea ice / glacial ice: SNEQV / SNOWH > 1
+  kFatalKfQgSurface = 2,  // Kain-Fritsch: QG(1) < 0 after the feedback
+  kFatalKfIstop = 3,      // Kain-Fritsch: mass does not balance at LTOP (ISTOP = 1)
+};
+struct FatalError : std::runtime_error {
+  int code;
+  FatalError(int c, const char* msg) : std::runtime_error(msg), code(c) {}
+};
+extern int fatal_code_host;
+const char* fatal_message(int code);
+[[noreturn]] void fatal_stop(int code);  // prints WRF's FATAL block, throws FatalError
+#if defined(__CUDACC__)
+namespace detail {
+static __device__ int fatal_code_dev;
+}
+#endif
+CPPWRF_HD inline void raise_fatal(int code) {
+#if defined(__CUDA_ARCH__)
+  atomicCAS(&detail::fatal_code_dev, 0, code);
+#else
+  int expected = 0;
+  __atomic_compare_exchange_n(&fatal_code_host, &expected, code, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+#endif
+}
+static inline void fatal_check() {
+  int code = __atomic_exchange_n(&fatal_code_host, 0, __ATOMIC_RELAXED);
+#if defined(CPPWRF_USE_CUDA) && defined(__CUDACC__)
+  int dcode = 0;
+  const int zero = 0;
+  cudaStream_t s = cuda_launch_stream();
+  cudaMemcpyFromSymbolAsync(&dcode, detail::fatal_code_dev, sizeof(int), 0, cudaMemcpyDeviceToHost, s);
+  cudaStreamSynchronize(s);
+  if (dcode != 0) {
+    cudaMemcpyToSymbolAsync(detail::fatal_code_dev, &zero, sizeof(int), 0, cudaMemcpyHostToDevice, s);
+    cudaStreamSynchronize(s);
+    if (code == 0) code = dcode;
+  }
+#endif
+  if (code != 0) fatal_stop(code);
+}
+
 // Deterministic reductions (diagnostics only; not in the hot path).
 class Reducer {
  public:
