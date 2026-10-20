@@ -111,7 +111,7 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
     vmdump::dump("vm_tend_rk", rk, {&t.ru_tend, &t.rv_tend, &t.rw_tend, &t.ph_tend, &t.t_tend, &s.ru, &s.rv, &s.php, &s.alt, &s.ww}, {&s.muu, &s.mut});
     small_->ss.run_stage(s, t, b, real(dt_rk), real(dts_rk), ns, rk);
     scalars_.run_stage(s, t, b, rk, real(dt_rk));
-    vmdump::dump("vm_state_rk", rk, {&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2, &s.q_2[s.P_QV], &s.ww, &s.ru_m, &s.rv_m, &s.ww_m}, {&s.mu_2, &s.muts});
+    vmdump::dump("vm_state_rk", rk, {&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2, s.P_QV >= 0 ? &s.q_2[s.P_QV] : nullptr, &s.ww, &s.ru_m, &s.rv_m, &s.ww_m}, {&s.mu_2, &s.muts});
     small_->ss.calc_p_rho_phi(s, b);
     vmdump::dump("vm_p_rk", rk, {&s.p, &s.al});
     vmdump::on() = false;

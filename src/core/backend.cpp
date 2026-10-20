@@ -129,6 +129,10 @@ const char* fatal_message(int code) {
     case kFatalSnowDensity: return "Physical snow depth is less than snow water equiv.";
     case kFatalKfQgSurface: return "QG, QG(NK).LT.0";
     case kFatalKfIstop: return "KAIN-FRITSCH, istop=1, diags";
+    case kFatalNoahSoilTypes: return "Warning: too many input soil types";
+    case kFatalNoahLanduseTypes: return "Warning: too many input landuse types";
+    case kFatalNoahSlopeTypes: return "Warning: too many input slope types";
+    case kFatalNoahRootLayers: return "Error: too many root layers";
     default: return "unknown fatal condition in a physics kernel";
   }
 }

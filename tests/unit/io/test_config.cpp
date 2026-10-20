@@ -147,6 +147,25 @@ case = straka
   ASSERT_THROWS_CONTAINS(Config::from_string(text, {"Bad-Sec.k=1"}), ConfigError, "invalid characters");
 }
 
+void test_env_expansion_and_overrides() {
+  // CPPWRF_TEST_UNSET_DIR is never set; a --set override of the key replaces the value without
+  // expanding the file's value (configs/wrf_*.ini: sounding_file = ${CPPWRF_WRF_REF}/...)
+  unsetenv("CPPWRF_TEST_UNSET_DIR");
+  const std::string text = "[case]\nsounding_file = ${CPPWRF_TEST_UNSET_DIR}/input_sounding\n"
+                           "other = ${CPPWRF_TEST_UNSET_DIR:-/fallback}/x\n";
+  Config cfg = Config::from_string(text, {"case.sounding_file=/data/input_sounding"});
+  ASSERT_EQ(cfg.get_string("case.sounding_file"), "/data/input_sounding");
+  ASSERT_EQ(cfg.get_string("case.other"), "/fallback/x");
+  // not overridden: still an error, with the line of the file
+  ASSERT_THROWS_CONTAINS(Config::from_string(text), ConfigError, "<string>:2: environment variable CPPWRF_TEST_UNSET_DIR");
+  // set variable: expanded in file values and in override values
+  setenv("CPPWRF_TEST_UNSET_DIR", "/env", 1);
+  Config cfg2 = Config::from_string(text, {"case.extra=${CPPWRF_TEST_UNSET_DIR}/y"});
+  ASSERT_EQ(cfg2.get_string("case.sounding_file"), "/env/input_sounding");
+  ASSERT_EQ(cfg2.get_string("case.extra"), "/env/y");
+  unsetenv("CPPWRF_TEST_UNSET_DIR");
+}
+
 void test_getters_and_conversions() {
   const std::string text = R"(
 [test]
@@ -244,6 +263,7 @@ int main() {
   test_comments_and_whitespace();
   test_syntax_errors_with_line_numbers();
   test_overrides();
+  test_env_expansion_and_overrides();
   test_getters_and_conversions();
   test_to_json();
   std::cout << "test_config: ALL TESTS PASSED\n";

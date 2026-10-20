@@ -348,7 +348,7 @@ UNSUPPORTED_PHYSICS_SWITCHES = {
     "iz0tlnd": "Alternative thermal roughness length over land",
     "shalwater_z0": "Shallow-water roughness formulation",
     "scm_force_flux": "Single-column model prescribed surface flux",
-    "rdlai2d": "2D LAI read from input (only applicable via Noah-MP dveg)",
+    "rdlai2d": "2D LAI read from input (Noah)",
     "usemonalb": "Monthly surface albedo from geogrid",
 }
 
@@ -556,12 +556,14 @@ class WrfTranslator:
         if self.override_case:
             case_name = self.override_case
         elif ideal_case is not None:
+            # WRF ideal_case -> the ports of WRF's ideal.exe (src/cases/wrf_ideal.cpp)
             ideal_map = {
                 0: "real",
-                1: "hill2d",
-                2: "quarter_ss",
-                4: "squall2d",
-                6: "straka",
+                1: "em_hill2d_x",
+                2: "em_quarter_ss",
+                4: "em_squall2d_x",
+                5: "em_squall2d_y",
+                6: "em_grav2d_x",
             }
             if ideal_case in ideal_map:
                 case_name = ideal_map[ideal_case]
@@ -573,13 +575,13 @@ class WrfTranslator:
         else:
             dir_name = os.path.basename(os.path.dirname(self.namelist_path)).lower() if self.namelist_path else ""
             if "hill" in dir_name:
-                case_name = "hill2d"
+                case_name = "em_hill2d_x"
             elif "qss" in dir_name or "quarter" in dir_name:
-                case_name = "quarter_ss"
+                case_name = "em_quarter_ss"
             elif "squall" in dir_name:
-                case_name = "squall2d"
+                case_name = "em_squall2d_y" if dir_name.endswith("_y") else "em_squall2d_x"
             elif "straka" in dir_name or "grav" in dir_name:
-                case_name = "straka"
+                case_name = "em_grav2d_x"
             else:
                 case_name = "real"
 
@@ -678,7 +680,7 @@ class WrfTranslator:
             dx = self.get_opt("domains", "dx", 1000.0)
             dy = self.get_opt("domains", "dy", dx)
             sections["domain"]["dx"] = dx
-            if ny > 1 or case_name in ("hill2d", "quarter_ss"):
+            if ny > 1 or case_name.startswith("em_"):
                 sections["domain"]["dy"] = dy
 
             ztop = self.get_opt("domains", "ztop", None)
@@ -698,7 +700,7 @@ class WrfTranslator:
             elif sym_xs:
                 sections["domain"]["bc_x"] = "symmetric"
             elif open_xs:
-                sections["domain"]["bc_x"] = "specified"
+                sections["domain"]["bc_x"] = "open"  # WRF open_xs/open_xe: BC::Open (src/cases/model.cpp)
 
             per_y = self.get_opt("bdy_control", "periodic_y", True)
             sym_ys = self.get_opt("bdy_control", "symmetric_ys", False)
@@ -710,21 +712,13 @@ class WrfTranslator:
                 elif sym_ys:
                     sections["domain"]["bc_y"] = "symmetric"
                 elif open_ys:
-                    sections["domain"]["bc_y"] = "specified"
+                    sections["domain"]["bc_y"] = "open"
 
         # 7. Ideal Case Def Section [case]
-        if case_name == "hill2d":
-            sections["case"] = {
-                "sounding_file": "configs/input_sounding_hill2d",
-                "hm": 100.0,
-                "xa": 5.0,
-                "u0": 10.0,
-            }
-        elif case_name == "quarter_ss":
-            sections["case"] = {
-                "sounding_file": "configs/input_sounding_qss",
-                "delt": 3.0,
-            }
+        if case_name.startswith("em_"):
+            # ideal.exe reads input_sounding from the run directory, i.e. next to namelist.input
+            nml_dir = os.path.dirname(self.namelist_path) if self.namelist_path else "."
+            sections["case"] = {"sounding_file": os.path.join(os.path.abspath(nml_dir), "input_sounding")}
         elif case_name == "straka":
             sections["case"] = {
                 "xc": 25550,
@@ -770,7 +764,9 @@ class WrfTranslator:
             elif float(w_crit_cfl) != 1.0:
                 sections["dyn"]["w_crit_cfl"] = w_crit_cfl
 
-        damp_opt = self.get_opt("dynamics", "damp_opt", 0)
+        # WRF v4.8.0 Registry default damp_opt = 3 (w Rayleigh damping, zdamp 5000, dampcoef 0.2); the
+        # model's default is 0, so a namelist without damp_opt must still produce damp_opt = 3
+        damp_opt = self.get_opt("dynamics", "damp_opt", 3)
         if damp_opt != 0:
             sections["dyn"]["damp_opt"] = damp_opt
             if damp_opt not in SUPPORTED_OPTIONS["damp_opt"]:
@@ -782,6 +778,12 @@ class WrfTranslator:
         elif case_name in ("hill2d",):
             sections["dyn"]["damp_opt"] = 0
 
+        # WRF Registry default diff_opt = km_opt = -1: wrf.exe stops ("Both km_opt and diff_opt need to
+        # be set in the namelist.input file", share/module_check_a_mundo.F)
+        for opt_key in ("diff_opt", "km_opt"):
+            if not self.has_opt("dynamics", opt_key):
+                self.notice(f"WRF {opt_key} is not set: wrf.exe v4.8.0 refuses this namelist (both km_opt and "
+                            "diff_opt must be set); CPPWRF assumes diff_opt = 0, km_opt = 1.")
         diff_opt = self.get_opt("dynamics", "diff_opt", 0)
         if diff_opt == 0 and (float(khdif) != 0.0 or float(kvdif) != 0.0):
             sections["dyn"]["diff_opt"] = 0  # WRF: no diffusion; CPPWRF's default with khdif/kvdif is 1
@@ -912,7 +914,9 @@ class WrfTranslator:
             hybrid_opt = self.get_opt("dynamics", "hybrid_opt", 0)
             if hybrid_opt not in (0, 1, 2):
                 self.error(f"WRF hybrid_opt = {hybrid_opt} is not supported; CPPWRF supports 0, 1, and 2.")
-            elif case_name != "real" and hybrid_opt != 0:
+            elif case_name != "real":
+                # always written: the ideal cases default to hybrid_opt = 2 (WRF Registry), so a
+                # namelist hybrid_opt = 0 must reach the model
                 sections["dyn"]["hybrid_opt"] = hybrid_opt
 
         # hypsometric_opt is a &domains option (Registry.EM_COMMON). wrf.exe takes it from the input file
@@ -1057,6 +1061,12 @@ class WrfTranslator:
                     inname = str(self.get_opt("time_control", "auxinput4_inname", "wrflowinp_d<domain>")).strip("'\"")
                     if inname != "wrflowinp_d<domain>":
                         sections["real"]["wrflowinp"] = inname.replace("<domain>", "01")
+                # sea-ice parameters: CPPWRF runs with WRF's defaults only (no reference run with others)
+                for si_key, si_def in (("seaice_albedo_default", 0.65), ("seaice_thickness_default", 3.0),
+                                       ("seaice_snowdepth_max", 1.e10), ("seaice_snowdepth_min", 0.001)):
+                    si_val = self.get_opt("physics", si_key, si_def)
+                    if abs(float(si_val) - si_def) > 1e-12 * si_def:
+                        self.error(f"WRF {si_key} = {si_val} is not supported; CPPWRF uses WRF's default {si_def}.")
                 fsi = self.get_opt("physics", "fractional_seaice", 0)
                 if fsi not in (0, 1):
                     self.error(f"WRF fractional_seaice = {fsi} is not supported; CPPWRF supports 0 and 1.")
@@ -1354,7 +1364,7 @@ class WrfTranslator:
                 i_start = self.get_dom_opt("domains", "i_parent_start", d, None, fallback_d0=False)
                 j_start = self.get_dom_opt("domains", "j_parent_start", d, None, fallback_d0=False)
                 grid_ratio = self.get_dom_opt("domains", "parent_grid_ratio", d, None, fallback_d0=False)
-                ts_ratio = self.get_dom_opt("domains", "parent_time_step_ratio", d, grid_ratio, fallback_d0=False)
+                ts_ratio = self.get_dom_opt("domains", "parent_time_step_ratio", d, 1, fallback_d0=False)  # Registry default 1
 
                 if i_start is None or not isinstance(i_start, int) or i_start < 2:
                     self.error(f"Domain {tag}: i_parent_start = {i_start} is invalid (must be an integer >= 2).")
@@ -1577,7 +1587,7 @@ Examples:
     )
     parser.add_argument("namelist", help="Path to WRF namelist.input")
     parser.add_argument("-o", "--output", help="Output .ini file path (default: stdout)")
-    parser.add_argument("--case", help="Explicitly specify CPPWRF case (e.g. real, hill2d, quarter_ss, straka)")
+    parser.add_argument("--case", help="Explicitly specify CPPWRF case (e.g. real, em_hill2d_x, em_quarter_ss, straka)")
     parser.add_argument("--real-dir", help="Path to directory containing wrfinput_d01 / wrfbdy_d01 (for real case)")
     parser.add_argument("--table-dir", help="Path to physics tables directory (for Noah LSM / radiation)")
     parser.add_argument("--format", choices=["native", "wrfout", "both"], default="native",

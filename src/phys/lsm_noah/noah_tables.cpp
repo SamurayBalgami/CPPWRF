@@ -43,8 +43,9 @@ bool read_genparm(const std::string& path, NoahTables& tables) {
   }
   if (!std::getline(f, line)) return false;
   int n_slope = std::stoi(trim(line));
+  if (n_slope > kMaxSlopeCats) return false;  // WRF: 'NUM_SLOPE too large for slope_data array'
   tables.slpcats = n_slope;
-  for (int i = 0; i < n_slope && i < kMaxSlopeCats; ++i) {
+  for (int i = 0; i < n_slope; ++i) {
     if (!std::getline(f, line)) return false;
     tables.slope_data[i] = static_cast<real>(std::stod(trim(line)));
   }
@@ -93,6 +94,7 @@ bool read_soilparm(const std::string& path, const std::string& dataset, NoahTabl
   auto tokens = tokenize(line);
   if (tokens.empty()) return false;
   int slcats = std::stoi(tokens[0]);
+  if (slcats > kMaxSoilCats) return false;  // WRF: 'Table sizes too small for value of SLCATS'
   tables.slcats = slcats;
 
   for (int lc = 0; lc < slcats; ++lc) {
@@ -137,6 +139,7 @@ bool read_vegparm(const std::string& path, const std::string& dataset, NoahTable
   auto tokens = tokenize(line);
   if (tokens.empty()) return false;
   int lucats = std::stoi(tokens[0]);
+  if (lucats > kMaxVegCats) return false;  // WRF: 'Table sizes too small for value of LUCATS'
   tables.lucats = lucats;
 
   for (int lc = 0; lc < lucats; ++lc) {

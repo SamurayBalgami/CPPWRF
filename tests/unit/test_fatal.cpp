@@ -1,6 +1,7 @@
 // WRF's fatal stops inside physics kernels (raise_fatal in the kernel, fatal_check on the host):
 //  (a) Noah land SFLX, glacial ice and sea ice with SNEQV / SNOWH > 1 stop with
 //      "Physical snow depth is less than snow water equiv.";
+//      Noah land with a category beyond the tables or NROOT > NSOIL stops as WRF's REDPRM;
 //  (b) the Kain-Fritsch codes (QG(1) < 0, ISTOP = 1) raised in a kernel stop with WRF's messages;
 //  (c) a physical snowpack raises nothing, and fatal_check clears the flag after a stop.
 // The kernels run on the backend of the build (CPU or CUDA device flag).
@@ -72,8 +73,9 @@ struct KRaise {
 };
 
 // Noah land SFLX on one column: every real view points into a zeroed scratch block except SNEQV and
-// SNOWH; the integer views (VEGTYP, SOILTYP, SLOPETYP, ACTIVE) are 1.
-static int noah_land(real sneqv, real snowh) {
+// SNOWH; VEGTYP = SOILTYP = SLOPETYP = ACTIVE = 1; one category in each table (cats: SLCATS, LUCATS,
+// SLPCATS; nroot: NROTBL(1)).
+static int noah_land(real sneqv, real snowh, int cats = 1, int nroot = 1) {
   const int nscr = 64;
   real* scr = static_cast<real*>(dev_alloc(sizeof(real) * nscr));
   real* snow = static_cast<real*>(dev_alloc(sizeof(real) * 2));
@@ -103,6 +105,8 @@ static int noah_land(real sneqv, real snowh) {
   const real sl[4] = {real(0.1), real(0.3), real(0.6), real(1.0)};
   for (int z = 0; z < 4; ++z) k.sldpth[z] = sl[z];
   k.isurban = 1;
+  k.tables.slcats = k.tables.lucats = k.tables.slpcats = cats;
+  k.tables.nrotbl[0] = nroot;
   const int code = stop_code([&] { phys::noah::run_noah(k, one); });
   dev_free(scr);
   dev_free(snow);
@@ -115,6 +119,9 @@ int main() {
   CHECK(noah_land(real(1.0), real(0.5)) == kFatalSnowDensity, "noah land");
   CHECK(stop_code([] { column_for(one, KGlacial{real(1.0), real(0.5)}); }) == kFatalSnowDensity, "glacial");
   CHECK(stop_code([] { column_for(one, KSeaice{real(1.0), real(0.5)}); }) == kFatalSnowDensity, "sea ice");
+  // Noah REDPRM: a category beyond the tables, more root layers than soil layers
+  CHECK(noah_land(real(0.2), real(0.8), 0) == kFatalNoahSoilTypes, "noah soil types");
+  CHECK(noah_land(real(0.2), real(0.8), 1, 5) == kFatalNoahRootLayers, "noah root layers");
   // (b) Kain-Fritsch codes and the messages
   CHECK(stop_code([] { column_for(one, KRaise{kFatalKfQgSurface}); }) == kFatalKfQgSurface, "kf qg");
   CHECK(stop_code([] { column_for(one, KRaise{kFatalKfIstop}); }) == kFatalKfIstop, "kf istop");

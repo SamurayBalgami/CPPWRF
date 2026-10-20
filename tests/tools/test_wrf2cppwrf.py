@@ -325,7 +325,7 @@ class TestIdealCases(unittest.TestCase):
             nml = parse_namelist(f.read())
         t = WrfTranslator(nml, namelist_path=nml_path)
         gen = t.translate()
-        self.assertEqual(gen["run"]["case"], "hill2d")
+        self.assertEqual(gen["run"]["case"], "em_hill2d_x")
         self.assertEqual(gen["domain"]["nx"], 201)
         self.assertEqual(gen["domain"]["ny"], 1)
         self.assertEqual(gen["domain"]["nz"], 40)
@@ -341,7 +341,7 @@ class TestIdealCases(unittest.TestCase):
             nml = parse_namelist(f.read())
         t = WrfTranslator(nml, namelist_path=nml_path)
         gen = t.translate()
-        self.assertEqual(gen["run"]["case"], "quarter_ss")
+        self.assertEqual(gen["run"]["case"], "em_quarter_ss")
         self.assertEqual(gen["domain"]["nx"], 41)
         self.assertEqual(gen["domain"]["ny"], 41)
         self.assertEqual(gen["domain"]["nz"], 40)
@@ -356,12 +356,38 @@ class TestIdealCases(unittest.TestCase):
             nml = parse_namelist(f.read())
         t = WrfTranslator(nml, namelist_path=nml_path)
         gen = t.translate()
-        self.assertEqual(gen["run"]["case"], "straka")
+        self.assertEqual(gen["run"]["case"], "em_grav2d_x")
         self.assertEqual(gen["domain"]["nx"], 512)
         self.assertEqual(gen["domain"]["ny"], 1)
         self.assertEqual(gen["domain"]["nz"], 64)
         self.assertEqual(gen["time"]["dt"], 1)
         self.assertEqual(gen["time"]["time_step_sound"], 6)
+
+    def test_wrf_ideal_case_names_and_keys(self):
+        # Every WRF ideal_case that CPPWRF ports maps to the src/cases/wrf_ideal.cpp case name; the
+        # sounding is the input_sounding next to the namelist; hybrid_opt = 0 is kept (the model's
+        # default is 2); open_xs/open_xe give bc_x = open.
+        tmp = tempfile.mkdtemp()
+        nml_path = os.path.join(tmp, "namelist.input")
+        expected = {1: "em_hill2d_x", 2: "em_quarter_ss", 4: "em_squall2d_x", 5: "em_squall2d_y", 6: "em_grav2d_x"}
+        for ideal_case, name in expected.items():
+            text = f"""
+            &time_control run_minutes = 10 /
+            &domains time_step = 3, e_we = 202, e_sn = 3, e_vert = 81, dx = 250, dy = 250, ztop = 20000 /
+            &dynamics hybrid_opt = 0 /
+            &bdy_control periodic_x = .false., open_xs = .true., open_xe = .true., periodic_y = .true. /
+            &ideal ideal_case = {ideal_case} /
+            """
+            t = WrfTranslator(parse_namelist(text), namelist_path=nml_path)
+            gen = t.translate()
+            self.assertEqual(t.errors, [], msg=f"ideal_case = {ideal_case}")
+            self.assertEqual(gen["run"]["case"], name)
+            self.assertEqual(gen["case"]["sounding_file"], os.path.join(tmp, "input_sounding"))
+            self.assertEqual(gen["dyn"]["hybrid_opt"], 0)
+            self.assertEqual(gen["domain"]["bc_x"], "open")
+            self.assertEqual(gen["domain"]["dy"], 250)
+            # no damp_opt in the namelist: WRF's Registry default 3 (the model's own default is 0)
+            self.assertEqual(gen["dyn"]["damp_opt"], 3)
 
 
 class TestValidationAndWarnings(unittest.TestCase):
@@ -449,6 +475,7 @@ class TestValidationAndWarnings(unittest.TestCase):
          ghg_input = 0,
          aer_opt = 0,
          rdmaxalb = .false.,
+         opt_thcnd = 2,
          kim_tofd = .true.,
          tofd_factor = 0.005
         /
@@ -474,6 +501,7 @@ class TestValidationAndWarnings(unittest.TestCase):
         self.assertEqual(p["o3input"], 0)
         self.assertEqual(p["ghg_input"], 0)
         self.assertEqual(p["rdmaxalb"], False)
+        self.assertEqual(p["opt_thcnd"], 2)
         self.assertEqual(p["kim_tofd"], True)
         self.assertEqual(p["tofd_factor"], 0.005)
 
@@ -496,6 +524,21 @@ class TestValidationAndWarnings(unittest.TestCase):
         t = WrfTranslator(parse_namelist(base.format(3)))
         t.translate()
         self.assertTrue(any("opt_thcnd = 3" in e for e in t.errors))
+
+    def test_seaice_parameters_rejected(self):
+        text = """
+        &time_control /
+        &domains time_step = 60 /
+        &physics sf_sfclay_physics = 1, sf_surface_physics = 2, num_soil_layers = 4, bl_pbl_physics = 1,
+         seaice_albedo_default = {} /
+        &dynamics /
+        """
+        t = WrfTranslator(parse_namelist(text.format(0.65)))
+        t.translate()
+        self.assertEqual(t.errors, [])
+        t = WrfTranslator(parse_namelist(text.format(0.8)))
+        t.translate()
+        self.assertTrue(any("seaice_albedo_default = 0.8" in e for e in t.errors))
 
     def test_extended_dynamics_options_mapping(self):
         text = """

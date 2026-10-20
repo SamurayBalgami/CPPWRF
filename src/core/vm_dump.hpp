@@ -44,9 +44,9 @@ inline void dump(const char* name, int rk, std::initializer_list<const Field3*> 
                  std::initializer_list<const Field2*> f2 = {}, std::initializer_list<const BaseField3*> b3 = {}) {
   std::FILE* f = open(name, rk);
   if (!f) return;
-  for (const Field3* x : f3) write_field(f, *x);
-  for (const Field2* x : f2) write_field(f, *x);
-  for (const BaseField3* x : b3) write_field(f, *x);
+  for (const Field3* x : f3) if (x) write_field(f, *x);  // null: field absent in this run (no qv)
+  for (const Field2* x : f2) if (x) write_field(f, *x);
+  for (const BaseField3* x : b3) if (x) write_field(f, *x);
   std::fclose(f);
 }
 

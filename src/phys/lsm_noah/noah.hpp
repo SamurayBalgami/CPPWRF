@@ -1030,7 +1030,9 @@ struct NoahKernel {
       ex = real(0.0);
       snomlt = real(0.0);
     } else {
-      real sn_factor = std::max(real(0.01), std::pow(sncovr, snoexp));
+      // SNCOVR ** SNOEXP with the PARAMETER SNOEXP = 2.0: gfortran folds it to SNCOVR*SNCOVR
+      static_assert(snoexp == real(2.0), "SNOEXP");
+      real sn_factor = std::max(real(0.01), sncovr * sncovr);
       t1 = tfreez * sn_factor + t12 * (real(1.0) - sn_factor);
       beta = real(1.0);
       ssoil = df1 * (t1 - stc[0]) / dtot;
@@ -1092,6 +1094,11 @@ struct NoahKernel {
       // standalone test: skip water points (USGS category 16, STATSGO soil 14)
       return;
     }
+    // REDPRM: categories beyond the tables and more root layers than soil layers stop WRF
+    if (styp > tables.slcats) { raise_fatal(kFatalNoahSoilTypes); return; }
+    if (vtyp > tables.lucats) { raise_fatal(kFatalNoahLanduseTypes); return; }
+    if (slop > tables.slpcats) { raise_fatal(kFatalNoahSlopeTypes); return; }
+    if (tables.nrotbl[vtyp - 1] > nsoil) { raise_fatal(kFatalNoahRootLayers); return; }
 
     // Initialize outputs
     runoff1(i, j) = real(0.0);

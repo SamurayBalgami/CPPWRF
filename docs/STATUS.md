@@ -89,7 +89,8 @@ global GFS of 2026-10-12 00 UTC through WPS, so the domains, projections and sur
 cases. The Thompson references (P6, mp8, V3, D0, D0V, SU1, SU2) come from WRF built with -r8 -double-8: with -r8 alone
 gfortran makes Thompson's DOUBLE PRECISION variables 16-byte.
 
-Bit identity holds on the CPU family the references were made on (Intel x86-64, glibc 2.41): WRF's
+Bit identity holds for references made with gfortran 14.2 on the CPU family the references were made on
+(Intel x86-64, glibc 2.41; another gfortran version vectorises other loops, e.g. in Thompson): WRF's
 vectorised loops and CPPWRF call the same glibc libmvec functions, and glibc's `_ZGVbN2v_log` gives
 different last bits on AMD EPYC (all scalar libm functions and the other libmvec functions tested agree).
 WRF itself therefore differs between the two; on AMD, CPPWRF differs from Intel-made references by

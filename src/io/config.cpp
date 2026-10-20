@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <cmath>
 #include <fstream>
+#include <map>
+#include <set>
 #include <sstream>
 #include <string_view>
 
@@ -131,6 +133,9 @@ Config Config::parse(const std::string& text, const std::string& source_name, co
   std::string raw_line;
   std::string current_section;
   int lineno = 0;
+  // ${...} in file values is expanded after the --set overrides, and not at all for an overridden key:
+  // --set case.sounding_file=... must work when the file's value names an unset variable.
+  std::map<std::string, std::string> where;
 
   while (std::getline(ss, raw_line)) {
     ++lineno;
@@ -174,11 +179,19 @@ Config Config::parse(const std::string& text, const std::string& source_name, co
         throw ConfigError(source_name + ":" + std::to_string(lineno) + ": duplicate key '" + full_key + "'");
       }
       std::string val_part = trim(trimmed.substr(eq_pos + 1));
-      cfg.data_[full_key] = expand_env(source_name + ":" + std::to_string(lineno), val_part);
+      cfg.data_[full_key] = val_part;
+      where[full_key] = source_name + ":" + std::to_string(lineno);
     }
   }
 
   cfg.apply_overrides(overrides);
+  std::set<std::string> overridden;
+  for (const auto& ov : overrides) {
+    if (const auto eq = ov.find('='); eq != std::string::npos) overridden.insert(trim(ov.substr(0, eq)));
+  }
+  for (const auto& [key, loc] : where) {
+    if (overridden.count(key) == 0) cfg.data_[key] = expand_env(loc, cfg.data_[key]);
+  }
   return cfg;
 }
 

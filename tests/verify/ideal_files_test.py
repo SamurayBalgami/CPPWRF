@@ -5,6 +5,9 @@ and every variable, dimension and attribute of the wrfout file must equal WRF's 
 
   ideal_files_test.py BUILD_DIR [CASE ...]
 
+CPPWRF_IDEAL_TRANSLATED=1: the configuration is instead tools/wrf2cppwrf.py's translation of the reference
+run's namelist.input (sounding: the input_sounding next to it), so the translator is checked as well.
+
 References: ${CPPWRF_WRF_REF} (as wrf_suite.py). Outputs in ${CPPWRF_SCRATCH:-~/cppwrf_scratch}/ideal_files_test,
 deleted for passing cases. Exit status 0 = all PASS.
 """
@@ -52,9 +55,24 @@ def main():
         dt = float(dict(s.split("=", 1) for s in sets).get("time.dt", config_value(cfg, "time", "dt")))
         out = os.path.join(work, name)
         shutil.rmtree(out, ignore_errors=True)
-        cmd = [exe, cfg]
-        for s in sets + [f"run.run_time={run}", "output.format=wrfout", f"output.out_interval={round(hist / dt)}",
-                         "output.diag_interval=100000", f"output.wrf_namelist={ref}/namelist.input", f"output.dir={out}"]:
+        if os.environ.get("CPPWRF_IDEAL_TRANSLATED") == "1":
+            os.makedirs(out)
+            ini = os.path.join(out, "translated.ini")
+            t = subprocess.run([sys.executable, os.path.join(REPO, "tools", "wrf2cppwrf.py"),
+                                os.path.join(ref, "namelist.input"), "-o", ini, "--format", "wrfout"],
+                               capture_output=True, text=True)
+            if t.returncode != 0:
+                print(f"FAIL {name}: translation failed: {(t.stdout + t.stderr)[-300:]}")
+                ok = False
+                continue
+            cmd = [exe, ini]
+            sets = [f"output.wrf_namelist={ref}/namelist.input", f"output.dir={out}"]
+        else:
+            cmd = [exe, cfg]
+            sets = sets + [f"run.run_time={run}", "output.format=wrfout", f"output.out_interval={round(hist / dt)}",
+                           "output.diag_interval=100000", f"output.wrf_namelist={ref}/namelist.input",
+                           f"output.dir={out}"]
+        for s in sets:
             cmd += ["--set", s]
         r = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
         if r.returncode != 0:

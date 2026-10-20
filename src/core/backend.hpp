@@ -357,6 +357,10 @@ enum FatalCode : int {
   kFatalSnowDensity = 1,  // Noah land / sea ice / glacial ice: SNEQV / SNOWH > 1
   kFatalKfQgSurface = 2,  // Kain-Fritsch: QG(1) < 0 after the feedback
   kFatalKfIstop = 3,      // Kain-Fritsch: mass does not balance at LTOP (ISTOP = 1)
+  kFatalNoahSoilTypes = 4,     // Noah REDPRM: SOILTYP > SLCATS
+  kFatalNoahLanduseTypes = 5,  // VEGTYP > LUCATS
+  kFatalNoahSlopeTypes = 6,    // SLOPETYP > SLPCATS
+  kFatalNoahRootLayers = 7,    // NROOT > NSOIL
 };
 struct FatalError : std::runtime_error {
   int code;
