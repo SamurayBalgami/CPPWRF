@@ -494,6 +494,7 @@ struct KVertDiffSfcFluxH2 {
 
     if (isfflx == 0 || isfflx == 2) {
       real heat_flux = tke_heat_flux;
+      if (hfx_out.p != nullptr) hfx_out(i, j) = heat_flux * cpm * rho(i, j, k);  // module_diffusion_em.F:4293
       if (use_theta_m == 1) {
         rt_tendf(i, j, k) = rt_tendf(i, j, k) -
                             Gr * heat_flux * (real(1.0) + rvovrd * qv_0) * rho(i, j, k) / dnw(k) -
