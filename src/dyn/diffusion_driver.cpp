@@ -78,7 +78,7 @@ DiffusionDriver::DiffusionDriver(const Grid& g, const DiffusionConfig& c)
   if (c.diff_opt == 2 || c.km_opt == 2 || c.km_opt == 3 || (c.n2_diagnostic && c.diff_opt != 0)) {
     prep_ = std::make_unique<phys::driver::PhyPrepFields>(g);
     ustm_ = Field2(g, S::M, "dif_ustm");
-    hfx_  = Field2(g, S::M, "dif_hfx");
+    hfx_  = Field2(g, S::M, "hfx");  // grid%hfx of a run without column physics (output)
     qfx_  = Field2(g, S::M, "dif_qfx");
   }
 }
@@ -218,7 +218,8 @@ void DiffusionDriver::dynamics(const State& s, const BaseState& b, Tendencies& t
                                 has_tke ? t.q_tendf[s.P_TKE].view() : View3<real>{},
                                 xkmv_.cview(), has_tke,
                                 s.u_2.cview(), s.v_2.cview(), pr.th_phy.cview(),
-                                b.qv_base_1d.view(), true, ustm.cview(), true, hfx.cview(), true, qfx.cview(), true);
+                                b.qv_base_1d.view(), true, ustm.cview(), true, hfx.cview(), true, qfx.cview(), true,
+                                p_.isfflx == 0 ? hfx.view() : View2<real>{});  // hfx = heat_flux*cpm*rho
       for (int n = 0; n < s.n_scalars(); ++n) {
         if (n == s.P_QV || n == s.P_TKE) continue;
         column_for(Range2D{is_s, is_e, js_s, js_e},
@@ -318,6 +319,11 @@ void DiffusionDriver::bound_tke(Field3& tke) const {
     if (x > ub) x = ub;
     v(i, j, k) = x;
   });
+}
+
+std::vector<const Field2*> DiffusionDriver::fields2() const {
+  if (suite_ || hfx_.layout().total == 0) return {};
+  return {&hfx_};
 }
 
 std::vector<const Field3*> DiffusionDriver::fields() const {

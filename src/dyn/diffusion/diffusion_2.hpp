@@ -481,6 +481,7 @@ struct KVertDiffSfcFluxH2 {
   int isfflx, use_theta_m;
   real tke_heat_flux;
   View3<real> rt_tendf;
+  View2<real> hfx_out;  // isfflx 0 / 2: hfx = heat_flux*cpm*rho (WRF: "provided for output only")
 
   CPPWRF_HD void operator()(int i, int j) const {
     constexpr real r_d    = real(287.0);
@@ -585,8 +586,11 @@ inline void horizontal_diffusion_2(const DiffusionParams& p,
   const bool bdy_ye = p.open_ye || p.specified || p.nested;
 
   // 1. Calculate stress tensor components
-  parallel_for(Range3D{0, nx, 0, ny, 0, nz}, KCalTitauDiag{rho, xkmh, defor11, titau11});
-  parallel_for(Range3D{0, nx, 0, ny, 0, nz}, KCalTitauDiag{rho, xkmh, defor22, titau22});
+  // cal_titau_11_22_33 with is_ext = 1 (titau11 for u) and js_ext = 1 (titau22 for v), WRF
+  // module_diffusion_em.F:3238, 3452, 5387-5406: one column / row more on the start side and up to
+  // ite / jte (the halo of a periodic or flat side; unused next to a specified / open side)
+  parallel_for(Range3D{-1, nx + 1, 0, ny, 0, nz}, KCalTitauDiag{rho, xkmh, defor11, titau11});
+  parallel_for(Range3D{0, nx, -1, ny + 1, 0, nz}, KCalTitauDiag{rho, xkmh, defor22, titau22});
   parallel_for(Range3D{0, nx, 0, ny, 0, nz}, KCalTitauDiag{rho, xkmh, defor33, titau33});
 
   int i12_s = (!p.periodic_x && bdy_xs) ? 1 : 0;
@@ -733,7 +737,8 @@ inline void vertical_diffusion_2(const DiffusionParams& p,
                                  View2<const real> hfx = {},
                                  bool has_hfx = false,
                                  View2<const real> qfx = {},
-                                 bool has_qfx = false) {
+                                 bool has_qfx = false,
+                                 View2<real> hfx_out = {}) {
   const bool bdy_xs = p.open_xs || p.specified || p.nested;
   const bool bdy_xe = p.open_xe || p.specified || p.nested;
   const bool bdy_ys = p.open_ys || p.specified || p.nested;

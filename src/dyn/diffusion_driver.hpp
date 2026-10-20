@@ -64,6 +64,7 @@ class DiffusionDriver {
   // WRF grid fields this driver holds (defor11..23, div, xkmh..xkhv, bn2, and its phy_prep fields for runs
   // without column physics), by WRF name
   std::vector<const Field3*> fields() const;
+  std::vector<const Field2*> fields2() const;  // hfx without column physics (wrfout HFX)
 
  private:
   Grid g_, gp_;  // gp_: one more level (fields on w levels at u / v points)

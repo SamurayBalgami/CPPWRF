@@ -464,8 +464,10 @@ void DomainRunner::prepare_output() {
       for (const Field2* f : m_.suite->fields2()) f2.push_back(f);
       for (const Field3* f : m_.suite->fields3()) f3.push_back(f);
     }
-    if (m_.diff)
+    if (m_.diff) {
       for (const Field3* f : m_.diff->fields()) f3.push_back(f);
+      for (const Field2* f : m_.diff->fields2()) f2.push_back(f);
+    }
     wrfout_ = std::make_unique<WrfHistory>(cfg_, m_, out_dir_, domain_tag_, start_date_, f2, f3);
     if (m_.rk) m_.rk->on_first_rk_prep = [this] { wrfout_->first_rk_prep(); };
   }
