@@ -138,6 +138,15 @@ in every field; em_quarter_ss also with diff_opt 2 / km_opt 2 (and isfflx 0). Th
 variable and attribute (tests/verify/ideal_files_test.py). On the GPU em_squall2d_x is at roundoff in FP64 (U 1.3e-13 relative L2 at 10 min) and
 within WRF's own single/double difference in FP32 (U 6.8e-5; WRF real*8 vs. WRF FP32: 8.2e-5).
 
+Namelist variants (tools/gcp/gcp_matrix.sh, 3-minute runs from the P1, P4, P6, P8 and P9 inputs, every wrfout
+variable at tolerance 0): kfeta_trigger 3, ysu_topdown_pblmix 0, icloud 0, cldovrlp 1-5 with idcor 0 and 1,
+o3input 0, ghg_input 0, use_mp_re 0, rdmaxalb false, ifsnow 0, kim_tofd, isfflx 0, Kessler on real data,
+radt / bldt / cudt > dt, Grell-Freitas clos_choice 1, 4, 10 and ishallow 0, hybrid_opt (input-file check),
+diff_6th_opt 1 and 2, moist/scalar_adv_opt 0, w_damping 0 and w_crit_cfl, damp_opt 0, dampcoef / zdamp,
+epssm, time_step_sound, smdiv / emdiv, c_s, km_opt 1 / 4 with diff_opt 1, diff_opt 2 / km_opt 4 (also
+mix_full_fields), v_adv_order 4 are bit-identical to WRF. (WRF leaves RQCBLTEN / RQIBLTEN of runs without qc / qi
+and LH with isfflx 0 uninitialised; they are not compared.)
+
 ## Performance
 
 NVIDIA RTX 2060 (6 GB), real-data domain 119 x 89 x 44, 1 h:
