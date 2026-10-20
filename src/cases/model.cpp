@@ -195,7 +195,11 @@ Model Model::build(const io::Config& cfg) {
   if (sp.moist_adv_opt < 0 || sp.moist_adv_opt > 1 || sp.scalar_adv_opt < 0 || sp.scalar_adv_opt > 1 ||
       sp.tke_adv_opt < 0 || sp.tke_adv_opt > 1)
     throw std::runtime_error("dyn.moist_adv_opt, dyn.scalar_adv_opt and dyn.tke_adv_opt must be 0 or 1");
-  if (m.st->n_scalars() > 0 && (sp.moist_adv_opt == 1 || sp.scalar_adv_opt == 1 || sp.tke_adv_opt == 1) &&
+  // the options of the species present (moist: 0..n_moist-1, tke, the other scalars)
+  const dyn::State& st0 = *m.st;
+  const int n_other = st0.n_scalars() - st0.n_moist - (st0.P_TKE >= 0 ? 1 : 0);
+  if (((st0.n_moist > 0 && sp.moist_adv_opt == 1) || (st0.P_TKE >= 0 && sp.tke_adv_opt == 1) ||
+       (n_other > 0 && sp.scalar_adv_opt == 1)) &&
       lp.h_adv_order != 5)
     throw std::runtime_error("positive-definite advection is implemented for h_adv_order = 5 only");
   // Diffusion: WRF diff_opt / km_opt / diff_6th_opt. diff_opt defaults to 1 when khdif or kvdif
