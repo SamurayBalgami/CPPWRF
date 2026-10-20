@@ -128,6 +128,12 @@ def compare_outputs(fortran_file, cpp_file, tol=1e-12):
         f_arr = f_out[var]
         c_arr = c_out[var]
         floor = floors[var]
+        if var == 'pc':
+            # SFLX sets PC only through CANRES (SHDFAC > 0 and XLAI > 0); otherwise its INTENT(OUT) PC is
+            # left undefined (module_sf_noahlsm.F:748-755) and not used, so compare it where RC > 0 only
+            mask = (f_out['rc'] > 0.0) | (c_out['rc'] > 0.0)
+            f_arr = np.where(mask, f_arr, 0.0)
+            c_arr = np.where(mask, c_arr, 0.0)
 
         abs_diff = np.abs(f_arr - c_arr)
         max_abs = np.max(abs_diff)

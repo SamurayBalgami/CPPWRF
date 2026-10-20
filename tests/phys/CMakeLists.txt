@@ -186,6 +186,16 @@ add_test(
 set_tests_properties(test_phys_bl_myj PROPERTIES LABELS diff)
 
 # ==============================================================================
+# Noah LSM ice surfaces (SFLX_GLACIAL land ice, SFLX_SEAICE sea ice)
+# ==============================================================================
+add_test(
+  NAME test_phys_lsm_noah_ice
+  COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/lsm_noah_ice/run_test.sh ${CMAKE_CURRENT_BINARY_DIR}/lsm_noah_ice_test
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+set_tests_properties(test_phys_lsm_noah_ice PROPERTIES LABELS diff)
+
+# ==============================================================================
 # Kain-Fritsch, Noah LSM, Thompson (own CMake projects: tables and column drivers)
 # ==============================================================================
 foreach(scheme cu_kf lsm_noah mp_thompson)

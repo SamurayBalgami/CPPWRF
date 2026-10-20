@@ -24,4 +24,16 @@ python3 "${SCRIPT_DIR}/generate_inputs.py" --ncols 2499 --nlevels 51
 "${REPO_ROOT}/tools/heavy.sh" "${FORT_BIN}"
 "${REPO_ROOT}/tools/heavy.sh" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
 python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0
+echo "=== Running Kain-Fritsch Cumulus Differential Test (2500 cols x 50 levels, kfeta_trigger = 3) ==="
+python3 "${SCRIPT_DIR}/generate_inputs.py" --ncols 2500 --nlevels 50 --trigger 3
+"${REPO_ROOT}/tools/heavy.sh" "${FORT_BIN}"
+"${REPO_ROOT}/tools/heavy.sh" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
+python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0
+for mp in kessler none; do
+  echo "=== Running Kain-Fritsch Cumulus Differential Test (2500 cols x 50 levels, moisture species: ${mp}) ==="
+  python3 "${SCRIPT_DIR}/generate_inputs.py" --ncols 2500 --nlevels 50 --mp "${mp}"
+  "${REPO_ROOT}/tools/heavy.sh" "${FORT_BIN}"
+  "${REPO_ROOT}/tools/heavy.sh" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}"
+  python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0
+done
 echo "=== Kain-Fritsch Cumulus Differential Test PASSED ==="

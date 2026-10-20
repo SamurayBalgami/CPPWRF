@@ -29,7 +29,7 @@ target_include_directories(driver_kf_cpu PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_compile_definitions(driver_kf_cpu PRIVATE CPPWRF_DOUBLE)
-target_compile_options(driver_kf_cpu PRIVATE -O3 -march=native -ffp-contract=off -fno-tree-vectorize)
+target_compile_options(driver_kf_cpu PRIVATE -O3 -march=native -ffp-contract=off)
 target_link_libraries(driver_kf_cpu PRIVATE
   OpenMP::OpenMP_CXX
 )

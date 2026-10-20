@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 HEAVY="${REPO_ROOT}/tools/heavy.sh"
 WRF_DIR="${WRF_DIR:?set WRF_DIR to a WRF v4.8.0 -r8d8 build (main/libwrflib.a)}"
+: "${CPPWRF_WRF_RUNS:?set CPPWRF_WRF_RUNS to the WRF reference runs (run_P4_r8, run_P1_r8 wrfout for the input columns)}"
 OUT_DIR="${1:-${PWD}/test_bl_myj}"
 
 mkdir -p "${OUT_DIR}"

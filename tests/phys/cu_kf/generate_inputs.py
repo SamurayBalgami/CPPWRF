@@ -17,7 +17,7 @@ import sys
 import struct
 import numpy as np
 
-def generate_soundings(ncols=2500, nlevels=50, seed=42):
+def generate_soundings(ncols=2500, nlevels=50, seed=42, trigger=1, mp="ice"):
     np.random.seed(seed)
 
     dt = 60.0
@@ -25,11 +25,8 @@ def generate_soundings(ncols=2500, nlevels=50, seed=42):
     cudt = 5.0
     stepcu = int(max(1, round(cudt * 60.0 / dt)))
     ktau = 1
-    trigger = 1
-    warm_rain = 0
-    flag_qi = 1
-    flag_qs = 1
-    flag_qr = 1
+    # moisture species of the microphysics (module_physics_init.F:4673-4678: warm_rain only for Kessler)
+    warm_rain, flag_qi, flag_qs, flag_qr = {"ice": (0, 1, 1, 1), "kessler": (1, 0, 0, 1), "none": (0, 0, 0, 0)}[mp]
 
     # Vertical height grid from surface to ~18 km
     # dz varies from ~50 m near surface to ~500 m aloft
@@ -269,6 +266,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--ncols", type=int, default=2500)
     ap.add_argument("--nlevels", type=int, default=50)
+    ap.add_argument("--trigger", type=int, default=1, choices=(1, 3))  # kfeta_trigger
+    ap.add_argument("--mp", default="ice", choices=("ice", "kessler", "none"))  # QI/QS/QR present, mp_physics 0
     args = ap.parse_args()
-    data = generate_soundings(ncols=args.ncols, nlevels=args.nlevels)
+    data = generate_soundings(ncols=args.ncols, nlevels=args.nlevels, trigger=args.trigger, mp=args.mp)
     save_inputs(data)

@@ -22,6 +22,8 @@ def generate_inputs(out_file, n_cols=2500, itimestep=2, wrfout_path=None):
     qsfc_list, thz0_list, qz0_list, uz0_list, vz0_list = [], [], [], [], []
     ustar_list, znt_list, pblh_list, rmol_list, akhs_list, akms_list = [], [], [], [], [], []
 
+    if not os.path.exists(wrfout_path):
+        raise FileNotFoundError(f"{wrfout_path} (set CPPWRF_WRF_RUNS to the WRF reference runs)")
     try:
         import netCDF4 as nc
         if os.path.exists(wrfout_path):
@@ -118,7 +120,7 @@ def generate_inputs(out_file, n_cols=2500, itimestep=2, wrfout_path=None):
 
             ds.close()
     except Exception as e:
-        print(f"Notice: Could not extract from NetCDF ({e}), generating synthetic columns...")
+        raise RuntimeError(f"cannot read the real columns from {wrfout_path}") from e
 
     remaining = n_cols - len(ht_list)
     np.random.seed(12345)
