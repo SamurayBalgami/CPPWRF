@@ -207,7 +207,12 @@ Model Model::build(const io::Config& cfg) {
   dc.n2_diagnostic = cfg.get_double("restart.interval", cfg.get_double("output.restart_interval", 0.0)) > 0;
   m.diff_opt = dc.diff_opt;
   m.km_opt = dc.km_opt;
-  m.hybrid_opt = int(cfg.get_int("dyn.hybrid_opt", m.hybrid_opt));  // real: from the input file
+  // real: from the input file; input_wrf: "hybrid_opt values must be consistent" (fatal)
+  if (cname == "real" && cfg.has("dyn.hybrid_opt") && int(cfg.get_int("dyn.hybrid_opt")) != m.hybrid_opt)
+    throw std::runtime_error("hybrid_opt values must be consistent: input file hybrid_opt = " +
+                             std::to_string(m.hybrid_opt) + ", configuration dyn.hybrid_opt = " +
+                             std::to_string(cfg.get_int("dyn.hybrid_opt")));
+  m.hybrid_opt = int(cfg.get_int("dyn.hybrid_opt", m.hybrid_opt));
   dc.damp_opt = m.ap.damp_opt;
   dc.zdamp = m.ap.zdamp;
   dc.dampcoef = m.ap.dampcoef;
