@@ -145,7 +145,8 @@ radt / bldt / cudt > dt, Grell-Freitas clos_choice 1, 4, 10 and ishallow 0, hybr
 diff_6th_opt 1 and 2, moist/scalar_adv_opt 0, w_damping 0 and w_crit_cfl, damp_opt 0, dampcoef / zdamp,
 epssm, time_step_sound, smdiv / emdiv, c_s, km_opt 1 / 4 with diff_opt 1, diff_opt 2 / km_opt 4 (also
 mix_full_fields), v_adv_order 4, and surface layer + LSM without a PBL scheme (bl_pbl_physics 0, with
-diff_opt 1 or diff_opt 2 / km_opt 2) are bit-identical to WRF. (WRF leaves RQCBLTEN / RQIBLTEN of runs without qc / qi
+diff_opt 1 or diff_opt 2 / km_opt 2) are bit-identical to WRF. Two-way nest N3 variants: smooth_option 0 / 1,
+feedback 0, parent_time_step_ratio 2, per-domain cu_physics (cumulus off on d02), cudt, radt and bldt. (WRF leaves RQCBLTEN / RQIBLTEN of runs without qc / qi
 and LH with isfflx 0 uninitialised; they are not compared.)
 
 ## Performance
