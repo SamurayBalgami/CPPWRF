@@ -95,7 +95,8 @@ different last bits on AMD EPYC (all scalar libm functions and the other libmvec
 WRF itself therefore differs between the two; on AMD, CPPWRF differs from Intel-made references by
 about 1e-14 after one step. The suite runs on Intel machines (`tools/gcp/gcp_run.sh`).
 
-Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8, P9, NMP1, T1; P1 also in FP32 on the GPU).
+Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8, P9, NMP1, T1; P1 also in FP32 on the GPU), and a run
+resumed from WRF's own wrfrst files continues as WRF does (also the two-way physics nest N3, both domains).
 
 Output files: the `wrfout_d0N` files of P1-P9, NMP1, mp8, V1-V3, T6, G2, F1, F2, D0, D0V, SU1, HY1, R1, T1, N1, N2 and N3 (both
 domains) and the `wrfrst_d0N` files of P1, P3, P4, P6, P7, P8, P9, NMP1, mp8, N2, N3, T6, G2, F1, F2, D0, D0V and SU1 are
