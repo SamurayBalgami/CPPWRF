@@ -236,6 +236,8 @@ def parse_namelist(text: str) -> Dict[str, Dict[str, List[Any]]]:
 # Options Mapping Specification & Validation
 # -----------------------------------------------------------------------------
 
+# physics options a nest may set differently from its parent (verified bit-identical with WRF nests)
+PER_DOMAIN_PHYS = {"cu_physics", "cudt", "radt", "bldt", "kfeta_trigger", "clos_choice", "ishallow"}
 SUPPORTED_OPTIONS = {
     "mp_physics": {
         0: "None / off",
@@ -1441,6 +1443,7 @@ class WrfTranslator:
                         self.error(f"Domain {tag}: dy = {c_dy} is inconsistent with parent dy = {p_dy} and parent_grid_ratio = {grid_ratio}.")
 
                 # Validate child physics options and ensure consistency with root [phys]
+                phys_over = {}
                 for pk in ("mp_physics", "sf_sfclay_physics", "sf_surface_physics", "bl_pbl_physics",
                            "cu_physics", "ra_lw_physics", "ra_sw_physics", "radt", "bldt", "cudt",
                            "ishallow", "clos_choice", "kfeta_trigger", "sf_urban_physics"):
@@ -1451,9 +1454,12 @@ class WrfTranslator:
                             self.error(f"Domain {tag}: WRF sf_urban_physics = {v_d} is not supported by CPPWRF.")
                         elif pk in SUPPORTED_OPTIONS and v_d is not None and v_d not in SUPPORTED_OPTIONS[pk]:
                             self.error(f"Domain {tag}: WRF {pk} = {v_d} is not supported by CPPWRF.")
+                        elif v_d != v_0 and pk in PER_DOMAIN_PHYS:
+                            phys_over[pk] = v_d  # [d0N] phys.<key>
                         elif v_d != v_0:
                             self.error(f"Domain {tag}: per-domain physics override &physics.{pk} = {v_d} "
-                                       f"(domain 1 has {v_0}) is not supported in inline nested configs; all domains share [phys].")
+                                       f"(domain 1 has {v_0}) is not supported; only "
+                                       f"{', '.join(sorted(PER_DOMAIN_PHYS))} may differ between domains.")
 
                 if dom_id == 2:
                     sections["domains"]["i_parent_start"] = i_start
@@ -1470,6 +1476,8 @@ class WrfTranslator:
                     sections[tag]["parent_time_step_ratio"] = ts_ratio
 
                 sections[tag]["wrfinput"] = f"wrfinput_{tag}"
+                for pk, v in phys_over.items():
+                    sections[tag]["phys." + pk] = v
                 child_dt = dom_dt[p_idx] / float(ts_ratio)
                 dom_dt[d] = child_dt
                 sections[tag]["dt"] = int(child_dt) if float(child_dt).is_integer() else child_dt
