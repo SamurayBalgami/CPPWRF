@@ -97,8 +97,8 @@ about 1e-14 after one step. The suite runs on Intel machines (`tools/gcp/gcp_run
 
 Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8, P9, NMP1, T1; P1 also in FP32 on the GPU).
 
-Output files: the `wrfout_d0N` files of P1-P9, NMP1, mp8, V1-V3, T6, G2, F1, F2, D0, D0V, SU1, HY1, R1, T1, N1 and N2 (both
-domains) and the `wrfrst_d0N` files of P1, P3, P4, P6, P7, P8, P9, NMP1, mp8, N2, T6, G2, F1, F2, D0, D0V and SU1 are
+Output files: the `wrfout_d0N` files of P1-P9, NMP1, mp8, V1-V3, T6, G2, F1, F2, D0, D0V, SU1, HY1, R1, T1, N1, N2 and N3 (both
+domains) and the `wrfrst_d0N` files of P1, P3, P4, P6, P7, P8, P9, NMP1, mp8, N2, N3, T6, G2, F1, F2, D0, D0V and SU1 are
 identical to WRF v4.8.0's. This covers
 every variable, value, dimension, attribute and global attribute
 (`tests/verify/run_wrf_files_test.sh`). Runs of these cases resumed from WRF's
