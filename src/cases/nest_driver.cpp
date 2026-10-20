@@ -318,6 +318,8 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
         ov.push_back("output." + (sub == "out_dir" ? std::string("dir") : sub) + "=" + val);
       else if (sub == "nx" || sub == "ny" || sub == "nz" || sub == "dx" || sub == "dy")
         ov.push_back("domain." + sub + "=" + val);
+      else if (sub.rfind("phys_", 0) == 0)  // per-domain physics (WRF max_domains options: cu_physics, radt, ...)
+        ov.push_back("phys." + sub.substr(5) + "=" + val);
       else if (sub.find('.') != std::string::npos)
         ov.push_back(sub + "=" + val);
       else

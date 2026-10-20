@@ -237,7 +237,7 @@ def parse_namelist(text: str) -> Dict[str, Dict[str, List[Any]]]:
 # -----------------------------------------------------------------------------
 
 # physics options a nest may set differently from its parent (verified bit-identical with WRF nests)
-PER_DOMAIN_PHYS = {"cu_physics", "cudt", "radt", "bldt", "kfeta_trigger", "clos_choice", "ishallow"}
+PER_DOMAIN_PHYS = {"cu_physics", "cudt", "radt", "bldt"}  # max_domains entries of the WRF Registry
 SUPPORTED_OPTIONS = {
     "mp_physics": {
         0: "None / off",
@@ -1455,7 +1455,7 @@ class WrfTranslator:
                         elif pk in SUPPORTED_OPTIONS and v_d is not None and v_d not in SUPPORTED_OPTIONS[pk]:
                             self.error(f"Domain {tag}: WRF {pk} = {v_d} is not supported by CPPWRF.")
                         elif v_d != v_0 and pk in PER_DOMAIN_PHYS:
-                            phys_over[pk] = v_d  # [d0N] phys.<key>
+                            phys_over[pk] = v_d  # [d0N] phys_<key>
                         elif v_d != v_0:
                             self.error(f"Domain {tag}: per-domain physics override &physics.{pk} = {v_d} "
                                        f"(domain 1 has {v_0}) is not supported; only "
@@ -1477,7 +1477,7 @@ class WrfTranslator:
 
                 sections[tag]["wrfinput"] = f"wrfinput_{tag}"
                 for pk, v in phys_over.items():
-                    sections[tag]["phys." + pk] = v
+                    sections[tag]["phys_" + pk] = v
                 child_dt = dom_dt[p_idx] / float(ts_ratio)
                 dom_dt[d] = child_dt
                 sections[tag]["dt"] = int(child_dt) if float(child_dt).is_integer() else child_dt
