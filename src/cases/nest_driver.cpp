@@ -259,7 +259,7 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
       sp.i_parent_start = get_int_dom("i_parent_start", 1);
       sp.j_parent_start = get_int_dom("j_parent_start", 1);
       sp.parent_grid_ratio = get_int_dom("parent_grid_ratio", 3);
-      sp.parent_time_step_ratio = get_int_dom("parent_time_step_ratio", sp.parent_grid_ratio);
+      sp.parent_time_step_ratio = get_int_dom("parent_time_step_ratio", 1);
       sp.feedback = get_int_dom("feedback", def_feedback);
       sp.smooth_option = get_int_dom("smooth_option", def_smooth);
       sp.save_topo_from_real = get_int_dom("save_topo_from_real", def_save_topo);
