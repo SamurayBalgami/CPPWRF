@@ -73,6 +73,7 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | N1 | one-way nest (both domains) | 3 parent steps |
 | N2 | two-way nest (both domains) | 1 h |
 | N2S1 / N2S2 | N2 with smooth_option 1 / 2 (smoothing of the fed-back fields, ht included) | 1 h |
+| N3 | two-way nest with the P4 physics on both domains (physics feedback, nest ozone from the parent) | 1 h |
 | V1 | tropics (Bay of Bengal), Mercator, 15 km, P4 physics | 6 h |
 | V2 | Arctic (Svalbard), polar stereographic, 15 km, P4 physics (sea ice, glacier land ice) | 6 h |
 | V3 | Alps, Lambert, 3 km, Thompson + MYJ + Eta + Noah-MP + RRTMG (radt 5), no cumulus | 2 h |
@@ -149,7 +150,6 @@ RRTMG runs on the GPU as a batched pipeline (docs/PHYSICS_SUITE.md section 10).
 
 ## Not yet implemented
 
-Nests with column physics: one-way nests (P4 physics, 3 min) are bit-identical; two-way nests with physics differ from WRF at
-roundoff from the first step (being traced). sf_sfclay_physics 91, km_opt 3 and 5, Noah-MP options other than the defaults (and crop/irrigation/
+sf_sfclay_physics 91, km_opt 3 and 5, Noah-MP options other than the defaults (and crop/irrigation/
 tile drainage), moving nests, and parallel (MPI) runs. Options without a port are rejected by
 `tools/wrf2cppwrf.py` and by the model with an error.

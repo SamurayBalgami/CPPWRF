@@ -297,6 +297,13 @@ CASES = [
      ["real.dir=" + f"{WR}/run_N2S2_r8", "domains.smooth_option=2"],
      {d: f"{WR}/run_N2S2_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600,
      {"d01.U": 0.0, "d01.W": 0.0, "d01.THM": 0.0, "d02.U": 0.0, "d02.W": 0.0, "d02.THM": 0.0, "d02.QV": 0.0}),
+    # N3 = two-way nest with the P4 physics on both domains (physics feedback, nest ozone from the parent)
+    ("real_n3_r8_fp64_cpu", "cpu_dp", "configs/real_n3_steps.ini", [],
+     {d: f"{WR}/run_N3s_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 180,
+     {f"{d}.{x}": 0.0 for d in ("d01", "d02") for x in ("U", "W", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP")}),
+    ("real_n3_r8_fp64_cpu_1h", "cpu_dp", "configs/real_n3.ini", [],
+     {d: f"{WR}/run_N3h_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600,
+     {f"{d}.{x}": 0.0 for d in ("d01", "d02") for x in ("U", "W", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP")}),
     ("real_n2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_n2.ini", ["real.dir=" + f"{WR}/run_N2_r8"],
      {d: f"{WR}/run_N2_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600,
      {"d01.U": 1e-11, "d01.THM": 1e-13, "d02.U": 1e-11, "d02.THM": 1e-13}),
