@@ -195,13 +195,8 @@ Model Model::build(const io::Config& cfg) {
   if (sp.moist_adv_opt < 0 || sp.moist_adv_opt > 1 || sp.scalar_adv_opt < 0 || sp.scalar_adv_opt > 1 ||
       sp.tke_adv_opt < 0 || sp.tke_adv_opt > 1)
     throw std::runtime_error("dyn.moist_adv_opt, dyn.scalar_adv_opt and dyn.tke_adv_opt must be 0 or 1");
-  // the options of the species present (moist: 0..n_moist-1, tke, the other scalars)
-  const dyn::State& st0 = *m.st;
-  const int n_other = st0.n_scalars() - st0.n_moist - (st0.P_TKE >= 0 ? 1 : 0);
-  if (((st0.n_moist > 0 && sp.moist_adv_opt == 1) || (st0.P_TKE >= 0 && sp.tke_adv_opt == 1) ||
-       (n_other > 0 && sp.scalar_adv_opt == 1)) &&
-      lp.h_adv_order != 5)
-    throw std::runtime_error("positive-definite advection is implemented for h_adv_order = 5 only");
+  // positive-definite advection with h_adv_order 6: WRF's order-6 branch of advect_scalar_pd is its
+  // order-5 branch with flux6 / flux4 for flux5 / flux3, i.e. the PD fluxes with hup = 0 (scalars.cpp)
   // Diffusion: WRF diff_opt / km_opt / diff_6th_opt. diff_opt defaults to 1 when khdif or kvdif
   // is set (older configs); diff_opt = 0 is no diffusion whatever khdif / kvdif (WRF).
   dyn::DiffusionConfig dc;

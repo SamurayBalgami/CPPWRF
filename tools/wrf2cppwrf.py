@@ -882,12 +882,6 @@ class WrfTranslator:
             sections["dyn"]["h_adv_order"] = h_adv
             if h_adv not in SUPPORTED_OPTIONS["h_adv_order"]:
                 self.error(f"WRF h_mom_adv_order = {h_adv} is not supported (5 or 6 only).")
-        pd = [o for o in ("moist_adv_opt", "scalar_adv_opt") if self.get_opt("dynamics", o, 1) == 1]  # Registry: 1
-        if self.get_opt("dynamics", "km_opt", 1) == 2 and self.get_opt("dynamics", "tke_adv_opt", 1) == 1:
-            pd.append("tke_adv_opt")  # TKE is a scalar with km_opt 2 only
-        if h_adv != 5 and pd:
-            self.error(f"WRF h_mom_adv_order = {h_adv} with positive-definite advection ({', '.join(pd)} = 1) "
-                       "is not ported (h_adv_order 5 only); set them to 0 or use order 5.")
         if self.has_opt("dynamics", "h_sca_adv_order"):
             h_sca = self.get_opt("dynamics", "h_sca_adv_order", h_adv)
             if h_sca != h_adv:
