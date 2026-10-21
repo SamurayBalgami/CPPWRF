@@ -44,6 +44,17 @@ for sk, v in sets:
     nl = setkey(nl, sec, k, v)
 open(os.path.join(R, "namelist.input"), "w").write(nl)
 env = dict(os.environ, OMP_NUM_THREADS="1")
+# ideal cases: WRF_EXE wrf_X.exe with an ideal_X.exe next to it -> ideal.exe makes wrfinput_d01 from the
+# variant's namelist first (boundary and grid options act in ideal.exe too)
+iexe = os.path.join(os.path.dirname(wrfexe), "ideal_" + os.path.basename(wrfexe)[len("wrf_"):])
+if os.path.basename(wrfexe).startswith("wrf_") and os.path.exists(iexe):
+    for f in glob.glob(os.path.join(R, "wrfinput_d0*")):
+        os.remove(f)
+    os.symlink(iexe, os.path.join(R, "ideal.exe"))
+    subprocess.run("./ideal.exe > ideal.log 2>&1", shell=True, cwd=R, env=env)
+    if not os.path.exists(os.path.join(R, "wrfinput_d01")):
+        print(f"{name} IDEAL-FAILED {open(os.path.join(R, 'ideal.log'), errors='replace').read().strip().splitlines()[-1:]}")
+        sys.exit(0)
 subprocess.run("./wrf.exe > wrf.log 2>&1", shell=True, cwd=R, env=env)
 if "SUCCESS COMPLETE WRF" not in open(os.path.join(R, "rsl.out.0000") if os.path.exists(os.path.join(R, "rsl.out.0000")) else os.path.join(R, "wrf.log"), errors="replace").read():
     print(f"{name} WRF-FAILED {open(os.path.join(R, 'wrf.log'), errors='replace').read().strip().splitlines()[-1:]}")
