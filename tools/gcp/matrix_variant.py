@@ -25,7 +25,7 @@ nl = open(os.path.join(src, "namelist.input")).read()
 
 
 def setkey(nl, sec, key, val):
-    m = re.search(rf"&{sec}\b(.*?)\n/", nl, re.S | re.I)
+    m = re.search(rf"&{sec}\b(.*?)\n\s*/", nl, re.S | re.I)
     if not m:
         raise SystemExit(f"{name} BAD-NAMELIST no &{sec}")
     body = m.group(1)
