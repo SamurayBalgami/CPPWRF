@@ -1139,11 +1139,14 @@ class WrfTranslator:
                     sections["phys"]["cudt"] = cudt
 
                 if sf_surface != 0:
-                    # check_a_mundo sets num_soil_layers = 4 for Noah and Noah-MP whatever the namelist says
+                    # check_a_mundo uses 4 layers for Noah and Noah-MP, but the history output keeps the
+                    # namelist's soil dimension (P1 with num_soil_layers = 5: same values, ZS/TSLB/SMOIS shapes differ)
                     num_soil = self.get_opt("physics", "num_soil_layers", 4)
                     if num_soil != 4:
-                        self.notice(f"WRF num_soil_layers = {num_soil} is replaced by 4 (Noah, Noah-MP), as in WRF.")
-                    sections["phys"]["num_soil_layers"] = 4
+                        self.error(f"WRF num_soil_layers = {num_soil} is not supported with "
+                                   f"sf_surface_physics = {sf_surface}; CPPWRF requires 4 soil layers.")
+                    else:
+                        sections["phys"]["num_soil_layers"] = 4
                     opt_thcnd = self.get_opt("physics", "opt_thcnd", 1)
                     if opt_thcnd not in (1, 2):
                         self.error(f"WRF opt_thcnd = {opt_thcnd} is not supported; CPPWRF supports 1 and 2.")
@@ -1631,9 +1634,8 @@ class WrfTranslator:
                 sections[tag]["wrfinput"] = f"wrfinput_{tag}"
                 for pk, v in phys_over.items():
                     sections[tag]["phys_" + pk] = v
-                child_dt = dom_dt[p_idx] / float(ts_ratio)
+                child_dt = dom_dt[p_idx] / float(ts_ratio)  # the model derives it the same way (no [d0N] dt)
                 dom_dt[d] = child_dt
-                sections[tag]["dt"] = int(child_dt) if float(child_dt).is_integer() else child_dt
 
                 hist_s_d = self.get_dom_opt("time_control", "history_interval_s", d, 0, fallback_d0=False)
                 hist_m_d = self.get_dom_opt("time_control", "history_interval", d, 0, fallback_d0=False)
