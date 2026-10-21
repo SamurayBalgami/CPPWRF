@@ -525,6 +525,16 @@ class TestValidationAndWarnings(unittest.TestCase):
         t.translate()
         self.assertTrue(any("opt_thcnd = 3" in e for e in t.errors))
 
+    def test_unported_dynamics_switches_rejected(self):
+        for key, val in (("diff_6th_slopeopt", "1"), ("sfs_opt", "1"), ("m_opt", "1"), ("tracer_mix6_off", ".true.")):
+            text = f"&time_control /\n&domains time_step = 60 /\n&physics /\n&dynamics {key} = {val} /\n"
+            t = WrfTranslator(parse_namelist(text))
+            t.translate()
+            self.assertTrue(any(key in e for e in t.errors), key)
+        t = WrfTranslator(parse_namelist("&time_control /\n&domains time_step = 60 /\n&physics /\n&dynamics sfs_opt = 0 /\n"))
+        t.translate()
+        self.assertEqual(t.errors, [])
+
     def test_seaice_parameters_rejected(self):
         text = """
         &time_control /

@@ -333,6 +333,17 @@ SUPPORTED_NOAHMP_OPTIONS = {
     "opt_wetland": (0, 1, 2),
 }
 
+# &dynamics options that WRF applies but CPPWRF does not port: any non-default value is an error
+UNSUPPORTED_DYNAMICS_SWITCHES = {
+    "diff_6th_slopeopt": "6th-order diffusion slope limiter",
+    "sfs_opt": "nonlinear backscatter / anisotropy (NBA) subfilter stresses",
+    "m_opt": "subfilter stress output",
+    "tracer_mix2_off": "tracer 2nd-order diffusion switch",
+    "tracer_mix6_off": "tracer 6th-order diffusion switch",
+    "chem_mix2_off": "chemistry 2nd-order diffusion switch",
+    "chem_mix6_off": "chemistry 6th-order diffusion switch",
+}
+
 UNSUPPORTED_PHYSICS_SWITCHES = {
     "cu_rad_feedback": "Cumulus-radiation feedback",
     "shcu_physics": "Separate shallow cumulus scheme",
@@ -1234,6 +1245,12 @@ class WrfTranslator:
         sf_urban = self.get_opt("physics", "sf_urban_physics", 0)
         if sf_urban != 0:
             self.error(f"WRF sf_urban_physics = {sf_urban} (urban canopy) is not supported by CPPWRF.")
+
+        for unsup_key, desc in UNSUPPORTED_DYNAMICS_SWITCHES.items():
+            if self.has_opt("dynamics", unsup_key):
+                val = self.get_opt("dynamics", unsup_key, 0)
+                if val not in (0, False):
+                    self.error(f"WRF {unsup_key} = {val} ({desc}) is not supported by CPPWRF.")
 
         for unsup_key, desc in UNSUPPORTED_PHYSICS_SWITCHES.items():
             if self.has_opt("physics", unsup_key):
