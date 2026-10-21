@@ -170,41 +170,40 @@ inline void sixth_order_diffusion(char name,
 
   real diff_6th_coef = p.diff_6th_factor * real(0.015625) / (real(2.0) * dt);
 
+  // loop limits of sixth_order_diffusion (module_big_step_utilities_em.F 6334-6436, 0-based, end exclusive):
+  // open sides start 3 rows in / end 3 (u, v along their stagger) or 4 rows in; 'v' with open_xs takes the
+  // specified limits on all four sides
+  const bool sp = p.specified || p.nested;
+  int is = 0, js = 0, ie, je;
   if (name == 'u') {
-    int is = p.specified ? 3 : 0;
-    int ie = p.specified ? nx - 2 : nx + 1;
-    int js = p.specified ? 3 : 0;
-    int je = p.specified ? ny - 3 : ny;
+    ie = nx + 1; je = ny;
+    if (p.open_xs) is = 3;
+    if (p.open_ys) js = 3;
+    if (p.open_xe) ie = nx - 2;
+    if (p.open_ye) je = ny - 3;
+    if (sp) { is = 3; ie = nx - 2; js = 3; je = ny - 3; }
     if (p.periodic_x) { is = 0; ie = nx + 1; }
-
     parallel_for(Range3D{is, ie, js, je, 0, nz},
                  KSixthOrderU{field, mut, msfux, msfuy, c1, c2, tendency, diff_6th_coef, p.diff_6th_opt});
   } else if (name == 'v') {
-    int is = p.specified ? 3 : 0;
-    int ie = p.specified ? nx - 3 : nx;
-    int js = p.specified ? 3 : 0;
-    int je = p.specified ? ny - 2 : ny + 1;
+    ie = nx; je = ny + 1;
+    if (p.open_xs) is = 3;
+    if (p.open_ys) js = 3;
+    if (p.open_xe) ie = nx - 3;
+    if (p.open_ye) je = ny - 2;
+    if (p.open_xs || sp) { is = 3; ie = nx - 3; js = 3; je = ny - 2; }
     if (p.periodic_x) { is = 0; ie = nx; }
-
     parallel_for(Range3D{is, ie, js, je, 0, nz},
                  KSixthOrderV{field, mut, msfvx, msfvy, c1, c2, tendency, diff_6th_coef, p.diff_6th_opt});
-  } else if (name == 'w') {
-    int is = p.specified ? 3 : 0;
-    int ie = p.specified ? nx - 3 : nx;
-    int js = p.specified ? 3 : 0;
-    int je = p.specified ? ny - 3 : ny;
+  } else {  // 'w' (levels 1..nz-1) and 'm'
+    ie = nx; je = ny;
+    if (p.open_xs) is = 3;
+    if (p.open_ys) js = 3;
+    if (p.open_xe) ie = nx - 3;
+    if (p.open_ye) je = ny - 3;
+    if (sp) { is = 3; ie = nx - 3; js = 3; je = ny - 3; }
     if (p.periodic_x) { is = 0; ie = nx; }
-
-    parallel_for(Range3D{is, ie, js, je, 1, nz},
-                 KSixthOrderM{field, mut, msftx, msfty, c1, c2, tendency, diff_6th_coef, p.diff_6th_opt});
-  } else {  // 'm'
-    int is = p.specified ? 3 : 0;
-    int ie = p.specified ? nx - 3 : nx;
-    int js = p.specified ? 3 : 0;
-    int je = p.specified ? ny - 3 : ny;
-    if (p.periodic_x) { is = 0; ie = nx; }
-
-    parallel_for(Range3D{is, ie, js, je, 0, nz},
+    parallel_for(Range3D{is, ie, js, je, name == 'w' ? 1 : 0, nz},
                  KSixthOrderM{field, mut, msftx, msfty, c1, c2, tendency, diff_6th_coef, p.diff_6th_opt});
   }
 }
