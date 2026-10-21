@@ -4,7 +4,7 @@
 //   - 1D vertical arrays (znw, znu, dnw, dn, rdnw, rdn, fnm, fnp, c1..c4, cf1..cfn) as stored.
 //   - pb = c3h*mub + c4h + p_top; alb from t_init (start_em, max_dom = 1); phb, mub as stored.
 //   - prognostic theta: THM = (T + t0)(1 + Rv/Rd qv) - t0 (Registry dataname "thm" for t).
-//   - al from ph (hypsometric_opt from the input, 2 for real.exe), p from al and theta_m.
+//   - al from ph (hypsometric_opt of the namelist, default 2), p from al and theta_m.
 //   - w = 0 in the input -> set_w_surface with the znw^2 fill (start_em w_needs_to_be_set).
 #include <algorithm>
 #include <cmath>
@@ -172,10 +172,22 @@ void init_real_case(const io::Config& cfg, Model& m) {
   };
   // start_em (input_from_file, not restart): the base state is recomputed from the terrain and
   // the base-state parameters (start_em.F 590-620), not taken from wrfinput: p_surf, pb, t_init,
-  // alb, mub, phb (hypsometric_opt of the input). Then (max_dom = 1) pb, alb again from mub.
-  const int hypso = int(cfg.get_int("dyn.hypsometric_opt", d.attrs_int.count("HYPSOMETRIC_OPT")
-                                                                ? d.attrs_int.at("HYPSOMETRIC_OPT") : 2));
+  // alb, mub, phb. Then (max_dom = 1) pb, alb again from mub. hypsometric_opt is the namelist's (Registry
+  // default 2); input_wrf.F resets it to 1 only when the input has no valid HYPSOMETRIC_OPT attribute.
+  const auto ha = d.attrs_int.find("HYPSOMETRIC_OPT");
+  const bool hypso_attr = ha != d.attrs_int.end() && (ha->second == 1 || ha->second == 2);
+  const int hypso = hypso_attr ? int(cfg.get_int("dyn.hypsometric_opt", 2)) : 1;
   const BaseParams bp = read_base_params(dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01"));
+  // start_em / input_wrf: the namelist values must agree with the input file (wrf.exe stops otherwise)
+  if (cfg.has("real.p_top_requested") && cfg.get_double("real.p_top_requested") != d.p_top)
+    throw std::runtime_error("start_em: p_top from the namelist does not match p_top from the input file.");
+  if (bp.t00 < 100. || bp.p00 < 10000.)
+    throw std::runtime_error("start_em: did not find base state parameters in wrfinput.");
+  if (cfg.has("real.iso_temp") && cfg.get_double("real.iso_temp") != bp.tiso)
+    throw std::runtime_error("start_em: namelist iso_temp is not equal to iso_temp in wrfinput.");
+  if (d.attrs_int.count("USE_THETA_M") && d.attrs_int.at("USE_THETA_M") != 1)
+    throw std::runtime_error("use_theta_m values must be consistent: input file use_theta_m = " +
+                             std::to_string(d.attrs_int.at("USE_THETA_M")) + ", CPPWRF use_theta_m = 1");
   std::vector<double> pb(std::size_t(nx) * ny * nz), alb(pb.size()), t_init(pb.size());
   std::vector<double> mub(std::size_t(nx) * ny), phb(std::size_t(nx) * ny * (nz + 1));
   {
@@ -312,6 +324,11 @@ void init_real_case(const io::Config& cfg, Model& m) {
   if (interval <= 0 && !bd->this_bdy_times.empty() && !bd->next_bdy_times.empty())
     interval = seconds_between(bd->this_bdy_times[0], bd->next_bdy_times[0]);
   if (interval <= 0) throw std::runtime_error("real: cannot determine the boundary interval (set real.bdy_interval)");
+  // WRF's dtbc is a running sum of dt, reset only when the model time equals a boundary time exactly
+  // (mediation_integrate.F); dtbc = t0 - need * interval below is that sum only when dt is an integer
+  // (exact sums) that divides the interval
+  if (g.dt != std::floor(g.dt) || std::fmod(interval, g.dt) != 0.0)
+    throw std::runtime_error("real: time.dt must be an integer number of seconds that divides the boundary interval");
   dyn::LateralBC* bc = m.bc.get();
   const int p_qv = m.st->P_QV;
   auto load = [bd, bc, nx, ny, nz, nxs, nys, p_qv](int rec) {

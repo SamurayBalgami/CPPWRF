@@ -355,6 +355,13 @@ DEFAULT_ONLY_OPTIONS = {
     ("physics", "no_mp_heating"): (0, "microphysics without latent heating"),
     ("physics", "mp_zero_out"): (0, "microphysics zero-out of small moist values"),
     ("bdy_control", "polar"): (False, "polar filters and boundaries"),
+    ("bdy_control", "have_bcs_moist"): (False, "moist species from the boundary file"),
+    ("bdy_control", "have_bcs_scalar"): (False, "scalar species from the boundary file"),
+    ("dynamics", "use_baseparam_fr_nml"): (False, "base-state parameters from the namelist"),
+    ("dynamics", "use_input_w"): (False, "vertical velocity from the input file"),
+    ("domains", "rebalance"): (0, "rebalancing of the input state"),
+    ("time_control", "cycling"): (False, "cycling of the input state"),
+    ("dfi_control", "dfi_opt"): (0, "digital filter initialisation"),
 }
 
 UNSUPPORTED_PHYSICS_SWITCHES = {
@@ -680,6 +687,11 @@ class WrfTranslator:
             else:
                 sections["real"]["dir"] = r_dir_abs
 
+            # namelist values that wrf.exe checks against the input file (start_em.F, input_wrf.F: fatal
+            # when they differ); the model makes the same checks
+            sections["real"]["p_top_requested"] = self.get_opt("domains", "p_top_requested", 5000.0)
+            sections["real"]["iso_temp"] = self.get_opt("dynamics", "iso_temp", 200.0)
+
             # In configs/real_p1..p4 and nested configs, wrfinput/wrfbdy are written explicitly
             if self.explicit_files or has_physics_suite or max_dom > 1:
                 sections["real"]["wrfinput"] = "wrfinput_d01"
@@ -757,6 +769,8 @@ class WrfTranslator:
         num = self.get_opt("domains", "time_step_fract_num", 0)
         den = self.get_opt("domains", "time_step_fract_den", 1)
         if den and den > 0 and num:
+            self.error("WRF time_step_fract_num/den (fractional time step) is not supported: WRF's boundary "
+                       "time dtbc is a running sum of dt, not verified for a non-integer dt.")
             dt += float(num) / float(den)
         sections["time"]["dt"] = int(dt) if dt.is_integer() else dt
 
@@ -942,7 +956,13 @@ class WrfTranslator:
             elif float(etac) != 0.2:
                 sections["dyn"]["etac"] = etac
 
-        if self.has_opt("dynamics", "hybrid_opt"):
+        if case_name == "real":
+            # Registry default 2; input_wrf.F stops when it differs from the input's HYBRID_OPT
+            hybrid_opt = self.get_opt("dynamics", "hybrid_opt", 2)
+            if hybrid_opt not in (0, 1, 2):
+                self.error(f"WRF hybrid_opt = {hybrid_opt} is not supported; CPPWRF supports 0, 1, and 2.")
+            sections["dyn"]["hybrid_opt"] = hybrid_opt
+        elif self.has_opt("dynamics", "hybrid_opt"):
             hybrid_opt = self.get_opt("dynamics", "hybrid_opt", 0)
             if hybrid_opt not in (0, 1, 2):
                 self.error(f"WRF hybrid_opt = {hybrid_opt} is not supported; CPPWRF supports 0, 1, and 2.")
@@ -951,13 +971,13 @@ class WrfTranslator:
                 # namelist hybrid_opt = 0 must reach the model
                 sections["dyn"]["hybrid_opt"] = hybrid_opt
 
-        # hypsometric_opt is a &domains option (Registry.EM_COMMON). wrf.exe takes it from the input file
-        # (the HYPSOMETRIC_OPT attribute real.exe writes), as CPPWRF's real case does: nothing to write
+        # hypsometric_opt is a &domains option (Registry.EM_COMMON, default 2). wrf.exe uses the namelist value
+        # (the input's HYPSOMETRIC_OPT attribute only resets it to 1 when missing); the real case's default is 2
         if self.has_opt("domains", "hypsometric_opt"):
             hypso = self.get_opt("domains", "hypsometric_opt", 2)
             if hypso not in (1, 2):
                 self.error(f"WRF hypsometric_opt = {hypso} is not supported; CPPWRF supports 1 and 2.")
-            elif case_name != "real" and hypso != 1:
+            elif (case_name != "real" and hypso != 1) or (case_name == "real" and hypso != 2):
                 sections["dyn"]["hypsometric_opt"] = hypso
 
         # WRF 4.8 options without a CPPWRF implementation

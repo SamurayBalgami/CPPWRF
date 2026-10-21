@@ -259,6 +259,10 @@ Model Model::build(const io::Config& cfg) {
     if (wants_column_physics(cfg)) {
       if (cname != "real") throw std::runtime_error("phys.sf_*/bl_pbl_physics: real-data runs only");
       init_real_physics(cfg, m);
+    } else if (cfg.get_int("phys.ra_lw_physics", 0) != 0 || cfg.get_int("phys.ra_sw_physics", 0) != 0) {
+      // radiation is part of the column physics suite: without it ra_* would be silently ignored
+      throw std::runtime_error("phys.ra_lw/ra_sw_physics without surface-layer, land-surface, PBL or cumulus physics "
+                               "is not supported");
     }
     if (m.bc) m.rk->set_lateral_bc(m.bc.get());
     if (dc.on()) {
