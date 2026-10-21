@@ -273,6 +273,7 @@ inline void couple_or_uncouple_state(
                KCoupleHalfLevels{s.t_2.view(), b.mub.view(), s.mu_2.cview(),
                                  b.c1h.view(), b.c2h.view(), couple});
   for (int n = 0; n < s.n_scalars(); ++n) {
+    if (n == s.P_TKE) continue;  // couple_or_uncouple_em: moist, chem, scalar, tracer; tke_2 is not coupled
     parallel_for(Range3D{0, nx, 0, ny, 0, nz},
                  KCoupleHalfLevels{s.q_2[n].view(), b.mub.view(), s.mu_2.cview(),
                                    b.c1h.view(), b.c2h.view(), couple});

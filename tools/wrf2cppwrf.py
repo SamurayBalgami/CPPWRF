@@ -1294,6 +1294,20 @@ class WrfTranslator:
                 if val not in (0, False):
                     self.error(f"WRF {unsup_key} = {val} ({desc}) is not supported by CPPWRF.")
 
+        # nest options with per-domain values that are not ported (every domain's value is checked)
+        for group, key, default, desc in (("domains", "interp_method_type", 2, "nest interpolation other than SINT"),
+                                          ("domains", "nest_interp_coord", 0, "isobaric nest interpolation"),
+                                          ("time_control", "input_from_hires", False, "high-resolution nest terrain")):
+            for val in self.get_opt_list(group, key):
+                if val != default:
+                    self.error(f"WRF {key} = {val} ({desc}) is not supported by CPPWRF.")
+        # nests open at t = 0 and run to the end of domain 1 (no delayed or early-ending nests)
+        for key in ("start_year", "start_month", "start_day", "start_hour", "start_minute", "start_second",
+                    "end_year", "end_month", "end_day", "end_hour", "end_minute", "end_second"):
+            vals = self.get_opt_list("time_control", key)[:max(1, self._max_dom)]
+            if len(set(vals)) > 1:
+                self.error(f"WRF {key} = {vals}: nests with their own start or end time are not supported.")
+
         for (group, key), (default, desc) in DEFAULT_ONLY_OPTIONS.items():
             if self.has_opt(group, key):
                 val = self.get_opt(group, key, default)

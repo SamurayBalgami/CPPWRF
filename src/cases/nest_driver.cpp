@@ -485,6 +485,8 @@ void med_nest_force(Model& parent, Model& child, const NestDomainSpec& child_spe
 
   const int n_scalars = std::min(parent.st->n_scalars(), child.st->n_scalars());
   for (int s = 0; s < n_scalars; ++s) {
+    // Registry: tke has no f (force) flag - the nest keeps flow-dependent boundaries for it (solve_em)
+    if (s == child.st->P_TKE) continue;
     nest::force_nest_bdy_scalar_field3(lbc, s, parent.st->q_2[s], child.st->q_2[s], cg.nx, cg.ny, cg.nz, ipos, jpos,
                                        nri, nrj, cdt);
   }
@@ -533,6 +535,7 @@ void med_nest_feedback(Model& parent, const Model& child, const NestDomainSpec& 
 
   const int n_scalars = std::min(parent.st->n_scalars(), child.st->n_scalars());
   for (int s = 0; s < n_scalars; ++s) {
+    if (s == parent.st->P_TKE) continue;  // tke is not fed back (Registry: no u flag)
     nest::feedback_field3(pg, parent.st->q_2[s], child.st->q_2[s], n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm);
   }
 
