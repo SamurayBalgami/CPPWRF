@@ -51,6 +51,19 @@ struct RadiationOutputs {
   Field2* sw[8] = {};
 };
 
+// grid%julian at the start of a step elapsed_s seconds after the simulation start (julyr, julday, gmt):
+// domain_clock_get's REAL(dayOfYear_r8) - 1 with dayOfYear_r8 = (seconds since 1 January of the current year)
+// / 86400 + 1 (ESMF_TimeGet); 0 again after a year change
+inline double wrf_julian(int julyr, int julday, double gmt, double elapsed_s) {
+  double s = double(julday - 1) * 86400.0 + double(std::llround(gmt * 3600.0)) + elapsed_s;
+  for (int yr = julyr;; ++yr) {
+    const double ylen = (((yr % 4 == 0 && yr % 100 != 0) || yr % 400 == 0) ? 366.0 : 365.0) * 86400.0;
+    if (s < ylen) break;
+    s -= ylen;
+  }
+  return (s / 86400.0 + 1.0) - 1.0;
+}
+
 // calc_coszen (module_radiation_driver.F) for one column; xtime in minutes, angles in degrees
 // li, ln: lane li of WRF's n = ln-trip i loop (its..ite = 0..nx-1), which gfortran vectorises: sin(xxlat),
 // cos(xxlat) and cos(hrang) through libmvec's 2-lane functions (cppwrf::vm); ln = 1: scalar libm

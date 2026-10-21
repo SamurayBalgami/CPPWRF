@@ -669,6 +669,14 @@ struct ThompsonKernel {
                 ni(i, j, k) = ni1d[k];
                 nr(i, j, k) = nr1d[k];
                 th(i, j, k) = temp[k] / pii(i, j, k);
+                // mp_gt_driver: a negative qv (left unchanged by the early return) is replaced in place, from
+                // the level below (already replaced) and the one above (input)
+                if (qv(i, j, k) < Real(0.0)) {
+                    if (k + 1 < nz - 2 && k + 1 > 2)
+                        qv(i, j, k) = c_max(Real(1.E-7), Real(0.5) * (qv(i, j, k - 1) + qv(i, j, k + 1)));
+                    else
+                        qv(i, j, k) = Real(1.E-7);
+                }
             }
             rainncv(i, j) = Real(0.0);
             snowncv(i, j) = Real(0.0);

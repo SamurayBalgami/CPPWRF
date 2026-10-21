@@ -1211,8 +1211,7 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
                                 acgrdflx.view(), q2.view(), t2.view(), th2.view(), dtbl, dt});
     } else if (o_.sf_surface_physics == 4) {
       // ---- Noah-MP (NoahmpWRFmain -> NoahmpDriverMain, module_surface_driver.F:3134-3481) ----
-      const double rsec = double(o_.rad.julday - 1) * 86400.0 + o_.rad.gmt * 3600.0 + double(itimestep - 1) * g_.dt;
-      const real julian_in = real(rsec / 86400.0 + 1.0) - real(1.0);
+      const real julian_in = real(wrf_julian(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt));
       noahmp::NoahmpKernel nmp{};
       nmp.ivgtyp = ivgtyp.cview();
       nmp.isltyp = isltyp.cview();

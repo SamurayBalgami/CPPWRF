@@ -416,7 +416,7 @@ void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
   run_phy_prep(s, b, prep, PhyPrepParams{o_.use_theta_m});
   if (rad_) {  // radiation_driver: xtime (minutes) and julian of the step start
     const double xtime = double(itimestep - 1) * g_.dt / 60.;
-    const double julian = double(o_.rad.julday - 1) + (o_.rad.gmt * 3600. + xtime * 60.) / 86400.;
+    const double julian = wrf_julian(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt);
     auto q = [&](int n) -> const Field3* { return n >= 0 ? &s.q_2[n] : nullptr; };
     rad_->run(itimestep, xtime, julian,
               RadiationInputs{&prep.t_phy, &prep.p_hyd, &prep.p_hyd_w, &prep.pi_phy, &prep.rho, &prep.dz8w,
