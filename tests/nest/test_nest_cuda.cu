@@ -8,7 +8,6 @@
 
 #include "core/backend.hpp"
 #include "dyn/lateral_bc.hpp"
-#include "nest/nest_types.hpp"
 #include "nest/nest_interp.hpp"
 #include "nest/nest_bdy.hpp"
 #include "nest/nest_feedback.hpp"

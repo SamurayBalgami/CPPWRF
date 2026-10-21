@@ -226,7 +226,6 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
 
   const int def_feedback = static_cast<int>(root_cfg.get_int("domains.feedback", 1));
   const int def_smooth = static_cast<int>(root_cfg.get_int("domains.smooth_option", 2));  // WRF Registry default
-  const int def_save_topo = static_cast<int>(root_cfg.get_int("domains.save_topo_from_real", 1));
   const int def_spec_bdy = static_cast<int>(root_cfg.get_int("domains.spec_bdy_width", 5));
   const int def_blend = static_cast<int>(root_cfg.get_int("domains.blend_width", 5));
 
@@ -260,11 +259,10 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
         throw std::runtime_error("invalid parent_id for domain " + sp.tag);
       sp.i_parent_start = get_int_dom("i_parent_start", 1);
       sp.j_parent_start = get_int_dom("j_parent_start", 1);
-      sp.parent_grid_ratio = get_int_dom("parent_grid_ratio", 3);
+      sp.parent_grid_ratio = get_int_dom("parent_grid_ratio", 1);  // Registry defaults
       sp.parent_time_step_ratio = get_int_dom("parent_time_step_ratio", 1);
       sp.feedback = get_int_dom("feedback", def_feedback);
       sp.smooth_option = get_int_dom("smooth_option", def_smooth);
-      sp.save_topo_from_real = get_int_dom("save_topo_from_real", def_save_topo);
       sp.spec_bdy_width = get_int_dom("spec_bdy_width", def_spec_bdy);
       sp.blend_width = get_int_dom("blend_width", def_blend);
     }
@@ -275,10 +273,11 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
     else if (root_cfg.has(dpfx + "config")) ext_cfg_path = root_cfg.get_string(dpfx + "config");
 
     std::vector<std::string> ov;
+    double child_dt = 0.0;
     if (id >= 2) {
       const NestDomainSpec& parent_sp = specs[sp.parent_id - 1];
       const double parent_dt = parent_sp.cfg.get_double("time.dt", 60.0);
-      const double child_dt = parent_dt / sp.parent_time_step_ratio;
+      child_dt = parent_dt / sp.parent_time_step_ratio;
       const long long parent_out_iv = parent_sp.cfg.get_int("output.out_interval", 1);
       const long long parent_diag_iv = parent_sp.cfg.get_int("output.diag_interval", 10);
 
@@ -308,12 +307,15 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
     auto map_key = [&](const std::string& sub, const std::string& val) {
       if (sub == "config" || sub == "parent_id" || sub == "i_parent_start" || sub == "j_parent_start" ||
           sub == "parent_grid_ratio" || sub == "parent_time_step_ratio" || sub == "feedback" ||
-          sub == "smooth_option" || sub == "save_topo_from_real" || sub == "blend_width") {
+          sub == "smooth_option" || sub == "blend_width") {
         return;
       }
       if (sub == "spec_bdy_width") ov.push_back("real.spec_bdy_width=" + val);
       else if (sub == "wrfinput" || sub == "wrfbdy" || sub == "dir" || sub == "bdy_interval" || sub == "nested")
         ov.push_back("real." + sub + "=" + val);
+      else if (sub == "dt" && id >= 2 && std::abs(std::stod(val) - child_dt) > 1e-9 * child_dt)
+        // WRF: a nest's time step is its parent's divided by parent_time_step_ratio (the namelist value is ignored)
+        throw std::runtime_error(sp.tag + ".dt = " + val + " differs from the parent's dt / parent_time_step_ratio");
       else if (sub == "dt" || sub == "time_step_sound")
         ov.push_back("time." + sub + "=" + val);
       else if (sub == "out_interval" || sub == "diag_interval" || sub == "format" || sub == "out_dir" || sub == "restart_interval")
@@ -421,8 +423,17 @@ void med_nest_initial(const io::Config& parent_cfg, Model& parent,
   child.st->w_2.fill_host([](int, int, int) { return 0.0; });
   child.st->w_1.fill_host([](int, int, int) { return 0.0; });
 
-  // 3. blend_terrain(ht, mub, phb) when save_topo_from_real == 1
-  if (child_spec.save_topo_from_real == 1) {
+  // 3. blend_terrain(ht, mub, phb) when the nest's input says save_topo_from_real = 1 (Registry i02: read from
+  // wrfinput_d0N; 0 when the variable is missing; real.exe writes 1, wrf.exe 0)
+  int save_topo_from_real = 0;
+  {
+    int nc = 0, v = 0;
+    if (nc_open(wi.c_str(), NC_NOWRITE, &nc) == NC_NOERR) {
+      if (nc_inq_varid(nc, "SAVE_TOPO_FROM_REAL", &v) == NC_NOERR) nc_get_var_int(nc, v, &save_topo_from_real);
+      nc_close(nc);
+    }
+  }
+  if (save_topo_from_real == 1) {
     nest::blend_terrain_field2(ht_int, child.base->ht, nx, ny, child_spec.spec_bdy_width, child_spec.blend_width);
     nest::blend_terrain_field2(mub_int, child.base->mub, nx, ny, child_spec.spec_bdy_width, child_spec.blend_width);
     nest::blend_terrain_field3(phb_int, child.base->phb, nx, ny, nz + 1, child_spec.spec_bdy_width,

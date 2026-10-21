@@ -24,11 +24,10 @@ struct NestDomainSpec {
   std::string tag = "d01";         // "d01", "d02", ...
   int i_parent_start = 1;          // 1-based coarse cell index in parent
   int j_parent_start = 1;          // 1-based coarse cell index in parent
-  int parent_grid_ratio = 3;       // horizontal refinement ratio (odd/even)
-  int parent_time_step_ratio = 3;  // temporal sub-stepping ratio
-  int feedback = 0;                // 0 = one-way, 1 = two-way
-  int smooth_option = 0;           // 0 = none, 1 = 1-2-1, 2 = smoother-desmoother
-  int save_topo_from_real = 1;     // 1 = blend terrain/mub/phb in med_nest_initial
+  int parent_grid_ratio = 1;       // horizontal refinement ratio (odd/even)
+  int parent_time_step_ratio = 1;  // temporal sub-stepping ratio
+  int feedback = 1;                // 0 = one-way, 1 = two-way
+  int smooth_option = 2;           // 0 = none, 1 = 1-2-1, 2 = smoother-desmoother
   int spec_bdy_width = 5;
   int blend_width = 5;
   io::Config cfg;                  // domain-specific Config passed to Model::build & DomainRunner

@@ -362,7 +362,38 @@ DEFAULT_ONLY_OPTIONS = {
     ("domains", "rebalance"): (0, "rebalancing of the input state"),
     ("time_control", "cycling"): (False, "cycling of the input state"),
     ("dfi_control", "dfi_opt"): (0, "digital filter initialisation"),
+    ("domains", "allowed"): (True, "domains that are not integrated (grid_allowed)"),
+    # physics and surface options of WRF's drivers that CPPWRF does not port (they change results or the output)
+    ("physics", "ua_phys"): (False, "UA Noah snow physics"),
+    ("physics", "sf_surface_mosaic"): (0, "Noah mosaic land use"),
+    ("physics", "tmn_update"): (0, "deep soil temperature update"),
+    ("physics", "sst_skin"): (0, "skin SST"),
+    ("physics", "sf_ocean_physics"): (0, "ocean mixed layer / 3-D ocean model"),
+    ("physics", "omlcall"): (0, "ocean mixed layer"),
+    ("physics", "bucket_mm"): (-1, "rain accumulation buckets (I_RAINC, I_RAINNC)"),
+    ("physics", "bucket_j"): (-1, "radiation accumulation buckets (I_ACSWUPT, ...)"),
+    ("physics", "prec_acc_dt"): (0, "precipitation accumulation outputs (PREC_ACC_C, PREC_ACC_NC, SNOW_ACC_NC)"),
+    ("physics", "aercu_opt"): (0, "aerosol-aware cumulus"),
+    ("physics", "windfarm_opt"): (0, "wind farm parameterisation"),
+    ("physics", "sf_surf_irr_scheme"): (0, "irrigation"),
+    ("physics", "do_radar_ref"): (0, "radar reflectivity diagnostic (REFL_10CM)"),
+    ("fdda", "grid_fdda"): (0, "grid nudging"),
+    ("fdda", "grid_sfdda"): (0, "surface grid nudging"),
+    ("fdda", "obs_nudge_opt"): (0, "observation nudging"),
+    ("fire", "ifire"): (0, "wildland fire model"),
+    ("stoch", "multi_perturb"): (0, "stochastic multi-physics perturbations"),
+    ("stoch", "sppt"): (0, "stochastically perturbed physics tendencies"),
+    ("stoch", "skebs"): (0, "stochastic kinetic-energy backscatter"),
+    ("stoch", "rand_perturb"): (0, "random perturbations"),
+    ("stoch", "spp"): (0, "stochastically perturbed parameters"),
+    ("stoch", "spp_pbl"): (0, "stochastically perturbed PBL parameters"),
+    ("stoch", "spp_conv"): (0, "stochastically perturbed convection parameters"),
+    ("stoch", "spp_lsm"): (0, "stochastically perturbed land-surface parameters"),
 }
+
+# max_domains options that are single values in CPPWRF: every domain must have domain 1's value
+SAME_ON_ALL_DOMAINS = (("physics", "kim_tofd"), ("physics", "tofd_factor"), ("dynamics", "gwd_dx_factor"),
+                       ("dynamics", "gwd_if_nonhyd"))
 
 UNSUPPORTED_PHYSICS_SWITCHES = {
     "cu_rad_feedback": "Cumulus-radiation feedback",
@@ -1067,12 +1098,11 @@ class WrfTranslator:
                     sections["phys"]["cudt"] = cudt
 
                 if sf_surface != 0:
+                    # check_a_mundo sets num_soil_layers = 4 for Noah and Noah-MP whatever the namelist says
                     num_soil = self.get_opt("physics", "num_soil_layers", 4)
                     if num_soil != 4:
-                        self.error(f"WRF num_soil_layers = {num_soil} is not supported with "
-                                   f"sf_surface_physics = {sf_surface}; CPPWRF requires 4 soil layers.")
-                    else:
-                        sections["phys"]["num_soil_layers"] = 4
+                        self.notice(f"WRF num_soil_layers = {num_soil} is replaced by 4 (Noah, Noah-MP), as in WRF.")
+                    sections["phys"]["num_soil_layers"] = 4
                     opt_thcnd = self.get_opt("physics", "opt_thcnd", 1)
                     if opt_thcnd not in (1, 2):
                         self.error(f"WRF opt_thcnd = {opt_thcnd} is not supported; CPPWRF supports 1 and 2.")
@@ -1197,18 +1227,14 @@ class WrfTranslator:
                 sections.setdefault("phys", {})["use_mp_re"] = use_mp_re
 
         if self.has_opt("physics", "ishallow"):
-            ishallow = self.get_opt("physics", "ishallow", 0)
-            if ishallow not in (0, 1):
-                self.error(f"WRF ishallow = {ishallow} is not supported; CPPWRF supports 0 and 1.")
-            elif ishallow == 1:
-                if cu_physics != 3:
-                    self.error(f"WRF ishallow = 1 requires cu_physics = 3 (Grell-Freitas); got cu_physics = {cu_physics}.")
+            # module_cu_gfl_wrf: the shallow plume runs for ishallow == 1 only; the other ported schemes ignore it
+            if self.get_opt("physics", "ishallow", 0) == 1:
                 sections.setdefault("phys", {})["ishallow"] = 1
 
         if self.has_opt("physics", "clos_choice"):
             clos_choice = self.get_opt("physics", "clos_choice", 0)
-            if not isinstance(clos_choice, int) or clos_choice < 0 or clos_choice > 16:
-                self.error(f"WRF clos_choice = {clos_choice} is not supported; CPPWRF supports 0..16.")
+            if not isinstance(clos_choice, int) or clos_choice > 16:  # > 16 reads past xf_ens (also in WRF)
+                self.error(f"WRF clos_choice = {clos_choice} is not supported; CPPWRF supports up to 16.")
             elif clos_choice != 0:
                 sections.setdefault("phys", {})["clos_choice"] = clos_choice
 
@@ -1309,10 +1335,17 @@ class WrfTranslator:
                 self.error(f"WRF {key} = {vals}: nests with their own start or end time are not supported.")
 
         for (group, key), (default, desc) in DEFAULT_ONLY_OPTIONS.items():
-            if self.has_opt(group, key):
-                val = self.get_opt(group, key, default)
+            for val in self.get_opt_list(group, key)[:max(1, self._max_dom)]:
                 if val != default:
                     self.error(f"WRF {key} = {val} ({desc}) is not supported by CPPWRF.")
+                    break
+        # module_diagnostics_driver: noahmp_output = 3 adds the AC* Noah-MP accumulations to the history output
+        if self.get_opt("noah_mp", "noahmp_output", 1) == 3 and 4 in self.get_opt_list("physics", "sf_surface_physics"):
+            self.error("WRF noahmp_output = 3 (Noah-MP AC* accumulation outputs) is not supported by CPPWRF.")
+        for group, key in SAME_ON_ALL_DOMAINS:
+            vals = self.get_opt_list(group, key)[:max(1, self._max_dom)]
+            if len(set(vals)) > 1:
+                self.error(f"WRF {key} = {vals}: CPPWRF uses one value for all domains.")
 
         for unsup_key, desc in UNSUPPORTED_PHYSICS_SWITCHES.items():
             if self.has_opt("physics", unsup_key):
@@ -1406,12 +1439,8 @@ class WrfTranslator:
                 "smooth_option": smooth_option,
             }
 
-            if self.has_opt("domains", "save_topo_from_real"):
-                save_topo = self.get_dom_opt("domains", "save_topo_from_real", 0, 1)
-                if save_topo not in (0, 1):
-                    self.error(f"WRF save_topo_from_real = {save_topo} is not supported; CPPWRF supports 0 and 1.")
-                elif save_topo != 1:
-                    sections["domains"]["save_topo_from_real"] = save_topo
+            if self.has_opt("domains", "save_topo_from_real"):  # a wrfinput variable, not a namelist option
+                self.error("save_topo_from_real is not a WRF namelist option (WRF reads it from wrfinput_d0N).")
 
             if self.has_opt("domains", "blend_width"):
                 blend_w = self.get_dom_opt("domains", "blend_width", 0, 5)
@@ -1437,10 +1466,10 @@ class WrfTranslator:
             for d in range(max_dom):
                 dom_id = d + 1
                 tag = f"d{dom_id:02d}"
-                if self.has_opt("time_control", "input_from_file"):
-                    inp_file = self.get_dom_opt("time_control", "input_from_file", d, True)
-                    if not inp_file:
-                        self.error(f"Domain {tag}: input_from_file = .false. is not supported; CPPWRF requires wrfinput_{tag}.")
+                # a missing entry is the Registry default .false. (the nest interpolated from its parent)
+                if d > 0 and not self.get_dom_opt("time_control", "input_from_file", d, False, fallback_d0=False):
+                    self.error(f"Domain {tag}: input_from_file = .false. (also the default of a missing entry) is "
+                               f"not supported; CPPWRF requires wrfinput_{tag}.")
 
                 if d == 0:
                     continue

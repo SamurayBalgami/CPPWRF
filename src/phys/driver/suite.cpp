@@ -99,8 +99,10 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
     throw std::runtime_error("PhysicsSuite: only cu_physics=0, 1 (Kain-Fritsch), 3 (Grell-Freitas-Li), 6 (Tiedtke) or 16 (New Tiedtke)");
   if (o.cu_physics == 3 && g.nz > cu_gfl::kMaxLevels)
     throw std::runtime_error("PhysicsSuite: nz exceeds the Grell-Freitas-Li column limit");
-  if (o.cu_physics == 3 && o.ishallow != 0 && o.ishallow != 1)
-    throw std::runtime_error("PhysicsSuite: ishallow must be 0 or 1");
+  // ishallow: WRF's GF runs the shallow plume for ishallow == 1 only, any other value is off.
+  // clos_choice above 16 reads past xf_ens (undefined in WRF too); a negative one is the full ensemble.
+  if (o.cu_physics == 3 && o.gf_ichoice > 16)
+    throw std::runtime_error("PhysicsSuite: clos_choice must be at most 16");
   if (o.cu_physics == 6 && g.nz > cu_tiedtke::kMaxLevels)
     throw std::runtime_error("PhysicsSuite: nz exceeds the Tiedtke column limit");
   if (o.cu_physics == 16 && g.nz > cu_ntiedtke::kMaxLevels)

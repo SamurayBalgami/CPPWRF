@@ -14,7 +14,6 @@
 #include <vector>
 #include <cstdint>
 #include "core/backend.hpp"
-#include "nest/nest_types.hpp"
 #include "nest/nest_interp.hpp"
 #include "dyn/lateral_bc.hpp"
 

@@ -5,7 +5,6 @@
 #include <string>
 #include <cassert>
 
-#include "nest/nest_types.hpp"
 #include "nest/nest_interp.hpp"
 #include "nest/nest_bdy.hpp"
 #include "nest/nest_feedback.hpp"
