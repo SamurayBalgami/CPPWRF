@@ -521,6 +521,8 @@ std::vector<const Field2*> PhysicsSuite::fields2() const {
                        &acc_qsevaxy, &eflxbxy, &acc_dwaterxy, &acc_prcpxy, &acc_ecanxy, &acc_etranxy, &acc_edirxy, &acc_glaflwxy});
   }
   if (o_.gwd_opt == 1) v.insert(v.end(), {&dusfcg, &dvsfcg});
+  if (o_.sf_sfclay_physics == 5) v.push_back(&cqs);
+  if (o_.bl_pbl_physics == 5) v.insert(v.end(), {&maxwidth, &maxmf, &ztop_plume, &excess_h, &excess_q});
   if (o_.fractional_seaice == 1 || o_.sst_update == 1) v.insert(v.end(), {&sst, &tsk_save});
   if (o_.sst_update == 1) v.push_back(&xicem);
   return v;
@@ -532,6 +534,7 @@ std::vector<const Field3*> PhysicsSuite::fields3() const {
     v.insert(v.end(), {&tsnoxy, &snicexy, &snliqxy, &zsnsoxy, &albsoildirxy, &albsoildifxy, &smoiseq, &acc_etranixy});
   }
   if (o_.gwd_opt == 1) v.insert(v.end(), {&dtaux3d, &dtauy3d});
+  if (o_.bl_pbl_physics == 5) v.insert(v.end(), {&qke, &tsq, &qsq, &cov, &sh3d, &sm3d, &qc_bl, &qi_bl, &cldfra_bl});
   return v;
 }
 
