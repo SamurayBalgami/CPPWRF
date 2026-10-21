@@ -16,6 +16,9 @@ import re
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from wrf_max_domains import MAX_DOMAINS_DEFAULTS  # noqa: E402
+
 
 # -----------------------------------------------------------------------------
 # Fortran Namelist Tokenizer and Parser (f90nml-free)
@@ -576,6 +579,19 @@ class WrfTranslator:
         grp = self.nml.get(group, {})
         return key in grp and len(grp[key]) > 0
 
+    def pad_max_domains(self):
+        """A max_domains option with fewer entries than max_dom: WRF's namelist read leaves the missing domains at the
+        Registry default (not domain 1's value); check_a_mundo copies domain 1's km_opt and diff_opt into -1 entries.
+        Only the groups whose options change results (the output and file options are handled where they are read)."""
+        for group in ("physics", "dynamics", "fdda", "stoch", "fire", "noah_mp"):
+            for key, vals in self.nml.get(group, {}).items():
+                if (group, key) not in MAX_DOMAINS_DEFAULTS or not 0 < len(vals) < self._max_dom:
+                    continue
+                default = MAX_DOMAINS_DEFAULTS[(group, key)]
+                if key in ("km_opt", "diff_opt") and default == -1:
+                    default = vals[0]
+                vals.extend([default] * (self._max_dom - len(vals)))
+
     def apply_physics_suite(self):
         """WRF setup_physics_suite: the -1 physics options take the values of physics_suite (CONUS, tropical)."""
         suite = str(self.get_opt("physics", "physics_suite", "none")).strip().lower()
@@ -610,6 +626,7 @@ class WrfTranslator:
         else:
             max_dom = max_dom_raw
         self._max_dom = max_dom
+        self.pad_max_domains()
         self.apply_physics_suite()
 
         # 2. Determine Case

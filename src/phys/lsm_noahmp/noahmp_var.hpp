@@ -158,7 +158,7 @@ struct NamelistType {
 };
 
 struct DomainType {
-  int IsModisLanduse              = 1;  // 1 if MODIFIED_IGBP_MODIS_NOAH, 0 if USGS
+  int IsModisLanduse              = 0;  // 1 if MODIFIED_IGBP_MODIS_NOAH, 0 if USGS (LLANDUSE)
   bool FlagUrban                  = false;
   bool FlagCropland               = false;
   bool FlagWetland                = false;

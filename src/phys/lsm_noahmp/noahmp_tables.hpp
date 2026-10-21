@@ -58,6 +58,7 @@ void validate_noahmp_options(const NoahmpOptions& opt);
 struct NoahmpTables {
   // Vegetation category indicators
   int nveg = 0;
+  int is_modis_landuse = 0;  // GeneralInit's crop/wetland flags: 0 USGS, 1 MODIFIED_IGBP_MODIS_NOAH (LLANDUSE)
   int isurban = -9999;
   int iswater = -9999;
   int isbarren = -9999;

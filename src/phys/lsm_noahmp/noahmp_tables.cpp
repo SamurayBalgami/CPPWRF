@@ -387,6 +387,7 @@ bool read_noahmp_tables(const std::string& table_dir,
   // 1. Vegetation parameters
   std::string vcat_sec, vparm_sec;
   std::string vds = trim(veg_dataset);
+  t.is_modis_landuse = vds == "USGS" ? 0 : 1;
   if (vds == "USGS") {
     vcat_sec = "noahmp_usgs_veg_categories";
     vparm_sec = "noahmp_usgs_parameters";

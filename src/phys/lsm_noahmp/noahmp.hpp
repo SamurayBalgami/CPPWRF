@@ -745,6 +745,7 @@ struct NoahmpKernel {
     dom.SoilTimeStep = dtbl * static_cast<real>(soil_update_steps);
     dom.GridSize = std::sqrt(dx_max * dx_max);
     dom.VegType = ivgtyp(i, j);
+    dom.IsModisLanduse = tb.is_modis_landuse;
     dom.CropType = cropcat.p ? cropcat(i, j) : 0;
     dom.IndicatorIceSfc = 0;
     dom.DayJulianInYear = julian_in;

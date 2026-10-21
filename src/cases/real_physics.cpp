@@ -385,14 +385,13 @@ void init_real_physics(const io::Config& cfg, Model& m) {
     }
     put_soil(su.tslb, tslb); put_soil(su.smois, smois); put_soil(su.sh2o, sh2o);
     if (in.has("SMCREL")) put_soil(su.smcrel, in.var("SMCREL", n2 * ns));
+    // phy_init passes FNDSNOWH = .true. to LSMINIT: SNOWH is never derived from SNOW (0 when not in the input)
     if (in.has("SNOWH")) put2(su.snowh, rd2("SNOWH"));
-    else {
-      for (double& x : snow) x *= 0.005;
-      put2(su.snowh, snow);
-    }
   } else if (o.sf_surface_physics == 4) {
     // ---- bl_init / NoahmpWRFinit (Noah-MP)
     put2(su.snoalb, snoalb);
+    for (std::size_t p = 0; p < n2; ++p)  // NoahmpInitMain: stop on any ISLTYP < 1
+      if (std::lround(isl[p]) < 1) throw std::runtime_error("real physics: lsminit: out of range ISLTYP");
     put2(su.xlat_sfc, m.xlat);
     put2(su.xlong_sfc, m.xlong);
     put_soil(su.tslb, tslb);

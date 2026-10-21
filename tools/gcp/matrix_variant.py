@@ -57,7 +57,9 @@ if os.path.basename(wrfexe).startswith("wrf_") and os.path.exists(iexe):
         sys.exit(0)
 subprocess.run("./wrf.exe > wrf.log 2>&1", shell=True, cwd=R, env=env)
 if "SUCCESS COMPLETE WRF" not in open(os.path.join(R, "rsl.out.0000") if os.path.exists(os.path.join(R, "rsl.out.0000")) else os.path.join(R, "wrf.log"), errors="replace").read():
-    print(f"{name} WRF-FAILED {open(os.path.join(R, 'wrf.log'), errors='replace').read().strip().splitlines()[-1:]}")
+    log = open(os.path.join(R, 'wrf.log'), errors='replace').read().strip().splitlines()
+    why = [l.strip() for l in log if "ERROR" in l or "FATAL" in l or "Fix " in l][:4] or log[-1:]
+    print(f"{name} WRF-FAILED {why}")
     sys.exit(0)
 out = os.path.join(R, "cppwrf")
 t = subprocess.run([sys.executable, os.path.join(repo, "tools/wrf2cppwrf.py"), os.path.join(R, "namelist.input"),
