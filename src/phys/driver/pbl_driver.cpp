@@ -128,8 +128,8 @@ struct KMynnPbl {
       c.sqi[k] = qi1[k] / (one + qv1[k]);
       c.sqs[k] = qs1[k] / (one + qv1[k]);
     }
-    mynnedmf<kMaxLevels>(c, initflag, delt, dx, xland(i, j), tsk(i, j), psfc(i, j), ust(i, j), hfx1, qfx1, wspd(i, j),
-                         uoce(i, j), voce(i, j));
+    mynnedmf::mynnedmf<kMaxLevels>(c, initflag, delt, dx, xland(i, j), tsk(i, j), psfc(i, j), ust(i, j), hfx1, qfx1,
+                                   wspd(i, j), uoce(i, j), voce(i, j));
     for (int k = 1; k <= nz; ++k) {  // mynnedmf_post_run
       const real sq = qv1[k] / (one + qv1[k]);
       const real sqv = sq + c.dqv[k] * delt;
