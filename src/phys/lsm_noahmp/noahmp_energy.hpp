@@ -171,6 +171,7 @@ CPPWRF_HD inline void ResistanceAboveCanopyMOST(NoahmpType& noahmp,
 
   real MPE = real(1.0e-6);
   real MOZOLD = energy.state.MoStabParaAbvCan;
+  if (energy.state.RefHeightAboveGrd <= energy.state.ZeroPlaneDispSfc) raise_fatal(kFatalNoahmpRefHeightCanopy);
 
   // gfortran SLP-vectorizes these 4 log calls into two 2-lane _ZGVbN2v_log calls
   real TMPCM  = cppwrf::vm::log((energy.state.RefHeightAboveGrd - energy.state.ZeroPlaneDispSfc) / energy.state.RoughLenMomSfc, 0, 2);
@@ -434,6 +435,7 @@ CPPWRF_HD inline void ResistanceBareGroundMOST(NoahmpType& noahmp,
 
   real MPE = real(1.0e-6);
   real MOZOLD = energy.state.MoStabParaBare;
+  if (energy.state.RefHeightAboveGrd <= energy.state.ZeroPlaneDispGrd) raise_fatal(kFatalNoahmpRefHeightBare);
 
   // gfortran SLP-vectorizes these 4 log calls into two 2-lane _ZGVbN2v_log calls
   real TMPCM  = cppwrf::vm::log((energy.state.RefHeightAboveGrd - energy.state.ZeroPlaneDispGrd) / energy.state.RoughLenMomGrd, 0, 2);
@@ -739,6 +741,7 @@ CPPWRF_HD inline void SurfaceEnergyFluxVegetated(NoahmpType& noahmp) {
       rlog((energy.state.CanopyHeight - energy.state.ZeroPlaneDispSfc + energy.state.RoughLenMomSfc) /
            energy.state.RoughLenMomSfc) /
       rlog(energy.state.RefHeightAboveGrd / energy.state.RoughLenMomSfc);
+  if ((energy.state.CanopyHeight - energy.state.ZeroPlaneDispSfc) <= real(0.0)) raise_fatal(kFatalNoahmpZeroPlane);
 
   real LwCoeffAir =
       -energy.state.EmissivityVeg *
@@ -1712,6 +1715,7 @@ CPPWRF_HD inline void EnergyMain(NoahmpType& noahmp) {
   }
 
   energy.flux.RadLwEmitSfc = forcing.RadLwDownRefHeight + energy.flux.RadLwNetSfc;
+  if (energy.flux.RadLwEmitSfc <= real(0.0)) raise_fatal(kFatalNoahmpLongwave);
   energy.state.TemperatureRadSfc =
       rpow((energy.flux.RadLwEmitSfc - (real(1.0) - energy.state.EmissivitySfc) * forcing.RadLwDownRefHeight) /
                (energy.state.EmissivitySfc * ConstStefanBoltzmann),

@@ -2467,6 +2467,7 @@ CPPWRF_HD inline void BalanceWaterCheck(NoahmpType& noahmp) {
                           (PrecipTotAcc + IrrigationRateMicro * real(1000.0) + IrrigationRateFlood * real(1000.0) -
                            EvapCanopyNetAcc - TranspirationAcc - EvapGroundNetAcc - RunoffSurface - RunoffSubsurface -
                            TileDrain);
+      if (std::abs(WaterBalanceError) > real(0.1)) raise_fatal(kFatalNoahmpWater);
     }
   } else {
     WaterBalanceError = real(0.0);
@@ -2495,6 +2496,9 @@ CPPWRF_HD inline void BalanceEnergyCheck(NoahmpType& noahmp) {
   EnergyBalanceError = RadSwAbsVeg + RadSwAbsGrd + HeatPrecipAdvSfc -
                        (RadLwNetSfc + HeatSensibleSfc + HeatLatentCanopy + HeatLatentGrd +
                         HeatLatentTransp + HeatGroundTot + HeatLatentIrriEvap + HeatCanStorageChg);
+  // BalanceErrorCheckMod: the run stops (the SNICAR check needs opt_alb = 3, not ported)
+  if (std::abs(RadSwBalanceError) > real(0.01)) raise_fatal(kFatalNoahmpSolar);
+  if (std::abs(EnergyBalanceError) > real(0.01)) raise_fatal(kFatalNoahmpEnergy);
 }
 
 // ============================================================================

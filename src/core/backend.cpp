@@ -133,6 +133,14 @@ const char* fatal_message(int code) {
     case kFatalNoahLanduseTypes: return "Warning: too many input landuse types";
     case kFatalNoahSlopeTypes: return "Warning: too many input slope types";
     case kFatalNoahRootLayers: return "Error: too many root layers";
+    case kFatalNoahmpWater: return "Error: Water budget problem in NoahMP LSM";
+    case kFatalNoahmpSolar: return "Error: Solar radiation budget problem in NoahMP LSM";
+    case kFatalNoahmpEnergy: return "Error: Energy budget problem in NoahMP LSM";
+    case kFatalNoahmpLongwave: return "Error: Longwave radiation budget problem in NoahMP LSM";
+    case kFatalNoahmpZeroPlane: return "Error: ZeroPlaneDisp problem in NoahMP LSM";
+    case kFatalNoahmpRefHeightCanopy: return "Error in ResistanceAboveCanopyMostMod.F90";
+    case kFatalNoahmpRefHeightBare: return "Error in ResistanceBareGroundMostMod.F90";
+    case kFatalNoahmpGlacierEnergy: return "Error: Surface energy budget problem in NoahMP LSM";
     default: return "unknown fatal condition in a physics kernel";
   }
 }

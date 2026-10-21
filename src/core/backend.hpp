@@ -361,6 +361,14 @@ enum FatalCode : int {
   kFatalNoahLanduseTypes = 5,  // VEGTYP > LUCATS
   kFatalNoahSlopeTypes = 6,    // SLOPETYP > SLPCATS
   kFatalNoahRootLayers = 7,    // NROOT > NSOIL
+  kFatalNoahmpWater = 8,       // Noah-MP (and glacier) water balance error > 0.1 kg m-2
+  kFatalNoahmpSolar = 9,       // shortwave balance error > 0.01 W m-2
+  kFatalNoahmpEnergy = 10,     // land energy balance error > 0.01 W m-2
+  kFatalNoahmpLongwave = 11,   // emitted longwave <= 0
+  kFatalNoahmpZeroPlane = 12,  // canopy height <= zero-plane displacement
+  kFatalNoahmpRefHeightCanopy = 13,  // reference height <= zero-plane displacement (above canopy)
+  kFatalNoahmpRefHeightBare = 14,    // reference height <= zero-plane displacement (bare ground)
+  kFatalNoahmpGlacierEnergy = 15,    // glacier surface energy balance error > 0.01 W m-2
 };
 struct FatalError : std::runtime_error {
   int code;

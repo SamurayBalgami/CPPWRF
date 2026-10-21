@@ -12,6 +12,7 @@ void run_noahmp(NoahmpKernel kernel, const Range2D& range) {
   assert(kernel.nsoil <= kMaxSoilLayers);
   assert(kernel.nsnow <= kMaxSnowLayers);
   column_for(range, kernel);
+  fatal_check();  // Noah-MP's stop conditions (the device flag of this translation unit)
 }
 
 }  // namespace cppwrf::phys::noahmp

@@ -1014,6 +1014,7 @@ CPPWRF_HD inline void EnergyMainGlacier(NoahmpType& noahmp) {
   energy.state.RoughLenMomSfcToAtm = energy.state.RoughLenMomGrd;
 
   energy.flux.RadLwEmitSfc = forcing.RadLwDownRefHeight + energy.flux.RadLwNetSfc;
+  if (energy.flux.RadLwEmitSfc <= real(0.0)) raise_fatal(kFatalNoahmpLongwave);
 
   energy.state.TemperatureRadSfc = rpow(
       (energy.flux.RadLwEmitSfc - (real(1.0) - energy.state.EmissivitySfc) * forcing.RadLwDownRefHeight) /
@@ -1363,6 +1364,7 @@ CPPWRF_HD inline void BalanceWaterCheckGlacier(NoahmpType& noahmp) {
       (water.flux.PrecipTotRefHeight - water.flux.EvapGroundNet - water.flux.RunoffSurface -
        water.flux.RunoffSubsurface) *
           domain.MainTimeStep;
+  if (std::abs(water.state.WaterBalanceError) > real(0.1)) raise_fatal(kFatalNoahmpWater);
 }
 
 CPPWRF_HD inline void BalanceEnergyCheckGlacier(NoahmpType& noahmp) {
@@ -1375,6 +1377,8 @@ CPPWRF_HD inline void BalanceEnergyCheckGlacier(NoahmpType& noahmp) {
       energy.flux.RadSwAbsGrd + energy.flux.HeatPrecipAdvSfc -
       (energy.flux.RadLwNetSfc + energy.flux.HeatSensibleSfc + energy.flux.HeatLatentGrd +
        energy.flux.HeatGroundTot);
+  if (std::abs(energy.state.RadSwBalanceError) > real(0.01)) raise_fatal(kFatalNoahmpSolar);
+  if (std::abs(energy.state.EnergyBalanceError) > real(0.01)) raise_fatal(kFatalNoahmpGlacierEnergy);
 }
 
 // ============================================================================
