@@ -150,11 +150,11 @@ and `phy_init` provide; the test takes it from WRF after `start_domain`).
 ## 4. Differential test (tests/phys/suite)
 
 Reference: **unmodified** WRF v4.8.0 compiled by `tests/phys/suite/build_wrf_r8.sh`
-(`configure -r8`, option 32 serial gfortran, the configure flags except
-`-ftree-vectorize` -> `-fno-tree-vectorize -ffp-contract=off`: with -ftree-vectorize gfortran
-calls glibc's libmvec vector math (`_ZGVbN2vv_pow`, `_ZGVbN2v_exp`, `_ZGVbN2v_log`), which
-differs from scalar libm by ulps; the other differential tests of this repository use
--fno-tree-vectorize as well).
+(`configure -r8`, option 32 serial gfortran, configure.wrf's own flags `-O2 -ftree-vectorize
+-funroll-loops`, as the wrf.exe references). gfortran vectorises some loops with glibc's libmvec
+(`_ZGVbN2vv_pow`, `_ZGVbN2v_exp`, `_ZGVbN2v_log`), which differs from scalar libm by ulps; the C++
+follows the same loops (`vm::` calls). The references are built with gfortran 14.2: another gfortran
+version may vectorise other loops (e.g. 15.2 in Thompson's graupel `lamg` loops) and differ in the last bits.
 
 `fortran/suite_ref.F90` links against the WRF objects and calls WRF's own code only:
 the framework setup of `wrf_init` (namelist.input), `start_domain` (phy_init, table reads),

@@ -518,7 +518,8 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                      s.t_2.cview(), t_save.cview(), c2a.cview(), s.mu_2.cview(), s.muts.cview(), c});
   fill_halos({&s.p, &s.al}, g);
 
-  const real cof = real(std::pow(0.5 * double(dts) * cst::g * (1.0 + double(p_.epssm)), 2));
+  const double cof_h = 0.5 * double(dts) * cst::g * (1.0 + double(p_.epssm));  // (...)**2: x*x
+  const real cof = real(cof_h * cof_h);
   column_for(g.columns(), KCoefW{a.view(), alpha.view(), gamma.view(), c2a.cview(), s.mut.cview(), c, mc, cof,
                                  p_.top_lid ? real(0) : real(1), nz});
   vmdump::dump("vm_s0_rk", stage_, {&s.p, &s.al, &t_save, &u_save, &v_save, &s.ph_2, &s.php, &s.alt, &s.cqu},

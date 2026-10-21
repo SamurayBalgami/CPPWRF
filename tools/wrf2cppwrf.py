@@ -663,7 +663,9 @@ class WrfTranslator:
                 case_name = "em_squall2d_y" if dir_name.endswith("_y") else "em_squall2d_x"
             elif "straka" in dir_name or "grav" in dir_name:
                 case_name = "em_grav2d_x"
-            else:
+            else:  # a real case has specified = .true. (WRF's lateral boundaries need one condition per side)
+                self.error("WRF case not identified: no ideal_case, specified = .false. and an unknown directory "
+                           "name; pass --case.")
                 case_name = "real"
 
         sections["run"]["case"] = case_name
