@@ -711,7 +711,8 @@ class WrfTranslator:
             if per_x:
                 sections["domain"]["bc_x"] = "periodic"
             elif sym_xs:
-                sections["domain"]["bc_x"] = "symmetric"
+                # not verified against WRF (em_quarter_ss with symmetric x differs at t = 0 in U on the walls)
+                self.error("WRF symmetric_xs/xe lateral boundaries are not supported (not verified against WRF).")
             elif open_xs:
                 sections["domain"]["bc_x"] = "open"  # WRF open_xs/open_xe: BC::Open (src/cases/model.cpp)
 
@@ -723,7 +724,7 @@ class WrfTranslator:
                 if per_y:
                     sections["domain"]["bc_y"] = "periodic"
                 elif sym_ys:
-                    sections["domain"]["bc_y"] = "symmetric"
+                    self.error("WRF symmetric_ys/ye lateral boundaries are not supported (not verified against WRF).")
                 elif open_ys:
                     sections["domain"]["bc_y"] = "open"
 
