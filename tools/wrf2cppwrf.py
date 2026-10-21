@@ -691,6 +691,9 @@ class WrfTranslator:
             # when they differ); the model makes the same checks
             sections["real"]["p_top_requested"] = self.get_opt("domains", "p_top_requested", 5000.0)
             sections["real"]["iso_temp"] = self.get_opt("dynamics", "iso_temp", 200.0)
+            for k in ("dx", "dy"):
+                if self.has_opt("domains", k):
+                    sections["real"][k] = self.get_opt("domains", k, None)
 
             # In configs/real_p1..p4 and nested configs, wrfinput/wrfbdy are written explicitly
             if self.explicit_files or has_physics_suite or max_dom > 1:
@@ -1341,8 +1344,18 @@ class WrfTranslator:
 
         # 13. Restart Section [restart]
         restart_on = self.get_opt("time_control", "restart", False)
+        if restart_on:
+            # WRF counts run_* from the restart time; CPPWRF resumes with run.restart_file and run.run_time
+            # counted from the simulation start
+            self.error("WRF restart = .true. is not translated: resume CPPWRF with --set run.restart_file=<wrfrst file> "
+                       "and run.run_time counted from the simulation start.")
+        # restart files are written whenever restart_interval > 0 (Registry default 0), whatever restart is
         restart_m = self.get_opt("time_control", "restart_interval", 0)
-        if restart_on and restart_m and restart_m > 0:
+        for unit_key in ("restart_interval_s", "restart_interval_h", "restart_interval_d", "restart_begin",
+                         "restart_begin_s", "restart_begin_m", "restart_begin_h", "restart_begin_d"):
+            if self.get_opt("time_control", unit_key, 0):
+                self.error(f"WRF {unit_key} is not supported; use restart_interval (minutes).")
+        if restart_m and restart_m > 0:
             sections["restart"] = {
                 "interval": int(restart_m * 60)
             }

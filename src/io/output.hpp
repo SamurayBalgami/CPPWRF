@@ -43,6 +43,7 @@ class JsonWriter {
   void key_value(std::string_view k, long long v);
   void key_value(std::string_view k, double v);
   void key_value(std::string_view k, bool v);
+  void key_value(std::string_view k, const char* v) = delete;  // would pick the bool overload
 
   static std::string escape_string(std::string_view s);
 

@@ -18,6 +18,7 @@
 #include "dyn/lateral_bc.hpp"
 #ifdef CPPWRF_HAVE_NETCDF
 #include "io_netcdf/wrf_readers.hpp"
+#include "wrf_io/global_atts.hpp"
 
 #include <netcdf.h>
 #endif
@@ -313,6 +314,13 @@ void init_real_case(const io::Config& cfg, Model& m) {
     m.bc = std::make_unique<dyn::LateralBC>(g, g.dt, cfg.get_int("real.spec_bdy_width", 5), 1, 4, true);
     return;
   }
+  // input_wrf: "DX and DY do not match comparing namelist to the input file" (fatal)
+  for (const char* k : {"real.dx", "real.dy"})
+    if (cfg.has(k)) {
+      const double file = k[5] == 'x' ? d.dx : d.dy;
+      if (std::fabs(file - cfg.get_double(k)) > 1.e-5 * file)
+        throw std::runtime_error("DX and DY do not match comparing namelist to the input file");
+    }
 
   // ---- lateral boundaries: wrfbdy record r covers [t_r, t_r + interval); the record needed for
   // a step is loaded before it, and dtbc is the time since the start of that interval.
@@ -329,6 +337,14 @@ void init_real_case(const io::Config& cfg, Model& m) {
   // (exact sums) that divides the interval
   if (g.dt != std::floor(g.dt) || std::fmod(interval, g.dt) != 0.0)
     throw std::runtime_error("real: time.dt must be an integer number of seconds that divides the boundary interval");
+  // record r is used for [start + r * interval, start + (r + 1) * interval): WRF selects records by their times
+  // (mediation_integrate.F), so the file must start at the simulation start with a uniform interval
+  if (!d.start_date.empty())
+    for (std::size_t r = 0; r < bd->this_bdy_times.size(); ++r)
+      if (bd->this_bdy_times[r].substr(0, 19) != wrf_io::add_seconds(d.start_date, std::lround(double(r) * interval)).substr(0, 19))
+        throw std::runtime_error("real: wrfbdy record " + std::to_string(r) + " starts at " + bd->this_bdy_times[r] +
+                                 ", not at the simulation start " + d.start_date + " + " + std::to_string(r) +
+                                 " boundary intervals");
   dyn::LateralBC* bc = m.bc.get();
   const int p_qv = m.st->P_QV;
   auto load = [bd, bc, nx, ny, nz, nxs, nys, p_qv](int rec) {

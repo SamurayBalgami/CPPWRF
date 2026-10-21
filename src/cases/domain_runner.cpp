@@ -563,14 +563,14 @@ bool DomainRunner::start() {
     j.key_value("precision", std::string_view(precision_name));
     j.key_value("backend", std::string_view(backend_name()));
     j.key_value("small_step", dyn::RK3::small_step_available());
-    j.key_value("config_raw", "__CPPWRF_CONFIG_JSON_RAW__");
+    j.key_value("config_raw", std::string_view("__CPPWRF_CONFIG_JSON_RAW__"));
     j.end_object();
     std::string js = j.str();
     std::string cj = cfg_.to_json();
-    std::string token = "\"config_raw\": \"__CPPWRF_CONFIG_JSON_RAW__\"";
+    std::string token = "\"config_raw\":\"__CPPWRF_CONFIG_JSON_RAW__\"";
     auto pos = js.find(token);
     if (pos != std::string::npos) {
-      js.replace(pos, token.size(), "\"config\": " + cj);
+      js.replace(pos, token.size(), "\"config\":" + cj);
     }
     io::write_text_file_atomic(out_dir_ + "/run.json", js + "\n");
   }
