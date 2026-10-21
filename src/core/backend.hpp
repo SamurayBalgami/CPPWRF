@@ -93,6 +93,7 @@ extern "C" __m128d _ZGVbN2vv_pow(__m128d, __m128d);
 extern "C" __m128d _ZGVbN2v_log(__m128d);
 extern "C" __m128d _ZGVbN2v_exp(__m128d);
 extern "C" __m128d _ZGVbN2v_sin(__m128d);
+extern "C" __m128d _ZGVbN2v_atan(__m128d);
 extern "C" __m128d _ZGVbN2v_cos(__m128d);
 #define CPPWRF_HAVE_LIBMVEC 1
 #endif
@@ -135,6 +136,17 @@ CPPWRF_HD inline double exp(double a, int i, int n) {
   return ::exp(a);
 #else
   return std::exp(a);
+#endif
+}
+CPPWRF_HD inline double atan(double a, int i, int n) {
+#if defined(CPPWRF_HAVE_LIBMVEC)
+  if (lane(i, n)) return _mm_cvtsd_f64(_ZGVbN2v_atan(_mm_set1_pd(a)));
+#endif
+  (void)i; (void)n;
+#if defined(__CUDA_ARCH__)
+  return ::atan(a);
+#else
+  return std::atan(a);
 #endif
 }
 CPPWRF_HD inline double sin(double a, int i, int n) {

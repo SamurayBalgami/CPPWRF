@@ -1,0 +1,4 @@
+# order of the binary files of the MYNN surface-layer differential test (one record = ni doubles)
+in3: u v t qv p dz8w th rho
+in2: psfc mavail xland tsk snowh dx xice lakemask water_depth
+io2: pblh chs chs2 cqs cqs2 cpm znt ust ustm zol mol rmol psim psih qgh hfx qfx lh flhc flqc qsfc u10 v10 th2 t2 q2 gz1oz0 wspd br ch ck cka cd cda
