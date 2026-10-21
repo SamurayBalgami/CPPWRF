@@ -687,8 +687,8 @@ void feedback(const std::string& fn, std::vector<double>& c, int cnx, int cny, c
 
 }  // namespace
 
+// Also without column physics: the microphysics accumulations and h_diabatic are fed back as well
 void WrfHistory::feedback_physics(WrfHistory& child, int ipos, int jpos, int ratio) {
-  if (!m_.suite || !child.m_.suite) return;
   const Grid& g = m_.g;
   const Grid& cg = child.m_.g;
   std::vector<wrf_io::OutVar> vars = schema_->history_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real)));
@@ -726,6 +726,7 @@ void WrfHistory::feedback_physics(WrfHistory& child, int ipos, int jpos, int rat
     Field3* p3 = p2 ? nullptr : find3(m_, f3_);
     if (!p2 && !p3) {  // integer fields (copy_fcni / copy_fcnm): land-use and soil categories, Noah-MP's
       auto ifield = [&](const Model& m) -> phys::driver::IntField2* {
+        if (!m.suite) return nullptr;
         phys::driver::PhysicsSuite& su = *m.suite;
         if (v.name == "IVGTYP") return &su.ivgtyp;
         if (v.name == "ISLTYP") return &su.isltyp;

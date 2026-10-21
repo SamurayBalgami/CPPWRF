@@ -160,7 +160,9 @@ void recompute_start_domain(const io::Config& cfg, Model& m, const BaseField2* h
           const double phm = double(b.c3h[k]) * mt + double(b.c4h[k]) + b.p_top;
           a = (ph1 - ph0 + phb[n1] - phb[n]) / phm / std::log(pfd / pfu) - alb[n];
         } else {
-          a = -1.0 / (double(b.c1h[k]) * mt + double(b.c2h[k])) *
+          // start_em.F:812: (c1h mub + c2h) + c1h mu_1, not c1h (mub + mu_1) + c2h
+          const double mb = mub[std::size_t(j) * nx + i];
+          a = -1.0 / ((double(b.c1h[k]) * mb + double(b.c2h[k])) + double(b.c1h[k]) * mu) *
               (alb[n] * (double(b.c1h[k]) * mu) + double(b.rdnw[k]) * (ph1 - ph0));
         }
         al[n] = a;
@@ -586,15 +588,20 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
     }
   }
 
-  // 1. Build all domains and run med_nest_initial for each parent -> child link in tree order
+  // 1. Build all domains; med_nest_initial of domain 1's children (WRF nests_to_open at the top of domain 1's
+  // first step, before its t = 0 output). Deeper nests open at their parent's first step (open_children below).
   for (int i = 0; i < max_dom; ++i) {
     doms[i].model = Model::build(doms[i].spec.cfg);
   }
-  for (int i = 0; i < max_dom; ++i) {
-    for (int c_idx : doms[i].children) {
-      med_nest_initial(doms[i].spec.cfg, doms[i].model, doms[c_idx].spec, doms[c_idx].model);
-    }
-  }
+  // A resumed run opens every nest before the restart files are read (they overwrite the initial state).
+  const bool resumed = !root_cfg.get_string("run.restart_file", "").empty();
+  std::vector<bool> opened(max_dom, false);
+  for (int i = 0; i < max_dom; ++i)
+    if (i == 0 || resumed)
+      for (int c_idx : doms[i].children) {
+        med_nest_initial(doms[i].spec.cfg, doms[i].model, doms[c_idx].spec, doms[c_idx].model);
+        opened[c_idx] = true;
+      }
 
   // 2. Create DomainRunner per domain (out_dir/d01, out_dir/d02, ...)
   for (int i = 0; i < max_dom; ++i) {
@@ -612,25 +619,39 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
         doms[c_idx].runner->set_need_history(true);
       }
   for (int i = 0; i < max_dom; ++i) doms[i].runner->prepare_output();
+#endif
+  // med_nest_initial's feedback (feedback != 0) of the history fields the model does not carry, then
+  // start_domain(parent) (start_em, topo_wind = 0): CTOPO = CTOPO2 = 1 again (the fed-back average of ones is
+  // 1 + 1 ulp)
+  auto initial_history_feedback = [&](int i, int c_idx) {
+    if (doms[c_idx].spec.feedback == 0) return;
+#ifdef CPPWRF_HAVE_NETCDF
+    if (doms[i].runner->history() && doms[c_idx].runner->history()) {
+      const NestDomainSpec& cs = doms[c_idx].spec;
+      doms[i].runner->history()->feedback_physics(*doms[c_idx].runner->history(), cs.i_parent_start,
+                                                  cs.j_parent_start, cs.parent_grid_ratio);
+      doms[i].runner->history()->feedback_from(*doms[c_idx].runner->history(), cs.i_parent_start,
+                                               cs.j_parent_start, cs.parent_grid_ratio);
+    }
+#endif
+    if (doms[i].model.suite) {
+      doms[i].model.suite->ctopo.fill_host([](int, int, int) { return 1.0; });
+      doms[i].model.suite->ctopo2.fill_host([](int, int, int) { return 1.0; });
+    }
+  };
   for (int i = 0; i < max_dom; ++i)
     for (int c_idx : doms[i].children)
-      if (doms[c_idx].spec.feedback != 0 && doms[i].runner->history() && doms[c_idx].runner->history()) {
-        const NestDomainSpec& cs = doms[c_idx].spec;
-        doms[i].runner->history()->feedback_physics(*doms[c_idx].runner->history(), cs.i_parent_start,
-                                                    cs.j_parent_start, cs.parent_grid_ratio);
-        doms[i].runner->history()->feedback_from(*doms[c_idx].runner->history(), cs.i_parent_start,
-                                                 cs.j_parent_start, cs.parent_grid_ratio);
+      if (opened[c_idx]) initial_history_feedback(i, c_idx);
+  // nests_to_open(grid) at the top of grid's first step: after med_nest_force(parent, grid), before grid's t = 0
+  // output and its first solve
+  auto open_children = [&](int idx) {
+    for (int c_idx : doms[idx].children)
+      if (!opened[c_idx]) {
+        med_nest_initial(doms[idx].spec.cfg, doms[idx].model, doms[c_idx].spec, doms[c_idx].model);
+        initial_history_feedback(idx, c_idx);
+        opened[c_idx] = true;
       }
-  // start_domain(parent) after the feedback (start_em, topo_wind = 0): CTOPO = CTOPO2 = 1 again (the fed-back
-  // average of ones is 1 + 1 ulp)
-  for (int i = 0; i < max_dom; ++i)
-    if (doms[i].model.suite)
-      for (int c_idx : doms[i].children)
-        if (doms[c_idx].spec.feedback != 0) {
-          doms[i].model.suite->ctopo.fill_host([](int, int, int) { return 1.0; });
-          doms[i].model.suite->ctopo2.fill_host([](int, int, int) { return 1.0; });
-        }
-#endif
+  };
 
   // 3. Root domain (d01) writes its t=0 initial frame before its first step
   if (!doms[0].runner->start()) return 3;
@@ -645,15 +666,29 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
       doms[i].step = doms[i].runner->start_step;
     }
 
-  // Recursive WRF integrate(dom_idx):
-  //   - One step of dom_idx
-  //   - For each child c_idx:
-  //       med_nest_force(dom_idx, c_idx)
-  //       if (!c_idx.started) c_idx.runner->start() (writes child t=0 frame AFTER first med_nest_force, as in WRF!)
-  //       for sub = 1 .. parent_time_step_ratio:
-  //         advance_domain(c_idx)
-  //       if (c_idx.feedback != 0) med_nest_feedback(dom_idx, c_idx)
-  //   - dom_idx.runner->after_step(step) (writes parent history frame AFTER med_nest_feedback, as in WRF!)
+  auto feedback = [&](DomInstance& d, DomInstance& c) {
+    if (c.spec.feedback == 0) return;
+    med_nest_feedback(d.model, c.model, c.spec);
+    dev_sync();
+#ifdef CPPWRF_HAVE_NETCDF
+    if (d.runner->history() && c.runner->history()) {  // the physics state, then history-only fields (Registry u=)
+      d.runner->history()->feedback_physics(*c.runner->history(), c.spec.i_parent_start, c.spec.j_parent_start,
+                                            c.spec.parent_grid_ratio);
+      d.runner->history()->feedback_from(*c.runner->history(), c.spec.i_parent_start, c.spec.j_parent_start,
+                                         c.spec.parent_grid_ratio);
+    }
+#endif
+  };
+
+  // Recursive WRF integrate (frame/module_integrate.F), one step of dom_idx:
+  //   - solve dom_idx
+  //   - med_nest_force(dom_idx, c) for every child c
+  //   - for every child c: c's first step opens c's own children (nests_to_open) and writes c's t = 0 frame
+  //     (after the first med_nest_force, as in WRF); parent_time_step_ratio steps of c
+  //   - med_nest_feedback(dom_idx, c) for every child c. In the run's last step (domain 1 at its stop time) WRF
+  //     skips this loop and each nest feeds back at the end of its own integrate (should_do_last_io), i.e. before
+  //     its next sibling is integrated.
+  //   - dom_idx.runner->after_step(step) (writes the parent's history frame after the feedback, as in WRF)
   std::function<bool(int)> advance_domain = [&](int idx) -> bool {
     DomInstance& d = doms[idx];
     const long n = ++d.step;
@@ -663,34 +698,26 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
     dev_sync();
 
     for (int c_idx : d.children) {
-      DomInstance& c = doms[c_idx];
-      med_nest_force(d.model, c.model, c.spec);
+      med_nest_force(d.model, doms[c_idx].model, doms[c_idx].spec);
       dev_sync();
-
+    }
+    const bool stop_time = doms[0].step == doms[0].model.nsteps;
+    for (int c_idx : d.children) {
+      DomInstance& c = doms[c_idx];
       if (!c.started) {
+        open_children(c_idx);
         if (!c.runner->start()) return false;
         c.started = true;
         c.step = c.runner->start_step;
       }
-
       const int ratio = c.spec.parent_time_step_ratio;
       for (int sub = 0; sub < ratio; ++sub) {
         if (!advance_domain(c_idx)) return false;
       }
-
-      if (c.spec.feedback != 0) {
-        med_nest_feedback(d.model, c.model, c.spec);
-        dev_sync();
-#ifdef CPPWRF_HAVE_NETCDF
-        if (d.runner->history() && c.runner->history()) {  // the physics state, then history-only fields (Registry u=)
-          d.runner->history()->feedback_physics(*c.runner->history(), c.spec.i_parent_start, c.spec.j_parent_start,
-                                                c.spec.parent_grid_ratio);
-          d.runner->history()->feedback_from(*c.runner->history(), c.spec.i_parent_start, c.spec.j_parent_start,
-                                             c.spec.parent_grid_ratio);
-        }
-#endif
-      }
+      if (stop_time) feedback(d, c);
     }
+    if (!stop_time)
+      for (int c_idx : d.children) feedback(d, doms[c_idx]);
 
     if (!d.runner->after_step(n)) return false;
     return true;
@@ -704,6 +731,7 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
         med_nest_force(doms[i].model, c.model, c.spec);
         dev_sync();
         if (!c.started) {
+          open_children(c_idx);
           if (!c.runner->start()) return 3;
           c.started = true;
         }
