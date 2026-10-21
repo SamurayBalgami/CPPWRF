@@ -28,11 +28,9 @@ class LateralBC;
 class SmallStep {
  public:
   SmallStep(const Grid& g, const SmallStepParams& p);
-  // One RK stage: n_small substeps of length dts. rk_step = 1..3; 0 = count the calls
-  // (the driver always makes three per time step), used only to reset the external-mode
-  // filter at the start of each step, as WRF does.
+  // One RK stage (rk_step = 1..3): n_small substeps of length dts.
   void run_stage(State& s, const Tendencies& tend, const BaseState& base, real dt_stage, real dts, int n_small,
-                 int rk_step = 0);
+                 int rk_step);
   // calc_p_rho_phi (non-hydrostatic, hypsometric_opt = 1): al, p from mu_2, ph_2, t_2 (+ moisture).
   void calc_p_rho_phi(State& s, const BaseState& base);
   void calc_p_rho_phi_interior(State& s, const BaseState& b, int spec_zone);

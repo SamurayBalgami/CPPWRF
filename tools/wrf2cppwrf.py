@@ -342,6 +342,19 @@ UNSUPPORTED_DYNAMICS_SWITCHES = {
     "tracer_mix6_off": "tracer 6th-order diffusion switch",
     "chem_mix2_off": "chemistry 2nd-order diffusion switch",
     "chem_mix6_off": "chemistry 6th-order diffusion switch",
+    "zadvect_implicit": "implicit-explicit vertical advection (IEVA)",
+    "pert_coriolis": "perturbation Coriolis",
+    "tracer_opt": "passive tracers",
+}
+
+# dynamics options whose value must stay at the WRF default (other values are not ported)
+DEFAULT_ONLY_OPTIONS = {
+    ("dynamics", "momentum_adv_opt"): (1, "WENO momentum advection"),
+    ("dynamics", "phi_adv_z"): (1, "geopotential advection without double-staggered omega"),
+    ("domains", "use_adaptive_time_step"): (False, "adaptive time step"),
+    ("physics", "no_mp_heating"): (0, "microphysics without latent heating"),
+    ("physics", "mp_zero_out"): (0, "microphysics zero-out of small moist values"),
+    ("bdy_control", "polar"): (False, "polar filters and boundaries"),
 }
 
 UNSUPPORTED_PHYSICS_SWITCHES = {
@@ -899,22 +912,22 @@ class WrfTranslator:
             sections["dyn"]["h_adv_order"] = h_adv
             if h_adv not in SUPPORTED_OPTIONS["h_adv_order"]:
                 self.error(f"WRF h_mom_adv_order = {h_adv} is not supported (5 or 6 only).")
-        if self.has_opt("dynamics", "h_sca_adv_order"):
-            h_sca = self.get_opt("dynamics", "h_sca_adv_order", h_adv)
-            if h_sca != h_adv:
-                self.error(f"WRF h_sca_adv_order = {h_sca} differs from h_mom_adv_order = {h_adv}; "
-                           "CPPWRF uses a single horizontal advection order (h_adv_order).")
+        # Registry: h_sca_adv_order defaults to 5 whatever h_mom_adv_order is
+        h_sca = self.get_opt("dynamics", "h_sca_adv_order", 5)
+        if h_sca != h_adv:
+            self.error(f"WRF h_sca_adv_order = {h_sca} differs from h_mom_adv_order = {h_adv}; "
+                       "CPPWRF uses a single horizontal advection order (h_adv_order).")
 
         v_adv = self.get_opt("dynamics", "v_mom_adv_order", 3)
         if v_adv != 3 or case_name in ("quarter_ss",):
             sections["dyn"]["v_adv_order"] = v_adv
             if v_adv not in SUPPORTED_OPTIONS["v_adv_order"]:
                 self.error(f"WRF v_mom_adv_order = {v_adv} is not supported (3 or 4 only).")
-        if self.has_opt("dynamics", "v_sca_adv_order"):
-            v_sca = self.get_opt("dynamics", "v_sca_adv_order", v_adv)
-            if v_sca != v_adv:
-                self.error(f"WRF v_sca_adv_order = {v_sca} differs from v_mom_adv_order = {v_adv}; "
-                           "CPPWRF uses a single vertical advection order (v_adv_order).")
+        # Registry: v_sca_adv_order defaults to 3 whatever v_mom_adv_order is
+        v_sca = self.get_opt("dynamics", "v_sca_adv_order", 3)
+        if v_sca != v_adv:
+            self.error(f"WRF v_sca_adv_order = {v_sca} differs from v_mom_adv_order = {v_adv}; "
+                       "CPPWRF uses a single vertical advection order (v_adv_order).")
 
         for ac_key, def_v in (("epssm", 0.1), ("smdiv", 0.1), ("emdiv", 0.01)):
             if self.has_opt("dynamics", ac_key):
@@ -1257,6 +1270,12 @@ class WrfTranslator:
                 val = self.get_opt("dynamics", unsup_key, 0)
                 if val not in (0, False):
                     self.error(f"WRF {unsup_key} = {val} ({desc}) is not supported by CPPWRF.")
+
+        for (group, key), (default, desc) in DEFAULT_ONLY_OPTIONS.items():
+            if self.has_opt(group, key):
+                val = self.get_opt(group, key, default)
+                if val != default:
+                    self.error(f"WRF {key} = {val} ({desc}) is not supported by CPPWRF.")
 
         for unsup_key, desc in UNSUPPORTED_PHYSICS_SWITCHES.items():
             if self.has_opt("physics", unsup_key):

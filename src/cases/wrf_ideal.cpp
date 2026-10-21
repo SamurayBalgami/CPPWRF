@@ -442,6 +442,10 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
         v1[(std::size_t(k - 1) * jvm + (j - 1)) * nx + (i - 1)] = interp_0(snd.v, snd.p, p_level, nl_in);
       }
     }
+  // x-z: the dycore does not advance v (WRF does, on its two periodic rows), so only v = 0 is WRF's run
+  if (ny == 1)
+    for (double v : v1)
+      if (v != 0.) throw std::runtime_error("x-z ideal case: the input_sounding v column must be 0 (v is not advanced in 2-D)");
   for (int j = 1; j <= jm; ++j)
     for (int i = 1; i <= nxs; ++i) {
       double z_at_u;

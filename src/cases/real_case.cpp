@@ -92,6 +92,9 @@ void init_real_case(const io::Config& cfg, Model& m) {
   m.xlat = d.xlat;
   m.xlong = d.xlong;
   m.hybrid_opt = d.hybrid_opt;
+  // map_proj 6 (lat-lon): WRF's curvature terms take the tan(lat) form (module_big_step_utilities_em.F curvature),
+  // not ported
+  if (d.map_proj == 6) throw std::runtime_error("MAP_PROJ = 6 (lat-lon) is not supported");
   m.map_proj = d.map_proj;
   m.cen_lat = d.cen_lat;
   m.cen_lon = d.cen_lon;

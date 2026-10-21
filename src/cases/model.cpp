@@ -243,7 +243,7 @@ Model Model::build(const io::Config& cfg) {
     throw std::runtime_error("dyn.legacy_diffusion was removed; use dyn.diff_opt = 1 (WRF horizontal/vertical_diffusion)");
   sp.h_adv_order = lp.h_adv_order; sp.v_adv_order = lp.v_adv_order;
   const int tss = int(cfg.get_int("time.time_step_sound", 0));
-  m.n_sound = tss > 0 ? tss : dyn::RK3::auto_sound_steps(g.dt, g.dx, g.dy, g.two_d());
+  m.n_sound = tss > 0 ? tss : dyn::RK3::auto_sound_steps(g.dt, g.dx, g.dy);
   if (m.nsteps > 0) {
     m.rk = std::make_unique<dyn::RK3>(g, lp, m.ap, tss, sp);
     m.n_sound = m.rk->n_sound();

@@ -35,7 +35,7 @@ bool RK3::small_step_available() { return false; }
 #endif
 
 RK3::RK3(const Grid& g, const LargeStepParams& lp, const AcousticParams& ap, int tss, const ScalarParams& sp)
-    : g_(g), large_(g, lp), scalars_(g, sp), n_sound_(tss > 0 ? tss : auto_sound_steps(g.dt, g.dx, g.dy, g.two_d())) {
+    : g_(g), large_(g, lp), scalars_(g, sp), n_sound_(tss > 0 ? tss : auto_sound_steps(g.dt, g.dx, g.dy)) {
   if (n_sound_ < 2 || n_sound_ % 2) throw std::runtime_error("time_step_sound must be even and >= 2");
 #ifdef CPPWRF_HAVE_SMALL_STEP
   small_ = std::make_unique<SmallStepHolder>(g, ap);
@@ -55,8 +55,8 @@ void RK3::set_lateral_bc(LateralBC* bc) {
 #endif
 }
 
-int RK3::auto_sound_steps(double dt, double dx, double dy, bool two_d) {
-  double spacing = two_d ? dx : std::min(dx, dy);
+int RK3::auto_sound_steps(double dt, double dx, double dy) {
+  const double spacing = std::min(dx, dy);  // solve_em: also in 2-D (dy of the namelist)
   return std::max(2 * (int(300.0 * dt / spacing - 0.01) + 1), 4);
 }
 

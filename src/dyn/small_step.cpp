@@ -495,7 +495,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
   const VCoef c = VCoef::from(b);
   const kern::MoistCoef mc = moist_coef(s);  // calc_cq from the stage state (rk_step_prep)
   const Edge ed{g.bc_x == BC::Specified, g.bc_y == BC::Specified && do_y, nx, ny, g.open_x(), g.open_y()};
-  stage_ = rk_step > 0 ? rk_step : stage_ % 3 + 1;
+  stage_ = rk_step;
 
   if (stage_ == 1) {  // WRF small_step_prep (rk_step == 1): reset the external-mode filter
     V2 md = mudf.view();

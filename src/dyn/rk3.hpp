@@ -36,7 +36,7 @@ class RK3 {
       const ScalarParams& sp = {});
   ~RK3();
   // WRF solve_em auto rule when time_step_sound == 0 (n even, >= 4).
-  static int auto_sound_steps(double dt, double dx, double dy, bool two_d);
+  static int auto_sound_steps(double dt, double dx, double dy);
   int n_sound() const { return n_sound_; }
   static bool small_step_available();
   // Column physics after the RK3 loop (WRF solve_em order). mp_physics = 0 leaves it off.
@@ -53,7 +53,6 @@ class RK3 {
   }
   // WRF diffusion (diff_opt 1, km_opt 1/4, sixth order) in RK stage 1; not owned.
   void set_diffusion(DiffusionDriver* d) { dd_ = d; large_.set_diffusion(d); scalars_.set_diffusion(d); }
-  LateralBC* lateral_bc() const { return bc_; }
   // called in RK stage 1 after rk_step_prep, where first_rk_step_part1 runs phy_prep (output of runs
   // without column physics)
   std::function<void()> on_first_rk_prep;
