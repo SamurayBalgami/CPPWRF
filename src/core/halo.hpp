@@ -1,7 +1,7 @@
 #pragma once
 // Lateral halo fill (periodic or symmetric) for x and, if ny>1, y. Halo width 3.
 // Symmetric (rigid wall, mirror at the boundary face, WRF symmetric_xs/xe):
-//   normal velocity (U in x, V in y): odd, face value = 0;  everything else: even.
+//   normal velocity (U in x, V in y): odd about the face, whose value is left as is;  everything else: even.
 // Fill order x then y, so corners are consistent.
 #include <initializer_list>
 #include <vector>

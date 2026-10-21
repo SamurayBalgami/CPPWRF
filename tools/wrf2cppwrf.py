@@ -817,18 +817,12 @@ class WrfTranslator:
                 return kinds[0]
 
             bcx = lateral_bc("x")
-            if bcx == "symmetric":
-                # not verified against WRF (em_quarter_ss with symmetric x differs at t = 0 in U on the walls)
-                self.error("WRF symmetric_xs/xe lateral boundaries are not supported (not verified against WRF).")
-            elif bcx is not None:
-                sections["domain"]["bc_x"] = bcx  # open: BC::Open (src/cases/model.cpp)
+            if bcx is not None:
+                sections["domain"]["bc_x"] = bcx  # open: BC::Open, symmetric: BC::Symmetric (src/cases/model.cpp)
 
             bcy = lateral_bc("y")
-            if ny > 1 or "bc_x" in sections["domain"]:
-                if bcy == "symmetric":
-                    self.error("WRF symmetric_ys/ye lateral boundaries are not supported (not verified against WRF).")
-                elif bcy is not None:
-                    sections["domain"]["bc_y"] = bcy
+            if (ny > 1 or "bc_x" in sections["domain"]) and bcy is not None:
+                sections["domain"]["bc_y"] = bcy
 
         # 7. Ideal Case Def Section [case]
         if case_name.startswith("em_"):

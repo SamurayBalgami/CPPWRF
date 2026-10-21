@@ -56,7 +56,10 @@ struct HaloLine {
     }
     real* base = p + b * st + k * sk;
     real v = base[src * sn];
-    if (!periodic && !flat && odd) v = (src == i) ? real(0) : -v;
+    // symmetric: the wall face itself (src == i) keeps its value (WRF set_physical_bc3d fills only
+    // ids-1.. / ide+1..: u(ids-i) = -u(ids+i)); odd fields change sign in the mirror
+    if (!periodic && !flat && src == i) return;
+    if (!periodic && !flat && odd) v = -v;
     base[i * sn] = v;
   }
 };
