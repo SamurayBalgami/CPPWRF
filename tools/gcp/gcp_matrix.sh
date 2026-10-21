@@ -17,7 +17,7 @@ ZONES=us-central1-a,us-central1-b,us-central1-c,us-central1-f,us-east1-b,us-east
 while [ $# -gt 0 ]; do
   case $1 in --machine) MACHINE=$2; shift 2 ;; --data) DATA=$2; shift 2 ;; --out) OUT=$2; shift 2 ;; *) sed -n '2,10p' "$0"; exit 2 ;; esac
 done
-STAMP=$(date +%Y%m%d-%H%M%S) VM=cppwrf-matrix-$STAMP RES=results/matrix-$STAMP
+STAMP=$(date +%Y%m%d-%H%M%S)-$(printf %04x $RANDOM) VM=cppwrf-matrix-$STAMP RES=results/matrix-$STAMP
 OUT=${OUT:-${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}/gcp/matrix-$STAMP}; mkdir -p "$OUT"
 git -C "$REPO" archive --format=tar.gz -o "$OUT/src.tar.gz" HEAD
 gcloud storage cp "$OUT/src.tar.gz" "gs://$BK/src/$STAMP.tar.gz" --project "$P" -q

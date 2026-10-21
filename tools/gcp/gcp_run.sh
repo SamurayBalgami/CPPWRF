@@ -22,7 +22,7 @@ while [ $# -gt 0 ]; do
     --out) OUT=$2; shift 2 ;; *) sed -n '2,12p' "$0"; exit 2 ;;
   esac
 done
-STAMP=$(date +%Y%m%d-%H%M%S) VM=cppwrf-suite-$STAMP RES=results/$STAMP
+STAMP=$(date +%Y%m%d-%H%M%S)-$(printf %04x $RANDOM) VM=cppwrf-suite-$STAMP RES=results/$STAMP
 OUT=${OUT:-${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}/gcp/$STAMP}
 mkdir -p "$OUT"
 [ -z "$(git -C "$REPO" status --porcelain --untracked-files=no)" ] || echo "note: uncommitted changes are not sent (HEAD only)"
