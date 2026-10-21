@@ -787,6 +787,11 @@ class WrfTranslator:
             zdamp = self.get_opt("dynamics", "zdamp", 5000.0)
             dampcoef = self.get_opt("dynamics", "dampcoef", 0.2)
             sections["dyn"]["zdamp"] = int(zdamp) if float(zdamp).is_integer() else zdamp
+            ztop_nl = self.get_opt("domains", "ztop", None)
+            if ztop_nl is not None and float(zdamp) >= float(ztop_nl):
+                # WRF's damping layer then reaches below the model bottom (rk_rayleigh_damp reads out of
+                # bounds; wrf.exe crashes)
+                self.error(f"WRF zdamp = {zdamp} >= ztop = {ztop_nl} is not supported (WRF fails).")
             sections["dyn"]["dampcoef"] = dampcoef
         elif case_name in ("hill2d",):
             sections["dyn"]["damp_opt"] = 0
