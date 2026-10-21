@@ -244,7 +244,9 @@ void DiffusionDriver::dynamics(const State& s, const BaseState& b, Tendencies& t
                                 has_tke ? t.q_tendf[s.P_TKE].view() : View3<real>{}, has_tke);
     for (int n = 0; n < s.n_scalars(); ++n) {
       if (n == s.P_QV || n == s.P_TKE) continue;
-      const bool mix_off = n < s.n_moist ? c_.moist_mix2_off : c_.scalar_mix2_off;
+      // WRF: moist_mix2_off for qv..qg, scalar_mix2_off for QNICE / QNRAIN, tracers always (tracer_mix2_off)
+      const bool wrf_scalar = (n == s.P_QNI || n == s.P_QNR);
+      const bool mix_off = (n < s.n_moist && !wrf_scalar) ? c_.moist_mix2_off : (wrf_scalar ? c_.scalar_mix2_off : false);
       if (!mix_off) {
         column_for(Range2D{is_s, is_e, js_s, js_e},
                    dif::KHorizDiffS2{s.q_2[n].cview(), xkhh_.cview(), pr.rho.cview(), zx_.cview(), zy_.cview(),
@@ -288,12 +290,19 @@ void DiffusionDriver::scalar(const State& s, const BaseState& b, int n, Field3& 
   const Field3& q = s.q_2[n];
   const bool is_tke = (n == s.P_TKE);
   const bool moist = (n < s.n_moist);
-  const bool mix2_off = is_tke ? c_.tke_mix2_off : (moist ? c_.moist_mix2_off : c_.scalar_mix2_off);
-  const bool mix6_off = is_tke ? c_.tke_mix6_off : (moist ? c_.moist_mix6_off : c_.scalar_mix6_off);
-  if (c_.diff_opt == 1 && !mix2_off) {
-    dif::horizontal_diffusion('m', p_, q.cview(), tend.view(), s.muts.cview(), b.msftx.view(), b.msfty.view(),
-                              b.msfux.view(), b.msfuy.view(), b.msfvx.view(), b.msfvy.view(), b.msfvx_inv.view(),
-                              b.c1h.view(), b.c2h.view(), xkhh_.cview(), real(b.rdx), real(b.rdy), nx, ny, nz);
+  // WRF's arrays: QNICE / QNRAIN are in `scalar` (scalar_mix*_off), qv..qg in `moist` (moist_mix*_off), TKE
+  // (tke_mix*_off); passive tracers are WRF's `tracer` array (tracer_mix*_off: not supported, i.e. off = false)
+  const bool wrf_scalar = (n == s.P_QNI || n == s.P_QNR);
+  const bool wrf_moist = moist && !wrf_scalar;
+  const bool mix2_off = is_tke ? c_.tke_mix2_off
+                               : (wrf_moist ? c_.moist_mix2_off : (wrf_scalar ? c_.scalar_mix2_off : false));
+  const bool mix6_off = is_tke ? c_.tke_mix6_off
+                               : (wrf_moist ? c_.moist_mix6_off : (wrf_scalar ? c_.scalar_mix6_off : false));
+  if (c_.diff_opt == 1) {  // mix2_off skips only the horizontal part (WRF: the vertical one stays)
+    if (!mix2_off)
+      dif::horizontal_diffusion('m', p_, q.cview(), tend.view(), s.muts.cview(), b.msftx.view(), b.msfty.view(),
+                                b.msfux.view(), b.msfuy.view(), b.msfvx.view(), b.msfvy.view(), b.msfvx_inv.view(),
+                                b.c1h.view(), b.c2h.view(), xkhh_.cview(), real(b.rdx), real(b.rdy), nx, ny, nz);
     if (!c_.pbl) {
       const real kvdq = c_.kvdif / p_.prandtl;  // WRF kvdq = kvdif / prandtl
       if (moist && n == s.P_QV)
