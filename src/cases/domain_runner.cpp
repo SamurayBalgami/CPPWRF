@@ -669,7 +669,7 @@ bool DomainRunner::after_step(long n) {
     do_snap(n);
   }
 #ifdef CPPWRF_HAVE_NETCDF
-  if (rst_iv_ > 0 && (n % rst_iv_ == 0 || last) && (rst_end_ <= 0 || n <= rst_end_)) {
+  if (rst_iv_ > 0 && ((n - start_step) % rst_iv_ == 0 || last) && (rst_end_ <= 0 || n <= rst_end_)) {
     do_restart(n);
   }
 #endif
@@ -711,7 +711,9 @@ void DomainRunner::do_snap(long n) {
   }
 
 #ifdef CPPWRF_HAVE_NETCDF
-  if (write_wrfout_ && wrfout_) wrfout_->write(n, n * g.dt);
+  // WRF writes history only when the history alarm rings (med_last_solve_io): no extra frame at the last
+  // step of a run that is not a multiple of history_interval (the native snapshot above keeps it)
+  if (write_wrfout_ && wrfout_ && n % out_iv_ == 0) wrfout_->write(n, n * g.dt);
 #endif
 }
 
@@ -721,7 +723,10 @@ void DomainRunner::do_restart(long n) {
   std::snprintf(rst_name, sizeof(rst_name), "restart_%06ld.nc", n);
   std::string rst_path = out_dir_ + "/" + rst_name;
   save_restart_file(rst_path, n, n * m_.g.dt);
-  if (wrfout_) wrfout_->write_restart(n, n * m_.g.dt, double(out_iv_) * m_.g.dt, double(rst_iv_) * m_.g.dt);
+  // wrfrst only when WRF's restart alarm rings: every restart_interval from the run's start (the restart time
+  // of a resumed run), not at an off-interval last step
+  if (wrfout_ && (n - start_step) % rst_iv_ == 0)
+    wrfout_->write_restart(n, n * m_.g.dt, double(out_iv_) * m_.g.dt, double(rst_iv_) * m_.g.dt);
 }
 #endif
 
