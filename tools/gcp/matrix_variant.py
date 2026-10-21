@@ -103,6 +103,7 @@ for d in ("d01", "d02", "d03"):
             dd = np.abs(x - y)
             dd[np.isnan(x) & np.isnan(y)] = 0
             if dd.max() > 0 and v not in bad:
-                bad[v] = f"{k} {(dd > 0).sum()}/{dd.max():.2e}"
+                im = int(np.nanargmax(dd))
+                bad[v] = f"{k} {(dd > 0).sum()}/{dd.max():.2e} (cppwrf {x.flat[im]:.6g} wrf {y.flat[im]:.6g} at {im})"
     print(f"{name} {d} frames {len(set(A) & set(B))} differing: {bad if bad else 'none'}", flush=True)
 subprocess.run(["rm", "-rf", out] + glob.glob(os.path.join(R, "wrfout_*")))
