@@ -531,6 +531,12 @@ void PhysicsSuite::cumulus_driver(const dyn::State& s, const dyn::BaseState& b) 
   cu_kf::run_kf(kf, g_.columns());
 }
 
+namespace {
+// module_convtrans_prep.F's INTEGER, SAVE :: stepave_count: one counter for all domains, not in the restart
+// file (0 in a new process), reset by any domain's first step (ktau <= 1)
+int stepave_count = 0;
+}  // namespace
+
 // dyn_em/module_convtrans_prep.F convtrans_prep (called in first_rk_step_part1 when cu_diag == 1)
 void PhysicsSuite::convtrans_prep(const dyn::State& s) {
   const int ktau = int(itimestep);

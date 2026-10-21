@@ -120,7 +120,6 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   long itimestep = 0;  // WRF grid%itimestep (incremented in part1, as solve_em does per step)
   int stepbl = 1;      // WRF grid%stepbl (set_physics_rconfigs: nint(bldt*60/dt), >= 1)
   int stepcu = 1;      // WRF grid%stepcu (cu_init: max(nint(cudt*60/dt), 1))
-  int stepave_count = 0;  // module_convtrans_prep.F SAVE variable
   // true (model): keep WRF's grid%t_1 for conv_t_tendf_to_moist, i.e. theta_m at the start of the
   // previous step (the dycore's s.t_1 is the current step start); false: s.t_1 already holds it
   // (the differential test passes WRF's t_1).
@@ -221,8 +220,6 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   void restarted(long step) {
     itimestep = step;
     t1_lag_set_ = true;
-    const int stepave = int(real(o_.convtrans_avglen_m) * real(60.) / real(g_.dt));
-    stepave_count = stepave > 0 ? int(step % stepave) : 0;
   }
 
  private:
