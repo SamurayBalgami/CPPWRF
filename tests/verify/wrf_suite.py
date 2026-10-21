@@ -135,9 +135,11 @@ CASES = [
     ("real_p8_r8_fp64_cpu_10min", "cpu_dp", "configs/real_p8_r8.ini", ["run.run_time=600"],
      f"{WR}/run_P8_r8/steps/wrfout_d01_2026-10-12_00:00:00", 600,
      {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
+    # P8 CUDA: Grell-Freitas thresholds amplify the GPU's last-bit differences, which depend on the architecture
+    # (deterministic per GPU): QV 5.4e-9 on L4 / RTX 2060, 1.5e-7 on G4 (Blackwell)
     ("real_p8_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p8_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P8_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_P8_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-7, "W": 1e-6, "THM": 1e-9, "QV": 1e-7}),
+     f"{WR}/run_P8_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-7, "W": 1e-6, "THM": 1e-9, "QV": 5e-7}),
     ("real_p8_fp32_1h", "cuda", "configs/real_p8_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-3, "W": 5e-2, "THM": 3e-5, "QV": 8e-4}),
@@ -309,6 +311,10 @@ CASES = [
     ("real_n3_r8_fp64_cpu_1h", "cpu_dp", "configs/real_n3.ini", [],
      {d: f"{WR}/run_N3h_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600,
      {f"{d}.{x}": 0.0 for d in ("d01", "d02") for x in ("U", "W", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP")}),
+    # N3 CUDA (needs > 6 GB; measured on L4 and G4): the P4 physics' roundoff growth, so P4's tolerances
+    ("real_n3_r8_fp64_cuda_1h", "cuda_dp", "configs/real_n3.ini", [],
+     {d: f"{WR}/run_N3h_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600,
+     {f"{d}.{x}": t for d in ("d01", "d02") for x, t in (("U", 6e-4), ("W", 1e-2), ("THM", 8e-6), ("QV", 5e-4))}),
     ("real_n2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_n2.ini", ["real.dir=" + f"{WR}/run_N2_r8"],
      {d: f"{WR}/run_N2_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600,
      {"d01.U": 1e-11, "d01.THM": 1e-13, "d02.U": 1e-11, "d02.THM": 1e-13}),
