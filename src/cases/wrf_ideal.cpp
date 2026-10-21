@@ -106,20 +106,39 @@ struct WrfSounding {
 WrfSounding get_sounding(const std::string& path, bool dry) {
   std::ifstream f(path);
   if (!f) throw std::runtime_error("cannot open input_sounding " + path);
-  std::vector<double> vals;
-  std::string line;
-  double p_surf = 0, th_surf = 0, qv_surf = 0;
-  if (!std::getline(f, line)) throw std::runtime_error("empty input_sounding " + path);
-  {
-    std::istringstream s(line);
-    if (!(s >> p_surf >> th_surf >> qv_surf)) throw std::runtime_error("bad input_sounding header " + path);
-  }
+  // Fortran list-directed reads (read(10,*) ..., end=100): each read starts on a new line and takes values
+  // separated by blanks or commas (d exponents too) from as many lines as it needs, blank lines included; the
+  // rest of its last line is skipped; the end of the file inside a read ends the sounding
+  std::vector<std::string> lines;
+  for (std::string line; std::getline(f, line);) lines.push_back(line);
+  std::size_t next = 0;
+  auto read_values = [&](std::size_t n, std::vector<double>& out) {
+    out.clear();
+    while (out.size() < n) {
+      if (next >= lines.size()) return false;
+      std::string line = lines[next++];
+      for (char& ch : line)
+        if (ch == ',' || ch == '\t' || ch == '\r') ch = ' ';
+      std::istringstream ls(line);
+      for (std::string t; out.size() < n && ls >> t;) {
+        for (char& ch : t)
+          if (ch == 'd' || ch == 'D') ch = 'e';
+        std::size_t used = 0;
+        double x = 0;
+        try { x = std::stod(t, &used); } catch (const std::exception&) { used = 0; }
+        if (used != t.size()) throw std::runtime_error("bad value '" + t + "' in input_sounding " + path);
+        out.push_back(x);
+      }
+    }
+    return true;
+  };
+  std::vector<double> v5;
+  if (!read_values(3, v5)) throw std::runtime_error("bad input_sounding header " + path);
+  double p_surf = v5[0];
+  const double th_surf = v5[1];
   std::vector<double> h, th, qvi, ui, vi;
-  while (std::getline(f, line)) {
-    std::istringstream s(line);
-    double a, b, c, d, e;
-    if (!(s >> a >> b >> c >> d >> e)) break;
-    h.push_back(a); th.push_back(b); qvi.push_back(c); ui.push_back(d); vi.push_back(e);
+  while (read_values(5, v5)) {
+    h.push_back(v5[0]); th.push_back(v5[1]); qvi.push_back(v5[2]); ui.push_back(v5[3]); vi.push_back(v5[4]);
   }
   const int nl = int(h.size());
   if (nl < 2) throw std::runtime_error("input_sounding needs >= 2 levels: " + path);

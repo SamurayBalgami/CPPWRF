@@ -734,9 +734,12 @@ class WrfTranslator:
         # 6. Domain Dimensions & Boundary Conditions [domain] (ideal cases)
         if case_name != "real":
             sections["domain"] = {}
-            e_we = self.get_opt("domains", "e_we", 100)
-            e_sn = self.get_opt("domains", "e_sn", 3)
-            e_vert = self.get_opt("domains", "e_vert", 41)
+            em = case_name.startswith("em_")
+            # missing keys: WRF's Registry defaults for the em_* cases (e_we = e_sn = 32, e_vert = 31,
+            # dx = dy = 200 m, ztop = 15 km); the analytic cases keep CPPWRF's own
+            e_we = self.get_opt("domains", "e_we", 32 if em else 100)
+            e_sn = self.get_opt("domains", "e_sn", 32 if em else 3)
+            e_vert = self.get_opt("domains", "e_vert", 31 if em else 41)
             s_we = self.get_opt("domains", "s_we", 1)
             s_sn = self.get_opt("domains", "s_sn", 1)
             s_vert = self.get_opt("domains", "s_vert", 1)
@@ -749,13 +752,13 @@ class WrfTranslator:
             sections["domain"]["ny"] = ny
             sections["domain"]["nz"] = nz
 
-            dx = self.get_opt("domains", "dx", 1000.0)
-            dy = self.get_opt("domains", "dy", dx)
+            dx = self.get_opt("domains", "dx", 200.0 if em else 1000.0)
+            dy = self.get_opt("domains", "dy", 200.0 if em else dx)
             sections["domain"]["dx"] = dx
-            if ny > 1 or case_name.startswith("em_"):
+            if ny > 1 or em:
                 sections["domain"]["dy"] = dy
 
-            ztop = self.get_opt("domains", "ztop", None)
+            ztop = self.get_opt("domains", "ztop", 15000.0 if em else None)
             if ztop is not None:
                 sections["domain"]["ztop"] = ztop
 
@@ -763,29 +766,48 @@ class WrfTranslator:
             if p_top is not None:
                 sections["domain"]["p_top"] = p_top
 
-            per_x = self.get_opt("bdy_control", "periodic_x", True)
-            sym_xs = self.get_opt("bdy_control", "symmetric_xs", False)
-            open_xs = self.get_opt("bdy_control", "open_xs", False)
+            def lateral_bc(d):
+                """share/module_bc.F: exactly one condition per side (all .false. by default, else fatal);
+                CPPWRF has one condition per direction (periodic or open)."""
+                if not em:  # CPPWRF's analytic cases: periodic unless set
+                    if self.get_opt("bdy_control", f"periodic_{d}", True):
+                        return "periodic"
+                    if self.get_opt("bdy_control", f"symmetric_{d}s", False):
+                        return "symmetric"
+                    return "open" if self.get_opt("bdy_control", f"open_{d}s", False) else None
+                kinds = []
+                for side in ("s", "e"):
+                    on = [k for k, key in (("periodic", f"periodic_{d}"), ("symmetric", f"symmetric_{d}{side}"),
+                                           ("open", f"open_{d}{side}"), ("specified", "specified"),
+                                           ("nested", "nested"))
+                          if self.get_opt("bdy_control", key, False)]
+                    if len(on) != 1:
+                        self.error(f"WRF needs exactly one lateral boundary condition on the {d}{side} side "
+                                   f"(got {', '.join(on) or 'none'}).")
+                        return None
+                    kinds.append(on[0])
+                if kinds[0] != kinds[1]:
+                    self.error(f"WRF lateral boundaries {kinds[0]}_{d}s / {kinds[1]}_{d}e are not supported "
+                               f"(CPPWRF has one condition per direction).")
+                    return None
+                if kinds[0] in ("specified", "nested"):
+                    self.error(f"WRF {kinds[0]} lateral boundaries are not supported in ideal cases.")
+                    return None
+                return kinds[0]
 
-            if per_x:
-                sections["domain"]["bc_x"] = "periodic"
-            elif sym_xs:
+            bcx = lateral_bc("x")
+            if bcx == "symmetric":
                 # not verified against WRF (em_quarter_ss with symmetric x differs at t = 0 in U on the walls)
                 self.error("WRF symmetric_xs/xe lateral boundaries are not supported (not verified against WRF).")
-            elif open_xs:
-                sections["domain"]["bc_x"] = "open"  # WRF open_xs/open_xe: BC::Open (src/cases/model.cpp)
+            elif bcx is not None:
+                sections["domain"]["bc_x"] = bcx  # open: BC::Open (src/cases/model.cpp)
 
-            per_y = self.get_opt("bdy_control", "periodic_y", True)
-            sym_ys = self.get_opt("bdy_control", "symmetric_ys", False)
-            open_ys = self.get_opt("bdy_control", "open_ys", False)
-
+            bcy = lateral_bc("y")
             if ny > 1 or "bc_x" in sections["domain"]:
-                if per_y:
-                    sections["domain"]["bc_y"] = "periodic"
-                elif sym_ys:
+                if bcy == "symmetric":
                     self.error("WRF symmetric_ys/ye lateral boundaries are not supported (not verified against WRF).")
-                elif open_ys:
-                    sections["domain"]["bc_y"] = "open"
+                elif bcy is not None:
+                    sections["domain"]["bc_y"] = bcy
 
         # 7. Ideal Case Def Section [case]
         if case_name.startswith("em_"):
