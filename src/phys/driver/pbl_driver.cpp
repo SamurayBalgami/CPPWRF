@@ -3,6 +3,7 @@
 
 #include "phys/bl_gwdo/gwdo.hpp"
 #include "phys/bl_myj/myjpbl.hpp"
+#include "phys/bl_mynn/mynnedmf.hpp"
 #include "phys/bl_ysu/ysu.hpp"
 #include "phys/driver/wrf_constants.hpp"
 
@@ -80,6 +81,85 @@ struct KGwdo {
   }
 };
 
+// module_bl_mynnedmf_driver.F90 mynnedmf_driver for one column (j = row): the surface-flux limits,
+// mynnedmf_pre_run, mynnedmf and mynnedmf_post_run (flag_qc = flag_qi = flag_qs = .true.); the model levels
+// k = 0 .. nz-1 are the scheme's k = 1 .. kte
+struct KMynnPbl {
+  int nz, initflag;
+  real delt, dx;
+  C3 dz8w, u, v, w, th, t, p, pi, rho, qv, qc, qi, qs;
+  C2 xland, tsk, psfc, ust, hfx, qfx, wspd, uoce, voce;
+  V3 qke, el, sh3d, sm3d, exch_h, exch_m, tsq, qsq, cov, qc_bl, qi_bl, cldfra_bl;
+  V3 rublten, rvblten, rthblten, rqvblten, rqcblten, rqiblten;
+  V2 pblh, maxwidth, maxmf, ztop_plume, excess_h, excess_q;
+  View2<int> kpbl;
+  CPPWRF_HD void operator()(int i, int j) const {
+    using namespace mynnedmf;
+    Column<kMaxLevels> c;
+    real qv1[kMaxLevels + 2], qc1[kMaxLevels + 2], qi1[kMaxLevels + 2], qs1[kMaxLevels + 2];
+    c.kte = nz;
+    for (int k = 1; k <= nz; ++k) {
+      const int kk = k - 1;
+      c.dz[k] = dz8w(i, j, kk); c.u[k] = u(i, j, kk); c.v[k] = v(i, j, kk); c.w[k] = w(i, j, kk);
+      c.th[k] = th(i, j, kk); c.tk[k] = t(i, j, kk); c.pres[k] = p(i, j, kk); c.ex[k] = pi(i, j, kk);
+      c.rho[k] = rho(i, j, kk);
+      qv1[k] = qv(i, j, kk); qc1[k] = qc(i, j, kk); qi1[k] = qi(i, j, kk); qs1[k] = qs(i, j, kk);
+    }
+    real hfx1 = hfx(i, j);
+    if (hfx1 > real(1200.)) hfx1 = real(1200.);
+    if (hfx1 < real(-600.)) hfx1 = real(-600.);
+    real qfx1 = qfx(i, j);
+    if (qfx1 > real(9e-4)) qfx1 = real(9e-4);
+    if (qfx1 < real(-3e-4)) qfx1 = real(-3e-4);
+    c.pblh = pblh(i, j);
+    c.kpbl = kpbl(i, j);
+    if (initflag == 0) {  // .or. restart
+      for (int k = 1; k <= nz; ++k) {
+        const int kk = k - 1;
+        c.qc_bl[k] = qc_bl(i, j, kk); c.qi_bl[k] = qi_bl(i, j, kk); c.cldfra_bl[k] = cldfra_bl(i, j, kk);
+        c.qke[k] = qke(i, j, kk); c.qsq[k] = qsq(i, j, kk); c.tsq[k] = tsq(i, j, kk); c.cov[k] = cov(i, j, kk);
+        c.sh[k] = sh3d(i, j, kk); c.sm[k] = sm3d(i, j, kk); c.kh[k] = exch_h(i, j, kk); c.km[k] = exch_m(i, j, kk);
+        c.el[k] = el(i, j, kk); c.qke_adv[k] = qke(i, j, kk);  // bl_mynn_tkeadvect = .false.
+      }
+    }
+    for (int k = 1; k <= nz; ++k) {  // mynnedmf_pre_run
+      c.sqv[k] = qv1[k] / (one + qv1[k]);
+      c.sqc[k] = qc1[k] / (one + qv1[k]);
+      c.sqi[k] = qi1[k] / (one + qv1[k]);
+      c.sqs[k] = qs1[k] / (one + qv1[k]);
+    }
+    mynnedmf<kMaxLevels>(c, initflag, delt, dx, xland(i, j), tsk(i, j), psfc(i, j), ust(i, j), hfx1, qfx1, wspd(i, j),
+                         uoce(i, j), voce(i, j));
+    for (int k = 1; k <= nz; ++k) {  // mynnedmf_post_run
+      const real sq = qv1[k] / (one + qv1[k]);
+      const real sqv = sq + c.dqv[k] * delt;
+      const real rq = sqv / (one - sqv);
+      c.dqv[k] = (rq - qv1[k]) / delt;
+      real sqx = qc1[k] / (one + qv1[k]);
+      real sqn = sqx + c.dqc[k] * delt;
+      c.dqc[k] = (sqn * (one + sqv) - qc1[k]) / delt;
+      sqx = qi1[k] / (one + qv1[k]);
+      sqn = sqx + c.dqi[k] * delt;
+      c.dqi[k] = (sqn * (one + sqv) - qi1[k]) / delt;
+    }
+    for (int k = 1; k <= nz; ++k) {
+      const int kk = k - 1;
+      qke(i, j, kk) = c.qke[k]; el(i, j, kk) = c.el[k]; sh3d(i, j, kk) = c.sh[k]; sm3d(i, j, kk) = c.sm[k];
+      exch_h(i, j, kk) = c.kh[k]; exch_m(i, j, kk) = c.km[k]; tsq(i, j, kk) = c.tsq[k]; qsq(i, j, kk) = c.qsq[k];
+      cov(i, j, kk) = c.cov[k];
+      rublten(i, j, kk) = c.du[k]; rvblten(i, j, kk) = c.dv[k]; rthblten(i, j, kk) = c.dth[k];
+      rqvblten(i, j, kk) = c.dqv[k]; rqcblten(i, j, kk) = c.dqc[k]; rqiblten(i, j, kk) = c.dqi[k];
+      qc_bl(i, j, kk) = c.qc_bl[k] / (one - c.sqv[k]);
+      qi_bl(i, j, kk) = c.qi_bl[k] / (one - c.sqv[k]);
+      cldfra_bl(i, j, kk) = c.cldfra_bl[k];
+    }
+    kpbl(i, j) = c.kpbl;
+    pblh(i, j) = c.pblh;
+    maxwidth(i, j) = c.maxwidth; maxmf(i, j) = c.maxmf; ztop_plume(i, j) = c.ztop_plume;
+    excess_h(i, j) = c.excess_h; excess_q(i, j) = c.excess_q;
+  }
+};
+
 }  // namespace
 
 // module_pbl_driver.F pbl_driver for YSUSCHEME / MYJPBLSCHEME
@@ -122,6 +202,27 @@ void PhysicsSuite::pbl_driver(const dyn::State& s, const dyn::BaseState& b) {
         qsfc.view(), thz0.view(), qz0.view(), ct.view(), tke_pbl.view(), exch_h.view(), el_pbl.view(), pblh.view(),
         kpbl.view(), mixht.view(), pt.rublten.view(), pt.rvblten.view(), pt.rthblten.view(), pt.rqvblten.view(),
         pt.rqcblten.view(), pt.rqiblten.view(), cols, dt, stepbl, g_.nz, /*has_qi=*/true);
+  } else if (o_.bl_pbl_physics == 5) {
+    // MYNNPBLSCHEME (module_pbl_driver.F: initflag = 1 at itimestep 1, delt = dtbl, dz = dz8w, dxc = dx,
+    // u = u_phy, v = v_phy, w = w_2, p = p_phy, exner = pi_phy, T3D = t_phy, ts = tsk, ps = psfc)
+    if (!flag_qc || !flag_qi || s.P_QS < 0)
+      throw std::runtime_error("bl_pbl_physics=5: the microphysics must carry qc, qi and qs");
+    KMynnPbl k{};
+    k.nz = g_.nz; k.initflag = itimestep == 1 ? 1 : 0; k.delt = dtbl; k.dx = real(g_.dx);
+    k.dz8w = prep.dz8w.cview(); k.u = prep.u_phy.cview(); k.v = prep.v_phy.cview(); k.w = s.w_2.cview();
+    k.th = prep.th_phy.cview(); k.t = prep.t_phy.cview(); k.p = prep.p_hyd.cview(); k.pi = prep.pi_phy.cview();
+    k.rho = prep.rho.cview(); k.qv = s.q_2[s.P_QV].cview(); k.qc = s.q_2[s.P_QC].cview();
+    k.qi = s.q_2[s.P_QI].cview(); k.qs = s.q_2[s.P_QS].cview();
+    k.xland = xland.cview(); k.tsk = tsk.cview(); k.psfc = psfc.cview(); k.ust = ust.cview(); k.hfx = hfx.cview();
+    k.qfx = qfx.cview(); k.wspd = wspd.cview(); k.uoce = uoce.cview(); k.voce = voce.cview();
+    k.qke = qke.view(); k.el = el_pbl.view(); k.sh3d = sh3d.view(); k.sm3d = sm3d.view(); k.exch_h = exch_h.view();
+    k.exch_m = exch_m.view(); k.tsq = tsq.view(); k.qsq = qsq.view(); k.cov = cov.view(); k.qc_bl = qc_bl.view();
+    k.qi_bl = qi_bl.view(); k.cldfra_bl = cldfra_bl.view();
+    k.rublten = pt.rublten.view(); k.rvblten = pt.rvblten.view(); k.rthblten = pt.rthblten.view();
+    k.rqvblten = pt.rqvblten.view(); k.rqcblten = pt.rqcblten.view(); k.rqiblten = pt.rqiblten.view();
+    k.pblh = pblh.view(); k.maxwidth = maxwidth.view(); k.maxmf = maxmf.view(); k.ztop_plume = ztop_plume.view();
+    k.excess_h = excess_h.view(); k.excess_q = excess_q.view(); k.kpbl = kpbl.view();
+    column_for(cols, k);
   }
   if (o_.gwd_opt == 1) {
     using namespace wrfc;

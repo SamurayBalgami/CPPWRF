@@ -252,6 +252,7 @@ SUPPORTED_OPTIONS = {
         0: "None / off",
         1: "Revised MM5 surface layer (sfclayrev)",
         2: "Eta similarity surface layer (MYJ)",
+        5: "MYNN surface layer",
     },
     "sf_surface_physics": {
         0: "None / off",
@@ -262,6 +263,7 @@ SUPPORTED_OPTIONS = {
         0: "None / off",
         1: "YSU (Yonsei University) planetary boundary layer",
         2: "MYJ (Mellor-Yamada-Janjic) planetary boundary layer",
+        5: "MYNN-EDMF planetary boundary layer (WRF's default bl_mynn_* options)",
     },
     "cu_physics": {
         0: "None / off",
@@ -1215,6 +1217,35 @@ class WrfTranslator:
                     if tofd_factor != 0.003:
                         sections["phys"]["tofd_factor"] = tofd_factor
 
+                if bl_pbl == 5 or sf_sfclay == 5:
+                    # MYNN: only WRF's default options are ported (Registry.EM_COMMON)
+                    mynn_defaults = (("bl_mynn_tkeadvect", False), ("bl_mynn_cloudpdf", 2), ("bl_mynn_mixlength", 1),
+                                     ("bl_mynn_edmf", 1), ("bl_mynn_edmf_dd", 0), ("bl_mynn_edmf_mom", 1),
+                                     ("bl_mynn_edmf_tke", 0), ("bl_mynn_mixscalars", 0), ("bl_mynn_mixaerosols", 1),
+                                     ("bl_mynn_mixnumcon", 0), ("bl_mynn_output", 0), ("bl_mynn_cloudmix", 1),
+                                     ("bl_mynn_mixqt", 0), ("bl_mynn_ess", 1), ("tke_budget", 0),
+                                     ("sf_mynn_sfcflux_land", 0), ("sf_mynn_sfcflux_water", 1), ("pert_mynn", False),
+                                     ("spp_pbl", 0), ("mynn_chem_vertmx", False))
+                    for mk, mdef in mynn_defaults:
+                        if self.has_opt("physics", mk) and self.get_opt("physics", mk, mdef) != mdef:
+                            self.error(f"WRF {mk} = {self.get_opt('physics', mk, mdef)} is not supported; "
+                                       f"CPPWRF's MYNN uses WRF's default {mk} = {mdef}.")
+                    closure = self.get_opt("physics", "bl_mynn_closure", 2.6)
+                    if abs(float(closure) - 2.6) > 1e-9:
+                        self.error(f"WRF bl_mynn_closure = {closure} is not supported; CPPWRF's MYNN uses 2.6.")
+                    if bl_pbl == 5 and sf_sfclay != 5:
+                        self.error("WRF bl_pbl_physics = 5 is supported with sf_sfclay_physics = 5 only.")
+                    if bl_pbl == 5 and mp_physics not in (6, 8):
+                        self.error("WRF bl_pbl_physics = 5 needs a microphysics with qc, qi and qs (mp_physics 6 or 8): "
+                                   "WRF passes the MYNN-EDMF an uninitialised snow content otherwise.")
+                    if bl_pbl == 5 and (self.get_opt("physics", "ishallow", 0) or self.get_opt("physics", "shcu_physics", 0)):
+                        self.error("WRF bl_mynn_edmf > 0 requires shcu_physics = 0 and ishallow = 0.")
+                if bl_pbl == 5:
+                    icb = self.get_opt("physics", "icloud_bl", 1)
+                    if icb not in (0, 1):
+                        self.error(f"WRF icloud_bl = {icb} is not supported (0 or 1).")
+                    elif icb != 1:
+                        sections["phys"]["icloud_bl"] = icb
                 self.check_supported("sf_sfclay_physics", sf_sfclay)
                 self.check_supported("sf_surface_physics", sf_surface)
                 self.check_supported("bl_pbl_physics", bl_pbl)

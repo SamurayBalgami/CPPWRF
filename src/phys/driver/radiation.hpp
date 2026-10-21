@@ -36,6 +36,9 @@ struct RadiationInputs {  // device fields (mass points) read by the radiation
   const Field3 *qc, *qi, *qs;  // moist species (nullptr when the scheme has none: WRF F_QC, F_QI, F_QS)
   const Field3 *re_cloud, *re_ice, *re_snow;  // microphysics effective radii (m): has_reqc/i/s, else nullptr
   const Field2 *tsk, *albedo, *emiss, *xland, *xice, *snow;
+  // icloud_bl = 1 with the MYNN PBL: subgrid clouds (module_radiation_driver.F, ICLOUD == 1): after step 1
+  // CLDFRA = CLDFRA_BL; QC_BL / QI_BL are added where qc < 1e-6 / qi < 1e-8 and CLDFRA_BL > 0.001
+  const Field3 *cldfra_bl = nullptr, *qc_bl = nullptr, *qi_bl = nullptr;
 };
 
 struct RadiationOutputs {

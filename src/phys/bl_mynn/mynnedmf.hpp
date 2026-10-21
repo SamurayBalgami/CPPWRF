@@ -11,6 +11,7 @@
 
 namespace cppwrf::phys::mynnedmf {
 
+inline constexpr int kMaxLevels = 128;  // Column<kMaxLevels> in the model
 inline constexpr real closure_default = real(2.6);
 inline constexpr real ckmod = real(1.0);
 inline constexpr real taue = real(80.);

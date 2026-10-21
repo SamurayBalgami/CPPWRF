@@ -198,6 +198,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.sf_sfclay_physics = int(cfg.get_int("phys.sf_sfclay_physics", 0));
   o.sf_surface_physics = int(cfg.get_int("phys.sf_surface_physics", 0));
   o.bl_pbl_physics = int(cfg.get_int("phys.bl_pbl_physics", 0));
+  o.icloud_bl = int(cfg.get_int("phys.icloud_bl", 1));
   o.cu_physics = int(cfg.get_int("phys.cu_physics", 0));
   o.num_soil_layers = int(cfg.get_int("phys.num_soil_layers", 4));
   o.bldt = cfg.get_double("phys.bldt", 0.0);

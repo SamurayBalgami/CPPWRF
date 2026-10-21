@@ -37,7 +37,9 @@ int main(int argc, char** argv) {
   k.qgh = w2(14); k.hfx = w2(15); k.qfx = w2(16); k.lh = w2(17); k.flhc = w2(18); k.flqc = w2(19); k.qsfc = w2(20);
   k.u10 = w2(21); k.v10 = w2(22); k.th2 = w2(23); k.t2 = w2(24); k.q2 = w2(25); k.gz1oz0 = w2(26); k.wspd = w2(27);
   k.br = w2(28); k.ch = w2(29); k.ck = w2(30); k.cka = w2(31); k.cd = w2(32); k.cda = w2(33);
-  psi_init(k.tb);
+  static PsiTables tables;
+  psi_init(tables);
+  k.tb = &tables;
   k.isfflx = isfflx;
   k.restart = false;
   k.xice_threshold = real(0.5);

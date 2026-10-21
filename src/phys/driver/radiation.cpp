@@ -83,6 +83,10 @@ struct KRadColumn {
   View3<real> o3_out;
   bool o3_field;  // a nest: o3rad as the parent forced it (WRF computes it on domain 1 only)
   View3<const real> o3_in;
+  bool bl_clouds;  // icloud_bl: MYNN subgrid clouds into cf and the staged qc, qi
+  long itimestep;
+  View3<const real> cfbl, qcbl, qibl;
+  double *qcw, *qiw;
   CPPWRF_HD void operator()(int i, int j) const {
     const int col = i + nx * j;
     double hr = 0;
@@ -101,6 +105,15 @@ struct KRadColumn {
       cal_cldfra1(nz, v(qv), v(qc), qi ? v(qi) : SD{nullptr, 0}, qs ? v(qs) : SD{nullptr, 0}, v(t), v(p), v(cf));
     } else {
       for (int k = 0; k < nz; ++k) cf[std::size_t(k) * ncol + col] = 0.0;
+    }
+    if (clouds && bl_clouds) {
+      for (int k = 0; k < nz; ++k) {
+        const std::size_t q = std::size_t(k) * ncol + col;
+        const double b = double(cfbl(i, j, k));
+        if (itimestep != 1) cf[q] = b;
+        if (qcw[q] < 1.E-6 && b > 0.001) qcw[q] = qcw[q] + double(qcbl(i, j, k));
+        if (qiw[q] < 1.E-8 && b > 0.001) qiw[q] = qiw[q] + double(qibl(i, j, k));
+      }
     }
     if (has_cldfra)
       for (int k = 0; k < nz; ++k) cldfra_out(i, j, k) = real(cf[std::size_t(k) * ncol + col]);
@@ -312,6 +325,12 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
     if (kc.has_diag) { kc.hrang_out = out.hrang->view(); kc.o3_out = out.o3rad->view(); }
     kc.o3_field = !o_.oznini && out.o3rad;
     if (kc.o3_field) kc.o3_in = out.o3rad->cview();
+    kc.bl_clouds = in.cldfra_bl != nullptr && in.qc && in.qi;
+    kc.itimestep = itimestep;
+    if (kc.bl_clouds) {
+      kc.cfbl = in.cldfra_bl->cview(); kc.qcbl = in.qc_bl->cview(); kc.qibl = in.qi_bl->cview();
+      kc.qcw = q.qc; kc.qiw = q.qi;
+    }
     column_for(Range2D{0, nx, 0, ny}, kc);
     LwBatchInput li{};
     li.ncol = ncol; li.tsk = q.tsk; li.emiss = q.emiss; li.xland = q.xland; li.xice = q.xice; li.snow = q.snow;
@@ -346,7 +365,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
 #else
   const int nx = g_.nx, ny = g_.ny, nz = g_.nz;
   // inputs to the host
-  std::vector<real> t, p, pw, pi, rho, dz, tw, qv, qc, qi, qs, rec, rei, res, tsk, alb, ems, xland, xice, snow;
+  std::vector<real> t, p, pw, pi, rho, dz, tw, qv, qc, qi, qs, rec, rei, res, tsk, alb, ems, xland, xice, snow, cfbl,
+      qcbl, qibl;
   in.t_phy->download(t); in.p_hyd->download(p); in.p_hyd_w->download(pw); in.pi_phy->download(pi);
   in.rho->download(rho); in.dz8w->download(dz); in.t8w->download(tw); in.qv->download(qv);
   if (in.qc) in.qc->download(qc);
@@ -355,6 +375,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
   if (in.re_cloud) in.re_cloud->download(rec);
   if (in.re_ice) in.re_ice->download(rei);
   if (in.re_snow) in.re_snow->download(res);
+  const bool bl_clouds = in.cldfra_bl != nullptr;
+  if (bl_clouds) { in.cldfra_bl->download(cfbl); in.qc_bl->download(qcbl); in.qi_bl->download(qibl); }
   // icloud = 1 with F_QC or F_QI: cal_cldfra1 (else CLDFRA = 0); qc is required with qi (WSM/Kessler)
   const bool clouds = o_.icloud != 0 && in.qc != nullptr;
   if (o_.icloud != 0 && o_.icloud != 1) throw std::runtime_error("radiation: only icloud = 0 or 1 are ported");
@@ -404,6 +426,14 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
       if (clouds)
         cal_cldfra1(nz, sd(cqv.data()), sd(cqc.data()), SD{qi.empty() ? nullptr : cqi.data(), 1},
                     SD{qs.empty() ? nullptr : cqs.data(), 1}, sd(ct.data()), sd(cp.data()), sd(ccf.data()));
+      if (clouds && bl_clouds) {  // BL clouds (icloud_bl > 0)
+        for (int k = 0; k < nz; ++k) {
+          const std::size_t q = Lm.index(i, j, k);
+          if (itimestep != 1) ccf[k] = cfbl[q];
+          if (cqc[k] < 1.E-6 && cfbl[q] > 0.001) cqc[k] = cqc[k] + qcbl[q];
+          if (cqi[k] < 1.E-8 && cfbl[q] > 0.001) cqi[k] = cqi[k] + qibl[q];
+        }
+      }
       if (out.cldfra)
         for (int k = 0; k < nz; ++k) cldfra[out.cldfra->layout().index(i, j, k)] = real(ccf[k]);
       const double* prc = rec.empty() ? nullptr : crec.data();

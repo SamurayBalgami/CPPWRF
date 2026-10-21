@@ -1,5 +1,6 @@
 // PhysicsSuite::surface_driver (WRF phys/module_surface_driver.F)
 #include "phys/driver/suite.hpp"
+#include "phys/sf_mynn/mynnsfc.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -993,6 +994,27 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
     }
     column_for(cols, KMyjsfcPost{ustm.view(), wspd.view(), ch.view(), ust.cview(), chs.cview(),
                                  prep.u_phy.cview(), prep.v_phy.cview()});
+  } else if (o_.sf_sfclay_physics == 5) {
+    // MYNNSFC (module_surface_driver.F: u3d=u_phytmp, v3d=v_phytmp, t3d=t_phy, qv3d=qv_curr, p3d=p_phy
+    // (grid%p_hyd), dz8w, rho3d=rho, psfcpa=psfc, dx=dx2d; fractional_seaice = 0)
+    mynnsfc::MynnSfcKernel k{};
+    k.u3d = u_phytmp.cview(); k.v3d = v_phytmp.cview(); k.t3d = prep.t_phy.cview(); k.qv3d = s.q_2[s.P_QV].cview();
+    k.p3d = prep.p_hyd.cview(); k.dz8w = prep.dz8w.cview(); k.rho3d = prep.rho.cview();
+    k.psfcpa = psfc.cview(); k.mavail = mavail.cview(); k.xland = xland.cview(); k.tsk = tsk.cview();
+    k.snowh = snowh.cview(); k.dx = dx2d.cview(); k.xice = xice.cview(); k.lakemask = lakemask.cview();
+    k.pblh = pblh.view(); k.chs = chs.view(); k.chs2 = chs2.view(); k.cqs = cqs.view(); k.cqs2 = cqs2.view();
+    k.cpm = cpm.view(); k.znt = znt.view(); k.ust = ust.view(); k.ustm = ustm.view(); k.zol = zol.view();
+    k.mol = mol.view(); k.rmol = rmol.view(); k.psim = psim.view(); k.psih = psih.view(); k.qgh = qgh.view();
+    k.hfx = hfx.view(); k.qfx = qfx.view(); k.lh = lh.view(); k.flhc = flhc.view(); k.flqc = flqc.view();
+    k.qsfc = qsfc.view(); k.u10 = u10.view(); k.v10 = v10.view(); k.th2 = th2.view(); k.t2 = t2.view();
+    k.q2 = q2.view(); k.gz1oz0 = gz1oz0.view(); k.wspd = wspd.view(); k.br = br.view(); k.ch = ch.view();
+    k.ck = ck.view(); k.cka = cka.view(); k.cd = cd.view(); k.cda = cda.view();
+    k.tb = d_mynn_psi_;
+    k.itimestep = int(itimestep);
+    k.restart = false;
+    k.isfflx = o_.isfflx;
+    k.xice_threshold = xice_threshold;
+    column_for(cols, k);
   }
 
   column_for(cols, KSfcRatios{u_phytmp.cview(), v_phytmp.cview(), prep.t_phy.cview(), prep.p_hyd.cview(), u10.cview(),

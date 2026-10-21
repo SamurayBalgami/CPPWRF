@@ -31,6 +31,7 @@
 #include "phys/lsm_noahmp/noahmp.hpp"
 #include "phys/lsm_noahmp/noahmp_tables.hpp"
 #include "phys/sf_myjsfc/myjsfc.hpp"
+#include "phys/sf_mynn/mynnsfc_common.hpp"
 #include "phys/sf_sfclayrev/sfclayrev.hpp"
 
 namespace cppwrf::phys::driver {
@@ -61,9 +62,10 @@ class IntField2 {
 
 // Namelist options of the P1/P2 suite (WRF Registry defaults unless noted).
 struct SuiteOptions {
-  int sf_sfclay_physics = 1;     // 1 = SFCLAYREVSCHEME, 2 = MYJSFCSCHEME
+  int sf_sfclay_physics = 1;     // 1 = SFCLAYREVSCHEME, 2 = MYJSFCSCHEME, 5 = MYNNSFCSCHEME
   int sf_surface_physics = 2;    // 2 = LSMSCHEME (Noah), 4 = NOAHMPSCHEME (Noah-MP v5.1.2)
-  int bl_pbl_physics = 1;        // 1 = YSUSCHEME, 2 = MYJPBLSCHEME
+  int bl_pbl_physics = 1;        // 1 = YSUSCHEME, 2 = MYJPBLSCHEME, 5 = MYNNPBLSCHEME (default bl_mynn_* options)
+  int icloud_bl = 1;             // MYNN subgrid clouds in the radiation (CLDFRA_BL, QC_BL, QI_BL)
   int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME, 3 = GFLSCHEME, 6 = TIEDTKESCHEME, 16 = NTIEDTKESCHEME
   int gwd_opt = 0;                // 1 = KIM orographic gravity wave drag (bl_gwdo)
   double gwd_dx_factor = 2.0;     // effective grid factor of the gwd stress (WRF gwd_dx_factor)
@@ -149,7 +151,10 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   Field3 tsnoxy, snicexy, snliqxy, zsnsoxy, albsoildirxy, albsoildifxy, smoiseq, acc_etranixy;
   std::vector<double> dzs;            // soil layer thicknesses (m)
   Field3 exch_h, exch_m;              // M (WRF kme-sized; levels 0..nz-1 used)
-  Field3 tke_pbl, el_pbl;             // MYJ PBL 3D TKE and master length scale
+  Field3 tke_pbl, el_pbl;             // MYJ PBL 3D TKE and master length scale (el_pbl: MYNN too)
+  // MYNN-EDMF state (bl_pbl_physics = 5): 2*TKE, variances, stability functions, subgrid clouds
+  Field3 qke, tsq, qsq, cov, sh3d, sm3d, qc_bl, qi_bl, cldfra_bl;
+  Field2 cqs, maxwidth, maxmf, ztop_plume, excess_h, excess_q;
   // gwd_opt = 1: subgrid orography statistics (wrfinput CON, OA1-4, OL1-4, ELVMAX) and the drag diagnostics
   Field2 oc12d, oa1, oa2, oa3, oa4, ol1, ol2, ol3, ol4, elvmax, dusfcg, dvsfcg;
   Field3 dtaux3d, dtauy3d;
@@ -231,6 +236,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   sfclayrev::SFClayRevTables<real>* d_sfclay_tables_ = nullptr;  // device copy, uploaded once
   sf_myjsfc::MYJSFCTableManager myjsfc_tables_;                  // host/device copy, uploaded once
   cu_kf::KFTables<real>* d_kf_tables_ = nullptr;                 // device copy, uploaded once
+  mynnsfc::PsiTables* d_mynn_psi_ = nullptr;                     // MYNN psi_init tables, device copy
   // Noah driver scratch (inputs/outputs of SFLX per point)
   Field2 n_lwdn, n_soldn, n_solnet, n_sfcprs, n_prcp, n_sfctmp, n_th2, n_q2, n_q2sat, n_dqsdt2, n_ffrozp,
       n_shdfac, n_shmin, n_shmax, n_albbrd, n_snoalb1, n_tbot, n_z0brd, n_emissi, n_embrd, n_cmc, n_t1,

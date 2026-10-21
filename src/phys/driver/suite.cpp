@@ -8,6 +8,7 @@
 #include <stdexcept>
 
 #include "phys/bl_myj/myjpbl.hpp"
+#include "phys/bl_mynn/mynnedmf.hpp"
 #include "phys/bl_ysu/ysu.hpp"
 #include "phys/cu_gfl/gfl_driver.hpp"
 #include "phys/cu_ntiedtke/ntiedtke.hpp"
@@ -91,10 +92,15 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       chklowq(g, Stagger::M, "chklowq"), qgh(g, Stagger::M, "qgh"), chs(g, Stagger::M, "chs"),
       chs2(g, Stagger::M, "chs2"), cqs2(g, Stagger::M, "cqs2"), cpm(g, Stagger::M, "cpm"),
       u_phytmp(g, Stagger::M, "u_phytmp"), v_phytmp(g, Stagger::M, "v_phytmp"), t1_lag_(g, Stagger::M, "t1_lag"), coszen(g, Stagger::M, "coszen"), rthratenlw(g, Stagger::M, "rthratenlw"), rthratensw(g, Stagger::M, "rthratensw"), rthratenlwc(g, Stagger::M, "rthratenlwc"), rthratenswc(g, Stagger::M, "rthratenswc"), o3rad(g, Stagger::M, "o3rad"), lwcf(g, Stagger::M, "lwcf"), swcf(g, Stagger::M, "swcf"), hrang(g, Stagger::M, "hrang"), uratx(g, Stagger::M, "uratx"), vratx(g, Stagger::M, "vratx"), tratx(g, Stagger::M, "tratx"), ra(g, Stagger::M, "ra"), rs(g, Stagger::M, "rs"), shall(g, Stagger::M, "shall"), lwupt(g, Stagger::M, "lwupt"), lwuptc(g, Stagger::M, "lwuptc"), lwdnt(g, Stagger::M, "lwdnt"), lwdntc(g, Stagger::M, "lwdntc"), lwupb(g, Stagger::M, "lwupb"), lwupbc(g, Stagger::M, "lwupbc"), lwdnb(g, Stagger::M, "lwdnb"), lwdnbc(g, Stagger::M, "lwdnbc"), olr(g, Stagger::M, "olr"), swupt(g, Stagger::M, "swupt"), swuptc(g, Stagger::M, "swuptc"), swdnt(g, Stagger::M, "swdnt"), swdntc(g, Stagger::M, "swdntc"), swupb(g, Stagger::M, "swupb"), swupbc(g, Stagger::M, "swupbc"), swdnb(g, Stagger::M, "swdnb"), swdnbc(g, Stagger::M, "swdnbc"), aclwupt(g, Stagger::M, "aclwupt"), aclwuptc(g, Stagger::M, "aclwuptc"), aclwdnt(g, Stagger::M, "aclwdnt"), aclwdntc(g, Stagger::M, "aclwdntc"), aclwupb(g, Stagger::M, "aclwupb"), aclwupbc(g, Stagger::M, "aclwupbc"), aclwdnb(g, Stagger::M, "aclwdnb"), aclwdnbc(g, Stagger::M, "aclwdnbc"), acswupt(g, Stagger::M, "acswupt"), acswuptc(g, Stagger::M, "acswuptc"), acswdnt(g, Stagger::M, "acswdnt"), acswdntc(g, Stagger::M, "acswdntc"), acswupb(g, Stagger::M, "acswupb"), acswupbc(g, Stagger::M, "acswupbc"), acswdnb(g, Stagger::M, "acswdnb"), acswdnbc(g, Stagger::M, "acswdnbc"), g_(g), gs_(g), o_(o) {
-  if ((o.sf_sfclay_physics != 1 && o.sf_sfclay_physics != 2) ||
+  if ((o.sf_sfclay_physics != 1 && o.sf_sfclay_physics != 2 && o.sf_sfclay_physics != 5) ||
       (o.sf_surface_physics != 2 && o.sf_surface_physics != 4) ||
-      (o.bl_pbl_physics != 0 && o.bl_pbl_physics != 1 && o.bl_pbl_physics != 2))
-    throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1|2, sf_surface_physics=2|4, bl_pbl_physics=0|1|2");
+      (o.bl_pbl_physics != 0 && o.bl_pbl_physics != 1 && o.bl_pbl_physics != 2 && o.bl_pbl_physics != 5))
+    throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1|2|5, sf_surface_physics=2|4, bl_pbl_physics=0|1|2|5");
+  // module_physics_init: MYNNPBLSCHEME needs mynnsfc, sfclay or myjsfc; only mynnsfc is ported with it
+  if (o.bl_pbl_physics == 5 && o.sf_sfclay_physics != 5)
+    throw std::runtime_error("PhysicsSuite: bl_pbl_physics=5 is ported with sf_sfclay_physics=5 only");
+  if (o.sf_sfclay_physics == 5 && o.fractional_seaice == 1)
+    throw std::runtime_error("PhysicsSuite: sf_sfclay_physics=5 with fractional_seaice=1 (MYNN_SEAICE_WRAPPER) is not ported");
   if (o.cu_physics != 0 && o.cu_physics != 1 && o.cu_physics != 3 && o.cu_physics != 6 && o.cu_physics != 16)
     throw std::runtime_error("PhysicsSuite: only cu_physics=0, 1 (Kain-Fritsch), 3 (Grell-Freitas-Li), 6 (Tiedtke) or 16 (New Tiedtke)");
   if (o.cu_physics == 3 && g.nz > cu_gfl::kMaxLevels)
@@ -132,6 +138,8 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   }
   if (o.bl_pbl_physics == 1 && g.nz > ysu::kMaxLevels)
     throw std::runtime_error("PhysicsSuite: nz exceeds the YSU column limit");
+  if (o.bl_pbl_physics == 5 && g.nz > mynnedmf::kMaxLevels)
+    throw std::runtime_error("PhysicsSuite: nz exceeds the MYNN-EDMF column limit");
   if (o.bl_pbl_physics == 2 && g.nz > myjpbl::kMaxLevels)
     throw std::runtime_error("PhysicsSuite: nz exceeds the MYJ column limit");
   if (o.sf_sfclay_physics == 2 && g.nz > sf_myjsfc::kMaxLevels)
@@ -218,6 +226,21 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   if (o.sf_sfclay_physics == 2) {
     lowlyr.upload(std::vector<int>(lowlyr.layout().total, 1));  // myjsfcinit: LOWLYR = 1
     ust.fill_host([](int, int, int) { return 0.1; });           // myjsfcinit: USTAR = 0.1
+  }
+  if (o.sf_sfclay_physics == 5) {  // mynnsfc_init -> psi_init
+    mynnsfc::PsiTables* h = new mynnsfc::PsiTables;
+    mynnsfc::psi_init(*h);
+    d_mynn_psi_ = static_cast<mynnsfc::PsiTables*>(dev_alloc(sizeof(*h)));
+    copy_to_dev(d_mynn_psi_, h, sizeof(*h));
+    delete h;
+    cqs = Field2(g, Stagger::M, "cqs");
+  }
+  if (o.bl_pbl_physics == 5) {
+    mk3(qke, g, "qke"); mk3(tsq, g, "tsq"); mk3(qsq, g, "qsq"); mk3(cov, g, "cov"); mk3(sh3d, g, "sh3d");
+    mk3(sm3d, g, "sm3d"); mk3(qc_bl, g, "qc_bl"); mk3(qi_bl, g, "qi_bl"); mk3(cldfra_bl, g, "cldfra_bl");
+    maxwidth = Field2(g, Stagger::M, "maxwidth"); maxmf = Field2(g, Stagger::M, "maxmf");
+    ztop_plume = Field2(g, Stagger::M, "ztop_plume"); excess_h = Field2(g, Stagger::M, "excess_h");
+    excess_q = Field2(g, Stagger::M, "excess_q");
   }
   if (o.bl_pbl_physics == 2) {
     lowlyr.upload(std::vector<int>(lowlyr.layout().total, 1));
@@ -313,6 +336,7 @@ PhysicsSuite::~PhysicsSuite() {
   if (d_noahmp_tables_) dev_free(d_noahmp_tables_);
   if (d_sfclay_tables_) dev_free(d_sfclay_tables_);
   if (d_kf_tables_) dev_free(d_kf_tables_);
+  if (d_mynn_psi_) dev_free(d_mynn_psi_);
 }
 
 PhysicsSuite::SeaIceFields::SeaIceFields(const Grid& g) {
@@ -342,6 +366,9 @@ std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
     for (Field2* f : {&thz0, &uz0, &vz0, &akhs, &akms, &ct, &tshltr, &th10, &qshltr, &q10, &pshltr, &u10e, &v10e, &mixht})
       v.emplace_back("sfc_" + f->name(), f);
   }
+  if (o_.sf_sfclay_physics == 5) v.emplace_back("sfc_cqs", &cqs);
+  if (o_.bl_pbl_physics == 5)
+    for (Field2* f : {&maxwidth, &maxmf, &ztop_plume, &excess_h, &excess_q}) v.emplace_back("sfc_" + f->name(), f);
   if (o_.fractional_seaice == 1 || o_.sst_update == 1) {
     v.emplace_back("sfc_sst", &sst);
     v.emplace_back("sfc_tsk_save", &tsk_save);
@@ -375,6 +402,11 @@ std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
     v.emplace_back("sfc_" + f->name(), f);
   if (o_.sf_sfclay_physics == 2 || o_.bl_pbl_physics == 2) {
     v.emplace_back("sfc_tke_pbl", &tke_pbl);
+    v.emplace_back("sfc_el_pbl", &el_pbl);
+  }
+  if (o_.bl_pbl_physics == 5) {
+    for (Field3* f : {&qke, &tsq, &qsq, &cov, &sh3d, &sm3d, &qc_bl, &qi_bl, &cldfra_bl})
+      v.emplace_back("sfc_" + f->name(), f);
     v.emplace_back("sfc_el_pbl", &el_pbl);
   }
   if (o_.sf_surface_physics == 4) {
@@ -418,10 +450,16 @@ void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
     const double xtime = double(itimestep - 1) * g_.dt / 60.;
     const double julian = wrf_julian(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt);
     auto q = [&](int n) -> const Field3* { return n >= 0 ? &s.q_2[n] : nullptr; };
-    rad_->run(itimestep, xtime, julian,
-              RadiationInputs{&prep.t_phy, &prep.p_hyd, &prep.p_hyd_w, &prep.pi_phy, &prep.rho, &prep.dz8w,
-                              &prep.t8w, &s.q_2[s.P_QV], q(s.P_QC), q(s.P_QI), q(s.P_QS), re_cloud_, re_ice_,
-                              re_snow_, &tsk, &albedo, &emiss, &xland, &xice, &snow},
+    RadiationInputs ri{&prep.t_phy, &prep.p_hyd, &prep.p_hyd_w, &prep.pi_phy, &prep.rho, &prep.dz8w,
+                       &prep.t8w, &s.q_2[s.P_QV], q(s.P_QC), q(s.P_QI), q(s.P_QS), re_cloud_, re_ice_,
+                       re_snow_, &tsk, &albedo, &emiss, &xland, &xice, &snow};
+    // check_a_mundo: icloud_bl = 1 needs the MYNN PBL (reset to 0 otherwise)
+    if (o_.icloud_bl == 1 && o_.bl_pbl_physics == 5) {
+      ri.cldfra_bl = &cldfra_bl;
+      ri.qc_bl = &qc_bl;
+      ri.qi_bl = &qi_bl;
+    }
+    rad_->run(itimestep, xtime, julian, ri,
               RadiationOutputs{&pt.rthraten, &glw, &gsw, &swdown, &coszen, &cldfra, &rthratenlw, &rthratensw,
                                &rthratenlwc, &rthratenswc, &o3rad, &lwcf, &swcf, &hrang,
                                {&lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &olr}, {&swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc}});

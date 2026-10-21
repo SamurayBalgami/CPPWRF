@@ -16,7 +16,7 @@ struct MynnSfcKernel {
   // INOUT / OUT
   View2<real> chs, chs2, cqs, cqs2, cpm, znt, ust, ustm, zol, mol, rmol, psim, psih, qgh, hfx, qfx, lh, flhc, flqc,
       qsfc, u10, v10, th2, t2, q2, gz1oz0, wspd, br, ch, ck, cka, cd, cda;
-  PsiTables tb;
+  const PsiTables* tb = nullptr;  // psi_init tables (device memory in CUDA builds)
   int itimestep = 1;
   bool restart = false;
   int isfflx = 1;
@@ -87,10 +87,10 @@ struct MynnSfcKernel {
     o.cm = zero; o.psix = zero; o.psit = zero; o.psix10 = zero; o.psit2 = zero;
     o.ck = zero; o.cka = zero; o.cd = zero; o.cda = zero;
     const real xland_1 = xland(i, j), xice_1 = xice(i, j);
-    if (((xland_1 - real(1.5)) < zero) && (in.snowh < snow_thresh)) mynnsfc_land(in, o, tb);
-    if ((xland_1 - real(1.5)) >= zero) mynnsfc_water(in, lakemask(i, j), o, tb);
+    if (((xland_1 - real(1.5)) < zero) && (in.snowh < snow_thresh)) mynnsfc_land(in, o, *tb);
+    if ((xland_1 - real(1.5)) >= zero) mynnsfc_water(in, lakemask(i, j), o, *tb);
     if ((((xland_1 - real(1.5)) < zero) && (in.snowh >= snow_thresh)) || (xice_1 >= xice_threshold && xice_1 < one))
-      mynnsfc_ice(in, o, tb);
+      mynnsfc_ice(in, o, *tb);
     hfx(i, j) = o.hfx;
     qfx(i, j) = o.qfx / (one - in.qv_1);
     lh(i, j) = o.lh / (one - in.qv_1);
