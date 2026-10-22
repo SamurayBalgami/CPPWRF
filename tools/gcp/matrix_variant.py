@@ -60,7 +60,10 @@ if os.path.basename(wrfexe).startswith("wrf_") and os.path.exists(iexe):
     if not os.path.exists(os.path.join(R, "wrfinput_d01")):
         print(f"{name} IDEAL-FAILED {open(os.path.join(R, 'ideal.log'), errors='replace').read().strip().splitlines()[-1:]}")
         sys.exit(0)
-subprocess.run("./wrf.exe > wrf.log 2>&1", shell=True, cwd=R, env=env)
+try:  # a hanging run must not keep the VM
+    subprocess.run("./wrf.exe > wrf.log 2>&1", shell=True, cwd=R, env=env, timeout=3600)
+except subprocess.TimeoutExpired:
+    open(os.path.join(R, "wrf.log"), "a").write("\nTIMEOUT after 3600 s\n")
 if "SUCCESS COMPLETE WRF" not in open(os.path.join(R, "rsl.out.0000") if os.path.exists(os.path.join(R, "rsl.out.0000")) else os.path.join(R, "wrf.log"), errors="replace").read():
     log = open(os.path.join(R, 'wrf.log'), errors='replace').read().strip().splitlines()
     why = [l.strip() for l in log if "ERROR" in l or "FATAL" in l or "Fix " in l][:4] or log[-1:]
@@ -72,8 +75,11 @@ t = subprocess.run([sys.executable, os.path.join(repo, "tools/wrf2cppwrf.py"), o
 if t.returncode != 0:
     print(f"{name} TRANSLATE-FAILED {t.stderr.strip().splitlines()[-1:]}")
     sys.exit(0)
-c = subprocess.run([cppwrf, os.path.join(R, "case.ini"), "--set", f"output.dir={out}"], capture_output=True, text=True,
-                   cwd=repo, env=env)
+try:
+    c = subprocess.run([cppwrf, os.path.join(R, "case.ini"), "--set", f"output.dir={out}"], capture_output=True, text=True,
+                       cwd=repo, env=env, timeout=3600)
+except subprocess.TimeoutExpired:
+    c = subprocess.CompletedProcess([], 124, "", "TIMEOUT after 3600 s")
 if c.returncode != 0:
     print(f"{name} CPPWRF-FAILED {(c.stderr or c.stdout).strip().splitlines()[-1:]}")
     sys.exit(0)

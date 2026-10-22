@@ -54,7 +54,10 @@ for sk, v in sets:
 open(os.path.join(R, "namelist.input"), "w").write(nl)
 
 env = dict(os.environ, OMP_NUM_THREADS="1")
-subprocess.run("./real.exe > real.log 2>&1", shell=True, cwd=R, env=env)
+try:  # a hanging program must not keep the VM (e.g. interval_seconds = 0)
+    subprocess.run("./real.exe > real.log 2>&1", shell=True, cwd=R, env=env, timeout=1800)
+except subprocess.TimeoutExpired:
+    open(os.path.join(R, "real.log"), "a").write("\nTIMEOUT after 1800 s\n")
 log = open(os.path.join(R, "rsl.out.0000") if os.path.exists(os.path.join(R, "rsl.out.0000"))
            else os.path.join(R, "real.log"), errors="replace").read()
 wrf_ok = "SUCCESS COMPLETE REAL_EM" in log
@@ -62,9 +65,12 @@ wrf_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(R, "wrf*_
 out = os.path.join(R, "cppwrf")
 os.makedirs(out)
 prec = open(os.path.join(src, "precision")).read().strip() if os.path.exists(os.path.join(src, "precision")) else "double"
-c = subprocess.run([cppreal, "--namelist", os.path.join(R, "namelist.input"), "--met-dir", R, "--out-dir", out,
-                    "--precision", prec, "--schema", os.path.join(repo, "data/wrf_schema/wrf-4.8.0.tsv")],
-                   capture_output=True, text=True, env=env)
+try:
+    c = subprocess.run([cppreal, "--namelist", os.path.join(R, "namelist.input"), "--met-dir", R, "--out-dir", out,
+                        "--precision", prec, "--schema", os.path.join(repo, "data/wrf_schema/wrf-4.8.0.tsv")],
+                       capture_output=True, text=True, env=env, timeout=1800)
+except subprocess.TimeoutExpired:
+    c = subprocess.CompletedProcess([], 124, "", "TIMEOUT after 1800 s")
 cpp_ok = c.returncode == 0
 cpp_files = sorted(os.listdir(out)) if cpp_ok else []
 if not wrf_ok:
