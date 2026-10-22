@@ -996,12 +996,11 @@ class WrfTranslator:
         elif has_physics_suite or (scalar_adv_opt != 0 and case_name in ("quarter_ss",)):
             sections["dyn"]["scalar_adv_opt"] = scalar_adv_opt if scalar_adv_opt != 0 else 1
 
-        prandtl = self.get_opt("dynamics", "prandtl", None)
-        if prandtl is not None and prandtl > 0:
-            pr_inv = 1.0 / prandtl
-            if abs(pr_inv - 3.0) > 1e-4 or case_name in ("straka", "quarter_ss"):
-                sections["dyn"]["pr_inv"] = pr_inv
-        elif case_name in ("straka", "quarter_ss"):
+        # WRF's prandtl is the constant 1./3. of module_model_constants.F, not a namelist option
+        if self.has_opt("dynamics", "prandtl"):
+            self.error("WRF has no &dynamics prandtl option (wrf.exe stops reading the namelist); "
+                       "its Prandtl number is the constant 1/3.")
+        if case_name in ("straka", "quarter_ss"):
             sections["dyn"]["pr_inv"] = 3.0
 
         top_lid = self.get_opt("dynamics", "top_lid", False)
