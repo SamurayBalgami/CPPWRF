@@ -1723,6 +1723,21 @@ class WrfTranslator:
                     ("c_s", "c_s"),
                     ("c_k", "c_k"),
                     ("gwd_opt", "gwd_opt"),
+                    ("epssm", "epssm"),
+                    ("smdiv", "smdiv"),
+                    ("emdiv", "emdiv"),
+                    ("mix_isotropic", "mix_isotropic"),
+                    ("mix_upper_bound", "mix_upper_bound"),
+                    ("mix_full_fields", "mix_full_fields"),
+                    ("tke_drag_coefficient", "tke_drag_coefficient"),
+                    ("tke_heat_flux", "tke_heat_flux"),
+                    ("tke_upper_bound", "tke_upper_bound"),
+                    ("moist_mix2_off", "moist_mix2_off"),
+                    ("scalar_mix2_off", "scalar_mix2_off"),
+                    ("tke_mix2_off", "tke_mix2_off"),
+                    ("moist_mix6_off", "moist_mix6_off"),
+                    ("scalar_mix6_off", "scalar_mix6_off"),
+                    ("tke_mix6_off", "tke_mix6_off"),
                 )
                 for nml_k, ini_k in dyn_dom_map:
                     if self.has_opt("dynamics", nml_k):
@@ -1730,12 +1745,26 @@ class WrfTranslator:
                         v_0 = self.get_dom_opt("dynamics", nml_k, 0, None)
                         if ini_k in SUPPORTED_OPTIONS and v_d is not None and v_d not in SUPPORTED_OPTIONS[ini_k] and not (ini_k == "km_opt" and v_d == 0):
                             self.error(f"Domain {tag}: WRF {nml_k} = {v_d} is not supported.")
-                        elif ini_k in ("moist_adv_opt", "scalar_adv_opt", "tke_adv_opt") and v_d not in (0, 1):
+                        elif ini_k in ("moist_adv_opt", "scalar_adv_opt", "tke_adv_opt", "mix_isotropic") and v_d not in (0, 1):
                             self.error(f"Domain {tag}: WRF {nml_k} = {v_d} is not supported (0 or 1 only).")
                         elif ini_k == "diff_6th_opt" and v_d not in (0, 1, 2):
                             self.error(f"Domain {tag}: WRF diff_6th_opt = {v_d} is not supported (0, 1, or 2 only).")
+                        elif ini_k in ("diff_6th_factor", "mix_upper_bound", "tke_upper_bound") and float(v_d) <= 0.0:
+                            self.error(f"Domain {tag}: WRF {nml_k} = {v_d} must be > 0.")
                         if v_d != v_0 and v_d is not None:
                             sections[tag][ini_k] = int(v_d) if isinstance(v_d, (int, float)) and float(v_d).is_integer() and ini_k in ("khdif", "kvdif", "zdamp") else v_d
+                            if ini_k in ("khdif", "kvdif") and self.get_dom_opt("dynamics", "diff_opt", d, 0) == 0:
+                                sections[tag]["diff_opt"] = 0  # WRF: no diffusion; CPPWRF's default with khdif/kvdif is 1
+                # the other &dynamics max_domains options the translator reads have one value in CPPWRF; WRF runs each
+                # domain with its own entry (a missing entry is the Registry default, pad_max_domains)
+                for nml_k in ("h_sca_adv_order", "v_sca_adv_order", "top_lid", "chem_adv_opt", "momentum_adv_opt",
+                              "phi_adv_z", *UNSUPPORTED_DYNAMICS_SWITCHES):
+                    if self.has_opt("dynamics", nml_k):
+                        v_d = self.get_dom_opt("dynamics", nml_k, d, None)
+                        v_0 = self.get_dom_opt("dynamics", nml_k, 0, None)
+                        if v_d != v_0:
+                            self.error(f"Domain {tag}: WRF {nml_k} = {v_d} differs from domain 1's {v_0}; "
+                                       "CPPWRF uses domain 1's value on every domain.")
 
                 if self.has_opt("dynamics", "time_step_sound"):
                     tss_d = self.get_dom_opt("dynamics", "time_step_sound", d, 0)
