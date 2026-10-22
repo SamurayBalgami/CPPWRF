@@ -8,5 +8,4 @@ inline constexpr const char* precision_name = "float64";
 using real = float;
 inline constexpr const char* precision_name = "float32";
 #endif
-using real_t = real;
 }  // namespace cppwrf

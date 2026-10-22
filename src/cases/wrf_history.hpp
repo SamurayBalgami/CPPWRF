@@ -34,7 +34,6 @@ class WrfHistory {
   void write(long step, double time_sec);
   // wrfrst_d0N_<date>: the restart stream at model time time_sec (alarms from the intervals in seconds)
   void write_restart(long step, double time_sec, double history_interval_s, double restart_interval_s);
-  const std::string& last_restart() const { return last_restart_; }
   // before step n of a frame that will be written: runs without column physics evaluate phy_prep as
   // first_rk_step_part1 does every step (P_HYD of the frame)
   void before_step(long n);
@@ -47,7 +46,6 @@ class WrfHistory {
   // feedback function (copy_fcn / copy_fcnm / copy_fcni) takes the child's values inside the nest
   void feedback_physics(WrfHistory& child, int ipos, int jpos, int ratio);
   void feedback_from(WrfHistory& child, int i_parent_start, int j_parent_start, int ratio);
-  const std::string& last_file() const { return last_file_; }
   // a run resumed from a restart file at time_sec: START_DATE is the restart time
   void set_restart_time(double time_sec) { restart_sec_ = time_sec; }
 
@@ -85,7 +83,7 @@ class WrfHistory {
   long prep_step_ = -1;
   double restart_sec_ = 0;
   double time_sec_ = 0;
-  std::string last_file_, last_restart_;
+
 };
 
 }  // namespace cppwrf::cases

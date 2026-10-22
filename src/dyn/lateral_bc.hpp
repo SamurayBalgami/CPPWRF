@@ -49,7 +49,6 @@ class LateralBC {
   void mark_set(Var v) { have_[v] = true; }
   bool has(Var v) const { return have_[v]; }
   bool has_scalar(int n) const { return n >= 0 && n < int(sdata_.size()) && !sdata_[n].off.empty(); }
-  bool nested() const { return nested_; }
   int width() const { return width_; }
 
   double dtbc = 0;  // seconds since the start of the current boundary interval

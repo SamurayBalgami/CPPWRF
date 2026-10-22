@@ -36,17 +36,16 @@ struct DiffusionConfig {
   real tke_drag_coefficient = 0;
   real tke_heat_flux = 0;
   real tke_upper_bound = real(1000.0);
-  bool moist_mix2_off = false, chem_mix2_off = false, tracer_mix2_off = false, scalar_mix2_off = false, tke_mix2_off = false;
-  bool moist_mix6_off = false, chem_mix6_off = false, tracer_mix6_off = false, scalar_mix6_off = false, tke_mix6_off = false;
+  bool moist_mix2_off = false, scalar_mix2_off = false, tke_mix2_off = false;
+  bool moist_mix6_off = false, scalar_mix6_off = false, tke_mix6_off = false;
   int diff_6th_opt = 0;       // 0 off, 1, 2 (flux limited)
   real diff_6th_factor = real(0.12);
   bool pbl = false;           // bl_pbl_physics != 0: no vertical diffusion in dynamics
   // km_opt 1/4: also evaluate calculate_N2 as WRF's calculate_km_kh does (BN2 of restart files; unused)
   bool n2_diagnostic = false;
-  int sf_sfclay_physics = 0;
   int isfflx = 1;
   int use_theta_m = 1;
-  int fft_filter_lat = 90;
+  int fft_filter_lat = 91;  // Registry default (used only with polar, which is rejected)
   bool on() const { return diff_opt != 0 || diff_6th_opt != 0 || damp_opt == 2; }
 };
 

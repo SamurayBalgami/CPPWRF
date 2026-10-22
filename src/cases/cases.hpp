@@ -26,7 +26,6 @@ class Sounding {
            std::function<double(double)> qv = {});
   double theta(double z) const { return th_(z); }
   double qv(double z) const { return qv_ ? qv_(z) : 0.0; }
-  bool moist() const { return bool(qv_); }
   double p(double z) const;        // full pressure at height z
   double z_of_p(double p) const;   // inverse (monotone)
   double pd(double z) const;       // dry pressure

@@ -21,12 +21,12 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 
 ## Verification method
 
-1. **Column and kernel tests** (`tests/phys`, `tests/dyn`, `tests/bdy`, `tests/nest`): each scheme and
+1. **Column and kernel tests** (`tests/phys`, `tests/dyn`, `tests/nest`): each scheme and
    kernel runs on the same inputs in C++ and in WRF v4.8.0's own Fortran (unmodified source or
    WRF's compiled objects, built with WRF's configure flags), and every output must be bit-identical
    in CPU FP64 (tolerance 0). This covers Kessler, WSM6, Thompson (with WRF's table files), YSU
    (ysu_topdown_pblmix 0 and 1), MYJ and the Eta surface layer, revised MM5 surface layer, Noah,
-   Noah-MP, Kain-Fritsch, the diffusion and damping kernels (km_opt 1-4), the lateral boundary and
+   Noah-MP, Kain-Fritsch, the diffusion and damping kernels (km_opt 1-4), the
    nest numerics, and the physics suite driver. Grell-Freitas-Li and New Tiedtke are checked by
    replaying the model's own column inputs through WRF's objects. Run them with
    `cmake -DCPPWRF_DOUBLE=ON -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_DIFF_TESTS=ON` and `ctest -L diff`,

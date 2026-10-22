@@ -42,7 +42,6 @@ struct Grid {
   bool specified() const { return bc_x == BC::Specified || bc_y == BC::Specified; }
   bool open_x() const { return bc_x == BC::Open; }
   bool open_y() const { return bc_y == BC::Open && !two_d(); }
-  bool open() const { return open_x() || open_y(); }
   // halo by outward copy of the outermost row (WRF set_physical_bc*: open, specified, nested)
   bool flat_x() const { return bc_x == BC::Specified || bc_x == BC::Open; }
   bool flat_y() const { return bc_y == BC::Specified || bc_y == BC::Open; }

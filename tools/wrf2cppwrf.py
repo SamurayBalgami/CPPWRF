@@ -394,6 +394,10 @@ DEFAULT_ONLY_OPTIONS = {
     ("stoch", "spp_pbl"): (0, "stochastically perturbed PBL parameters"),
     ("stoch", "spp_conv"): (0, "stochastically perturbed convection parameters"),
     ("stoch", "spp_lsm"): (0, "stochastically perturbed land-surface parameters"),
+    ("stoch", "perturb_bdy"): (0, "perturbed lateral boundary tendencies (spec_bdy_dry_perturb)"),
+    ("stoch", "perturb_chem_bdy"): (0, "perturbed chemistry boundaries"),
+    ("bdy_control", "constant_bc"): (False, "constant lateral boundaries (zero_bdytend)"),
+    ("bdy_control", "multi_bdy_files"): (False, "one boundary file per interval"),
 }
 
 # max_domains options that are single values in CPPWRF: every domain must have domain 1's value
@@ -721,6 +725,12 @@ class WrfTranslator:
 
         # 5. Real Data Section [real]
         if case_name == "real":
+            # domain 1 of a real case has specified boundaries on all sides; WRF's channel setup (specified +
+            # periodic_x) is not ported, and open or symmetric sides with specified are fatal in WRF (module_bc)
+            for key in ("periodic_x", "periodic_y", "open_xs", "open_xe", "open_ys", "open_ye", "symmetric_xs",
+                        "symmetric_xe", "symmetric_ys", "symmetric_ye"):
+                if self.get_opt("bdy_control", key, False):
+                    self.error(f"WRF {key} = .true. in a real case is not supported (specified boundaries only).")
             sections["real"] = {}
             r_dir = self.real_dir
             if not r_dir:

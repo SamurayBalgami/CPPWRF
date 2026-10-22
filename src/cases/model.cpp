@@ -234,7 +234,6 @@ Model Model::build(const io::Config& cfg) {
   dc.diff_6th_opt = int(cfg.get_int("dyn.diff_6th_opt", 0));
   dc.diff_6th_factor = real(cfg.get_double("dyn.diff_6th_factor", 0.12));
   dc.pbl = cfg.get_int("phys.bl_pbl_physics", 0) != 0;
-  dc.sf_sfclay_physics = int(cfg.get_int("phys.sf_sfclay_physics", 0));
   dc.isfflx = int(cfg.get_int("phys.isfflx", 1));
   if (dc.isfflx != 0 && dc.isfflx != 1) throw std::runtime_error("phys.isfflx must be 0 or 1");
   dc.use_theta_m = int(cfg.get_int("dyn.use_theta_m", 1));

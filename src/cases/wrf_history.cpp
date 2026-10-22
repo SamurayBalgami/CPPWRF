@@ -282,11 +282,11 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
   phy_init_["STEPFG"] = {1.0};
   phy_init_["LAST_STEP_UPDATED"] = {-1.0};
   phy_init_["MIN_PTCHSZ"] = {double(std::min(g.nx, g.ny) + 1)};
-  {  // lbc_fcx_gcx (spec_exp = 0)
+  {  // lbc_fcx_gcx (spec_exp = 0): only specified and nested domains; ideal domains keep the input's zeros
     const int w = std::max(1, wc_->integer("spec_bdy_width")), sz = wc_->integer("spec_zone"),
               rz = wc_->integer("relax_zone");
     std::vector<double> fcx(std::size_t(w), 0.0), gcx(std::size_t(w), 0.0);
-    for (int loop = sz + 1; loop <= sz + rz - 1 && loop <= w; ++loop) {  // module_bc_em's order
+    for (int loop = sz + 1; g.bc_x == BC::Specified && loop <= sz + rz - 1 && loop <= w; ++loop) {  // module_bc_em's order
       fcx[std::size_t(loop - 1)] = double(real(0.1) / real(g.dt) * real(sz + rz - loop) / real(rz - 1));
       gcx[std::size_t(loop - 1)] = double(real(1.0) / real(g.dt) / real(50.) * real(sz + rz - loop) / real(rz - 1));
     }
@@ -914,7 +914,6 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
   f.write(date, [&](const wrf_io::OutVar& v, std::vector<double>& out) {
     return out_value(v, out);
   });
-  last_restart_ = path;
 }
 
 void WrfHistory::write(long step, double time_sec) {
@@ -924,7 +923,7 @@ void WrfHistory::write(long step, double time_sec) {
   if (!file_ || file_->records() >= std::size_t(frames_per_outfile_)) {
     file_.reset();
     std::filesystem::create_directories(out_dir_);
-    last_file_ = out_dir_ + "/" + outname_ + date;
+    const std::string path = out_dir_ + "/" + outname_ + date;
     const Grid& g = m_.g;
     const wrf_io::DomainAtts d = domain_atts();
     std::vector<wrf_io::OutVar> vars = schema_->history_vars(*wc_, g.nx + 1, g.ny * jrep_ + 1, g.nz + 1, int(sizeof(real)));
@@ -934,7 +933,7 @@ void WrfHistory::write(long step, double time_sec) {
         sd[10] = ' ';
         v.desc = v.units = "minutes since " + sd;
       }
-    file_ = std::make_unique<wrf_io::StreamFile>(last_file_, std::move(vars), *wc_, d, wrf_io::Stream::history,
+    file_ = std::make_unique<wrf_io::StreamFile>(path, std::move(vars), *wc_, d, wrf_io::Stream::history,
                                                  !wc_->logical("use_netcdf_classic"));
   }
   file_->write(date, [&](const wrf_io::OutVar& v, std::vector<double>& out) {
