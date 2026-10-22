@@ -80,6 +80,7 @@ class DomainRunner {
   long out_iv_ = 1;
   long rst_iv_ = 0;
   long rst_end_ = 0;  // restart.end: last step with a restart file (0: no end)
+  bool stop_on_nonfinite_ = true;
   std::string start_date_;
   std::string cname_;
   std::string out_fmt_;

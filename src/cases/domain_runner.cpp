@@ -504,6 +504,7 @@ bool DomainRunner::start() {
   if (restart_interval < 0.0) throw std::runtime_error("restart.interval must be >= 0 (got " + std::to_string(restart_interval) + ")");
   rst_iv_ = restart_interval > 0 ? std::max(1L, std::lround(restart_interval / g.dt)) : 0;
   rst_end_ = std::lround(cfg_.get_double("restart.end", 0.0) / g.dt);
+  stop_on_nonfinite_ = cfg_.get_bool("run.stop_on_nonfinite", true);
   start_date_ = cfg_.get_string("run.start_date", !m_.start_date.empty() ? m_.start_date : "2000-01-01_00:00:00");
 
 #ifndef CPPWRF_HAVE_NETCDF
@@ -695,7 +696,7 @@ bool DomainRunner::do_diag(long n) {
     std::fprintf(stderr, "ERROR: non-finite values at step %ld (t=%g s): max|u|=%g max|w|=%g th'=[%g,%g]\n", n,
                  n * m_.g.dt, r.max_abs_u, r.max_abs_w, r.min_th_pert, r.max_th_pert);
     // run.stop_on_nonfinite = false: go on as WRF does (its output then has the same NaN / Inf to compare)
-    if (cfg_.get_bool("run.stop_on_nonfinite", true)) return false;
+    if (stop_on_nonfinite_) return false;
   }
   diag_->row({double(n), n * m_.g.dt, r.max_abs_u, r.max_abs_v, r.max_abs_w, r.min_th_pert, r.max_th_pert,
               r.dry_mass, r.theta_mass, r.total_energy, wall});
