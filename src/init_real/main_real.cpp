@@ -25,6 +25,7 @@ static int run(const RealOptions& o, const Namelist& nl, const WrfSchema& sc, co
   for (const char* opt : {"vert_refine_method", "tracer_opt", "chem_opt"})
     if (cfg.integer(opt) != 0) throw std::runtime_error(std::string("real: ") + opt + " is not ported");
   cppwrf::wrf_io::derive_config(cfg, o.max_dom, true);
+  cfg.set("num_soil_layers", std::to_string(o.num_soil_layers));  // set_physics_rconfigs
   const Dims& d = dom.d;
   // compute_si_start_and_end (real_em.F): the times start, start + interval, ... up to end
   if (o.end_date < o.start_date)

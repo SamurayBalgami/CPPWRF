@@ -1461,6 +1461,9 @@ class WrfTranslator:
 
         # 12. Output Section [output]
         sections["output"] = {}
+        if case_name.startswith("em_") and self.namelist_path:
+            # ideal cases: the history / restart files take WRF's namelist values (radt, cudt, iofields, ...)
+            sections["output"]["wrf_namelist"] = os.path.abspath(self.namelist_path)
         hist_s = self.get_opt("time_control", "history_interval_s", 0)
         hist_m = self.get_opt("time_control", "history_interval", 0)
 

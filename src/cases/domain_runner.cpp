@@ -694,7 +694,8 @@ bool DomainRunner::do_diag(long n) {
   if (!r.finite()) {
     std::fprintf(stderr, "ERROR: non-finite values at step %ld (t=%g s): max|u|=%g max|w|=%g th'=[%g,%g]\n", n,
                  n * m_.g.dt, r.max_abs_u, r.max_abs_w, r.min_th_pert, r.max_th_pert);
-    return false;
+    // run.stop_on_nonfinite = false: go on as WRF does (its output then has the same NaN / Inf to compare)
+    if (cfg_.get_bool("run.stop_on_nonfinite", true)) return false;
   }
   diag_->row({double(n), n * m_.g.dt, r.max_abs_u, r.max_abs_v, r.max_abs_w, r.min_th_pert, r.max_th_pert,
               r.dry_mass, r.theta_mass, r.total_energy, wall});

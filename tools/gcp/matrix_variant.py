@@ -76,7 +76,7 @@ if t.returncode != 0:
     print(f"{name} TRANSLATE-FAILED {t.stderr.strip().splitlines()[-1:]}")
     sys.exit(0)
 try:
-    c = subprocess.run([cppwrf, os.path.join(R, "case.ini"), "--set", f"output.dir={out}"], capture_output=True, text=True,
+    c = subprocess.run([cppwrf, os.path.join(R, "case.ini"), "--set", f"output.dir={out}", "--set", "run.stop_on_nonfinite=false"], capture_output=True, text=True,
                        cwd=repo, env=env, timeout=3600)
 except subprocess.TimeoutExpired:
     c = subprocess.CompletedProcess([], 124, "", "TIMEOUT after 3600 s")
