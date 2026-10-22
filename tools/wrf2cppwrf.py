@@ -816,12 +816,18 @@ class WrfTranslator:
                     return None
                 return kinds[0]
 
+            # symmetric walls: not verified against WRF. The only ideal data (em_quarter_ss) has a wind across the
+            # walls, with which WRF's own solution breaks down within a step (W -35 m/s at the top after 12 s)
             bcx = lateral_bc("x")
-            if bcx is not None:
-                sections["domain"]["bc_x"] = bcx  # open: BC::Open, symmetric: BC::Symmetric (src/cases/model.cpp)
+            if bcx == "symmetric":
+                self.error("WRF symmetric_xs/xe lateral boundaries are not supported (not verified against WRF).")
+            elif bcx is not None:
+                sections["domain"]["bc_x"] = bcx  # open: BC::Open (src/cases/model.cpp)
 
             bcy = lateral_bc("y")
-            if (ny > 1 or "bc_x" in sections["domain"]) and bcy is not None:
+            if (ny > 1 or "bc_x" in sections["domain"]) and bcy == "symmetric":
+                self.error("WRF symmetric_ys/ye lateral boundaries are not supported (not verified against WRF).")
+            elif (ny > 1 or "bc_x" in sections["domain"]) and bcy is not None:
                 sections["domain"]["bc_y"] = bcy
 
         # 7. Ideal Case Def Section [case]
