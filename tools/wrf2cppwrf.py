@@ -1784,7 +1784,10 @@ class WrfTranslator:
                 continue
             lines.append(f"[{sec}]")
             for k, v in sections[sec].items():
-                lines.append(f"{k} = {_format_num(v)}")
+                text = _format_num(v)
+                if "#" in text or ";" in text:  # the INI reader cuts a value at a comment character
+                    self.error(f"{sec}.{k} = '{text}': '#' and ';' cannot appear in a CPPWRF configuration value")
+                lines.append(f"{k} = {text}")
             lines.append("")
 
         return "\n".join(lines).rstrip() + "\n"
