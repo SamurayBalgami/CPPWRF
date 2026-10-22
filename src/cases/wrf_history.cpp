@@ -881,7 +881,7 @@ wrf_io::DomainAtts WrfHistory::domain_atts() {
   return d;
 }
 
-void WrfHistory::write_restart(long step, double time_sec, double history_interval_s, double restart_interval_s) {
+void WrfHistory::write_restart(long step, double time_sec, double history_interval_s, double restart_secs_to_ring) {
   step_ = step;
   time_sec_ = time_sec;
   const std::string date = wrf_io::add_seconds(start_date_, std::lround(time_sec));
@@ -908,9 +908,9 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
       const long iv = std::lround(auxinput4_interval_s_);
       secs = int(iv - el % iv);
       if (step == m_.nsteps && el % iv == 0) ring = 1;
-    } else if (a == 51 && restart_interval_s > 0) {
+    } else if (a == 51) {
       ring = 1;
-      secs = int(std::lround(restart_interval_s));
+      secs = int(std::lround(restart_secs_to_ring));
     } else if (a == 55) {
       secs = int(-el);
     }

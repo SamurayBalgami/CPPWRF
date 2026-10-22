@@ -66,7 +66,7 @@ class DomainRunner {
   void do_snap(long n);
 
 #ifdef CPPWRF_HAVE_NETCDF
-  void do_restart(long n);
+  void do_restart(long n, bool ring);
   void save_restart_file(const std::string& path, long step, double time_sec);
   void load_restart_file(const std::string& path);
 #endif
@@ -78,7 +78,9 @@ class DomainRunner {
 
   long diag_iv_ = 10;
   long out_iv_ = 1;
-  long rst_iv_ = 0;
+  double rst_iv_s_ = 0.0;  // restart interval (s), WRF's RESTART_ALARM
+  double rst_prev_ = 0.0;  // the alarm's PrevRingTime (s)
+  bool rst_due(long n) const;
   long rst_end_ = 0;  // restart.end: last step with a restart file (0: no end)
   bool stop_on_nonfinite_ = true;
   std::string start_date_;

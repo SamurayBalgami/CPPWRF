@@ -502,7 +502,7 @@ bool DomainRunner::start() {
   std::string restart_file = cfg_.get_string("run.restart_file", "");
   double restart_interval = cfg_.get_double("restart.interval", cfg_.get_double("output.restart_interval", 0.0));
   if (restart_interval < 0.0) throw std::runtime_error("restart.interval must be >= 0 (got " + std::to_string(restart_interval) + ")");
-  rst_iv_ = restart_interval > 0 ? std::max(1L, std::lround(restart_interval / g.dt)) : 0;
+  rst_iv_s_ = restart_interval;
   rst_end_ = std::lround(cfg_.get_double("restart.end", 0.0) / g.dt);
   stop_on_nonfinite_ = cfg_.get_bool("run.stop_on_nonfinite", true);
   start_date_ = cfg_.get_string("run.start_date", !m_.start_date.empty() ? m_.start_date : "2000-01-01_00:00:00");
@@ -511,7 +511,7 @@ bool DomainRunner::start() {
   if (write_wrfout_) {
     throw std::runtime_error("output.format=" + out_fmt_ + " requires NetCDF support (CPPWRF_HAVE_NETCDF)");
   }
-  if (rst_iv_ > 0 || !restart_file.empty()) {
+  if (rst_iv_s_ > 0 || !restart_file.empty()) {
     throw std::runtime_error("restarts require NetCDF support (CPPWRF_HAVE_NETCDF)");
   }
 #endif
@@ -528,6 +528,7 @@ bool DomainRunner::start() {
     if (wrfout_) wrfout_->set_restart_time(double(start_step) * g.dt);
   }
 #endif
+  rst_prev_ = double(start_step) * g.dt;  // the alarm's PrevRingTime starts at the run's start (ESMF_Clock.F90:773)
 
   std::filesystem::create_directories(out_dir_);
 
@@ -630,7 +631,7 @@ void DomainRunner::after_solve(long n) {
 
 void DomainRunner::before_step(long n) {
 #ifdef CPPWRF_HAVE_NETCDF
-  if (write_wrfout_ && wrfout_ && (n % out_iv_ == 0 || n == m_.nsteps || (rst_iv_ > 0 && n % rst_iv_ == 0)))
+  if (write_wrfout_ && wrfout_ && (n % out_iv_ == 0 || n == m_.nsteps || rst_due(n)))
     wrfout_->before_step(n);
 #endif
   if (pending_ >= 0) {  // deferred frame of the previous step (set_defer_output)
@@ -671,8 +672,10 @@ bool DomainRunner::after_step(long n) {
     do_snap(n);
   }
 #ifdef CPPWRF_HAVE_NETCDF
-  if (rst_iv_ > 0 && ((n - start_step) % rst_iv_ == 0 || last) && (rst_end_ <= 0 || n <= rst_end_)) {
-    do_restart(n);
+  const bool ring = rst_due(n);
+  if (ring) rst_prev_ += rst_iv_s_;
+  if (rst_iv_s_ > 0 && (ring || last) && (rst_end_ <= 0 || n <= rst_end_)) {
+    do_restart(n, ring);
   }
 #endif
   return true;
@@ -721,15 +724,23 @@ void DomainRunner::do_snap(long n) {
 }
 
 #ifdef CPPWRF_HAVE_NETCDF
-void DomainRunner::do_restart(long n) {
+// RESTART_ALARM (set_timekeeping.F:412, an interval only): ESMF_ClockAdvance rings when PrevRingTime + interval
+// <= the current time and then adds the interval to PrevRingTime once (ESMF_Clock.F90:1020-1029), so an
+// interval that is not a multiple of dt rings at the first step past each multiple of it
+bool DomainRunner::rst_due(long n) const {
+  return rst_iv_s_ > 0 && rst_prev_ + rst_iv_s_ <= double(n) * m_.g.dt + 1e-6 * m_.g.dt;
+}
+
+void DomainRunner::do_restart(long n, bool ring) {
   char rst_name[64];
   std::snprintf(rst_name, sizeof(rst_name), "restart_%06ld.nc", n);
   std::string rst_path = out_dir_ + "/" + rst_name;
   save_restart_file(rst_path, n, n * m_.g.dt);
-  // wrfrst only when WRF's restart alarm rings: every restart_interval from the run's start (the restart time
-  // of a resumed run), not at an off-interval last step
-  if (wrfout_ && (n - start_step) % rst_iv_ == 0)
-    wrfout_->write_restart(n, n * m_.g.dt, double(out_iv_) * m_.g.dt, double(rst_iv_) * m_.g.dt);
+  // wrfrst only when WRF's restart alarm rings, not at an off-interval last step; output_wrf writes the seconds
+  // to the next ring as interval - (time - PrevRingTime) in whole seconds (share/output_wrf.F:413-435)
+  if (wrfout_ && ring)
+    wrfout_->write_restart(n, n * m_.g.dt, double(out_iv_) * m_.g.dt,
+                           std::trunc(rst_iv_s_) - std::trunc(n * m_.g.dt - rst_prev_));
 }
 #endif
 

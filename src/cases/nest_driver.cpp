@@ -368,6 +368,18 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
     if (sp.cfg.has("output.dir")) sp.cfg.mark_accessed("output.dir");
   }
 
+  // med_restart_out writes every domain when d01's restart alarm rings (restart_interval is one value); each
+  // domain's own alarm (DomainRunner) rings at those times only when the interval is a multiple of d01's dt
+  auto rst_interval = [](const io::Config& c) {
+    return c.get_double("restart.interval", c.get_double("output.restart_interval", 0.0));
+  };
+  const double rst1 = rst_interval(specs[0].cfg), dt1 = specs[0].cfg.get_double("time.dt", 60.0);
+  for (const NestDomainSpec& sp : specs)
+    if (rst_interval(sp.cfg) != rst1)
+      throw std::runtime_error(sp.tag + ": the restart interval differs from d01's (WRF's restart_interval is one value)");
+  if (rst1 > 0 && std::abs(rst1 / dt1 - std::round(rst1 / dt1)) > 1e-9 * (rst1 / dt1))
+    throw std::runtime_error("nested runs: the restart interval must be a multiple of d01's time.dt");
+
   return specs;
 }
 

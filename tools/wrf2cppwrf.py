@@ -433,7 +433,7 @@ IGNORED_WRF_OPTIONS = {
     "input_from_file": "Real case initialization always reads wrfinput",
     "iofields_filename": "Custom NetCDF field selection (handled by WrfHistory via output.wrf_namelist)",
     "io_form_history": "History output format specified in [output] format",
-    "io_form_restart": "Restart format handled via NetCDF",
+    "io_form_restart": "No restart files (restart_interval = 0)",
     "io_form_input": "Input format handled via NetCDF",
     "io_form_boundary": "Boundary format handled via NetCDF",
     "start_year": "Start date component",
@@ -1459,6 +1459,9 @@ class WrfTranslator:
 
         # 12. Output Section [output]
         sections["output"] = {}
+        # maybe_remove_colons (share/module_io_domain.F:468): ':' -> '_' in the wrfout / wrfrst file names
+        if self.get_opt("time_control", "nocolons", False):
+            self.error("WRF nocolons = .true. is not supported (CPPWRF's file names keep the colons).")
         if case_name.startswith("em_") and self.namelist_path:
             # ideal cases: the history / restart files take WRF's namelist values (radt, cudt, iofields, ...)
             sections["output"]["wrf_namelist"] = os.path.abspath(self.namelist_path)
@@ -1487,13 +1490,32 @@ class WrfTranslator:
             # counted from the simulation start
             self.error("WRF restart = .true. is not translated: resume CPPWRF with --set run.restart_file=<wrfrst file> "
                        "and run.run_time counted from the simulation start.")
-        # restart files are written whenever restart_interval > 0 (Registry default 0), whatever restart is
-        restart_m = self.get_opt("time_control", "restart_interval", 0)
+        # restart files are written whenever restart_interval > 0 (Registry default 0), whatever restart is;
+        # a non-zero restart_interval_m takes precedence (share/set_timekeeping.F:400)
+        restart_m = self.get_opt("time_control", "restart_interval_m", 0) or \
+            self.get_opt("time_control", "restart_interval", 0)
         for unit_key in ("restart_interval_s", "restart_interval_h", "restart_interval_d", "restart_begin",
-                         "restart_begin_s", "restart_begin_m", "restart_begin_h", "restart_begin_d"):
+                         "restart_begin_s", "restart_begin_m", "restart_begin_h", "restart_begin_d",
+                         "restart_begin_y"):
             if self.get_opt("time_control", unit_key, 0):
                 self.error(f"WRF {unit_key} is not supported; use restart_interval (minutes).")
+        # main/module_wrf_top.F:416: WRF also writes a restart file of the initial state
+        if self.get_opt("time_control", "write_restart_at_0h", False):
+            self.error("WRF write_restart_at_0h = .true. is not supported.")
         if restart_m and restart_m > 0:
+            # the restart file of every domain is wrfrst_d0N_<date> in NetCDF (med_restart_out, output_restart)
+            io_form_rst = self.get_opt("time_control", "io_form_restart", 2)
+            if io_form_rst != 2:
+                self.error(f"WRF io_form_restart = {io_form_rst} is not supported; CPPWRF writes NetCDF (2).")
+            rst_outname = self.get_opt("time_control", "rst_outname", "wrfrst_d<domain>_<date>")
+            if rst_outname != "wrfrst_d<domain>_<date>":
+                self.error(f"WRF rst_outname = '{rst_outname}' is not supported; CPPWRF writes wrfrst_d<domain>_<date>.")
+            # nests: med_restart_out writes every domain when d01's restart alarm rings, each domain's own alarm
+            # (DomainRunner) rings at the same times only when the interval is a multiple of d01's time step
+            steps = restart_m * 60 / dt_val
+            if max_dom > 1 and abs(steps - round(steps)) > 1e-9 * steps:
+                self.error(f"WRF restart_interval = {restart_m} min is not a multiple of time_step = {dt_val:g} s "
+                           "in a nested run: not supported.")
             sections["restart"] = {
                 "interval": int(restart_m * 60)
             }
