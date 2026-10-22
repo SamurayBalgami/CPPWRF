@@ -312,11 +312,12 @@ inline void cal_deform_and_div(const DiffusionParams& p,
     });
   }
 
-  // 3. defor13 at u-w points (staggered in x and z: 0..nx, 0..ny-1)
-  int i13_s = bxs ? 1 : 0;
-  int i13_e = bxe ? nx : nx + 1;
-  int j13_s = bys ? 1 : 0;
-  int j13_e = ny;
+  // 3. defor13 at u-w points (staggered in x and z): WRF's dw/dx loop i = its..MIN(ite, ide-1) (to ide when
+  // periodic_x), j = jts..MIN(jte, jde-1)
+  const int i13_s = bxs ? 1 : 0;
+  const int i13_e = p.periodic_x ? nx + 1 : nx;
+  const int j13_s = bys ? 1 : 0;
+  const int j13_e = ny;
 
   column_for(Range2D{i13_s, i13_e, j13_s, j13_e},
              KDeform13{u, w, zx, rdz, msfux, msfuy, msfty, u_base, defor13, rdx, nx, nz, p.periodic_x, p.mix_full_fields});
@@ -325,25 +326,14 @@ inline void cal_deform_and_div(const DiffusionParams& p,
     column_for(Range2D{0, 1, 0, ny}, [=] CPPWRF_HD (int, int j) {
       for (int k = 0; k <= nz; ++k) defor13(nx, j, k) = defor13(0, j, k);
     });
-  } else if (bxs || bxe) {
-    column_for(Range2D{0, 1, 0, ny}, [=] CPPWRF_HD (int, int j) {
-      for (int k = 0; k <= nz; ++k) {
-        if (bxs) defor13(0, j, k) = defor13(1, j, k);
-        if (bxe) defor13(nx, j, k) = defor13(nx - 1, j, k);
-      }
-    });
-  }
-  if (bys) {
-    column_for(Range2D{0, nx + 1, 0, 1}, [=] CPPWRF_HD (int i, int) {
-      for (int k = 0; k <= nz; ++k) defor13(i, 0, k) = defor13(i, 1, k);
-    });
   }
 
-  // 4. defor23 at v-w points (staggered in y and z: 0..nx-1, 0..ny)
-  int i23_s = bxs ? 1 : 0;
-  int i23_e = nx;
-  int j23_s = bys ? 1 : 0;
-  int j23_e = bye ? ny : ny + 1;
+  // 4. defor23 at v-w points (staggered in y and z): WRF's dw/dy loop i = its..MIN(ite, ide-1),
+  // j = jts..MIN(jte, jde-1) (to jde when periodic_y)
+  const int i23_s = bxs ? 1 : 0;
+  const int i23_e = nx;
+  const int j23_s = bys ? 1 : 0;
+  const int j23_e = p.periodic_y ? ny + 1 : ny;
 
   column_for(Range2D{i23_s, i23_e, j23_s, j23_e},
              KDeform23{v, w, zy, rdz, msfvx, msfvy, msftx, v_base, defor23, rdy, ny, nz, p.periodic_y, p.mix_full_fields});
@@ -353,19 +343,39 @@ inline void cal_deform_and_div(const DiffusionParams& p,
       for (int k = 0; k <= nz; ++k) defor23(i, ny, k) = defor23(i, 0, k);
     });
   }
-  if (bxs) {
+
+  // WRF's boundary update of defor13 and defor23 (with the dw/dy loop limits): the start faces of an
+  // open / specified / nested side and the end faces of every non-periodic side (symmetric too) are copied
+  // from the next ones, in the order xs, ys, xe, ye
+  const bool exe = !p.periodic_x, eye = !p.periodic_y;
+  if (bxs)
     column_for(Range2D{0, 1, 0, ny + 1}, [=] CPPWRF_HD (int, int j) {
-      for (int k = 0; k <= nz; ++k) defor23(0, j, k) = defor23(1, j, k);
-    });
-  }
-  if (bys || bye) {
-    column_for(Range2D{0, nx, 0, 1}, [=] CPPWRF_HD (int i, int) {
       for (int k = 0; k <= nz; ++k) {
-        if (bys) defor23(i, 0, k) = defor23(i, 1, k);
-        if (bye) defor23(i, ny, k) = defor23(i, ny - 1, k);
+        defor13(0, j, k) = defor13(1, j, k);
+        defor23(0, j, k) = defor23(1, j, k);
       }
     });
-  }
+  if (bys)
+    column_for(Range2D{0, nx + 1, 0, 1}, [=] CPPWRF_HD (int i, int) {
+      for (int k = 0; k <= nz; ++k) {
+        defor13(i, 0, k) = defor13(i, 1, k);
+        defor23(i, 0, k) = defor23(i, 1, k);
+      }
+    });
+  if (exe)
+    column_for(Range2D{0, 1, 0, ny + 1}, [=] CPPWRF_HD (int, int j) {
+      for (int k = 0; k <= nz; ++k) {
+        defor13(nx, j, k) = defor13(nx - 1, j, k);
+        defor23(nx, j, k) = defor23(nx - 1, j, k);
+      }
+    });
+  if (eye)
+    column_for(Range2D{0, nx + 1, 0, 1}, [=] CPPWRF_HD (int i, int) {
+      for (int k = 0; k <= nz; ++k) {
+        defor13(i, ny, k) = defor13(i, ny - 1, k);
+        defor23(i, ny, k) = defor23(i, ny - 1, k);
+      }
+    });
 }
 
 }  // namespace cppwrf::dyn::diffusion
