@@ -175,9 +175,10 @@ void DiffusionDriver::dynamics(const State& s, const BaseState& b, Tendencies& t
                                   nx, ny, nz);
       dif::vertical_diffusion('w', s.w_2.cview(), t.rw_tendf.view(), s.mut.cview(), b.c1f.view(), b.c2f.view(),
                               s.alt.cview(), b.rdn.view(), b.rdnw.view(), c_.kvdif, nx, ny, nz);
-      // vertical_diffusion_3dmp(t, t_init, kvdq = kvdif / prandtl)
+      // vertical_diffusion_3dmp(t, t_init, kvdq = 3.*kvdif): module_em.F rk_tendency (the scalars' kvdq is
+      // kvdif / prandtl, a different double for most kvdif)
       dif::vertical_diffusion_mp(s.t_2.cview(), t.t_tendf.view(), b.t_init.view(), s.mut.cview(), b.c1h.view(),
-                                 b.c2h.view(), s.alt.cview(), b.rdn.view(), b.rdnw.view(), c_.kvdif / p_.prandtl, nx,
+                                 b.c2h.view(), s.alt.cview(), b.rdn.view(), b.rdnw.view(), real(3.) * c_.kvdif, nx,
                                  ny, nz);
     }
   } else if (c_.diff_opt == 2) {
