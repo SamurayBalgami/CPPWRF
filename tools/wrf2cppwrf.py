@@ -1560,12 +1560,14 @@ class WrfTranslator:
                 grid_ratio = self.get_dom_opt("domains", "parent_grid_ratio", d, None, fallback_d0=False)
                 ts_ratio = self.get_dom_opt("domains", "parent_time_step_ratio", d, 1, fallback_d0=False)  # Registry default 1
 
-                if i_start is None or not isinstance(i_start, int) or i_start < 2:
-                    self.error(f"Domain {tag}: i_parent_start = {i_start} is invalid (must be an integer >= 2).")
+                # SINT's stencil reaches 2 parent cells beyond the nest; nearer the parent's edge WRF reads its
+                # intermediate grid there (not verified): nests start at parent cell 3 and end 2 cells inside
+                if i_start is None or not isinstance(i_start, int) or i_start < 3:
+                    self.error(f"Domain {tag}: i_parent_start = {i_start} is not supported (must be an integer >= 3).")
                     if not isinstance(i_start, int) or i_start < 1:
                         i_start = 2
-                if j_start is None or not isinstance(j_start, int) or j_start < 2:
-                    self.error(f"Domain {tag}: j_parent_start = {j_start} is invalid (must be an integer >= 2).")
+                if j_start is None or not isinstance(j_start, int) or j_start < 3:
+                    self.error(f"Domain {tag}: j_parent_start = {j_start} is not supported (must be an integer >= 3).")
                     if not isinstance(j_start, int) or j_start < 1:
                         j_start = 2
                 if grid_ratio is None or not isinstance(grid_ratio, int) or grid_ratio < 2:
@@ -1590,9 +1592,9 @@ class WrfTranslator:
                             self.error(f"Domain {tag}: invalid e_we = {c_e_we} (must be > {c_s_we}).")
                         elif c_nx % grid_ratio != 0:
                             self.error(f"Domain {tag}: (e_we - s_we) = {c_nx} is not divisible by parent_grid_ratio = {grid_ratio}.")
-                        elif i_start + c_nx // grid_ratio - 1 > p_nx:
+                        elif i_start + c_nx // grid_ratio - 1 > p_nx - 2:
                             self.error(f"Domain {tag}: nest X extent (i_parent_start={i_start}, nx={c_nx}, ratio={grid_ratio}) "
-                                       f"exceeds parent domain d{parent_id:02d} (nx={p_nx}).")
+                                       f"reaches within 2 cells of parent domain d{parent_id:02d}'s edge (nx={p_nx}).")
 
                 if self.has_opt("domains", "e_sn"):
                     c_e_sn = self.get_dom_opt("domains", "e_sn", d, None, fallback_d0=False)
@@ -1606,9 +1608,9 @@ class WrfTranslator:
                             self.error(f"Domain {tag}: invalid e_sn = {c_e_sn} (must be > {c_s_sn}).")
                         elif c_ny % grid_ratio != 0:
                             self.error(f"Domain {tag}: (e_sn - s_sn) = {c_ny} is not divisible by parent_grid_ratio = {grid_ratio}.")
-                        elif j_start + c_ny // grid_ratio - 1 > p_ny:
+                        elif j_start + c_ny // grid_ratio - 1 > p_ny - 2:
                             self.error(f"Domain {tag}: nest Y extent (j_parent_start={j_start}, ny={c_ny}, ratio={grid_ratio}) "
-                                       f"exceeds parent domain d{parent_id:02d} (ny={p_ny}).")
+                                       f"reaches within 2 cells of parent domain d{parent_id:02d}'s edge (ny={p_ny}).")
 
                 if self.has_opt("domains", "e_vert"):
                     c_ev = self.get_dom_opt("domains", "e_vert", d, None, fallback_d0=False)
