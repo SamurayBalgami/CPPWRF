@@ -1637,17 +1637,8 @@ class WrfTranslator:
                     if c_ev is not None and p_ev is not None and c_ev != p_ev:
                         self.error(f"Domain {tag}: e_vert = {c_ev} must match parent domain e_vert = {p_ev}.")
 
-                if self.has_opt("domains", "dx"):
-                    c_dx = self.get_dom_opt("domains", "dx", d, None, fallback_d0=False)
-                    p_dx = self.get_dom_opt("domains", "dx", p_idx, None, fallback_d0=False)
-                    if c_dx is not None and p_dx is not None and abs(float(c_dx) * grid_ratio - float(p_dx)) > 1e-2:
-                        self.error(f"Domain {tag}: dx = {c_dx} is inconsistent with parent dx = {p_dx} and parent_grid_ratio = {grid_ratio}.")
-
-                if self.has_opt("domains", "dy"):
-                    c_dy = self.get_dom_opt("domains", "dy", d, None, fallback_d0=False)
-                    p_dy = self.get_dom_opt("domains", "dy", p_idx, None, fallback_d0=False)
-                    if c_dy is not None and p_dy is not None and abs(float(c_dy) * grid_ratio - float(p_dy)) > 1e-2:
-                        self.error(f"Domain {tag}: dy = {c_dy} is inconsistent with parent dy = {p_dy} and parent_grid_ratio = {grid_ratio}.")
+                # a nest's dx / dy entries are not used: check_a_mundo sets dx(1) / dy(1) over the accumulated
+                # parent_grid_ratio (the model passes that to the nest's wrfinput check, src/cases/nest_driver.cpp)
 
                 # Validate child physics options and ensure consistency with root [phys]
                 phys_over = {}

@@ -290,6 +290,17 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
         oss << "time.dt=" << child_dt;
         ov.push_back(oss.str());
       }
+      // check_a_mundo: a nest's namelist dx / dy is dx(1) / dy(1) over the accumulated parent_grid_ratio
+      // (get_moad_factor), whatever the namelist gives; input_wrf compares the nest's wrfinput with it
+      int factor = sp.parent_grid_ratio;
+      for (int p = sp.parent_id; p > 1; p = specs[p - 1].parent_id) factor *= specs[p - 1].parent_grid_ratio;
+      for (const char* k : {"real.dx", "real.dy"})
+        if (root_cfg.has(k)) {
+          std::ostringstream oss;
+          oss.precision(17);
+          oss << k << "=" << root_cfg.get_double(k) / double(factor);
+          ov.push_back(oss.str());
+        }
       ov.push_back("output.out_interval=" + std::to_string(parent_out_iv * sp.parent_time_step_ratio));
       ov.push_back("output.diag_interval=" + std::to_string(parent_diag_iv * sp.parent_time_step_ratio));
       // a resumed run: this domain's restart file next to the root's (wrfrst_d01_<date> -> wrfrst_d0N_<date>)
@@ -346,7 +357,7 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
       for (const std::string& k : root_cfg.keys()) {
         if (k.rfind("domains.", 0) == 0) continue;
         if (k.size() >= 4 && k[0] == 'd' && std::isdigit(k[1]) && std::isdigit(k[2]) && k[3] == '.') continue;
-        if (id >= 2 && (k == "real.wrfbdy" || k == "real.bdy_interval")) continue;
+        if (id >= 2 && (k == "real.wrfbdy" || k == "real.bdy_interval" || k == "real.dx" || k == "real.dy")) continue;
         auto dot = k.find('.');
         if (dot != std::string::npos) {
           base_ini << "[" << k.substr(0, dot) << "]\n" << k.substr(dot + 1) << " = " << root_cfg.get_string(k) << "\n";
