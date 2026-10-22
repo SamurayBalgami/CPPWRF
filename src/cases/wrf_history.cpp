@@ -149,6 +149,9 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
   c.set("w_damping", std::to_string(m_.lp.w_damping));
   c.set("use_theta_m", m_.st->P_QV >= 0 ? "1" : "0");
   c.set("mp_physics", std::to_string(m_.rk && m_.rk->physics() ? m_.rk->physics()->params().mp_physics : 0));
+  // check_a_mundo: num_soil_layers = 5 without a land surface model, whatever the namelist says (the history
+  // soil fields are then 5 layers of zeros); Noah / Noah-MP set it below
+  if (!m_.suite) wc_->set("num_soil_layers", "5");
   if (m_.suite) {
     const auto& o = m_.suite->options();
     c.set("sf_sfclay_physics", std::to_string(o.sf_sfclay_physics));
