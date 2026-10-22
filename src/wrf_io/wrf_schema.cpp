@@ -56,8 +56,8 @@ bool is_true(const std::string& v) {
 }  // namespace
 
 WrfConfig::WrfConfig(const Namelist& nl, const std::map<std::string, std::pair<std::string, std::string>>& defaults,
-                     int dom)
-    : nl_(nl), defaults_(defaults), dom_(dom) {}
+                     int dom, const std::map<std::string, std::string>* entries)
+    : nl_(nl), defaults_(defaults), entries_(entries), dom_(dom) {}
 
 std::string WrfConfig::get(const std::string& name0, int dom) const {
   if (dom == 0) dom = dom_;
@@ -66,6 +66,12 @@ std::string WrfConfig::get(const std::string& name0, int dom) const {
   if (dv != derived_.end()) return dv->second;
   auto d = defaults_.find(name);
   if (d != defaults_.end() && d->second.first != "derived") {
+    if (entries_) {  // WRF's namelist read
+      auto e = entries_->find(name);
+      const std::vector<std::string> v = nl_.values(d->second.first, name);
+      const std::size_t at = e != entries_->end() && e->second == "max_domains" ? std::size_t(dom - 1) : 0;
+      return at < v.size() ? v[at] : d->second.second;
+    }
     auto r = nl_.raw(d->second.first, name, dom);
     if (r) return *r;
     return d->second.second;
@@ -147,6 +153,7 @@ WrfSchema WrfSchema::load(const std::string& path) {
     std::vector<std::string> t = split(line, '\t');
     if (t[0] == "RCONFIG" && t.size() >= 5) {
       s.defaults_[to_lower(t[1])] = {t[3], t[4]};
+      if (t.size() >= 6) s.entries_[to_lower(t[1])] = t[5];
     } else if ((t[0] == "VAR" || t[0] == "ARRAY4D") && t.size() >= 15) {
       SchemaVar v;
       v.array4d = t[0] == "ARRAY4D";

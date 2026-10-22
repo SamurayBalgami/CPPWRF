@@ -18,7 +18,7 @@ namespace cppwrf::init_real {
 struct RealOptions {
   // time_control
   std::string start_date, end_date;  // yyyy-mm-dd_hh:mm:ss
-  int interval_seconds = 21600;
+  int interval_seconds = 10800;
   // domains
   int e_we = 0, e_sn = 0, e_vert = 0, num_metgrid_levels = 0, num_metgrid_soil_levels = 4;
   double dx = 0, dy = 0, p_top_requested = 5000;
@@ -51,8 +51,11 @@ struct RealOptions {
   // bdy_control
   int spec_bdy_width = 5;
 
+  bool input_from_file = false;  // a nest is processed only with input_from_file (real_em.F)
+
   int dom = 1, max_dom = 1, parent_id = 0, i_parent_start = 1, j_parent_start = 1, parent_grid_ratio = 1;
-  static RealOptions from_namelist(const Namelist& nl, int dom = 1);
+  // WRF's namelist read with the Registry defaults (sc: the I/O schema)
+  static RealOptions from_namelist(const Namelist& nl, const WrfSchema& sc, int dom = 1);
 };
 
 std::string add_seconds(const std::string& date, long seconds);  // geth_newdate

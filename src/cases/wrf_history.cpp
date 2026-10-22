@@ -125,18 +125,22 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
     }
   }
   const int dom = domain_tag_.size() == 3 ? std::atoi(domain_tag_.c_str() + 1) : 1;
-  wc_ = std::make_unique<wrf_io::WrfConfig>(*nl_, schema_->defaults(), dom);
+  wc_ = std::make_unique<wrf_io::WrfConfig>(*nl_, schema_->defaults(), dom, &schema_->entries());
   // the model's options (INI configuration) where namelist.input does not set them
   struct ModelOpts {
     wrf_io::WrfConfig& c;
     const wrf_io::Namelist& nl;
     const std::map<std::string, std::pair<std::string, std::string>>& def;
     int dom;
-    void set(const std::string& k, const std::string& v) {
+    const std::map<std::string, std::string>& entries;
+    void set(const std::string& k, const std::string& v) {  // unless the namelist has an entry for this domain
       auto it = def.find(k);
-      if (it == def.end() || !nl.raw(it->second.first, k, dom)) c.set(k, v);
+      if (it == def.end()) return c.set(k, v);
+      auto e = entries.find(k);
+      const std::size_t n = nl.values(it->second.first, k).size();
+      if (n <= (e != entries.end() && e->second == "max_domains" ? std::size_t(dom - 1) : 0)) c.set(k, v);
     }
-  } c{*wc_, *nl_, schema_->defaults(), dom};
+  } c{*wc_, *nl_, schema_->defaults(), dom, schema_->entries()};
   const Grid& g = m_.g;
   if (real_dir.empty() && g.two_d()) jrep_ = 2;
   c.set("e_we", std::to_string(g.nx + 1)); c.set("e_sn", std::to_string(g.ny * jrep_ + 1));

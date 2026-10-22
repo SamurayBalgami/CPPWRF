@@ -101,8 +101,8 @@ def parse_scalar_tables(inc_dir):
 
 
 def rconfig_defaults(reg_dir):
-    """namelist option -> (type, group, default) from the Registry rconfig lines (Registry.EM and its
-    includes; the first definition wins)."""
+    """namelist option -> (type, group, default, entries) from the Registry rconfig lines (Registry.EM and its
+    includes; the first definition wins); entries: 1, max_domains, ..."""
     d = {}
     files = [os.path.join(reg_dir, "Registry.EM_COMMON")] + sorted(glob.glob(os.path.join(reg_dir, "registry.*")))
     for f in files:
@@ -112,7 +112,7 @@ def rconfig_defaults(reg_dir):
             t = line.split()
             if len(t) >= 6 and t[0] == "rconfig":
                 grp = t[3].split(",")[1] if "," in t[3] else t[3]
-                d.setdefault(t[2].lower(), (t[1], grp, t[5]))
+                d.setdefault(t[2].lower(), (t[1], grp, t[5], t[4]))
     return d
 
 
@@ -167,13 +167,13 @@ def main():
     used_opts = sorted({c[0] for v in cond.values() for c in v} | {c[2][0] for c in scal if c[2]})
     with open(outp, "w") as o:
         o.write("# WRF I/O schema extracted by tools/wrf_schema/gen_wrf_schema.py from %s\n" % os.path.basename(os.path.normpath(wrf)))
-        o.write("# RCONFIG\tname\ttype\tgroup\tdefault\n")
+        o.write("# RCONFIG\tname\ttype\tgroup\tdefault\tentries\n")
         for op in sorted(defaults):
-            t, grp, dv = defaults[op]
-            o.write("RCONFIG\t%s\t%s\t%s\t%s\n" % (op, t, grp, dv))
+            t, grp, dv, n = defaults[op]
+            o.write("RCONFIG\t%s\t%s\t%s\t%s\t%s\n" % (op, t, grp, dv, n))
         missing = [op for op in used_opts if op.lower() not in defaults]
         for op in missing:
-            o.write("RCONFIG\t%s\tinteger\tderived\t0\n" % op.lower())
+            o.write("RCONFIG\t%s\tinteger\tderived\t0\t1\n" % op.lower())
         o.write("# VAR\tvarname\tdataname\ttype\tndim\tmemorder\tstagger\tntl\tstreams1\tstreams2\tdims(sd:ed;...)\tdimnames\tdesc\tunits\tconds\tnest_down\tnest_up\n")
         for e in allocs:
             v = e.get("VarName", "")

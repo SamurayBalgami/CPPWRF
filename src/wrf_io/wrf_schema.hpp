@@ -36,9 +36,12 @@ struct SchemaMember {
 // Option values: namelist.input, then values set by real.exe itself, then the Registry defaults.
 class WrfConfig {
  public:
-  // dom: the domain id whose per-domain namelist entries apply (WRF's model_config_rec%x(id))
+  // dom: the domain id whose per-domain namelist entries apply (WRF's model_config_rec%x(id)). entries (the
+  // Registry's entry count per option, WrfSchema::entries()): WRF's namelist read, i.e. a max_domains option
+  // without a value for dom takes the Registry default and other options their first value; without it the
+  // last value given stands for the missing domains.
   WrfConfig(const Namelist& nl, const std::map<std::string, std::pair<std::string, std::string>>& defaults,
-            int dom = 1);
+            int dom = 1, const std::map<std::string, std::string>* entries = nullptr);
   std::string get(const std::string& name, int dom = 0) const;  // "" if unknown; dom 0: this domain
   double num(const std::string& name, int dom = 0) const;
   int integer(const std::string& name, int dom = 0) const { return int(num(name, dom)); }
@@ -49,6 +52,7 @@ class WrfConfig {
  private:
   const Namelist& nl_;
   const std::map<std::string, std::pair<std::string, std::string>>& defaults_;  // name -> (group, default)
+  const std::map<std::string, std::string>* entries_ = nullptr;                  // name -> 1, max_domains, ...
   std::map<std::string, std::string> derived_;
   int dom_ = 1;
 };
@@ -76,6 +80,7 @@ class WrfSchema {
   static WrfSchema load(const std::string& path);
 
   const std::map<std::string, std::pair<std::string, std::string>>& defaults() const { return defaults_; }
+  const std::map<std::string, std::string>& entries() const { return entries_; }
   // input stream (wrfinput) variables in WRF's write order. real_bytes: 4 or 8 (RWORDSIZE).
   std::vector<OutVar> input_vars(const WrfConfig& c, int ide, int jde, int kde, int real_bytes) const {
     return stream_vars(c, ide, jde, kde, real_bytes, 0, 25);
@@ -102,6 +107,7 @@ class WrfSchema {
 
  private:
   std::map<std::string, std::pair<std::string, std::string>> defaults_;
+  std::map<std::string, std::string> entries_;
   std::vector<SchemaVar> vars_;
   std::vector<SchemaMember> members_;
 };

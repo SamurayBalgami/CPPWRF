@@ -8,99 +8,111 @@
 namespace cppwrf::init_real {
 
 // ---------------------------------------------------------------- options and dates
-RealOptions RealOptions::from_namelist(const Namelist& nl, int dom) {
+RealOptions RealOptions::from_namelist(const Namelist& nl, const WrfSchema& sc, int dom) {
   RealOptions o;
   o.dom = dom;
+  // WRF's namelist read: a max_domains option without a value for this domain takes the Registry default,
+  // other options their first value (wrf_schema entries)
+  WrfConfig c(nl, sc.defaults(), dom, &sc.entries());
+  o.max_dom = c.integer("max_dom");
   auto date = [&](const char* p) {
     char b[32];
-    std::snprintf(b, sizeof b, "%04d-%02d-%02d_%02d:%02d:%02d", nl.get_int("time_control", std::string(p) + "_year", 0, dom),
-                  nl.get_int("time_control", std::string(p) + "_month", 0, dom),
-                  nl.get_int("time_control", std::string(p) + "_day", 0, dom),
-                  nl.get_int("time_control", std::string(p) + "_hour", 0, dom),
-                  nl.get_int("time_control", std::string(p) + "_minute", 0, dom),
-                  nl.get_int("time_control", std::string(p) + "_second", 0, dom));
+    const std::string q(p);
+    std::snprintf(b, sizeof b, "%04d-%02d-%02d_%02d:%02d:%02d", c.integer(q + "_year"), c.integer(q + "_month"),
+                  c.integer(q + "_day"), c.integer(q + "_hour"), c.integer(q + "_minute"), c.integer(q + "_second"));
     return std::string(b);
   };
   o.start_date = date("start");
   o.end_date = date("end");
-  o.interval_seconds = nl.get_int("time_control", "interval_seconds", o.interval_seconds, dom);
-  const char* D = "domains";
-  o.e_we = nl.get_int(D, "e_we", 0, dom);
-  o.e_sn = nl.get_int(D, "e_sn", 0, dom);
-  o.e_vert = nl.get_int(D, "e_vert", 0, dom);
-  o.num_metgrid_levels = nl.get_int(D, "num_metgrid_levels", 0, dom);
-  o.num_metgrid_soil_levels = nl.get_int(D, "num_metgrid_soil_levels", o.num_metgrid_soil_levels, dom);
-  o.dx = nl.get_real(D, "dx", 0, dom);
-  o.dy = nl.get_real(D, "dy", 0, dom);
-  o.p_top_requested = nl.get_real(D, "p_top_requested", o.p_top_requested, dom);
-  for (const std::string& v : nl.values(D, "eta_levels")) o.eta_levels.push_back(std::strtod(v.c_str(), nullptr));
-  o.auto_levels_opt = nl.get_int(D, "auto_levels_opt", o.auto_levels_opt, dom);
-  o.max_dz = nl.get_real(D, "max_dz", o.max_dz, dom);
-  o.dzbot = nl.get_real(D, "dzbot", o.dzbot, dom);
-  o.dzstretch_s = nl.get_real(D, "dzstretch_s", o.dzstretch_s, dom);
-  o.dzstretch_u = nl.get_real(D, "dzstretch_u", o.dzstretch_u, dom);
-  o.interp_type = nl.get_int(D, "interp_type", o.interp_type, dom);
-  o.lagrange_order = nl.get_int(D, "lagrange_order", o.lagrange_order, dom);
-  o.linear_interp = nl.get_int(D, "linear_interp", o.linear_interp, dom);
-  o.extrap_type = nl.get_int(D, "extrap_type", o.extrap_type, dom);
-  o.t_extrap_type = nl.get_int(D, "t_extrap_type", o.t_extrap_type, dom);
-  o.lowest_lev_from_sfc = nl.get_bool(D, "lowest_lev_from_sfc", o.lowest_lev_from_sfc, dom);
-  o.use_levels_below_ground = nl.get_bool(D, "use_levels_below_ground", o.use_levels_below_ground, dom);
-  o.use_surface = nl.get_bool(D, "use_surface", o.use_surface, dom);
-  o.zap_close_levels = nl.get_real(D, "zap_close_levels", o.zap_close_levels, dom);
-  o.force_sfc_in_vinterp = nl.get_int(D, "force_sfc_in_vinterp", o.force_sfc_in_vinterp, dom);
-  o.interp_theta = nl.get_bool(D, "interp_theta", o.interp_theta, dom);
-  o.sfcp_to_sfcp = nl.get_bool(D, "sfcp_to_sfcp", o.sfcp_to_sfcp, dom);
-  o.adjust_heights = nl.get_bool(D, "adjust_heights", o.adjust_heights, dom);
-  o.smooth_cg_topo = nl.get_bool(D, "smooth_cg_topo", o.smooth_cg_topo, dom);
-  o.rebalance = nl.get_int(D, "rebalance", o.rebalance, dom);
-  o.hypsometric_opt = nl.get_int(D, "hypsometric_opt", o.hypsometric_opt, dom);
-  o.rh2qv_wrt_liquid = nl.get_bool(D, "rh2qv_wrt_liquid", o.rh2qv_wrt_liquid, dom);
-  o.rh2qv_method = nl.get_int(D, "rh2qv_method", o.rh2qv_method, dom);
-  o.use_sh_qv = nl.get_bool(D, "use_sh_qv", o.use_sh_qv, dom);
-  o.qv_max_p_safe = nl.get_real(D, "qv_max_p_safe", o.qv_max_p_safe, dom);
-  o.qv_max_flag = nl.get_real(D, "qv_max_flag", o.qv_max_flag, dom);
-  o.qv_max_value = nl.get_real(D, "qv_max_value", o.qv_max_value, dom);
-  o.qv_min_p_safe = nl.get_real(D, "qv_min_p_safe", o.qv_min_p_safe, dom);
-  o.qv_min_flag = nl.get_real(D, "qv_min_flag", o.qv_min_flag, dom);
-  o.qv_min_value = nl.get_real(D, "qv_min_value", o.qv_min_value, dom);
-  o.use_maxw_level = nl.get_int(D, "use_maxw_level", o.use_maxw_level, dom);
-  o.use_trop_level = nl.get_int(D, "use_trop_level", o.use_trop_level, dom);
-  const char* Y = "dynamics";
-  o.hybrid_opt = nl.get_int(Y, "hybrid_opt", o.hybrid_opt, dom);
-  o.use_theta_m = nl.get_int(Y, "use_theta_m", o.use_theta_m, dom);
-  o.etac = nl.get_real(Y, "etac", o.etac, dom);
-  o.base_pres = nl.get_real(Y, "base_pres", o.base_pres, dom);
-  o.base_temp = nl.get_real(Y, "base_temp", o.base_temp, dom);
-  o.base_lapse = nl.get_real(Y, "base_lapse", o.base_lapse, dom);
-  o.iso_temp = nl.get_real(Y, "iso_temp", o.iso_temp, dom);
-  o.base_pres_strat = nl.get_real(Y, "base_pres_strat", o.base_pres_strat, dom);
-  o.base_lapse_strat = nl.get_real(Y, "base_lapse_strat", o.base_lapse_strat, dom);
-  const char* P = "physics";
-  const std::string suite = nl.get_str(P, "physics_suite", "none", dom);
-  o.sf_surface_physics = wrf_io::physics_suite_option(
-      suite, "sf_surface_physics", nl.get_int(P, "sf_surface_physics", o.sf_surface_physics, dom));
-  o.num_soil_layers = nl.get_int(P, "num_soil_layers", o.num_soil_layers, dom);
-  o.surface_input_source = nl.get_int(P, "surface_input_source", o.surface_input_source, dom);
-  o.sf_urban_physics = nl.get_int(P, "sf_urban_physics", o.sf_urban_physics, dom);
-  o.mp_physics = wrf_io::physics_suite_option(suite, "mp_physics", nl.get_int(P, "mp_physics", o.mp_physics, dom));
-  o.fractional_seaice = nl.get_int(P, "fractional_seaice", o.fractional_seaice, dom);
-  o.sst_update = nl.get_int(P, "sst_update", o.sst_update, dom);
-  o.grid_fdda = nl.get_int("fdda", "grid_fdda", o.grid_fdda, dom);
-  o.qna_update = nl.get_int(P, "qna_update", o.qna_update, dom);
-  o.all_ic_times = nl.get_bool("time_control", "all_ic_times", o.all_ic_times, dom);
-  o.polar = nl.get_bool("bdy_control", "polar", o.polar, dom);
-  o.seaice_threshold = nl.get_real(P, "seaice_threshold", o.seaice_threshold, dom);
-  o.use_tavg_for_tsk = nl.get_bool(P, "use_tavg_for_tsk", o.use_tavg_for_tsk, dom);
-  o.spec_bdy_width = nl.get_int("bdy_control", "spec_bdy_width", o.spec_bdy_width);
-  o.max_dom = nl.get_int(D, "max_dom", 1);
-  o.parent_id = nl.get_int(D, "parent_id", dom == 1 ? 0 : 1, dom);
-  o.i_parent_start = nl.get_int(D, "i_parent_start", 1, dom);
-  o.j_parent_start = nl.get_int(D, "j_parent_start", 1, dom);
-  o.parent_grid_ratio = nl.get_int(D, "parent_grid_ratio", 1, dom);
-  // WRF ignores hypsometric_opt = 1 settings? no: it is used as given
+  o.interval_seconds = c.integer("interval_seconds");
+  o.e_we = c.integer("e_we");
+  o.e_sn = c.integer("e_sn");
+  o.e_vert = c.integer("e_vert");
+  o.num_metgrid_levels = c.integer("num_metgrid_levels");
+  o.num_metgrid_soil_levels = c.integer("num_metgrid_soil_levels");
+  o.dx = c.num("dx");
+  o.dy = c.num("dy");
+  o.p_top_requested = c.num("p_top_requested");
+  for (const std::string& v : nl.values("domains", "eta_levels")) o.eta_levels.push_back(std::strtod(v.c_str(), nullptr));
+  o.auto_levels_opt = c.integer("auto_levels_opt");
+  o.max_dz = c.num("max_dz");
+  o.dzbot = c.num("dzbot");
+  o.dzstretch_s = c.num("dzstretch_s");
+  o.dzstretch_u = c.num("dzstretch_u");
+  o.interp_type = c.integer("interp_type");
+  o.lagrange_order = c.integer("lagrange_order");
+  o.linear_interp = c.integer("linear_interp");
+  o.extrap_type = c.integer("extrap_type");
+  o.t_extrap_type = c.integer("t_extrap_type");
+  o.lowest_lev_from_sfc = c.logical("lowest_lev_from_sfc");
+  o.use_levels_below_ground = c.logical("use_levels_below_ground");
+  o.use_surface = c.logical("use_surface");
+  o.zap_close_levels = c.num("zap_close_levels");
+  o.force_sfc_in_vinterp = c.integer("force_sfc_in_vinterp");
+  // check_a_mundo (use_wps_input = 1): without the surface level, neither force_sfc_in_vinterp nor
+  // lowest_lev_from_sfc
+  if (!o.use_surface && o.force_sfc_in_vinterp > 0) o.force_sfc_in_vinterp = 0;
+  if (!o.use_surface && o.lowest_lev_from_sfc) o.lowest_lev_from_sfc = false;
+  o.interp_theta = c.logical("interp_theta");
+  o.sfcp_to_sfcp = c.logical("sfcp_to_sfcp");
+  o.adjust_heights = c.logical("adjust_heights");
+  o.smooth_cg_topo = c.logical("smooth_cg_topo");
+  o.rebalance = c.integer("rebalance");
+  o.hypsometric_opt = c.integer("hypsometric_opt");
+  o.rh2qv_wrt_liquid = c.logical("rh2qv_wrt_liquid");
+  o.rh2qv_method = c.integer("rh2qv_method");
+  o.use_sh_qv = c.logical("use_sh_qv");
+  o.qv_max_p_safe = c.num("qv_max_p_safe");
+  o.qv_max_flag = c.num("qv_max_flag");
+  o.qv_max_value = c.num("qv_max_value");
+  o.qv_min_p_safe = c.num("qv_min_p_safe");
+  o.qv_min_flag = c.num("qv_min_flag");
+  o.qv_min_value = c.num("qv_min_value");
+  o.use_maxw_level = c.integer("use_maxw_level");
+  o.use_trop_level = c.integer("use_trop_level");
+  o.hybrid_opt = c.integer("hybrid_opt");
+  o.use_theta_m = c.integer("use_theta_m");
+  o.etac = c.num("etac");
+  o.base_pres = c.num("base_pres");
+  o.base_temp = c.num("base_temp");
+  o.base_lapse = c.num("base_lapse");
+  o.iso_temp = c.num("iso_temp");
+  o.base_pres_strat = c.num("base_pres_strat");
+  o.base_lapse_strat = c.num("base_lapse_strat");
+  // setup_physics_suite, then set_physics_rconfigs: num_soil_layers from domain 1's sf_surface_physics
+  const std::string suite = c.get("physics_suite");
+  o.sf_surface_physics = wrf_io::physics_suite_option(suite, "sf_surface_physics", c.integer("sf_surface_physics"));
+  o.mp_physics = wrf_io::physics_suite_option(suite, "mp_physics", c.integer("mp_physics"));
+  const int lsm1 = wrf_io::physics_suite_option(suite, "sf_surface_physics", c.integer("sf_surface_physics", 1));
+  if (lsm1 == 0 || lsm1 == 1) o.num_soil_layers = 5;
+  else if (lsm1 == 2 || lsm1 == 4) o.num_soil_layers = 4;
+  else throw std::runtime_error("real: sf_surface_physics = " + std::to_string(lsm1) +
+                                " is not supported (WRF: unknown or not ported land surface scheme)");
+  if (o.mp_physics < 0) throw std::runtime_error("real: mp_physics = -1 needs a physics_suite (CONUS or tropical)");
+  o.surface_input_source = c.integer("surface_input_source");
+  o.sf_urban_physics = c.integer("sf_urban_physics");
+  o.fractional_seaice = c.integer("fractional_seaice");
+  o.default_soiltype = c.integer("default_soiltype");
+  o.sst_update = c.integer("sst_update");
+  o.grid_fdda = c.integer("grid_fdda");
+  o.qna_update = c.integer("qna_update");
+  o.all_ic_times = c.logical("all_ic_times");
+  o.polar = c.logical("polar");
+  o.seaice_threshold = c.num("seaice_threshold");
+  o.use_tavg_for_tsk = c.logical("use_tavg_for_tsk");
+  o.spec_bdy_width = c.integer("spec_bdy_width");
+  o.input_from_file = c.logical("input_from_file");
+  o.parent_id = c.integer("parent_id");
+  o.i_parent_start = c.integer("i_parent_start");
+  o.j_parent_start = c.integer("j_parent_start");
+  o.parent_grid_ratio = c.integer("parent_grid_ratio");
   if (o.e_we <= 0 || o.e_sn <= 0 || o.e_vert <= 0 || o.num_metgrid_levels <= 0)
     throw std::runtime_error("real: e_we, e_sn, e_vert and num_metgrid_levels are required in &domains");
+  // options of real.exe that are not ported
+  for (const char* k : {"use_maxw_level", "use_trop_level", "madwrf_opt", "madwrf_cldinit"})
+    if (c.integer(k) != 0) throw std::runtime_error(std::string("real: ") + k + " is not ported");
+  for (const char* k : {"insert_init_cloud", "all_ic_times", "multi_bdy_files", "slucm_distributed_drag"})
+    if (c.logical(k)) throw std::runtime_error(std::string("real: ") + k + " = .true. is not ported");
   return o;
 }
 
@@ -109,12 +121,14 @@ static bool leap(int y) { return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0; }
 void get_julgmt(const std::string& date, int& julyr, int& julday, double& gmt) {
   int y = std::atoi(date.substr(0, 4).c_str()), m = std::atoi(date.substr(5, 2).c_str()),
       dd = std::atoi(date.substr(8, 2).c_str()), h = std::atoi(date.substr(11, 2).c_str()),
-      mi = std::atoi(date.substr(14, 2).c_str());
-  static const int mdays[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+      mi = std::atoi(date.substr(14, 2).c_str()), sec = std::atoi(date.substr(17, 2).c_str());
+  // module_date_time.F: DATA MMD (implicitly SAVE) gets MMD(2) = 29 at the first leap-year date and keeps it
+  static int mmd[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  if (leap(y)) mmd[1] = 29;
   julday = dd;
-  for (int k = 1; k < m; ++k) julday += mdays[k - 1] + (k == 2 && leap(y) ? 1 : 0);
+  for (int k = 1; k < m; ++k) julday += mmd[k - 1];
   julyr = y;
-  gmt = double(h) + double(mi) / 60.;
+  gmt = double(h) + double(mi) / 60. + double(sec) / 3600.;
 }
 
 std::string add_seconds(const std::string& date, long seconds) {
@@ -221,6 +235,11 @@ void RealDomain<T>::read_input(const MetEm& m) {
   if (m.has("SNOW")) put2(m, "SNOW", snow);
   if (m.has("SNOWH")) put2(m, "SNOWH", snowh);
   if (m.has("SEAICE")) put2(m, "SEAICE", xice);
+  if (m.has("SST")) put2(m, "SST", sst);  // Registry SST: input stream i1 (used with FLAG_SST)
+  // optional input-stream fields WRF passes from met_em to wrfinput, not carried by cppwrf_real
+  for (const char* n : {"UOCE", "VOCE", "TOPOSLPX", "TOPOSLPY", "EROD", "ICEDEPTH", "ALBSI", "SNOWSI", "LANDUSEF2",
+                        "SOILT1", "o3_gfs_du"})
+    if (m.has(n)) throw std::runtime_error(std::string("real: met_em field ") + n + " is not ported");
   if (m.has("SNOALB")) put2(m, "SNOALB", snoalb);
   if (m.has("SCT_DOM")) put2(m, "SCT_DOM", sct_dom_gc);
   if (m.has("SCB_DOM")) put2(m, "SCB_DOM", scb_dom_gc);
@@ -229,11 +248,16 @@ void RealDomain<T>::read_input(const MetEm& m) {
   for (auto [n, fp] : {std::pair<const char*, F2<T>*>{"OA1", &oa1}, {"OA2", &oa2}, {"OA3", &oa3}, {"OA4", &oa4},
                        {"OL1", &ol1}, {"OL2", &ol2}, {"OL3", &ol3}, {"OL4", &ol4}})
     if (m.has(n)) put2(m, n, *fp);
-  if (m.has("VAR_SSO")) put2(m, "VAR_SSO", var_sso);
+  // Registry dataname "var_sso" (lower case; NetCDF names are case-sensitive, so WRF does not read VAR_SSO)
+  if (m.has("var_sso")) put2(m, "var_sso", var_sso);
   // optional_input: soil levels (module_optional_input.F optional_lsm_levels, FLAG_SOIL_LAYERS path)
   num_st_levels_input = num_sm_levels_input = num_sw_levels_input = 0;
   if (flags.count("SOIL_LEVELS") && flags["SOIL_LEVELS"] == 1)
     throw std::runtime_error("real: soil-level (RUC) met_em input is not ported");
+  if (flag("UM_SOIL") == 1) throw std::runtime_error("real: UM soil input (FLAG_UM_SOIL) is not ported");
+  if (m.has("SW")) throw std::runtime_error("real: met_em soil water (SW) input is not ported");
+  if (o.sf_surface_physics == 4 && mminlu == "NLCD40")  // module_initialize_real: fatal with Noah-MP
+    throw std::runtime_error("real: Noah-MP does not support the NLCD40 land use");
   if (flag("SOIL_LAYERS") == 1)
     num_st_levels_input = num_sm_levels_input = num_sw_levels_input = o.num_metgrid_soil_levels;
   const int sfs = o.sf_surface_physics;
@@ -552,8 +576,9 @@ void RealDomain<T>::init_domain(int loop, const std::string& current_date) {
   v_1 = t_2;
   rh_to_mxrat1(u_1, v_1, p, qv, ql, kte - 1, d, sk);
   t_to_theta(t_2, p, p00, kte - 1, d, sk);
-  if (flag("QR") == 1 || flag("QC") == 1 || flag("QI") == 1 || flag("QS") == 1 || flag("QG") == 1)
-    throw std::runtime_error("real: hydrometeor input is not ported");
+  for (const char* q : {"QR", "QC", "QI", "QS", "QG", "QH", "QNI", "QNC", "QNR", "QNS", "QNG", "QNH", "SPECCLDL",
+                        "SPECCLDF"})
+    if (flag(q) == 1) throw std::runtime_error(std::string("real: hydrometeor input (FLAG_") + q + ") is not ported");
   vert_interp(u_gc, pd_gc, u_2, pb, nlev, 'U', vo, d, sk);
   vert_interp(v_gc, pd_gc, v_2, pb, nlev, 'V', vo, d, sk);
   // ================================ end of the vertical interpolation part

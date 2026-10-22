@@ -19,18 +19,23 @@ template <typename T>
 static int run(const RealOptions& o, const Namelist& nl, const WrfSchema& sc, const std::string& met_dir,
                const std::string& out_dir) {
   RealDomain<T> dom(o);
-  WrfConfig cfg(nl, sc.defaults(), o.dom);
+  WrfConfig cfg(nl, sc.defaults(), o.dom, &sc.entries());
   char dn[8];
   std::snprintf(dn, sizeof dn, "d%02d", o.dom);
   for (const char* opt : {"vert_refine_method", "tracer_opt", "chem_opt"})
     if (cfg.integer(opt) != 0) throw std::runtime_error(std::string("real: ") + opt + " is not ported");
   cppwrf::wrf_io::derive_config(cfg, o.max_dom, true);
   const Dims& d = dom.d;
-  // compute_si_start_and_end
+  // compute_si_start_and_end (real_em.F): the times start, start + interval, ... up to end
+  if (o.end_date < o.start_date)
+    throw std::runtime_error("real: ending date in namelist " + o.end_date + " prior to beginning date " + o.start_date);
   int nsteps = 0;
   for (std::string t = o.start_date; t <= o.end_date; t = add_seconds(t, o.interval_seconds)) ++nsteps;
-  // nests: only the initial time (no grid FDDA, sst_update or qna_update)
-  const int time_loop_max = o.dom > 1 ? 1 : std::max(1, nsteps);
+  if (nsteps == 1 && o.start_date != o.end_date)
+    throw std::runtime_error("real: make the end time at least one 'interval_seconds' beyond the start time");
+  // a nest leaves the time loop after the first time unless grid_fdda, sst_update or qna_update need its times
+  const bool nest_times = o.grid_fdda != 0 || o.sst_update != 0 || o.qna_update != 0;
+  const int time_loop_max = o.dom > 1 && !nest_times ? 1 : nsteps;
   const int w = o.spec_bdy_width;
   const T dt_bdy = T(o.interval_seconds);
   F3<T> ub1(1, d.ide, 1, d.kde, 1, d.jde), vb1 = ub1, tb1 = ub1, pb1 = ub1, qb1 = ub1, mb1(1, d.ide, 1, 1, 1, d.jde);
@@ -41,7 +46,6 @@ static int run(const RealOptions& o, const Namelist& nl, const WrfSchema& sc, co
     b->alloc(d, 1, k1, w);
   bm.alloc(d, 1, 1, w);
   tm.alloc(d, 1, 1, w);
-  const Dims d1{1, d.ide, 1, d.jde, 1, 1};
   auto do_couple = [&](F3<T>& u, F3<T>& v, F3<T>& t, F3<T>& p, F3<T>& q) {
     couple(dom.mu_2, dom.mub, u, dom.u_2, 'u', dom.msfuy, dom.c1h, dom.c2h, dom.c1f, dom.c2f, d);
     couple(dom.mu_2, dom.mub, v, dom.v_2, 'v', dom.msfvx, dom.c1h, dom.c2h, dom.c1f, dom.c2f, d);
@@ -65,7 +69,7 @@ static int run(const RealOptions& o, const Namelist& nl, const WrfSchema& sc, co
     dom.read_input(m);
     if (loop == 1) cfg.set("num_land_cat", std::to_string(m.att_int("NUM_LAND_CAT", 21)));
     dom.init_domain(loop, date);
-    if (cfg.integer("sst_update") == 1) {
+    if (cfg.integer("sst_update") == 1 && time_loop_max != 1) {  // assemble_output: wrflowinp with several times
       if (!lowinp)
         lowinp = std::make_unique<WrfLowinpWriter<T>>(out_dir + "/wrflowinp_" + dn, dom, m, sc, cfg, o.start_date);
       lowinp->write(dom, m, date);
@@ -73,13 +77,13 @@ static int run(const RealOptions& o, const Namelist& nl, const WrfSchema& sc, co
     if (loop == 1) {
       write_wrfinput(dom, m, sc, cfg, out_dir + "/wrfinput_" + dn, date);
       std::cout << "cppwrf_real: wrote " << out_dir << "/wrfinput_" << dn << "\n";
-      if (time_loop_max > 1) {
+      if (time_loop_max > 1 && o.dom == 1) {
         do_couple(ub1, vb1, tb1, pb1, qb1);
         for (int j = 1; j <= d.jde - 1; ++j)
           for (int i = 1; i <= d.ide - 1; ++i) mb1(i, 1, j) = dom.mu_2(i, j);
         do_stuff();
       }
-    } else {
+    } else if (o.dom == 1) {  // the boundary file of domain 1 only
       if (loop == 2) bdy = std::make_unique<WrfBdyWriter<T>>(out_dir + "/wrfbdy_d01", dom, m, sc, cfg, o.start_date, w);
       do_couple(ub2, vb2, tb2, pb2, qb2);
       for (int j = 1; j <= d.jde; ++j)
@@ -89,7 +93,6 @@ static int run(const RealOptions& o, const Namelist& nl, const WrfSchema& sc, co
       };
       tend(tu, 'U', d.kde, ub2, ub1); tend(tv, 'V', d.kde, vb2, vb1); tend(tt, 'T', d.kde, tb2, tb1);
       tend(tp, 'W', d.kde, pb2, pb1); tend(tq, 'T', d.kde, qb2, qb1); tend(tm, 'M', 1, mb2, mb1);
-      (void)d1;
       bdy->write(std::size_t(loop - 2), prev, date,
                  {{"U", {&bu, &tu}}, {"V", {&bv, &tv}}, {"T", {&bt, &tt}}, {"PH", {&bp, &tp}}, {"QVAPOR", {&bq, &tq}},
                   {"MU", {&bm, &tm}}});
@@ -127,9 +130,11 @@ int main(int argc, char** argv) {
   try {
     const Namelist nl = Namelist::read(nml);
     const WrfSchema sc = WrfSchema::load(schema);
-    const int max_dom = nl.get_int("domains", "max_dom", 1);
-    for (int id = 1; id <= max_dom; ++id) {
-      const RealOptions o = RealOptions::from_namelist(nl, id);
+    const RealOptions o1 = RealOptions::from_namelist(nl, sc, 1);
+    if (o1.interval_seconds <= 0) throw std::runtime_error("real: namelist value for interval_seconds must be > 0");
+    for (int id = 1; id <= o1.max_dom; ++id) {
+      const RealOptions o = RealOptions::from_namelist(nl, sc, id);
+      if (id > 1 && !o.input_from_file) continue;  // real_em.F: only domains with input_from_file
       const int rc = prec == "float" ? run<float>(o, nl, sc, met_dir, out_dir) : run<double>(o, nl, sc, met_dir, out_dir);
       if (rc != 0) return rc;
     }

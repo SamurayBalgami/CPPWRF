@@ -20,15 +20,10 @@ class MetEm {
 
   bool has(const std::string& name) const { return vars_.count(name) != 0; }
   const MetVar& var(const std::string& name) const;
-  bool has_att(const std::string& name) const { return iatt_.count(name) || ratt_.count(name) || satt_.count(name); }
   int att_int(const std::string& name, int def = 0) const;
   double att_real(const std::string& name, double def = 0) const;
   std::string att_str(const std::string& name, const std::string& def = "") const;
-  int flag(const std::string& name) const { return att_int("FLAG_" + name, 0); }
-  const std::map<std::string, MetVar>& vars() const { return vars_; }
   const std::map<std::string, std::vector<int>>& int_atts() const { return iatt_; }
-  const std::map<std::string, std::vector<double>>& real_atts() const { return ratt_; }
-  const std::map<std::string, std::string>& str_atts() const { return satt_; }
   std::string time;  // Times(0), e.g. 2026-10-12_00:00:00
   std::string path;
 
