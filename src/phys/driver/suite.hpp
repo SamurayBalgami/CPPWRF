@@ -148,6 +148,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
       ghvxy, ghbxy, irgxy, ircxy, irbxy, trxy, evcxy, chleafxy, chucxy, chv2xy, chb2xy, chstarxy, acc_ssoilxy,
       acc_qinsurxy, acc_qsevaxy, eflxbxy, acc_dwaterxy, acc_prcpxy, acc_ecanxy, acc_etranxy, acc_edirxy, acc_glaflwxy;
   IntField2 isnowxy, cropcat, pgsxy;
+  IntField2 noahmp_ranland;  // not in the restart file (NoahmpIO is initialised again)
   Field3 tsnoxy, snicexy, snliqxy, zsnsoxy, albsoildirxy, albsoildifxy, smoiseq, acc_etranixy;
   std::vector<double> dzs;            // soil layer thicknesses (m)
   Field3 exch_h, exch_m;              // M (WRF kme-sized; levels 0..nz-1 used)

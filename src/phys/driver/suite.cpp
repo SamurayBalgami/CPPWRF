@@ -205,6 +205,8 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
     isnowxy.upload(std::vector<int>(isnowxy.layout().total, 0));
     cropcat.upload(std::vector<int>(cropcat.layout().total, 0));
     pgsxy.upload(std::vector<int>(pgsxy.layout().total, 0));
+    noahmp_ranland = IntField2(g, "noahmp_ranland");
+    noahmp_ranland.upload(std::vector<int>(noahmp_ranland.layout().total, 0));
     Grid gsno = g; gsno.nz = noahmp::kMaxSnowLayers;
     Grid gsnso = g; gsnso.nz = noahmp::kMaxSnowLayers + o.num_soil_layers;
     Grid gband = g; gband.nz = noahmp::kNumRadBands;

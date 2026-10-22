@@ -111,6 +111,8 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
                                                : wrf_io::Namelist::parse(""));
   schema_ = std::make_unique<wrf_io::WrfSchema>(wrf_io::WrfSchema::load(
       cfg.get_string("output.wrf_schema", std::string(CPPWRF_DATA_DIR) + "/wrf_schema/wrf-4.8.0.tsv")));
+  // the nest feedback (u= fields) does not depend on the I/O streams: the Registry masks before iofields_filename
+  fb_schema_ = std::make_unique<wrf_io::WrfSchema>(*schema_);
   {  // iofields_filename: runtime additions to / removals from the stream masks (relative to the run dir)
     wrf_io::WrfConfig c0(*nl_, schema_->defaults(), domain_tag_.size() == 3 ? std::atoi(domain_tag_.c_str() + 1) : 1);
     std::string io = c0.get("iofields_filename");
@@ -691,11 +693,11 @@ void feedback(const std::string& fn, std::vector<double>& c, int cnx, int cny, c
 void WrfHistory::feedback_physics(WrfHistory& child, int ipos, int jpos, int ratio) {
   const Grid& g = m_.g;
   const Grid& cg = child.m_.g;
-  std::vector<wrf_io::OutVar> vars = schema_->history_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real)));
+  std::vector<wrf_io::OutVar> vars = fb_schema_->history_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real)));
   {
     std::set<std::string> have;
     for (const wrf_io::OutVar& v : vars) have.insert(v.name);
-    for (wrf_io::OutVar& v : schema_->restart_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real))))
+    for (wrf_io::OutVar& v : fb_schema_->restart_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real))))
       if (!have.count(v.name)) vars.push_back(std::move(v));
   }
   const int spec_zone = std::max(1, wc_->integer("spec_zone"));
@@ -778,11 +780,11 @@ void WrfHistory::feedback_from(WrfHistory& child, int ipos, int jpos, int ratio)
   const Grid& g = m_.g;
   const Grid& cg = child.m_.g;
   // history and restart fields (the restart stream carries more of them)
-  std::vector<wrf_io::OutVar> vars = schema_->history_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real)));
+  std::vector<wrf_io::OutVar> vars = fb_schema_->history_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real)));
   {
     std::set<std::string> have;
     for (const wrf_io::OutVar& v : vars) have.insert(v.name);
-    for (wrf_io::OutVar& v : schema_->restart_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real))))
+    for (wrf_io::OutVar& v : fb_schema_->restart_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real))))
       if (!have.count(v.name)) vars.push_back(std::move(v));
   }
   const int spec_zone = std::max(1, wc_->integer("spec_zone"));

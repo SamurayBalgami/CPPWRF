@@ -66,6 +66,7 @@ class WrfHistory {
   std::vector<const Field3*> f3_;
   std::unique_ptr<wrf_io::Namelist> nl_;
   std::unique_ptr<wrf_io::WrfSchema> schema_;
+  std::unique_ptr<wrf_io::WrfSchema> fb_schema_;  // Registry streams without iofields_filename (nest feedback)
   std::unique_ptr<wrf_io::WrfConfig> wc_;
   std::unique_ptr<wrf_io::StreamFile> file_;
   int frames_per_outfile_ = 10;

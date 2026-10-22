@@ -1282,6 +1282,7 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
       nmp.z0 = z0.view();
       nmp.znt = znt.view();
       nmp.isnowxy = isnowxy.view();
+      nmp.ranland = noahmp_ranland.view();
       nmp.tvxy = tvxy.view();
       nmp.tgxy = tgxy.view();
       nmp.canicexy = canicexy.view();

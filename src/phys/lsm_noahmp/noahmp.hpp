@@ -393,6 +393,7 @@ struct NoahmpKernel {
 
   // 2D INOUT Noah-MP state
   View2<int> isnowxy;
+  View2<int> ranland;  // 1 once the column ran as land in this process (NoahmpIO keeps its last values)
   View2<real> tvxy;
   View2<real> tgxy;
   View2<real> canicexy;
@@ -601,8 +602,12 @@ struct NoahmpKernel {
       }
     }
 
-    // Skip sea-ice and open water points (NoahmpDriverMainMod lines 150-156)
+    // Skip sea-ice and open water points (NoahmpDriverMainMod lines 150-156): nothing is computed; WRF copies
+    // NoahmpIO's persistent values back, i.e. -9999 (NoahmpIOVarInit) or the last values of a column that ran
+    // as land earlier in the run
     auto set_skipped_outputs = [&]() {
+      if (pondingxy.p) pondingxy(i, j) = real(0.0);
+      if (ranland.p && ranland(i, j) != 0) return;
       q2mvxy(i, j) = undefined_real;
       q2mbxy(i, j) = undefined_real;
       fvegxy(i, j) = undefined_real;
@@ -661,7 +666,6 @@ struct NoahmpKernel {
       if (qmeltcxy.p) qmeltcxy(i, j) = undefined_real;
       if (qsnbotxy.p) qsnbotxy(i, j) = undefined_real;
       if (qmeltxy.p) qmeltxy(i, j) = undefined_real;
-      if (pondingxy.p) pondingxy(i, j) = real(0.0);
       if (pahxy.p) pahxy(i, j) = undefined_real;
       if (pahgxy.p) pahgxy(i, j) = undefined_real;
       if (pahvxy.p) pahvxy(i, j) = undefined_real;
@@ -691,6 +695,7 @@ struct NoahmpKernel {
       set_skipped_outputs();
       return;
     }
+    if (ranland.p) ranland(i, j) = 1;
 
     NoahmpType noahmp;
     noahmp.InitDefault();
