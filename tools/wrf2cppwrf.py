@@ -507,7 +507,7 @@ def _format_num(val: Any) -> str:
     if isinstance(val, float):
         if val.is_integer():
             return str(int(val))
-        return f"{val:g}"
+        return repr(val)  # shortest text of the same double: WRF reads the namelist real in full
     return str(val)
 
 
