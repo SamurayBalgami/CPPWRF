@@ -13,11 +13,15 @@ gcloud storage cp "gs://$B/$SRC" $J/src.tar.gz && gcloud storage cp "gs://$B/$VA
 mkdir -p $J/src $J/data $J/work && tar xzf $J/src.tar.gz -C $J/src
 for d in ${DATA//,/ }; do gcloud storage cp "gs://$B/$d" $J/data.tar && tar xf $J/data.tar -C $J/data && rm $J/data.tar; done
 cmake -S $J/src -B $J/build -DCMAKE_BUILD_TYPE=Release -DCPPWRF_DOUBLE=ON -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_NATIVE=OFF \
-  -DCMAKE_CXX_FLAGS="-march=skylake -mtune=skylake" > $J/cmake.log 2>&1 && cmake --build $J/build -j"$(nproc)" --target cppwrf >> $J/cmake.log 2>&1
+  -DCMAKE_CXX_FLAGS="-march=skylake -mtune=skylake" > $J/cmake.log 2>&1 && cmake --build $J/build -j"$(nproc)" --target cppwrf cppwrf_real >> $J/cmake.log 2>&1
 put $J/cmake.log
 (while sleep 60; do put $J/matrix.out; done) &
+# a variant whose executable is real_*.exe compares WRF real.exe with cppwrf_real (tools/gcp/real_variant.py)
 grep -v '^\s*#' $J/variants.txt | grep -v '^\s*$' | while read -r name base exe sets; do
-  echo "python3 $J/src/tools/gcp/matrix_variant.py $J/data/runs $J/work $J/data/wrf/$exe $J/build/cppwrf $name $base $sets"
+  case $exe in
+    real_*) echo "python3 $J/src/tools/gcp/real_variant.py $J/data/runs $J/work $J/data/wrf/$exe $J/build/src/init_real/cppwrf_real $name $base $sets" ;;
+    *) echo "python3 $J/src/tools/gcp/matrix_variant.py $J/data/runs $J/work $J/data/wrf/$exe $J/build/cppwrf $name $base $sets" ;;
+  esac
 done > $J/cmds.txt
 xargs -P "$(nproc)" -I{} sh -c '{}' < $J/cmds.txt > $J/matrix.out 2>&1
 echo "MATRIX_DONE" >> $J/matrix.out
