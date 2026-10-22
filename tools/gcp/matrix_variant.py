@@ -83,6 +83,9 @@ except subprocess.TimeoutExpired:
 if c.returncode != 0:
     print(f"{name} CPPWRF-FAILED {(c.stderr or c.stdout).strip().splitlines()[-1:]}")
     sys.exit(0)
+unread = re.findall(r"unaccessed config key '([^']*)'", c.stderr)
+if unread:  # a translated option the model never read
+    print(f"{name} UNREAD-KEYS {unread}", flush=True)
 
 
 def load(files):
