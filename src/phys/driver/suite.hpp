@@ -81,7 +81,6 @@ struct SuiteOptions {
   RadiationOptions rad;          // rad.ra_lw_physics/ra_sw_physics = 0: no radiation
   noahmp::NoahmpOptions noahmp;  // Noah-MP options (sf_surface_physics == 4)
   int isfflx = 1;
-  int ifsnow = 1;
   int fractional_seaice = 0;
   bool tice2tsk_if2cold = false;  // fractional_seaice: ice temperature = min(TSK, 273.15)
   int sst_update = 0;             // 1: SST, SEAICE, VEGFRA, ALBBCK, LAI from wrflowinp (read_lowinp)

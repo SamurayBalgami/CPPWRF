@@ -219,17 +219,17 @@ WrfInputData read_wrfinput(const std::string& path) {
 
   // 3D Mass fields
   read_required_var("PB", data.pb, s_3d);
-  read_required_var("P", data.p, s_3d);
-  read_required_var("T", data.t, s_3d);
-  read_required_var("T_INIT", data.t_init, s_3d);
+  read_var("P", data.p);  // P, T, T_INIT, AL and W: read when present (the model computes its own)
+  read_var("T", data.t);
+  read_var("T_INIT", data.t_init);
   read_required_var("ALB", data.alb, s_3d);
-  read_required_var("AL", data.al, s_3d);
+  read_var("AL", data.al);
   read_required_var("QVAPOR", data.qvapor, s_3d);
 
   // 3D Staggered fields
   read_required_var("U", data.u, s_3d_u);
   read_required_var("V", data.v, s_3d_v);
-  read_required_var("W", data.w, s_3d_w);
+  read_var("W", data.w);
   read_required_var("PHB", data.phb, s_3d_w);
   read_required_var("PH", data.ph, s_3d_w);
 

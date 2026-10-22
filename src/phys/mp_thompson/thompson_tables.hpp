@@ -572,22 +572,12 @@ struct ThompsonDeviceTables {
     const ThompsonTablesView<Real>& view() const { return view_; }
 };
 
-// Functions to initialize constants and generate/load tables
-template <typename Real>
-void init_thompson_constants(ThompsonHostTables<Real>& tables);
-
+// WRF's table files when present, else the tables computed as thompson_init does
 template <typename Real>
 void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& wrf_dat_dir = "");
 
-template <typename Real>
-bool load_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& path = "tables_fortran.bin");
-
 // Explicit instantiations declared
-extern template void init_thompson_constants<double>(ThompsonHostTables<double>& tables);
-extern template void init_thompson_constants<float>(ThompsonHostTables<float>& tables);
 extern template void init_thompson_tables<double>(ThompsonHostTables<double>& tables, const std::string&);
 extern template void init_thompson_tables<float>(ThompsonHostTables<float>& tables, const std::string&);
-extern template bool load_thompson_tables<double>(ThompsonHostTables<double>& tables, const std::string& path);
-extern template bool load_thompson_tables<float>(ThompsonHostTables<float>& tables, const std::string& path);
 
 } // namespace cppwrf::phys::mp_thompson

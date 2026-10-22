@@ -40,14 +40,10 @@ struct GflConstants {
   static constexpr real tcrit = R(258.0);
   static constexpr real fluxtune = R(1.5);
   static constexpr real pgcd = R(0.1);
-  static constexpr real rad_deep = R(1.0);
-  static constexpr real lambau_sh = R(2.0);
   static constexpr real ccnclean = R(250.0);
 
   // Deep module parameters
-  static constexpr real c1 = R(0.003);
   static constexpr int irainevap = 1;
-  static constexpr int use_fct = 1;
   static constexpr real frh_thresh = R(0.9);
   static constexpr real rh_thresh = R(0.97);
   static constexpr real betajb = R(1.2);
@@ -55,21 +51,16 @@ struct GflConstants {
   static constexpr int autoconv = 1;
   static constexpr int aeroevap = 1;
   static constexpr real dx_thresh = R(6500.0);
-  static constexpr real c0_deep_ocean = R(0.002);
-  static constexpr real c0_deep_land = R(0.004);
   static constexpr real entr_rate_deep = R(7.e-5);
   static constexpr real entr_rate_deep_hr = R(1.e-4);
   static constexpr int maxens3 = 16;
-  static constexpr int maxens_sh = 3;
   static constexpr bool melt_glac = true;
   static constexpr real t_0 = R(273.16);
   static constexpr real t_ice = R(250.16);
   static constexpr real xlf = R(0.333e6);
 
   // Shallow module parameters
-  static constexpr real c1_shal = R(0.0005);
   static constexpr real c0_shal = R(0.001);
-  static constexpr real entr_rate_sh = R(1.e-3);
 };
 
 // Match gfortran -O2 vectorised pow in get_zu_zd_pdf_fim: gfortran emits
@@ -255,65 +246,6 @@ CPPWRF_HOST_DEVICE inline void get_cloud_bc(int kte, const real* array,
   }
   x_aver = x_aver / real(local_order_aver);
   x_aver = x_aver + add;
-  (void)kte;
-}
-
-// ---------------------------------------------------------------------------
-// cup_direction2 (lines 2609-2688 of module_cu_gfl_deep.F90)
-// ---------------------------------------------------------------------------
-template <typename real>
-CPPWRF_HOST_DEVICE inline void cup_direction2(int ktf, int kte, int ierr,
-                                              int imass, const real* us,
-                                              const real* vs, real& maxhs,
-                                              real& dir) {
-  if (imass == 1) maxhs = R(1.0);
-  dir = R(0.0);
-  if (ierr != 0) return;
-
-  constexpr real pi = R(3.141592653589793);
-  constexpr real rad = pi / R(180.0);
-
-  real diff = R(22.5);
-  int id = 0;
-  real uust = R(0.0), vvst = R(0.0);
-  for (int k = 2; k <= 10; ++k) {
-    uust += us[k];
-    vvst += vs[k];
-  }
-  uust /= R(9.0);
-  vvst /= R(9.0);
-  vvst = max(abs(vvst), R(1.e-10));
-  real datan = std::atan(uust / vvst);
-  real ddir = datan / pi * R(180.0);
-  if (ddir < R(0.0)) ddir = -ddir;
-  if (uust > R(0.0) && vvst < R(0.0)) ddir = R(180.0) - ddir;
-  if (uust < R(0.0) && vvst < R(0.0)) ddir = R(180.0) + ddir;
-  if (uust < R(0.0) && vvst > R(0.0)) ddir = R(360.0) - ddir;
-  real dir_work = ddir;
-
-  for (int ia = 1; ia <= 16; ++ia) {
-    real ddira = real(ia - 1) * diff;
-    real ddirb = ddira - R(0.5) * diff;
-    if (ddirb < R(0.0)) ddirb = R(360.0) - R(0.5) * diff;
-    real ddirc = ddira + R(0.5) * diff;
-    if (ia == 1) {
-      if (dir_work >= ddirb && dir_work <= R(360.0)) {
-        dir_work = ddira * rad;
-        id = ia;
-      } else if (dir_work <= ddirc && dir_work >= R(0.0)) {
-        dir_work = ddira * rad;
-        id = ia;
-      }
-    } else {
-      if (dir_work > ddirb && dir_work <= ddirc) {
-        dir_work = ddira * rad;
-        id = ia;
-      }
-    }
-  }
-  dir = dir_work;
-  (void)id;
-  (void)ktf;
   (void)kte;
 }
 
