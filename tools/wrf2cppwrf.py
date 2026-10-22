@@ -1238,7 +1238,7 @@ class WrfTranslator:
                     if bl_pbl == 5 and mp_physics not in (6, 8):
                         self.error("WRF bl_pbl_physics = 5 needs a microphysics with qc, qi and qs (mp_physics 6 or 8): "
                                    "WRF passes the MYNN-EDMF an uninitialised snow content otherwise.")
-                    if bl_pbl == 5 and (self.get_opt("physics", "ishallow", 0) or self.get_opt("physics", "shcu_physics", 0)):
+                    if bl_pbl == 5 and (self.get_opt("physics", "ishallow", 0) > 0 or self.get_opt("physics", "shcu_physics", 0) > 0):
                         self.error("WRF bl_mynn_edmf > 0 requires shcu_physics = 0 and ishallow = 0.")
                 if bl_pbl == 5:
                     icb = self.get_opt("physics", "icloud_bl", 1)
