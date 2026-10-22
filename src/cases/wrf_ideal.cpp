@@ -559,8 +559,11 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
   b.rdx = rdx; b.rdy = rdy;
   b.upload_levels();
 
+  // halos of the mass-point base fields: set_physical_bc2d/3d (periodic: wrap; symmetric: mirror,
+  // dat(ids-i) = dat(ids+i-1); open: copy of the edge)
   auto wrap = [](int a, int n, BC bc) {
     if (bc == BC::Periodic) return ((a % n) + n) % n;
+    if (bc == BC::Symmetric) return a < 0 ? std::min(-a - 1, n - 1) : (a >= n ? std::max(2 * n - 1 - a, 0) : a);
     return std::clamp(a, 0, n - 1);
   };
   auto m2 = [&](const std::vector<double>& v) {
