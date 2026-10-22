@@ -285,7 +285,7 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
   phy_init_["STEPCU"] = {m_.suite ? double(m_.suite->stepcu) : stepn("cudt")};
   phy_init_["STEPFG"] = {1.0};
   phy_init_["LAST_STEP_UPDATED"] = {-1.0};
-  phy_init_["MIN_PTCHSZ"] = {double(std::min(g.nx, g.ny) + 1)};
+  phy_init_["MIN_PTCHSZ"] = {double(std::min(g.nx, g.ny * jrep_) + 1)};  // x-z runs: WRF's e_sn = 3
   {  // lbc_fcx_gcx (spec_exp = 0): only specified and nested domains; ideal domains keep the input's zeros
     const int w = std::max(1, wc_->integer("spec_bdy_width")), sz = wc_->integer("spec_zone"),
               rz = wc_->integer("relax_zone");
@@ -626,6 +626,16 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     for (const Field3* f : {&prep_->t_phy, &prep_->u_phy, &prep_->v_phy, &prep_->rho, &prep_->p_hyd_w, &prep_->z,
                             &prep_->z_at_w, &prep_->p8w, &prep_->t8w})
       if (f->name() == vn && copy_field(*f, dims, out)) return true;
+  {  // the 1-D base profiles (module_initialize_ideal / wrfinput): u_base, v_base, t_base, qv_base, z_base
+    const dyn::BaseState& bs = *m_.base;
+    const Array1* a = name == "U_BASE" ? &bs.u_base : name == "V_BASE" ? &bs.v_base : name == "T_BASE" ? &bs.t_base
+                    : name == "QV_BASE" ? &bs.qv_base_1d : name == "Z_BASE" ? &bs.z_base : nullptr;
+    if (a && std::size_t(a->size()) == n) {
+      out.resize(n);
+      for (std::size_t k = 0; k < n; ++k) out[k] = (*a)[int(k)];
+      return true;
+    }
+  }
   if ((name == "DECLIN" || name == "SOLCON") && m_.suite && m_.suite->radiation()) {  // radiation_driver's radconst
     out.assign(1, name == "DECLIN" ? m_.suite->radiation()->declin() : m_.suite->radiation()->solcon());
     return true;

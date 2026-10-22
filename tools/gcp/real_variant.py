@@ -27,8 +27,8 @@ nl = open(os.path.join(src, "namelist.input")).read()
 
 def setkey(nl, sec, key, val):
     m = re.search(rf"&{sec}\b(.*?)\n\s*/", nl, re.S | re.I)
-    if not m:
-        raise SystemExit(f"{name} BAD-NAMELIST no &{sec}")
+    if not m:  # a group the base namelist lacks (e.g. &stoch)
+        return nl.rstrip("\n") + f"\n\n&{sec}\n {key} = {val},\n/\n"
     body = m.group(1)
     pat = re.compile(rf"^\s*{key}\s*=.*$", re.M | re.I)
     line = f" {key} = {val},"
