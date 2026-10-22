@@ -41,6 +41,11 @@ for k, v in [("run_days", "0"), ("run_hours", "0"), ("run_minutes", "0"), ("run_
 nl = re.sub(r"^\s*history_interval\s*=.*\n", "", nl, flags=re.M)
 for sk, v in sets:
     sec, k = sk.split(".", 1)
+    if (sec, k) == ("run", "remove"):  # run.remove=f1,f2: files of the base run left out (both models)
+        for f in v.split(","):
+            if os.path.lexists(os.path.join(R, f)):
+                os.remove(os.path.join(R, f))
+        continue
     nl = setkey(nl, sec, k, v)
 open(os.path.join(R, "namelist.input"), "w").write(nl)
 env = dict(os.environ, OMP_NUM_THREADS="1")
