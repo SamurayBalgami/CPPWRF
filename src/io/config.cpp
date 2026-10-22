@@ -31,7 +31,7 @@ long long parse_int_strict(const std::string& key, const std::string& val) {
   }
   std::string_view sv = val;
   if (sv[0] == '+') sv.remove_prefix(1);
-  if (sv.empty()) {
+  if (sv.empty() || (val[0] == '+' && sv[0] == '-')) {  // "+-1"
     throw ConfigError("Key '" + key + "': invalid integer value '" + val + "'");
   }
   long long res = 0;
@@ -48,7 +48,7 @@ double parse_double_strict(const std::string& key, const std::string& val) {
   }
   std::string_view sv = val;
   if (sv[0] == '+') sv.remove_prefix(1);
-  if (sv.empty()) {
+  if (sv.empty() || (val[0] == '+' && sv[0] == '-')) {  // "+-1"
     throw ConfigError("Key '" + key + "': invalid double value '" + val + "'");
   }
   double res = 0.0;

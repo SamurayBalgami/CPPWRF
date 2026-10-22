@@ -173,6 +173,7 @@ str_val = hello world
 int_val = -42
 int_pos = +100
 int_bad = 12abc
+int_plus_minus = +-5
 dbl_val = 3.14159
 dbl_sci = -2.5e-3
 dbl_bad = 12.3.4
@@ -203,6 +204,7 @@ empty_val =
   ASSERT_EQ(cfg.get_int("test.int_pos"), 100LL);
   ASSERT_EQ(cfg.get_int("missing.key", 99LL), 99LL);
   ASSERT_THROWS_CONTAINS(cfg.get_int("test.int_bad"), ConfigError, "test.int_bad");
+  ASSERT_THROWS_CONTAINS(cfg.get_int("test.int_plus_minus"), ConfigError, "test.int_plus_minus");
   ASSERT_THROWS_CONTAINS(cfg.get_int("test.dbl_val"), ConfigError, "test.dbl_val");
   ASSERT_THROWS_CONTAINS(cfg.get_int("test.empty_val"), ConfigError, "test.empty_val");
   ASSERT_THROWS_CONTAINS(cfg.get_int("missing.key"), ConfigError, "missing.key");
@@ -212,6 +214,7 @@ empty_val =
   ASSERT_EQ(cfg.get_double("test.dbl_sci"), -2.5e-3);
   ASSERT_EQ(cfg.get_double("missing.key", 1.23), 1.23);
   ASSERT_THROWS_CONTAINS(cfg.get_double("test.dbl_bad"), ConfigError, "test.dbl_bad");
+  ASSERT_THROWS_CONTAINS(cfg.get_double("test.int_plus_minus"), ConfigError, "test.int_plus_minus");
   ASSERT_THROWS_CONTAINS(cfg.get_double("test.str_val"), ConfigError, "test.str_val");
   ASSERT_THROWS_CONTAINS(cfg.get_double("test.empty_val"), ConfigError, "test.empty_val");
   ASSERT_THROWS_CONTAINS(cfg.get_double("missing.key"), ConfigError, "missing.key");
