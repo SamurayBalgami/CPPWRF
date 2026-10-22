@@ -1178,6 +1178,11 @@ class WrfTranslator:
                 elif sstu == 1:
                     if self.get_opt("time_control", "io_form_auxinput4", 0) == 0:
                         self.error("WRF sst_update = 1 needs io_form_auxinput4 /= 0 (as WRF).")
+                    for k in ("auxinput4_interval_s", "auxinput4_interval_h", "auxinput4_interval_d", "auxinput4_interval_y",
+                              "auxinput4_begin_s", "auxinput4_begin_m", "auxinput4_begin_h", "auxinput4_begin_d",
+                              "auxinput4_begin_y", "auxinput4_interval_m"):
+                        if self.get_opt("time_control", k, 0) not in (0, None):  # only the minutes interval
+                            self.error(f"WRF {k} is not supported; CPPWRF reads auxinput4_interval (minutes).")
                     iv = self.get_opt("time_control", "auxinput4_interval", 0)
                     if not iv:
                         self.error("WRF sst_update = 1 needs auxinput4_interval (minutes).")

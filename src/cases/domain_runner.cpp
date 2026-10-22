@@ -642,11 +642,12 @@ void DomainRunner::before_step(long n) {
   if (m_.before_step) m_.before_step(n);
 #ifdef CPPWRF_HAVE_NETCDF
   // sst_update: med_before_solve_io reads auxinput4 after the history output, every auxinput4_interval
-  // (minutes) from the start
+  // (minutes); WRF's alarm counts from the run's start, i.e. the restart time of a resumed run
   if (m_.suite && m_.suite->options().sst_update == 1) {
     const double t = double(n - 1) * m_.g.dt;
+    const double tr = double(n - 1 - start_step) * m_.g.dt;
     const double iv = cfg_.get_double("phys.auxinput4_interval", 360.0) * 60.0;
-    if (iv > 0 && std::fabs(t - iv * std::round(t / iv)) < 1e-6) {
+    if (iv > 0 && std::fabs(tr - iv * std::round(tr / iv)) < 1e-6) {
       const std::string wi = cfg_.get_string("real.wrfinput", "wrfinput_d01");
       std::string lw = wi;
       if (lw.rfind("wrfinput", 0) == 0) lw.replace(0, 8, "wrflowinp");
