@@ -91,7 +91,7 @@ for kind in ("wrfout", "wrfrst"):  # history frames, then restart files (both st
         if not w and not cw:
             continue
         A, B = load(cw), load(w)
-        bad = {}
+        bad, nframes = {}, {}
         for k in sorted(set(A) & set(B)):
             (a, ta), (b, tb) = A[k], B[k]
             for v in b.variables:
@@ -104,12 +104,17 @@ for kind in ("wrfout", "wrfrst"):  # history frames, then restart files (both st
                     continue
                 dd = np.abs(x - y)
                 dd[np.isnan(x) & np.isnan(y)] = 0
+                if dd.max() > 0:
+                    nframes[v] = nframes.get(v, 0) + 1
                 if dd.max() > 0 and v not in bad:
                     im = int(np.nanargmax(dd))
                     bad[v] = f"{k} {(dd > 0).sum()}/{dd.max():.2e} (cppwrf {x.flat[im]:.6g} wrf {y.flat[im]:.6g} at {im})"
         only = ""
         if set(A) != set(B):  # times written by one model only
             only = f" only-cppwrf {sorted(set(A) - set(B))} only-wrf {sorted(set(B) - set(A))}"
+        for v in bad:
+            if nframes.get(v, 0) > 1:
+                bad[v] += f" [{nframes[v]} frames]"
         tag = d if kind == "wrfout" else f"{d} {kind}"
         print(f"{name} {tag} frames {len(set(A) & set(B))}{only} differing: {bad if bad else 'none'}", flush=True)
 subprocess.run(["rm", "-rf", out] + glob.glob(os.path.join(R, "wrfout_*")) + glob.glob(os.path.join(R, "wrfrst_*")))
