@@ -486,7 +486,7 @@ void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
 }
 
 void PhysicsSuite::part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) {
-  const CouplingFlags f{radiation_on(), true, o_.cu_physics, o_.use_theta_m == 1};
+  const CouplingFlags f{radiation_on(), o_.bl_pbl_physics > 0, o_.cu_physics, o_.use_theta_m == 1};
   calculate_phy_tend(pt, s, b, g_, f);
   update_phy_ten(t, pt, s, g_, f);
   if (o_.use_theta_m == 1) {
@@ -506,7 +506,7 @@ void PhysicsSuite::part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
 
 void PhysicsSuite::after_rk(const dyn::State& s, const dyn::BaseState& b) {
   advance_ppt(s);
-  phy_prep_part2(pt, s, b, g_, CouplingFlags{radiation_on(), true, o_.cu_physics, o_.use_theta_m == 1});
+  phy_prep_part2(pt, s, b, g_, CouplingFlags{radiation_on(), o_.bl_pbl_physics > 0, o_.cu_physics, o_.use_theta_m == 1});
 }
 
 std::vector<const Field2*> PhysicsSuite::fields2() const {
