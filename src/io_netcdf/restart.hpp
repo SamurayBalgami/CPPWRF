@@ -16,13 +16,14 @@ struct RestartMeta {
   std::string date_str = "0001-01-01_00:00:00";
 };
 
-// Writes a restart file containing all prognostic fields (*_1 and *_2, plus scalars)
-// to a NetCDF file with exact precision (NC_FLOAT for F32, NC_DOUBLE for F64).
+// CPPWRF's own restart file (restart_NNNNNN.nc; WRF's wrfrst_d0N files are WrfHistory::write_restart):
+// the given fields (the caller's list of state and carried physics fields) at their exact precision
+// (NC_FLOAT for F32, NC_DOUBLE for F64).
 void write_restart(const std::string& path, const RestartMeta& meta,
                    const std::vector<VarView>& vars);
 
-// Reads a restart file. Fills meta and populates data into the provided vars buffers.
-// The provided vars must have their data pointers pre-allocated to receive the data.
+// Reads such a file: fills meta and every given field into its pre-allocated buffer; a field missing from
+// the file or of another size is an error.
 void read_restart(const std::string& path, RestartMeta& meta,
                   std::vector<VarView>& vars);
 

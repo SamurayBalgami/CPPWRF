@@ -4,7 +4,7 @@
 #include <netcdf.h>
 #include <stdexcept>
 #include <string>
-#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace cppwrf::io_netcdf {
@@ -27,46 +27,11 @@ struct VarView {
   const void* data = nullptr; // pointer to host memory (contiguous or strided)
   DType dtype = DType::F32;
   std::ptrdiff_t sj = 0, sk = 0; // element strides for j and k; i stride is always 1
-  std::string description;
-  std::string units;
 
   VarView() = default;
   VarView(std::string n, char stag, int x, int y, int z, const void* d, DType dt,
-          std::ptrdiff_t s_j = 0, std::ptrdiff_t s_k = 0, std::string desc = "", std::string u = "")
-      : name(std::move(n)), stagger(stag), nx(x), ny(y), nz(z), data(d), dtype(dt),
-        sj(s_j), sk(s_k), description(std::move(desc)), units(std::move(u)) {}
-};
-
-struct WrfoutMeta {
-  int nx = 0, ny = 0, nz = 0;
-  double dx = 0.0, dy = 0.0, dt = 0.0;
-  double ztop = 0.0, p_top = 0.0;
-  int map_proj = 0; // 0 = Cartesian, 1 = Lambert Conformal, etc.
-  double cen_lat = 0.0, cen_lon = 0.0;
-  double truelat1 = 0.0, truelat2 = 0.0;
-  double moad_cen_lat = 0.0, stand_lon = 0.0;
-  double pole_lat = 90.0, pole_lon = 0.0;
-  std::string start_date = "2000-01-01_00:00:00";
-  std::string simulation_start_date = "2000-01-01_00:00:00";
-  // physics/dynamics params
-  int diff_opt = 1;
-  int km_opt = 1;
-  int damp_opt = 0;
-  double dampcoef = 0.0;
-  double khdif = 0.0;
-  double kvdif = 0.0;
-  int mp_physics = 0;
-  int ra_lw_physics = 0;
-  int ra_sw_physics = 0;
-  int sf_sfclay_physics = 0;
-  int sf_surface_physics = 0;
-  int bl_pbl_physics = 0;
-  int cu_physics = 0;
-  int hybrid_opt = 0;
-  int hypsometric_opt = 1;
-  int use_theta_m = 0;  // 1 when the prognostic temperature is theta_m (moist runs)
-  double etac = 0.2;
-  bool is_restart = false;
+          std::ptrdiff_t s_j = 0, std::ptrdiff_t s_k = 0)
+      : name(std::move(n)), stagger(stag), nx(x), ny(y), nz(z), data(d), dtype(dt), sj(s_j), sk(s_k) {}
 };
 
 class ScopedNcFile {
@@ -84,7 +49,6 @@ class ScopedNcFile {
     }
     return *this;
   }
-  int get() const { return id_; }
   operator int() const { return id_; }
   int* ptr() { return &id_; }
   void close() {
