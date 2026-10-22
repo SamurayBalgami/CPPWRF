@@ -49,61 +49,60 @@ bool read_landuse_table(const std::string& filepath,
     return false;
   }
 
-  const std::string target = to_upper(trim(dataset_name));
+  // landuse_init (module_physics_init.F): records read in order; a dataset is a name record (list-directed:
+  // first token, compared case-sensitively with MMINLU), LUCATS,LUSEAS, then per season a title record and
+  // LUCATS category records (LC .NE. LI is fatal); other datasets' records are skipped one by one
+  const std::string target = trim(dataset_name);
   std::string line;
-  bool found = false;
-
-  while (std::getline(f, line)) {
-    std::string s = to_upper(trim(line));
-    if (s.empty()) continue;
-    if (s == target) {
-      found = true;
-      break;
-    }
-  }
-
-  if (!found) {
-    std::cerr << "LANDUSE dataset '" << dataset_name << "' not found in " << filepath << "\n";
+  auto next_nonblank = [&](std::string& out) {  // list-directed reads skip blank records
+    while (std::getline(f, out))
+      if (!tokenize(out).empty()) return true;
     return false;
-  }
-
-  tables.dataset_name = dataset_name;
-
-  // Header line: LUCATS, LUSEAS, 'ALBD SLMO ...'
-  if (!std::getline(f, line)) return false;
-  auto hdr_tokens = tokenize(line);
-  if (hdr_tokens.size() < 2) return false;
-
-  int n_cats = std::stoi(hdr_tokens[0]);
-  int n_seasons = std::stoi(hdr_tokens[1]);
-
-  tables.n_cats = n_cats;
-  tables.n_seasons = n_seasons;
-
-  for (int s = 0; s < n_seasons; ++s) {
-    // Season name line (e.g. SUMMER, WINTER)
-    if (!std::getline(f, line)) return false;
-
-    for (int c = 1; c <= n_cats; ++c) {
-      if (!std::getline(f, line)) return false;
-      auto tokens = tokenize(line);
-      if (tokens.size() < 8) return false;
-
-      int cat_idx = std::stoi(tokens[0]);
-      if (cat_idx >= kMaxLanduseCats) continue;
-
-      LanduseCategory& cat = tables.categories[s][cat_idx];
-      cat.albd = static_cast<real>(std::stod(tokens[1]));
-      cat.slmo = static_cast<real>(std::stod(tokens[2]));
-      cat.sfem = static_cast<real>(std::stod(tokens[3]));
-      cat.sfz0 = static_cast<real>(std::stod(tokens[4]));
-      cat.therin = static_cast<real>(std::stod(tokens[5]));
-      cat.scfx = static_cast<real>(std::stod(tokens[6]));
-      cat.sfhc = static_cast<real>(std::stod(tokens[7]));
-      if (tokens.size() >= 9) cat.name = tokens[8];
+  };
+  while (next_nonblank(line)) {
+    const std::string lutype = tokenize(line)[0];
+    if (!next_nonblank(line)) break;
+    auto hdr_tokens = tokenize(line);
+    if (hdr_tokens.size() < 2) return false;
+    const int n_cats = std::stoi(hdr_tokens[0]);
+    const int n_seasons = std::stoi(hdr_tokens[1]);
+    const bool found = lutype == target;
+    if (found) {
+      tables.dataset_name = dataset_name;
+      tables.n_cats = n_cats;
+      tables.n_seasons = n_seasons;
     }
+    for (int sn = 0; sn < n_seasons; ++sn) {
+      if (!std::getline(f, line)) return false;  // season title (READ (landuse_unit,*): one record)
+      for (int c = 1; c <= n_cats; ++c) {
+        if (!found) {
+          if (!std::getline(f, line)) return false;
+          continue;
+        }
+        if (!next_nonblank(line)) return false;
+        auto tokens = tokenize(line);
+        if (tokens.size() < 8) return false;
+        const int cat_idx = std::stoi(tokens[0]);
+        if (cat_idx != c) {
+          std::cerr << "module_start: MISSING LANDUSE UNIT (" << filepath << ")\n";
+          return false;
+        }
+        if (cat_idx >= kMaxLanduseCats) continue;
+        LanduseCategory& cat = tables.categories[sn][cat_idx];
+        cat.albd = static_cast<real>(std::stod(tokens[1]));
+        cat.slmo = static_cast<real>(std::stod(tokens[2]));
+        cat.sfem = static_cast<real>(std::stod(tokens[3]));
+        cat.sfz0 = static_cast<real>(std::stod(tokens[4]));
+        cat.therin = static_cast<real>(std::stod(tokens[5]));
+        cat.scfx = static_cast<real>(std::stod(tokens[6]));
+        cat.sfhc = static_cast<real>(std::stod(tokens[7]));
+        if (tokens.size() >= 9) cat.name = tokens[8];
+      }
+    }
+    if (found) return true;
   }
-
+  std::cerr << "LANDUSE dataset '" << dataset_name << "' not found in " << filepath << "\n";
+  return false;
   return true;
 }
 
