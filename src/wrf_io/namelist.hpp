@@ -22,6 +22,7 @@ class Namelist {
   bool get_bool(const std::string& group, const std::string& key, bool def, int dom = 1) const;
   std::string get_str(const std::string& group, const std::string& key, const std::string& def, int dom = 1) const;
   std::vector<std::string> values(const std::string& group, const std::string& key) const;
+  const std::map<std::string, std::map<std::string, std::vector<std::string>>>& groups() const { return g_; }
 
  private:
   std::map<std::string, std::map<std::string, std::vector<std::string>>> g_;  // lower-case names

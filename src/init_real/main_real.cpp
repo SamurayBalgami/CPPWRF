@@ -130,6 +130,13 @@ int main(int argc, char** argv) {
   try {
     const Namelist nl = Namelist::read(nml);
     const WrfSchema sc = WrfSchema::load(schema);
+    // WRF's namelist read stops on more values than a single-entry option holds
+    for (const auto& [grp, keys] : nl.groups())
+      for (const auto& [key, vals] : keys) {
+        auto e = sc.entries().find(key);
+        if (e != sc.entries().end() && e->second == "1" && vals.size() > 1)
+          throw std::runtime_error("real: error while reading namelist " + grp + ": " + key + " takes one value");
+      }
     const RealOptions o1 = RealOptions::from_namelist(nl, sc, 1);
     if (o1.interval_seconds <= 0) throw std::runtime_error("real: namelist value for interval_seconds must be > 0");
     for (int id = 1; id <= o1.max_dom; ++id) {
