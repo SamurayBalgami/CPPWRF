@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from wrf_max_domains import MAX_DOMAINS_DEFAULTS  # noqa: E402
+from wrf_namelist_options import WRF_NAMELIST_OPTIONS  # noqa: E402
 
 
 # -----------------------------------------------------------------------------
@@ -996,10 +997,8 @@ class WrfTranslator:
         elif has_physics_suite or (scalar_adv_opt != 0 and case_name in ("quarter_ss",)):
             sections["dyn"]["scalar_adv_opt"] = scalar_adv_opt if scalar_adv_opt != 0 else 1
 
-        # WRF's prandtl is the constant 1./3. of module_model_constants.F, not a namelist option
-        if self.has_opt("dynamics", "prandtl"):
-            self.error("WRF has no &dynamics prandtl option (wrf.exe stops reading the namelist); "
-                       "its Prandtl number is the constant 1/3.")
+        # WRF's prandtl is the constant 1./3. of module_model_constants.F, not a namelist option (an
+        # &dynamics prandtl is rejected with the other options WRF does not have, below)
         if case_name in ("straka", "quarter_ss"):
             sections["dyn"]["pr_inv"] = 3.0
 
@@ -1763,9 +1762,14 @@ class WrfTranslator:
                         sections[tag]["time_step_sound"] = tss_d
 
         # 15. Check for unused / ignored options
+        wrf_groups = {g for g, _ in WRF_NAMELIST_OPTIONS}  # a group WRF does not read is not checked (WRF skips it)
         for grp_name, grp_dict in self.nml.items():
             for key_name, vals in grp_dict.items():
-                if (grp_name, key_name) not in self.used_keys:
+                if grp_name in wrf_groups and (grp_name, key_name) not in WRF_NAMELIST_OPTIONS:
+                    # module_io: a namelist read error ("ERROR reading namelist ...") is fatal in wrf.exe
+                    self.error(f"&{grp_name}.{key_name} is not a WRF 4.8.0 namelist option (wrf.exe stops reading "
+                               f"the namelist).")
+                elif (grp_name, key_name) not in self.used_keys:
                     if key_name in IGNORED_WRF_OPTIONS:
                         self.notice(f"Option &{grp_name}.{key_name} = {vals[0] if vals else None}: {IGNORED_WRF_OPTIONS[key_name]}")
                     else:
