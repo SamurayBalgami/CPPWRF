@@ -83,27 +83,33 @@ def load(files):
     return m
 
 
-for d in ("d01", "d02", "d03"):
-    w = glob.glob(os.path.join(R, f"wrfout_{d}_*"))
-    if not w:
-        continue
-    cdir = os.path.join(out, d) if os.path.isdir(os.path.join(out, d)) else out
-    A, B = load(glob.glob(os.path.join(cdir, f"wrfout_{d}_*"))), load(w)
-    bad = {}
-    for k in sorted(set(A) & set(B)):
-        (a, ta), (b, tb) = A[k], B[k]
-        for v in b.variables:
-            if v not in a.variables or b[v].dtype.kind == "S" or "Time" not in b[v].dimensions:
-                continue
-            x = np.atleast_1d(np.asarray(a[v][ta], float))
-            y = np.atleast_1d(np.asarray(b[v][tb], float))
-            if x.shape != y.shape:
-                bad.setdefault(v, "shape")
-                continue
-            dd = np.abs(x - y)
-            dd[np.isnan(x) & np.isnan(y)] = 0
-            if dd.max() > 0 and v not in bad:
-                im = int(np.nanargmax(dd))
-                bad[v] = f"{k} {(dd > 0).sum()}/{dd.max():.2e} (cppwrf {x.flat[im]:.6g} wrf {y.flat[im]:.6g} at {im})"
-    print(f"{name} {d} frames {len(set(A) & set(B))} differing: {bad if bad else 'none'}", flush=True)
-subprocess.run(["rm", "-rf", out] + glob.glob(os.path.join(R, "wrfout_*")))
+for kind in ("wrfout", "wrfrst"):  # history frames, then restart files (both streams' common variables)
+    for d in ("d01", "d02", "d03"):
+        w = glob.glob(os.path.join(R, f"{kind}_{d}_*"))
+        cdir = os.path.join(out, d) if os.path.isdir(os.path.join(out, d)) else out
+        cw = glob.glob(os.path.join(cdir, f"{kind}_{d}_*"))
+        if not w and not cw:
+            continue
+        A, B = load(cw), load(w)
+        bad = {}
+        for k in sorted(set(A) & set(B)):
+            (a, ta), (b, tb) = A[k], B[k]
+            for v in b.variables:
+                if v not in a.variables or b[v].dtype.kind == "S" or "Time" not in b[v].dimensions:
+                    continue
+                x = np.atleast_1d(np.asarray(a[v][ta], float))
+                y = np.atleast_1d(np.asarray(b[v][tb], float))
+                if x.shape != y.shape:
+                    bad.setdefault(v, "shape")
+                    continue
+                dd = np.abs(x - y)
+                dd[np.isnan(x) & np.isnan(y)] = 0
+                if dd.max() > 0 and v not in bad:
+                    im = int(np.nanargmax(dd))
+                    bad[v] = f"{k} {(dd > 0).sum()}/{dd.max():.2e} (cppwrf {x.flat[im]:.6g} wrf {y.flat[im]:.6g} at {im})"
+        only = ""
+        if set(A) != set(B):  # times written by one model only
+            only = f" only-cppwrf {sorted(set(A) - set(B))} only-wrf {sorted(set(B) - set(A))}"
+        tag = d if kind == "wrfout" else f"{d} {kind}"
+        print(f"{name} {tag} frames {len(set(A) & set(B))}{only} differing: {bad if bad else 'none'}", flush=True)
+subprocess.run(["rm", "-rf", out] + glob.glob(os.path.join(R, "wrfout_*")) + glob.glob(os.path.join(R, "wrfrst_*")))
