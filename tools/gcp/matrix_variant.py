@@ -100,7 +100,10 @@ for kind in ("wrfout", "wrfrst"):  # history frames, then restart files (both st
                 x = np.atleast_1d(np.asarray(a[v][ta], float))
                 y = np.atleast_1d(np.asarray(b[v][tb], float))
                 if x.shape != y.shape:
-                    bad.setdefault(v, "shape")
+                    if v not in bad:  # WRF's values per leading index (e.g. soil layers)
+                        yl = y.reshape(y.shape[0], -1) if y.ndim > 1 else y.reshape(-1, 1)
+                        bad[v] = f"shape cppwrf {x.shape} wrf {y.shape} wrf min/max per level " + \
+                                 " ".join(f"{r.min():.4g}/{r.max():.4g}" for r in yl)
                     continue
                 dd = np.abs(x - y)
                 dd[np.isnan(x) & np.isnan(y)] = 0
