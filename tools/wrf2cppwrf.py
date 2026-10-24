@@ -1271,6 +1271,15 @@ class WrfTranslator:
                         self.error(f"WRF icloud_bl = {icb} is not supported (0 or 1).")
                     elif icb != 1:
                         sections["phys"]["icloud_bl"] = icb
+                if bl_pbl == 1 and sf_sfclay != 1:
+                    self.error("WRF bl_pbl_physics = 1 (YSU) needs sf_sfclay_physics = 1 (module_physics_init: "
+                               "'Use sf_sfclay_physics= 1 or 91 for this pbl option').")
+                # module_pbl_driver: scalar_pblmix > 0 mixes the 4-D scalars (Thompson's QNI, QNR) with exch_h in
+                # diff4d after the PBL scheme (not ported; Kessler and WSM6 have no scalars); MYNN turns it off (check_a_mundo)
+                scalar_pblmix = self.get_opt_list("physics", "scalar_pblmix")
+                if bl_pbl not in (0, 5) and mp_physics not in (0, 1, 6) and any(v not in (0, None) for v in scalar_pblmix):
+                    self.error("WRF scalar_pblmix = 1 (PBL mixing of the number concentrations with diff4d) is not "
+                               "supported by CPPWRF.")
                 self.check_supported("sf_sfclay_physics", sf_sfclay)
                 self.check_supported("sf_surface_physics", sf_surface)
                 self.check_supported("bl_pbl_physics", bl_pbl)
