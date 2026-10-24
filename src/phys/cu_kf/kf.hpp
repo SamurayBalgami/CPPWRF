@@ -889,7 +889,7 @@ struct KFKernel {
             }
         }
 
-        int ml = 0;
+        int ml = -1;  // WRF ML = 0: no level up to LTOP warmer than T00
         for (int nk = 0; nk <= ltop; ++nk) {
             if (t0[nk] > t00) ml = nk;
         }
