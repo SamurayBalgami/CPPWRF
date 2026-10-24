@@ -383,6 +383,7 @@ DEFAULT_ONLY_OPTIONS = {
     ("physics", "windfarm_opt"): (0, "wind farm parameterisation"),
     ("physics", "sf_surf_irr_scheme"): (0, "irrigation"),
     ("physics", "do_radar_ref"): (0, "radar reflectivity diagnostic (REFL_10CM)"),
+    ("physics", "kf_edrates"): (0, "KF entrainment / detrainment rate outputs (UDR_KF, DDR_KF, UER_KF, DER_KF, TIMEC_KF)"),
     ("fdda", "grid_fdda"): (0, "grid nudging"),
     ("fdda", "grid_sfdda"): (0, "surface grid nudging"),
     ("fdda", "obs_nudge_opt"): (0, "observation nudging"),
