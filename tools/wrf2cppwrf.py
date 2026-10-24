@@ -1258,6 +1258,13 @@ class WrfTranslator:
                                    "WRF passes the MYNN-EDMF an uninitialised snow content otherwise.")
                     if bl_pbl == 5 and (self.get_opt("physics", "ishallow", 0) > 0 or self.get_opt("physics", "shcu_physics", 0) > 0):
                         self.error("WRF bl_mynn_edmf > 0 requires shcu_physics = 0 and ishallow = 0.")
+                # module_physics_init.F pbl_select: YSU needs isfc = 1 (sfclay), MYJ isfc = 2 (myjsfc)
+                if bl_pbl == 1 and sf_sfclay != 1:
+                    self.error("WRF bl_pbl_physics = 1 (YSU) needs sf_sfclay_physics = 1 "
+                               "(module_physics_init: use sfclay scheme for this pbl option).")
+                if bl_pbl == 2 and sf_sfclay != 2:
+                    self.error("WRF bl_pbl_physics = 2 (MYJ) needs sf_sfclay_physics = 2 "
+                               "(module_physics_init: use myjsfc scheme for this pbl option).")
                 if bl_pbl == 5:
                     icb = self.get_opt("physics", "icloud_bl", 1)
                     if icb not in (0, 1):

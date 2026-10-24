@@ -100,6 +100,11 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   // module_physics_init: MYNNPBLSCHEME needs mynnsfc, sfclay or myjsfc; only mynnsfc is ported with it
   if (o.bl_pbl_physics == 5 && o.sf_sfclay_physics != 5)
     throw std::runtime_error("PhysicsSuite: bl_pbl_physics=5 is ported with sf_sfclay_physics=5 only");
+  // module_physics_init.F pbl_select: YSU stops unless isfc = 1 (sfclay), MYJ unless isfc = 2 (myjsfc)
+  if (o.bl_pbl_physics == 1 && o.sf_sfclay_physics != 1)
+    throw std::runtime_error("PhysicsSuite: bl_pbl_physics=1 (YSU) needs sf_sfclay_physics=1, as WRF");
+  if (o.bl_pbl_physics == 2 && o.sf_sfclay_physics != 2)
+    throw std::runtime_error("PhysicsSuite: bl_pbl_physics=2 (MYJ) needs sf_sfclay_physics=2, as WRF");
   if (o.sf_sfclay_physics == 5 && o.fractional_seaice == 1)
     throw std::runtime_error("PhysicsSuite: sf_sfclay_physics=5 with fractional_seaice=1 (MYNN_SEAICE_WRAPPER) is not ported");
   if (o.cu_physics != 0 && o.cu_physics != 1 && o.cu_physics != 3 && o.cu_physics != 6 && o.cu_physics != 16)

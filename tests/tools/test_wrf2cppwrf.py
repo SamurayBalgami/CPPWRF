@@ -652,7 +652,11 @@ class TestValidationAndWarnings(unittest.TestCase):
                 ("&physics physics_suite = 'arctic' /", "not recognized"),
                 ("&dynamics gwd_opt = 3 /", "gwd_opt = 3"),
                 ("&physics sf_sfclay_physics = 1, sf_surface_physics = 2, fractional_seaice = 2 /",
-                 "fractional_seaice = 2")]:
+                 "fractional_seaice = 2"),
+                ("&physics sf_sfclay_physics = 1, sf_surface_physics = 2, bl_pbl_physics = 2 /",
+                 "use myjsfc scheme"),
+                ("&physics sf_sfclay_physics = 2, sf_surface_physics = 2, bl_pbl_physics = 1 /",
+                 "use sfclay scheme")]:
             t = WrfTranslator(parse_namelist(f"&time_control /\n&domains time_step = 60 /\n{fragment}\n"))
             t.translate()
             self.assertIn(expected_err, " ".join(t.errors), fragment)

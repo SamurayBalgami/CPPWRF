@@ -643,29 +643,29 @@ struct MYJPBLKernel {
     int lowlyr_val = lowlyr(i, j);
     int lmh = nz - lowlyr_val + 1;
 
-    // Local column arrays (1-indexed matching Fortran: 1 to nz)
-    real tk[kMaxLevels];
-    real thek[kMaxLevels];
-    real qk[kMaxLevels];
-    real cwmk[kMaxLevels];
-    real qcwk[kMaxLevels];
-    real qcik[kMaxLevels];
-    real uk[kMaxLevels];
-    real vk[kMaxLevels];
-    real q2k[kMaxLevels];
-    real zhk[kMaxLevels + 1];
+    // Local column arrays (1-indexed matching Fortran: 1 to nz, zhk 1 to nz+1)
+    real tk[kMaxLevels + 1];
+    real thek[kMaxLevels + 1];
+    real qk[kMaxLevels + 1];
+    real cwmk[kMaxLevels + 1];
+    real qcwk[kMaxLevels + 1];
+    real qcik[kMaxLevels + 1];
+    real uk[kMaxLevels + 1];
+    real vk[kMaxLevels + 1];
+    real q2k[kMaxLevels + 1];
+    real zhk[kMaxLevels + 2];
 
     // Tridiagonal and level-2.5 workspace buffers (shared across MIXLEN, VDIFQ, VDIFH, VDIFV)
-    real cm[kMaxLevels];
-    real cr[kMaxLevels];
-    real dtoz[kMaxLevels];
+    real cm[kMaxLevels + 1];
+    real cr[kMaxLevels + 1];
+    real dtoz[kMaxLevels + 1];
 
-    real gm[kMaxLevels];
-    real gh[kMaxLevels];
-    real el[kMaxLevels];
-    real rhok[kMaxLevels];
-    real akhk[kMaxLevels];
-    real akmk[kMaxLevels];
+    real gm[kMaxLevels + 1];
+    real gh[kMaxLevels + 1];
+    real el[kMaxLevels + 1];
+    real rhok[kMaxLevels + 1];
+    real akhk[kMaxLevels + 1];
+    real akmk[kMaxLevels + 1];
 
     // Interface heights (module_bl_myjpbl.F:312-328, 381-384)
     zhk[nz + 1] = ht(i, j);
