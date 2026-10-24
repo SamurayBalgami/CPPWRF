@@ -207,7 +207,7 @@ struct MYJSFCKernel {
     real seamask = xland(i, j) - real(1.);
 
     // Layer interface heights ZHK (module_sf_myjsfc.F:165-184, 250-253)
-    real zhk[kMaxLevels + 1];
+    real zhk[kMaxLevels + 2];  // 1..nz+1
     zhk[nz + 1] = ht(i, j);
     for (int k_f = nz; k_f >= 1; --k_f) {
       int k_wrf = nz - k_f;
