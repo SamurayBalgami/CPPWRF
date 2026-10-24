@@ -1087,6 +1087,11 @@ class WrfTranslator:
         gwd_opt = self.get_opt("dynamics", "gwd_opt", 0)
         if gwd_opt not in (0, 1):
             self.error(f"WRF gwd_opt = {gwd_opt} is not supported; CPPWRF supports 0 and 1 (GWDO).")
+        for d in range(1, self._max_dom):  # module_check_a_mundo.F: a nest has domain 1's gwd_opt or 0
+            gwd_d = self.get_dom_opt("dynamics", "gwd_opt", d, 0)
+            if gwd_d != gwd_opt and gwd_d != 0:
+                self.error(f"WRF gwd_opt must be equal for all domains (or = zero): domain {d + 1} has gwd_opt = "
+                           f"{gwd_d}, domain 1 {gwd_opt}.")
 
         chem_adv = self.get_opt("dynamics", "chem_adv_opt", 0)
         if chem_adv != 0:

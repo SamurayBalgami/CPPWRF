@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <stdexcept>
 
+#include "phys/bl_gwdo/gwdo.hpp"
 #include "phys/bl_myj/myjpbl.hpp"
 #include "phys/bl_mynn/mynnedmf.hpp"
 #include "phys/bl_ysu/ysu.hpp"
@@ -144,6 +145,10 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
     throw std::runtime_error("PhysicsSuite: nz exceeds the MYJ column limit");
   if (o.sf_sfclay_physics == 2 && g.nz > sf_myjsfc::kMaxLevels)
     throw std::runtime_error("PhysicsSuite: nz exceeds the MYJSFC column limit");
+  if (o.gwd_opt != 0 && o.gwd_opt != 1)
+    throw std::runtime_error("PhysicsSuite: only gwd_opt=0 or 1 (GWDO)");
+  if (o.gwd_opt == 1 && g.nz > bl_gwdo::kMaxLevels)
+    throw std::runtime_error("PhysicsSuite: nz exceeds the GWDO column limit");
   if (o.cu_physics == 1 && g.nz > cu_kf::kMaxLevels)
     throw std::runtime_error("PhysicsSuite: nz exceeds the KF column limit");
   gs_.nz = o.num_soil_layers;

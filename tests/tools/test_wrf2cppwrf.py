@@ -657,6 +657,16 @@ class TestValidationAndWarnings(unittest.TestCase):
             t.translate()
             self.assertIn(expected_err, " ".join(t.errors), fragment)
 
+    def test_nest_gwd_opt_equal_or_zero(self):
+        """check_a_mundo: a nest's gwd_opt is domain 1's or 0."""
+        doms = ("&domains time_step = 60, max_dom = 2, e_we = 100, 61, e_sn = 100, 61, e_vert = 45, 45,"
+                " parent_id = 0, 1, i_parent_start = 1, 30, j_parent_start = 1, 30,"
+                " parent_grid_ratio = 1, 3, parent_time_step_ratio = 1, 3 /\n")
+        for gwd, bad in (("0, 1", True), ("1, 0", False), ("1", False), ("1, 1", False)):
+            t = WrfTranslator(parse_namelist(f"&time_control /\n{doms}&dynamics gwd_opt = {gwd} /\n"))
+            t.translate()
+            self.assertEqual(any("gwd_opt must be equal for all domains" in e for e in t.errors), bad, gwd)
+
     def test_unsupported_physics_and_dynamics_errors(self):
         cases = [
             ("&physics cu_physics = 1, ishallow = 1 /", "ishallow = 1 requires cu_physics = 3"),
