@@ -233,7 +233,7 @@ int main(int argc, char** argv) {
       v_utnp, v_vtnp, v_ttnp, v_qvtnp, v_qctnp, v_qitnp, v_exch_hx, v_exch_mx,
       v_hpbl, v_kpbl1d, v_wstar, v_delta, v_dusfc, v_dvsfc, v_dtsfc, v_dqsfc,
       real(dt_in), range, nz,
-      f_qc, f_qi, ysu_topdown_pblmix, /*have_ctopo=*/true, true,
+      f_qc, f_qi, ysu_topdown_pblmix, true,
       real(cp), real(g), real(rovcp), real(rd), real(rovg),
       real(ep1), real(ep2), real(karman), real(xlv), real(rv));
   dev_sync();
@@ -248,7 +248,7 @@ int main(int argc, char** argv) {
           v_utnp, v_vtnp, v_ttnp, v_qvtnp, v_qctnp, v_qitnp, v_exch_hx, v_exch_mx,
           v_hpbl, v_kpbl1d, v_wstar, v_delta, v_dusfc, v_dvsfc, v_dtsfc, v_dqsfc,
           real(dt_in), range, nz,
-          f_qc, f_qi, ysu_topdown_pblmix, /*have_ctopo=*/true, true,
+          f_qc, f_qi, ysu_topdown_pblmix, true,
           real(cp), real(g), real(rovcp), real(rd), real(rovg),
           real(ep1), real(ep2), real(karman), real(xlv), real(rv));
     }

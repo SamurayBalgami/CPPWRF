@@ -188,7 +188,7 @@ void PhysicsSuite::pbl_driver(const dyn::State& s, const dyn::BaseState& b) {
                  pt.rthblten.view(), pt.rqvblten.view(), pt.rqcblten.view(), pt.rqiblten.view(), exch_h.view(),
                  exch_m.view(), pblh.view(), kpbl.view(), wstar.view(), delta.view(), hol.view(), hol.view(),
                  hol.view(), hol.view(), dtbl, cols, g_.nz, flag_qc, flag_qi, o_.ysu_topdown_pblmix == 1,
-                 /*have_ctopo=*/true, /*have_surface_diag=*/false, cp, g, rcp, r_d, rovg, ep_1, ep_2, karman,
+                 /*have_surface_diag=*/false, cp, g, rcp, r_d, rovg, ep_1, ep_2, karman,
                  xlv, r_v);
   } else if (o_.bl_pbl_physics == 2) {
     // MYJPBL (module_pbl_driver.F:1447-1466: DT=dt, STEPBL=stepbl, PMID=p_phy, PINT=p8w, QCI=qi_curr always PRESENT)

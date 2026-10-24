@@ -52,7 +52,6 @@ void run_ysu(
     bool f_qc,
     bool f_qi,
     bool ysu_topdown_pblmix,
-    bool have_ctopo,
     bool have_surface_diag,
     real cp,
     real g,
@@ -72,7 +71,7 @@ void run_ysu(
       u10, v10, uox, vox, ctopo, ctopo2,
       utnp, vtnp, ttnp, qvtnp, qctnp, qitnp, exch_hx, exch_mx,
       hpbl, kpbl1d, wstar, delta, dusfc, dvsfc, dtsfc, dqsfc,
-      dt, nz, f_qc, f_qi, ysu_topdown_pblmix, have_ctopo, have_surface_diag,
+      dt, nz, f_qc, f_qi, ysu_topdown_pblmix, have_surface_diag,
       cp, g, rovcp, rd, rovg, ep1, ep2, karman, xlv, rv};
 
   if (nz <= 48) {

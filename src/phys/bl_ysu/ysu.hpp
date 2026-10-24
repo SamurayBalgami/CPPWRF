@@ -126,6 +126,8 @@ CPPWRF_HD inline void get_pblh(
 
   T delt_thv = ((landsea - static_cast<T>(1.5)) >= static_cast<T>(0.0)) ? static_cast<T>(0.75) : static_cast<T>(1.5);
 
+  // bl_ysu.F90 get_pblh: the exit safeguard "if (k .eq. kte-1) zi = zw1d(kts+1)" (0-based k == nz-2) replaces
+  // also a height found at that pass
   zi = static_cast<T>(0.0);
   k = kthv + 1;
   while (zi == static_cast<T>(0.0) && k < nz) {
@@ -134,9 +136,7 @@ CPPWRF_HD inline void get_pblh(
            min((thetav1d[k] - (minthv + delt_thv)) / max(thetav1d[k] - thetav1d[k - 1], static_cast<T>(1e-6)), static_cast<T>(1.0));
     }
     k++;
-    if (k == nz - 1 && zi == static_cast<T>(0.0)) {
-      zi = zw1d[1];
-    }
+    if (k == nz - 2) zi = zw1d[1];
   }
   if (zi == static_cast<T>(0.0)) zi = zw1d[1];
 
@@ -151,9 +151,7 @@ CPPWRF_HD inline void get_pblh(
       pblh_tke = max(pblh_tke, zw1d[1]);
     }
     k++;
-    if (k == nz - 1 && pblh_tke == static_cast<T>(0.0)) {
-      pblh_tke = zw1d[1];
-    }
+    if (k == nz - 2) pblh_tke = zw1d[1];
   }
   if (pblh_tke == static_cast<T>(0.0)) pblh_tke = zw1d[1];
 
@@ -219,7 +217,6 @@ struct YSUKernel {
   bool f_qc;
   bool f_qi;
   bool ysu_topdown_pblmix;
-  bool have_ctopo;
   bool have_surface_diag;
 
   real cp;
@@ -964,13 +961,10 @@ struct YSUKernel {
     real wspd_ratio = (wspd1 / wspd(i, j));
     real fric = ust(i, j) * ust(i, j) / wspd1 * rhox * g / del[0] * dt2 * (wspd_ratio * wspd_ratio);
 
-    if (have_ctopo) {
-      real vconvnew = real(0.9) * vconvfx + real(1.5) * (max((pblh_ysu - real(500.0)) / real(1000.0), real(0.0)));
-      real vconvlim = min(vconvnew, real(1.0));
-      ad[0] = real(1.0) + fric * vconvlim + ctopo(i, j) * fric * (real(1.0) - vconvlim);
-    } else {
-      ad[0] = real(1.0) + fric;
-    }
+    // module_bl_ysu.F always passes ctopo and ctopo2 (present() is true in bl_ysu_run)
+    real vconvnew = real(0.9) * vconvfx + real(1.5) * (max((pblh_ysu - real(500.0)) / real(1000.0), real(0.0)));
+    real vconvlim = min(vconvnew, real(1.0));
+    ad[0] = real(1.0) + fric * vconvlim + ctopo(i, j) * fric * (real(1.0) - vconvlim);
 
     f1[0] = ux(i, j, 0) + uoxl * (ust(i, j) * ust(i, j)) * rhox * g / del[0] * dt2 / wspd1 * (wspd_ratio * wspd_ratio);
     f2[0] = vx(i, j, 0) + voxl * (ust(i, j) * ust(i, j)) * rhox * g / del[0] * dt2 / wspd1 * (wspd_ratio * wspd_ratio);
@@ -1030,10 +1024,8 @@ struct YSUKernel {
       }
     }
 
-    if (have_ctopo) {
-      u10(i, j) = ctopo2(i, j) * u10(i, j) + (real(1.0) - ctopo2(i, j)) * ux(i, j, 0);
-      v10(i, j) = ctopo2(i, j) * v10(i, j) + (real(1.0) - ctopo2(i, j)) * vx(i, j, 0);
-    }
+    u10(i, j) = ctopo2(i, j) * u10(i, j) + (real(1.0) - ctopo2(i, j)) * ux(i, j, 0);
+    v10(i, j) = ctopo2(i, j) * v10(i, j) + (real(1.0) - ctopo2(i, j)) * vx(i, j, 0);
 
     kpbl1d(i, j) = kpbl + 1;  // Fortran 1-based index
   }
@@ -1095,7 +1087,6 @@ void run_ysu(
     bool f_qc = true,
     bool f_qi = true,
     bool ysu_topdown_pblmix = false,
-    bool have_ctopo = false,
     bool have_surface_diag = true,
     real cp = real(cst::cp),
     real g = real(cst::g),
