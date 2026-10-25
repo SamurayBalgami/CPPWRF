@@ -5,7 +5,8 @@ One WRF-vs-CPPWRF comparison of a namelist variant: the WRF run RUNS/BASE (input
 3 minutes with history every minute and the given namelist changes (key replaced or added in &SECTION), in
 WORK/NAME; CPPWRF runs the configuration tools/wrf2cppwrf.py makes from that namelist; every common variable
 of every common frame (by Times) of each domain's wrfout is compared at tolerance 0. Prints one line:
-NAME d0N frames N differing: none | {VAR: 'time npoints/maxdiff', ...}  (or NAME WRF-FAILED / CPPWRF-FAILED)."""
+NAME d0N frames N differing: none | {VAR: 'time npoints/maxdiff', ...}  (or NAME WRF-FAILED / CPPWRF-FAILED);
+variables only WRF writes are listed as wrf-only-vars."""
 import glob, os, re, subprocess, sys
 import netCDF4
 import numpy as np
@@ -105,10 +106,12 @@ for kind in ("wrfout", "wrfrst"):  # history frames, then restart files (both st
         if not w and not cw:
             continue
         A, B = load(cw), load(w)
-        bad, nframes = {}, {}
+        bad, nframes, wrf_only = {}, {}, set()
         for k in sorted(set(A) & set(B)):
             (a, ta), (b, tb) = A[k], B[k]
             for v in b.variables:
+                if v not in a.variables and b[v].dtype.kind != "S":
+                    wrf_only.add(v)
                 if v not in a.variables or b[v].dtype.kind == "S" or "Time" not in b[v].dimensions:
                     continue
                 x = np.atleast_1d(np.asarray(a[v][ta], float))
@@ -129,6 +132,8 @@ for kind in ("wrfout", "wrfrst"):  # history frames, then restart files (both st
         only = ""
         if set(A) != set(B):  # times written by one model only
             only = f" only-cppwrf {sorted(set(A) - set(B))} only-wrf {sorted(set(B) - set(A))}"
+        if wrf_only:  # variables WRF writes and CPPWRF does not
+            only += f" wrf-only-vars {sorted(wrf_only)}"
         for v in bad:
             if nframes.get(v, 0) > 1:
                 bad[v] += f" [{nframes[v]} frames]"
