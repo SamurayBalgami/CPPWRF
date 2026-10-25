@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <stdexcept>
 
 #include "phys/cu_gfl/gfl_driver.hpp"
 #include "phys/cu_ntiedtke/ntiedtke.hpp"
@@ -328,7 +329,7 @@ struct KAdvancePpt {
   real dt;
   int nz, kde;
   bool flag_qi, flag_qs, kfeta;  // kfeta: CASE (KFETASCHEME); otherwise CASE DEFAULT (accumulation only)
-  CPPWRF_HD static int nint_f(real x) { return int(x + (x >= real(0.) ? real(0.5) : real(-0.5))); }
+  CPPWRF_HD static int nint_f(real x) { return int(std::round(x)); }  // Fortran NINT (lround: half away from 0)
   CPPWRF_HD void operator()(int i, int j) const {
     rainc(i, j) = rainc(i, j) + pratec(i, j) * dt;
     rainsh(i, j) = rainsh(i, j) + pratesh(i, j) * dt;
@@ -540,8 +541,9 @@ int stepave_count = 0;
 // dyn_em/module_convtrans_prep.F convtrans_prep (called in first_rk_step_part1 when cu_diag == 1)
 void PhysicsSuite::convtrans_prep(const dyn::State& s) {
   const int ktau = int(itimestep);
-  int stepave = int(real(o_.convtrans_avglen_m) * real(60.) / real(g_.dt));
-  stepave = std::max(1, stepave);
+  const int stepave = int(real(o_.convtrans_avglen_m) * real(60.) / real(g_.dt));
+  if (stepave < 1)  // WRF: MOD(ktau, stepave) divides by zero
+    throw std::runtime_error("convtrans_prep: convtrans_avglen_m is shorter than the time step");
   const bool avg_end_flag = (ktau % stepave == 0);
   const bool first_period_flag = (ktau <= stepave);
   if (ktau <= 1) stepave_count = 0;

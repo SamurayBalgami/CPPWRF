@@ -1405,6 +1405,17 @@ class WrfTranslator:
                 self.error(f"WRF convtrans_avglen_m = {convtrans} must be > 0.")
             elif float(convtrans) != 30.0:
                 sections.setdefault("phys", {})["convtrans_avglen_m"] = convtrans
+            # convtrans_prep (cu_diag = 1: Grell-Freitas): stepave = convtrans_avglen_m*60./dt, then MOD(ktau, stepave)
+            # divides by zero when stepave is 0 (WRF stops with a floating-point exception)
+            dts = [dt]
+            for d in range(1, max(1, self._max_dom)):
+                pid = self.get_dom_opt("domains", "parent_id", d, d, fallback_d0=False)
+                ratio = self.get_dom_opt("domains", "parent_time_step_ratio", d, 1, fallback_d0=False)
+                dts.append(dts[pid - 1] / float(ratio) if isinstance(pid, int) and 1 <= pid <= d else dt)
+            for d, dt_d in enumerate(dts):
+                if self.get_dom_opt("physics", "cu_physics", d, 0) == 3 and int(float(convtrans) * 60.0 / dt_d) < 1:
+                    self.error(f"WRF convtrans_avglen_m = {convtrans} is shorter than domain {d + 1}'s time step "
+                               f"({dt_d} s): WRF's convtrans_prep divides by zero (MOD(ktau, 0)).")
 
         if self.has_opt("physics", "ysu_topdown_pblmix"):
             ysu_td = self.get_opt("physics", "ysu_topdown_pblmix", 1)
