@@ -382,6 +382,7 @@ DEFAULT_ONLY_OPTIONS = {
     ("physics", "aercu_opt"): (0, "aerosol-aware cumulus"),
     ("physics", "windfarm_opt"): (0, "wind farm parameterisation"),
     ("physics", "sf_surf_irr_scheme"): (0, "irrigation"),
+    ("physics", "distributed_ahe_opt"): (0, "anthropogenic heat (AHE of the urban canopy model)"),
     ("physics", "do_radar_ref"): (0, "radar reflectivity diagnostic (REFL_10CM)"),
     ("physics", "kf_edrates"): (0, "KF entrainment / detrainment rate outputs (UDR_KF, DDR_KF, UER_KF, DER_KF, TIMEC_KF)"),
     ("physics", "ra_sw_eclipse"): (0, "solar eclipse in the shortwave radiation (ECOBSC, ECMASK)"),
@@ -1514,7 +1515,8 @@ class WrfTranslator:
             if len(set(vals)) > 1:
                 self.error(f"WRF {key} = {vals}: CPPWRF uses one value for all domains.")
 
-        for unsup_key, desc in UNSUPPORTED_PHYSICS_SWITCHES.items():  # every domain's value (max_domains options)
+        # every domain's value: sf_lake_physics, topo_wind, shalwater_z0, ... are max_domains options in the Registry
+        for unsup_key, desc in UNSUPPORTED_PHYSICS_SWITCHES.items():
             for val in self.get_opt_list("physics", unsup_key)[:max(1, self._max_dom)]:
                 if val not in (0, False):
                     self.error(f"WRF {unsup_key} = {val} ({desc}) is not supported by CPPWRF.")
