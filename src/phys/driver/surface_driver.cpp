@@ -1385,7 +1385,8 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
       nmp.tables = d_noahmp_tables_;
       nmp.opts = o_.noahmp;
       nmp.itimestep = int(itimestep);
-      nmp.yr = o_.rad.julyr > 0 ? o_.rad.julyr : 2000;
+      // YR: the year of the current time, which changes in a run past 31 December (Noah-MP's YEARLEN)
+      nmp.yr = o_.rad.julyr > 0 ? wrf_year(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt) : 2000;
       nmp.julian_in = julian_in;
       nmp.dtbl = dtbl;
       nmp.dx = real(g_.dx);
