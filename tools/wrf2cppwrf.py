@@ -384,6 +384,8 @@ DEFAULT_ONLY_OPTIONS = {
     ("physics", "sf_surf_irr_scheme"): (0, "irrigation"),
     ("physics", "do_radar_ref"): (0, "radar reflectivity diagnostic (REFL_10CM)"),
     ("physics", "kf_edrates"): (0, "KF entrainment / detrainment rate outputs (UDR_KF, DDR_KF, UER_KF, DER_KF, TIMEC_KF)"),
+    ("physics", "ra_sw_eclipse"): (0, "solar eclipse in the shortwave radiation (ECOBSC, ECMASK)"),
+    ("diags", "solar_diagnostics"): (0, "solar diagnostics (radiation_driver's Solar_step every step, SZA, CLRNIDX ...)"),
     ("fdda", "grid_fdda"): (0, "grid nudging"),
     ("fdda", "grid_sfdda"): (0, "surface grid nudging"),
     ("fdda", "obs_nudge_opt"): (0, "observation nudging"),
@@ -1512,11 +1514,11 @@ class WrfTranslator:
             if len(set(vals)) > 1:
                 self.error(f"WRF {key} = {vals}: CPPWRF uses one value for all domains.")
 
-        for unsup_key, desc in UNSUPPORTED_PHYSICS_SWITCHES.items():
-            if self.has_opt("physics", unsup_key):
-                val = self.get_opt("physics", unsup_key, 0)
+        for unsup_key, desc in UNSUPPORTED_PHYSICS_SWITCHES.items():  # every domain's value (max_domains options)
+            for val in self.get_opt_list("physics", unsup_key)[:max(1, self._max_dom)]:
                 if val not in (0, False):
                     self.error(f"WRF {unsup_key} = {val} ({desc}) is not supported by CPPWRF.")
+                    break
 
         if self.has_opt("bdy_control", "spec_bdy_width"):
             spec_bdy = self.get_opt("bdy_control", "spec_bdy_width", 5)
