@@ -724,6 +724,50 @@ class WrfTranslator:
 
         has_physics_suite = (sf_sfclay != 0 or sf_surface != 0 or bl_pbl != 0 or
                              cu_physics != 0 or ra_lw != 0 or ra_sw != 0)
+        # the column physics suite (surface layer, LSM, PBL, cumulus, radiation) runs in real-data cases only
+        if case_name != "real" and has_physics_suite:
+            self.error("WRF sf_sfclay_physics / sf_surface_physics / bl_pbl_physics / cu_physics / ra_lw_physics / "
+                       "ra_sw_physics in an ideal case are not supported (CPPWRF runs them in real-data cases only).")
+
+        # WRF tiles (frame/module_tiles.F set_tiles2) that split the i rows change WRF's results: row-coupled schemes
+        # (Tiedtke's icum test) and the libmvec lanes of vectorised loops run over its..ite of a tile. CPPWRF gives
+        # WRF's single-tile result, so tilings with more than one tile in x are errors; tiles in y are equivalent.
+        numtiles = self.get_opt("domains", "numtiles", 1)
+        numtiles_inc = max(self.get_opt("domains", "numtiles_inc", 0), 1)
+        tile_sz_x = self.get_opt("domains", "tile_sz_x", 0)
+        tile_sz_y = self.get_opt("domains", "tile_sz_y", 0)
+        tile_strategy = self.get_opt("domains", "tile_strategy", 0)
+        for d in range(self._max_dom):
+            e_we = self.get_dom_opt("domains", "e_we", d, 0)
+            e_sn = self.get_dom_opt("domains", "e_sn", d, 0)
+            nt, ntx, nty = numtiles, self.get_opt("domains", "numtiles_x", 0), self.get_opt("domains", "numtiles_y", 0)
+            strategy = tile_strategy
+            if strategy == 0:  # TILE_NONE: 1-D in y unless there are more tiles than rows
+                strategy = 2
+                if e_sn > 0 and nt > e_sn and ntx == 0 and nty == 0:
+                    ntx, nty = 1, e_sn
+                    while ntx * numtiles_inc * nty < nt:
+                        ntx += 1
+                    ntx, strategy = ntx * numtiles_inc, 3
+            if tile_sz_x >= 1 and tile_sz_y >= 1:
+                ntx = -(-e_we // tile_sz_x) if e_we > 0 else 2
+            elif ntx >= 1 or nty >= 1:
+                if ntx < 1:
+                    ntx = nt // nty
+            elif strategy == 1:  # TILE_X
+                ntx = nt
+            elif strategy == 3:  # TILE_XY: least_aspect
+                ntx, mini = nt, 2 * nt
+                for y in range(1, nt + 1):
+                    if nt % y == 0 and abs(y - nt // y) < mini:
+                        mini, ntx = abs(y - nt // y), nt // y
+            else:
+                ntx = 1
+            if ntx > 1:
+                self.error(f"WRF tiling with {ntx} tiles in x on domain {d + 1} (numtiles / numtiles_x / tile_sz_x / "
+                           "tile_strategy) is not supported: WRF's results depend on the tiles' i ranges, CPPWRF "
+                           "matches WRF with one tile in x.")
+                break
 
         # 5. Real Data Section [real]
         if case_name == "real":
