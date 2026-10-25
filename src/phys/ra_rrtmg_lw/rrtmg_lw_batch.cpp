@@ -38,10 +38,12 @@ struct KLwPrep {
   LwBatchInput in;
   const RrtmgLwTables* t;
   const RrtmgLwConsts* k;
+  double* o3_out;  // LwBatchOutput::o3
   CPPWRF_HD void operator()(int a, int b, int cc) const {
     const int ci = LW_CI(a, b, cc);
     const int col = ch.col0 + ci, nc = in.ncol;
     LwColumnIn x{};
+    x.o3_out = o3_out ? SD{o3_out + col, nc} : SD{nullptr, 0};
     x.tsk = in.tsk[col]; x.emiss = in.emiss[col]; x.xland = in.xland[col]; x.xice = in.xice[col];
     x.snow = in.snow[col]; x.xlat = in.xlat[col];
     x.dz8w = col_view(in.dz8w, col, nc);
@@ -132,7 +134,7 @@ void RrtmgLwBatch::run(const RrtmgLwCallConfig& c, const LwBatchInput& in, const
   for (int col0 = 0; col0 < in.ncol; col0 += chunk_) {
     const int n = std::min(chunk_, in.ncol - col0);
     const LwChunk ch{lay_, d_, i_, n, col0};
-    parallel_for(lw_range(n, 1), KLwPrep{ch, c, in, d_tables_, d_consts_});
+    parallel_for(lw_range(n, 1), KLwPrep{ch, c, in, d_tables_, d_consts_, out.o3});
     parallel_for(lw_range(n, c.nlayers), KLwLayer{ch, c.nlayers, d_tables_});
     if (c.nlayers <= 60)
       parallel_for(lw_range(n, 16), KLwBand<60>{ch, c.nlayers, d_tables_});

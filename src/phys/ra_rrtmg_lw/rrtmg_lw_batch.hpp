@@ -27,6 +27,7 @@ struct LwBatchOutput {
   double* diag = nullptr;
   double* rthratenc = nullptr;  // [nz*ncol] clear-sky heating rate (may be nullptr)
   double* cf = nullptr;         // [ncol] LW cloud forcing (may be nullptr)
+  double* o3 = nullptr;         // [nz*ncol] o3input != 2: the climatology ozone vmr (WRF's O33D) (may be nullptr)
 };
 
 class RrtmgLwBatch {

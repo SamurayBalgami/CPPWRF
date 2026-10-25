@@ -161,7 +161,9 @@ void rrtmg_lw_column(
     // when given (nullptr: CAM relcalc / reicalc sizes, no separate snow)
     const double* re_cloud = nullptr,
     const double* re_ice = nullptr,
-    const double* re_snow = nullptr
+    const double* re_snow = nullptr,
+    // [nz] o3input != 2: the climatology ozone vmr on the model levels, WRF's O33D output (nullptr: not wanted)
+    double* o3_out = nullptr
 );
 
 // Multi-column driver (OpenMP CPU or sequential)

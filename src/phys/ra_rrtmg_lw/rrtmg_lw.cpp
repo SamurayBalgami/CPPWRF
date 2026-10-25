@@ -217,7 +217,8 @@ void rrtmg_lw_column(
     RrtmgLwWorkspace& ws,
     const double* re_cloud,
     const double* re_ice,
-    const double* re_snow
+    const double* re_snow,
+    double* o3_out
 ) {
   (void)qr3d; (void)qg3d; (void)xlat; (void)rho3d; (void)dz8w;
   const RrtmgLwCallConfig c = rrtmg_lw_call_config(num_levels, config, re_cloud, re_ice, re_snow);
@@ -231,6 +232,7 @@ void rrtmg_lw_column(
   in.cldfra3d = sd_const(cldfra3d); in.o33d = sd_const(o33d ? o33d : qv3d);
   in.re_cloud = sd_const(re_cloud); in.re_ice = sd_const(re_ice); in.re_snow = sd_const(re_snow);
   in.has_qc = in.has_qi = in.has_qs = true;  // absent species are passed as zero arrays
+  in.o3_out = SD{o3_out, 1};
   rrtmg_lw_prep(c, in, v, tables, rrtmg_lw_consts());
   for (int l = 0; l < c.nlayers; ++l) rrtmg_lw_layer(c.nlayers, l, v, tables);
   for (int b = 0; b < 16; ++b) rrtmg_lw_bandstage(c.nlayers, b, v, tables);

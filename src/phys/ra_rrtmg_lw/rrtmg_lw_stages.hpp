@@ -119,6 +119,7 @@ struct LwColumnIn {
   SD p8w, t8w, p3d, pi3d, dz8w, t3d, rho3d, qv3d, qc3d, qi3d, qs3d, cldfra3d, o33d;
   SD re_cloud, re_ice, re_snow;  // p == nullptr: has_req* = 0
   bool has_qc, has_qi, has_qs;   // F_QC, F_QI, F_QS (absent species are zero)
+  SD o3_out;  // o3input != 2, p != nullptr: receives the ozone vmr of the model levels (WRF's O33D = O31D)
 };
 
 // inatm of rrtmg_lw: wkl holds the volume mixing ratios on entry, the column amounts on exit.
@@ -339,6 +340,8 @@ CPPWRF_FORCEINLINE void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumn
         o3vmr = in.o33d[num_levels - 1] - v.o3mmr[num_levels - 1] * amdo + v.o3mmr[k] * amdo;
         if (o3vmr <= 0.) o3vmr = v.o3mmr[k] * amdo;
       }
+    } else if (in.o3_out.p && k < num_levels) {
+      in.o3_out[k] = o3vmr;  // o31d(k) = o3vmr(ncol,k), then O33D(I,K,J) = O31D(K) ("output o3 for o3input=0")
     }
     v.wkl[2][k] = o3vmr;
   }
