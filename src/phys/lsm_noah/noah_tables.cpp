@@ -170,6 +170,7 @@ bool read_vegparm(const std::string& path, const std::string& dataset, NoahTable
     }
   }
 
+  int nlcz = 0;
   while (std::getline(f, line)) {
     std::string key = trim(line);
     if (key.empty()) continue;
@@ -187,11 +188,18 @@ bool read_vegparm(const std::string& path, const std::string& dataset, NoahTable
       if (std::getline(f, line)) tables.natural = std::stoi(trim(line));
     } else if (key.rfind("LCZ_", 0) == 0) {
       int n = std::stoi(key.substr(4));
-      if (std::getline(f, line) && n >= 1 && n <= 11) tables.lcz[n - 1] = std::stoi(trim(line));
+      if (std::getline(f, line) && n >= 1 && n <= 11) {
+        tables.lcz[n - 1] = std::stoi(trim(line));
+        ++nlcz;
+      }
       if (n == 11) break;
     } else if (key.rfind("Vegetation Parameters", 0) == 0) {
       break;
     }
+  }
+  if (nlcz != 11) {  // WRF SOIL_VEG_GEN_PARM reads LCZ_1..LCZ_11 after NATURAL and stops without them
+    std::cerr << "VEGPARM.TBL: dataset " << dataset << " lacks LCZ_1..LCZ_11 (older table?)" << std::endl;
+    return false;
   }
   return true;
 }
