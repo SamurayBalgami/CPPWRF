@@ -373,6 +373,21 @@ CASES = [
      f"{WREF}/r8/run_squall2d_ys_10min/wrfout_d01_0001-01-01_00:00:00", 600,
      {"U": 0.0, "V": 0.0, "W": 0.0, "PH": 0.0, "MU": 0.0, "P": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0,
       "QRAIN": 0.0}),
+    # symmetric lateral boundaries (WRF symmetric_xs/xe/ys/ye, rigid walls) with soundings without wind:
+    # quarter_ss on all four sides, the Straka density current and squall2d_x (TKE) in x, long enough for the
+    # storm / cold pools to reach the walls
+    ("ideal_quarter_ss_sym_fp64_cpu", "cpu_dp", "configs/wrf_quarter_ss_sym.ini",
+     ["run.run_time=3600", "output.out_interval=50", "output.diag_interval=50"],
+     f"{WREF}/r8/run_qss_sym/wrfout_d01_0001-01-01_00:00:00", 3600,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "PH": 0.0, "MU": 0.0, "P": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0,
+      "QRAIN": 0.0, "RAINNC": 0.0}),
+    ("ideal_grav2d_x_sym_fp64_cpu", "cpu_dp", "configs/wrf_grav2d_x_sym.ini", ["run.run_time=2400", "output.out_interval=600"],
+     f"{WREF}/r8/run_grav2d_x_sym/wrfout_d01_0001-01-01_00:00:00", 2400,
+     {"U": 0.0, "W": 0.0, "PH": 0.0, "MU": 0.0, "P": 0.0, "THM": 0.0}),
+    ("ideal_squall2d_x_sym_fp64_cpu", "cpu_dp", "configs/wrf_squall2d_x_sym.ini",
+     ["run.run_time=2400", "output.out_interval=200"],
+     f"{WREF}/r8/run_squall2d_x_sym/wrfout_d01_0001-01-01_00:00:00", 2400,
+     {"U": 0.0, "W": 0.0, "PH": 0.0, "MU": 0.0, "P": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0}),
     ("ideal_squall2d_x_fp64_cuda", "cuda_dp", "configs/wrf_squall2d_x.ini", ["output.out_interval=20"],
      f"{WREF}/r8/run_squall2d_kessler_10min/wrfout_d01_0001-01-01_00:00:00", 600,
      {"U": 1e-11, "W": 1e-10, "THM": 1e-13, "QV": 1e-12}),
