@@ -24,4 +24,5 @@ grep -v '^\s*#' $J/variants.txt | grep -v '^\s*$' | while read -r name base exe 
   esac
 done > $J/cmds.txt
 xargs -P "$(nproc)" -I{} sh -c '{}' < $J/cmds.txt > $J/matrix.out 2>&1
+[ -d $J/work/keep ] && tar cf $J/keep.tar -C $J/work/keep . && put $J/keep.tar  # run.keep=1 references
 echo "MATRIX_DONE" >> $J/matrix.out

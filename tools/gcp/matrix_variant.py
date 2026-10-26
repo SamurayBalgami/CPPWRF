@@ -6,7 +6,8 @@ One WRF-vs-CPPWRF comparison of a namelist variant: the WRF run RUNS/BASE (input
 WORK/NAME; CPPWRF runs the configuration tools/wrf2cppwrf.py makes from that namelist; every common variable
 of every common frame (by Times) of each domain's wrfout is compared at tolerance 0. Prints one line:
 NAME d0N frames N differing: none | {VAR: 'time npoints/maxdiff', ...}  (or NAME WRF-FAILED / CPPWRF-FAILED);
-variables only WRF writes are listed as wrf-only-vars."""
+variables only WRF writes are listed as wrf-only-vars.
+run.keep=1 copies WRF's namelist.input, inputs and wrfout files to WORK/keep/run_NAME (a suite reference)."""
 import glob, os, re, subprocess, sys
 import netCDF4
 import numpy as np
@@ -40,8 +41,12 @@ for k, v in [("run_days", "0"), ("run_hours", "0"), ("run_minutes", "0"), ("run_
              ("history_interval_s", "60, 60, 60"), ("frames_per_outfile", "10000"), ("restart", ".false.")]:
     nl = setkey(nl, "time_control", k, v)
 nl = re.sub(r"^\s*history_interval\s*=.*\n", "", nl, flags=re.M)
+keep = False
 for sk, v in sets:
     sec, k = sk.split(".", 1)
+    if (sec, k) == ("run", "keep"):  # run.keep=1: WRF's run (namelist, inputs, wrfout) kept as a reference
+        keep = v not in ("0", "false", ".false.")
+        continue
     if (sec, k) == ("run", "remove"):  # run.remove=f1,f2: files of the base run left out (both models)
         for f in v.split(","):
             if os.path.lexists(os.path.join(R, f)):
@@ -70,6 +75,13 @@ if "SUCCESS COMPLETE WRF" not in open(os.path.join(R, "rsl.out.0000") if os.path
     why = [l.strip() for l in log if "ERROR" in l or "FATAL" in l or "Fix " in l][:4] or log[-1:]
     print(f"{name} WRF-FAILED {why}")
     sys.exit(0)
+if keep:  # WORK/keep/run_NAME: what the suite needs of the reference (remote_matrix.sh uploads keep.tar)
+    K = os.path.join(work, "keep", f"run_{name}")
+    os.makedirs(K, exist_ok=True)
+    for f in ["namelist.input", "wrfinput_d01", "input_sounding"] + sorted(glob.glob(os.path.join(R, "wrfout_d0*"))):
+        f = os.path.join(R, f)
+        if os.path.exists(f):
+            subprocess.run(["cp", "-L", f, K])
 out = os.path.join(R, "cppwrf")
 t = subprocess.run([sys.executable, os.path.join(repo, "tools/wrf2cppwrf.py"), os.path.join(R, "namelist.input"),
                     "--real-dir", R, "--format", "wrfout", "-o", os.path.join(R, "case.ini")], capture_output=True, text=True)
