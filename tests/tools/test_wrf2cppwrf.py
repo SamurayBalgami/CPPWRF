@@ -8,6 +8,8 @@ Tests:
 4. Error detection on unsupported physics/dynamics options.
 5. 2-step model execution under tools/heavy.sh.
 
+The tests of WRF reference runs read ${CPPWRF_WRF_RUNS} and ${CPPWRF_WRF_REF} (defaults as tests/verify/wrf_suite.py:
+~/wrf_real480, ~/wrf_ref480) and skip when the files are missing; the model runs also need $CPPWRF_BIN.
 """
 
 import os
@@ -16,11 +18,19 @@ import sys
 import tempfile
 import unittest
 
+# set in the environment: the configurations and the model read ${CPPWRF_WRF_RUNS}
+os.environ.setdefault("CPPWRF_WRF_RUNS", os.path.expanduser("~/wrf_real480"))
+os.environ.setdefault("CPPWRF_WRF_REF", os.path.expanduser("~/wrf_ref480"))
+
 
 def wrf_runs_path(rel: str) -> str:
-    """Path of a WRF reference run file under ${CPPWRF_WRF_RUNS} ('' when the variable is unset)."""
-    runs = os.environ.get("CPPWRF_WRF_RUNS")
-    return os.path.join(runs, rel) if runs else ""
+    """Path of a WRF reference run file under ${CPPWRF_WRF_RUNS}."""
+    return os.path.join(os.environ["CPPWRF_WRF_RUNS"], rel)
+
+
+def wrf_ref_path(rel: str) -> str:
+    """Path of a WRF ideal-case run file under ${CPPWRF_WRF_REF}."""
+    return os.path.join(os.environ["CPPWRF_WRF_REF"], rel)
 
 from typing import Any, Dict, List, Optional
 
@@ -29,6 +39,23 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, REPO_ROOT)
 
 from tools.wrf2cppwrf import parse_namelist, WrfTranslator, NamelistParseError
+
+
+def real_case(text: str) -> str:
+    """A real-case namelist: domain 1 needs specified = .true. (Registry default .false.; with no condition on a
+    side wrf.exe stops in share/module_bc.F boundary_condition_check, and the translator asks for --case)."""
+    return text + "\n&bdy_control specified = .true. /\n"
+
+
+# real-case keys of the translation that wrf.exe checks against the input file: (namelist group, key, Registry
+# default; None: written only when the namelist has it)
+REAL_INPUT_CHECKS = {
+    ("real", "p_top_requested"): ("domains", "p_top_requested", 5000.0),
+    ("real", "iso_temp"): ("dynamics", "iso_temp", 200.0),
+    ("real", "dx"): ("domains", "dx", None),
+    ("real", "dy"): ("domains", "dy", None),
+    ("dyn", "hybrid_opt"): ("dynamics", "hybrid_opt", 2),
+}
 
 
 def load_ini_dict(path_or_text: str, is_text: bool = False) -> dict:
@@ -200,7 +227,9 @@ class TestNamelistParser(unittest.TestCase):
         self.assertEqual(gen["domains"]["parent_grid_ratio"], 3)
         self.assertEqual(gen["domains"]["parent_time_step_ratio"], 3)
         self.assertEqual(gen["d02"]["wrfinput"], "wrfinput_d02")
-        self.assertEqual(gen["d02"]["dt"], 20)
+        # no [d0N] dt: the model takes the parent's dt / parent_time_step_ratio (20 s, 4 s) as WRF does and
+        # refuses another value (src/cases/nest_driver.cpp); the history intervals below are in those steps
+        self.assertNotIn("dt", gen["d02"])
         self.assertEqual(gen["d02"]["out_interval"], 30)
         self.assertEqual(gen["d02"]["diag_interval"], 30)
         self.assertEqual(gen["d03"]["parent_id"], 2)
@@ -209,7 +238,7 @@ class TestNamelistParser(unittest.TestCase):
         self.assertEqual(gen["d03"]["parent_grid_ratio"], 5)
         self.assertEqual(gen["d03"]["parent_time_step_ratio"], 5)
         self.assertEqual(gen["d03"]["wrfinput"], "wrfinput_d03")
-        self.assertEqual(gen["d03"]["dt"], 4)
+        self.assertNotIn("dt", gen["d03"])
         self.assertEqual(gen["d03"]["out_interval"], 150)
         self.assertEqual(gen["d03"]["diag_interval"], 150)
         self.assertEqual(gen["d03"]["khdif"], 10)
@@ -233,6 +262,27 @@ class TestRealCasesReproduction(unittest.TestCase):
         translator = WrfTranslator(nml, namelist_path=nml_path)
         gen = translator.translate()
         ref = load_ini_dict(ref_path)
+        self.assertEqual(translator.errors, [])
+
+        ignore_keys = {s: set(keys) for s, keys in (ignore_keys or {}).items()}
+        if gen["run"]["case"] == "real":
+            # namelist values the model checks against wrfinput_d01 as wrf.exe does (start_em.F, input_wrf.F stop
+            # when they differ): the namelist's value or the Registry default; the hand-written configs leave them
+            # to the input file
+            for (sec, key), (grp, nkey, default) in REAL_INPUT_CHECKS.items():
+                nvals = nml.get(grp, {}).get(nkey)
+                if not nvals and default is None:
+                    self.assertNotIn(key, gen.get(sec, {}), f"[{sec}].{key}")
+                    continue
+                self.assertEqual(float(gen[sec][key]), float(nvals[0] if nvals else default), f"[{sec}].{key}")
+                if key not in ref.get(sec, {}):
+                    ignore_keys.setdefault(sec, set()).add(key)
+        # WRF writes wrfrst files every restart_interval minutes whatever restart is; a hand-written config of a run
+        # that ends before the first restart time has no [restart]
+        rst = nml.get("time_control", {}).get("restart_interval", [0])[0]
+        if rst > 0 and "restart" not in ref:
+            self.assertLess(gen["run"]["run_time"], rst * 60)
+            self.assertEqual(gen.pop("restart"), {"interval": rst * 60})
 
         all_secs = sorted(set(list(gen.keys()) + list(ref.keys())))
         if sections:  # only these sections (the hand-written configs add run/output settings)
@@ -253,7 +303,7 @@ class TestRealCasesReproduction(unittest.TestCase):
                 # Compare normalized string values (treating '20' and '20.0' as equal)
                 gv = str(gen[s][k]).replace(" ", "")
                 rv = str(ref[s][k]).replace(" ", "")
-                if gv != rv and gv.endswith(".0") or rv.endswith(".0"):
+                if gv != rv and (gv.endswith(".0") or rv.endswith(".0")):
                     try:
                         if float(gv) == float(rv):
                             gv = rv
@@ -318,7 +368,7 @@ class TestIdealCases(unittest.TestCase):
     """Test suite for ideal cases translation."""
 
     def test_hill2d_mapping(self):
-        nml_path = os.path.join(os.environ.get("CPPWRF_WRF_REF", ""), "run_hill_p0/namelist.input")
+        nml_path = wrf_ref_path("run_hill_p0/namelist.input")
         if not os.path.exists(nml_path):
             self.skipTest(f"Namelist not found: {nml_path}")
         with open(nml_path) as f:
@@ -334,7 +384,7 @@ class TestIdealCases(unittest.TestCase):
         self.assertEqual(gen["time"]["time_step_sound"], 6)
 
     def test_quarter_ss_mapping(self):
-        nml_path = os.path.join(os.environ.get("CPPWRF_WRF_REF", ""), "run_qss/namelist.input")
+        nml_path = wrf_ref_path("run_qss/namelist.input")
         if not os.path.exists(nml_path):
             self.skipTest(f"Namelist not found: {nml_path}")
         with open(nml_path) as f:
@@ -349,7 +399,7 @@ class TestIdealCases(unittest.TestCase):
         self.assertEqual(gen["time"]["time_step_sound"], 6)
 
     def test_straka_mapping(self):
-        nml_path = os.path.join(os.environ.get("CPPWRF_WRF_REF", ""), "run_straka_d1/namelist.input")
+        nml_path = wrf_ref_path("run_straka_d1/namelist.input")
         if not os.path.exists(nml_path):
             self.skipTest(f"Namelist not found: {nml_path}")
         with open(nml_path) as f:
@@ -400,10 +450,10 @@ class TestValidationAndWarnings(unittest.TestCase):
         &physics mp_physics = 2 /
         &dynamics /
         """
-        nml = parse_namelist(text)
+        nml = parse_namelist(real_case(text))
         t = WrfTranslator(nml)
         t.translate()
-        self.assertTrue(any("mp_physics = 2" in w for w in t.warnings))
+        self.assertTrue(any("mp_physics = 2" in e for e in t.errors), t.errors)
 
     def test_unsupported_diff_opt(self):
         text = """
@@ -411,10 +461,10 @@ class TestValidationAndWarnings(unittest.TestCase):
         &domains time_step = 60 /
         &dynamics diff_opt = 3 /
         """
-        nml = parse_namelist(text)
+        nml = parse_namelist(real_case(text))
         t = WrfTranslator(nml)
         t.translate()
-        self.assertTrue(any("diff_opt = 3" in w for w in t.warnings))
+        self.assertTrue(any("diff_opt = 3" in e for e in t.errors), t.errors)
 
     def test_hydrostatic_error(self):
         text = """
@@ -422,7 +472,7 @@ class TestValidationAndWarnings(unittest.TestCase):
         &domains time_step = 60 /
         &dynamics non_hydrostatic = .false. /
         """
-        nml = parse_namelist(text)
+        nml = parse_namelist(real_case(text))
         t = WrfTranslator(nml)
         t.translate()
         self.assertTrue(any("non_hydrostatic = .false." in e for e in t.errors))
@@ -435,7 +485,7 @@ class TestValidationAndWarnings(unittest.TestCase):
         &noah_mp dveg = 4, opt_runsrf = 3, opt_runsub = 3 /
         &dynamics /
         """
-        nml = parse_namelist(text)
+        nml = parse_namelist(real_case(text))
         t = WrfTranslator(nml)
         gen = t.translate()
         self.assertEqual(t.warnings, [])
@@ -481,7 +531,7 @@ class TestValidationAndWarnings(unittest.TestCase):
         /
         &dynamics /
         """
-        nml = parse_namelist(text)
+        nml = parse_namelist(real_case(text))
         t = WrfTranslator(nml)
         gen = t.translate()
         self.assertEqual(t.errors, [])
@@ -513,25 +563,25 @@ class TestValidationAndWarnings(unittest.TestCase):
          opt_thcnd = {} /
         &dynamics /
         """
-        t = WrfTranslator(parse_namelist(base.format(2)))
+        t = WrfTranslator(parse_namelist(real_case(base.format(2))))
         gen = t.translate()
         self.assertEqual(t.errors, [])
         self.assertEqual(gen["phys"]["opt_thcnd"], 2)
-        t = WrfTranslator(parse_namelist(base.format(1)))
+        t = WrfTranslator(parse_namelist(real_case(base.format(1))))
         gen = t.translate()
         self.assertEqual(t.errors, [])
         self.assertNotIn("opt_thcnd", gen["phys"])
-        t = WrfTranslator(parse_namelist(base.format(3)))
+        t = WrfTranslator(parse_namelist(real_case(base.format(3))))
         t.translate()
         self.assertTrue(any("opt_thcnd = 3" in e for e in t.errors))
 
     def test_unported_dynamics_switches_rejected(self):
         for key, val in (("diff_6th_slopeopt", "1"), ("sfs_opt", "1"), ("m_opt", "1"), ("tracer_mix6_off", ".true.")):
             text = f"&time_control /\n&domains time_step = 60 /\n&physics /\n&dynamics {key} = {val} /\n"
-            t = WrfTranslator(parse_namelist(text))
+            t = WrfTranslator(parse_namelist(real_case(text)))
             t.translate()
             self.assertTrue(any(key in e for e in t.errors), key)
-        t = WrfTranslator(parse_namelist("&time_control /\n&domains time_step = 60 /\n&physics /\n&dynamics sfs_opt = 0 /\n"))
+        t = WrfTranslator(parse_namelist(real_case("&time_control /\n&domains time_step = 60 /\n&physics /\n&dynamics sfs_opt = 0 /\n")))
         t.translate()
         self.assertEqual(t.errors, [])
 
@@ -543,10 +593,10 @@ class TestValidationAndWarnings(unittest.TestCase):
          seaice_albedo_default = {} /
         &dynamics /
         """
-        t = WrfTranslator(parse_namelist(text.format(0.65)))
+        t = WrfTranslator(parse_namelist(real_case(text.format(0.65))))
         t.translate()
         self.assertEqual(t.errors, [])
-        t = WrfTranslator(parse_namelist(text.format(0.8)))
+        t = WrfTranslator(parse_namelist(real_case(text.format(0.8))))
         t.translate()
         self.assertTrue(any("seaice_albedo_default = 0.8" in e for e in t.errors))
 
@@ -581,7 +631,7 @@ class TestValidationAndWarnings(unittest.TestCase):
          etac = 0.25
         /
         """
-        nml = parse_namelist(text)
+        nml = parse_namelist(real_case(text))
         t = WrfTranslator(nml)
         gen = t.translate()
         self.assertEqual(t.errors, [])
@@ -614,7 +664,7 @@ class TestValidationAndWarnings(unittest.TestCase):
                 "&physics physics_suite = 'CONUS', mp_physics = -1, cu_physics = -1, ra_lw_physics = -1,\n"
                 " ra_sw_physics = -1, bl_pbl_physics = -1, sf_sfclay_physics = -1, sf_surface_physics = -1,\n"
                 " radt = 15, fractional_seaice = 1 /\n&dynamics gwd_opt = 1, diff_opt = 2, km_opt = 4 /\n")
-        t = WrfTranslator(parse_namelist(text))
+        t = WrfTranslator(parse_namelist(real_case(text)))
         sec = t.translate()
         self.assertEqual(t.errors, [])
         expect = {"mp_physics": 8, "cu_physics": 6, "ra_lw_physics": 4, "ra_sw_physics": 4, "bl_pbl_physics": 2,
@@ -628,7 +678,7 @@ class TestValidationAndWarnings(unittest.TestCase):
         text = ("&time_control auxinput4_inname = 'lowinp_d<domain>', auxinput4_interval = 180,\n"
                 " io_form_auxinput4 = 2 /\n&domains time_step = 60 /\n&physics sst_update = 1, mp_physics = 6, sf_sfclay_physics = 1,\n"
                 " sf_surface_physics = 2, bl_pbl_physics = 1 /\n")
-        t = WrfTranslator(parse_namelist(text))
+        t = WrfTranslator(parse_namelist(real_case(text)))
         sec = t.translate()
         self.assertEqual(t.errors, [])
         self.assertEqual(sec["phys"]["sst_update"], 1)
@@ -638,7 +688,7 @@ class TestValidationAndWarnings(unittest.TestCase):
     def test_physics_suite_tropical_keeps_explicit_values(self):
         text = ("&time_control /\n&domains time_step = 60 /\n"
                 "&physics physics_suite = 'tropical', cu_physics = 1 /\n")
-        t = WrfTranslator(parse_namelist(text))
+        t = WrfTranslator(parse_namelist(real_case(text)))
         sec = t.translate()
         self.assertEqual(t.errors, [])
         self.assertEqual(sec["phys"]["mp_physics"], 6)
@@ -657,7 +707,7 @@ class TestValidationAndWarnings(unittest.TestCase):
                  "use myjsfc scheme"),
                 ("&physics sf_sfclay_physics = 2, sf_surface_physics = 2, bl_pbl_physics = 1 /",
                  "use sfclay scheme")]:
-            t = WrfTranslator(parse_namelist(f"&time_control /\n&domains time_step = 60 /\n{fragment}\n"))
+            t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n&domains time_step = 60 /\n{fragment}\n")))
             t.translate()
             self.assertIn(expected_err, " ".join(t.errors), fragment)
 
@@ -673,7 +723,9 @@ class TestValidationAndWarnings(unittest.TestCase):
 
     def test_unsupported_physics_and_dynamics_errors(self):
         cases = [
-            ("&physics cu_physics = 1, ishallow = 1 /", "ishallow = 1 requires cu_physics = 3"),
+            # share/module_check_a_mundo.F: "bl_mynn_edmf > 0 requires both shcu_physics=0 & ishallow=0"
+            ("&physics mp_physics = 6, sf_sfclay_physics = 5, bl_pbl_physics = 5, ishallow = 1 /",
+             "requires shcu_physics = 0 and ishallow = 0"),
             ("&physics cu_physics = 3, clos_choice = 99 /", "clos_choice = 99"),
             ("&physics cu_physics = 1, kfeta_trigger = 2 /", "kfeta_trigger = 2"),
             ("&physics sf_surface_physics = 2, num_soil_layers = 5 /", "num_soil_layers = 5"),
@@ -691,56 +743,71 @@ class TestValidationAndWarnings(unittest.TestCase):
         ]
         for fragment, expected_err in cases:
             text = f"&time_control /\n&domains time_step = 60 /\n{fragment}\n"
-            nml = parse_namelist(text)
+            nml = parse_namelist(real_case(text))
             t = WrfTranslator(nml)
             t.translate()
             joined = " ".join(t.errors)
             self.assertIn(expected_err, joined, f"Expected '{expected_err}' in errors for {fragment}, got {t.errors}")
 
-    def test_invalid_nest_configurations_errors(self):
-        # 1. Non-divisible child extent (e_we - 1) % parent_grid_ratio != 0
-        text1 = """
-        &domains
-         time_step = 60, max_dom = 2,
-         e_we = 120, 120, e_sn = 90, 91, e_vert = 45, 45,
-         parent_id = 0, 1, i_parent_start = 1, 40, j_parent_start = 1, 30,
-         parent_grid_ratio = 1, 3, parent_time_step_ratio = 1, 3
-        /
-        &bdy_control specified = .true., .false. /
-        """
-        t1 = WrfTranslator(parse_namelist(text1))
-        t1.translate()
-        self.assertTrue(any("not divisible by parent_grid_ratio" in e for e in t1.errors))
+    def test_real_case_needs_specified(self):
+        # specified defaults to .false. (Registry); a real case without it has no lateral boundary condition on
+        # domain 1 and wrf.exe stops in share/module_bc.F boundary_condition_check
+        text = "&time_control /\n&domains time_step = 60 /\n"
+        t = WrfTranslator(parse_namelist(text))
+        t.translate()
+        self.assertEqual(len(t.errors), 1, t.errors)
+        self.assertIn("pass --case", t.errors[0])
+        t = WrfTranslator(parse_namelist(text), override_case="real")
+        t.translate()
+        self.assertEqual(len(t.errors), 1, t.errors)
+        self.assertIn("specified = .false. in a real case", t.errors[0])
+        t = WrfTranslator(parse_namelist(real_case(text)), override_case="real")
+        self.assertEqual(t.translate()["run"]["case"], "real")
+        self.assertEqual(t.errors, [])
 
-        # 2. Child extent exceeds parent domain
-        text2 = """
+    def test_ishallow_without_grell_freitas(self):
+        # WRF passes ishallow to the G3 and GF schemes only (phys/module_cumulus_driver.F) and check_a_mundo has no
+        # rule for it with other cumulus schemes: Kain-Fritsch with ishallow = 1 runs as without it
+        t = WrfTranslator(parse_namelist(real_case("&time_control /\n&domains time_step = 60 /\n"
+                                                   "&physics cu_physics = 1, ishallow = 1 /\n")))
+        t.translate()
+        self.assertEqual(t.errors, [])
+
+    def test_invalid_nest_configurations_errors(self):
+        base = """
+        &time_control input_from_file = .true., .true. /
         &domains
          time_step = 60, max_dom = 2,
-         e_we = 120, 121, e_sn = 90, 91, e_vert = 45, 45,
-         parent_id = 0, 1, i_parent_start = 1, 100, j_parent_start = 1, 30,
-         parent_grid_ratio = 1, 3, parent_time_step_ratio = 1, 3
+         e_we = 120, {e_we}, e_sn = 90, 91, e_vert = 45, {e_vert},
+         parent_id = 0, 1, i_parent_start = 1, {i_start}, j_parent_start = 1, 30,
+         parent_grid_ratio = 1, 3, parent_time_step_ratio = 1, 3{extra}
         /
         &bdy_control specified = .true., .false. /
         """
-        t2 = WrfTranslator(parse_namelist(text2))
-        t2.translate()
-        self.assertTrue(any("exceeds parent domain" in e for e in t2.errors))
+
+        def errors(e_we=121, e_vert=45, i_start=40, extra=""):
+            t = WrfTranslator(parse_namelist(base.format(e_we=e_we, e_vert=e_vert, i_start=i_start, extra=extra)))
+            t.translate()
+            return t.errors
+
+        self.assertEqual(errors(), [])
+        # 1. (e_we - s_we) not a multiple of parent_grid_ratio: "Nested dimensions are illegal" (dyn_em/start_em.F)
+        e = errors(e_we=120)
+        self.assertEqual(len(e), 1, e)
+        self.assertIn("not divisible by parent_grid_ratio", e[0])
+
+        # 2. the nest (40 parent cells from i_parent_start) must end 2 parent cells inside d01 (nx = 119): SINT's
+        # stencil reaches 2 cells beyond the nest; 78 + 40 - 1 = 117 is the last allowed end
+        self.assertEqual(errors(i_start=78), [])
+        for i_start in (79, 100):
+            e = errors(i_start=i_start)
+            self.assertEqual(len(e), 1, e)
+            self.assertIn("reaches within 2 cells of parent domain d01's edge", e[0])
 
         # 3. Mismatched e_vert and invalid smooth_option
-        text3 = """
-        &domains
-         time_step = 60, max_dom = 2,
-         e_we = 120, 121, e_sn = 90, 91, e_vert = 45, 60,
-         parent_id = 0, 1, i_parent_start = 1, 40, j_parent_start = 1, 30,
-         parent_grid_ratio = 1, 3, parent_time_step_ratio = 1, 3,
-         smooth_option = 5
-        /
-        &bdy_control specified = .true., .false. /
-        """
-        t3 = WrfTranslator(parse_namelist(text3))
-        t3.translate()
-        self.assertTrue(any("e_vert" in e for e in t3.errors))
-        self.assertTrue(any("smooth_option = 5" in e for e in t3.errors))
+        e = errors(e_vert=60, extra=",\n         smooth_option = 5")
+        self.assertTrue(any("e_vert" in x for x in e), e)
+        self.assertTrue(any("smooth_option = 5" in x for x in e), e)
 
 
 class TestExecution2Steps(unittest.TestCase):

@@ -551,11 +551,11 @@ class WrfTranslator:
         self.errors.append(msg)
 
     def check_supported(self, option: str, value: Any):
-        """Warn when a WRF option value has no CPPWRF implementation (SUPPORTED_OPTIONS)."""
+        """Error when a WRF option value has no CPPWRF implementation (SUPPORTED_OPTIONS)."""
         table = SUPPORTED_OPTIONS[option]
         if value not in table:
             listed = ", ".join(f"{k} ({v})" for k, v in table.items() if k != 0)
-            self.warn(f"WRF {option} = {value} is not supported; CPPWRF supports 0, {listed}.")
+            self.error(f"WRF {option} = {value} is not supported; CPPWRF supports 0, {listed}.")
 
     def notice(self, msg: str):
         self.notices.append(msg)
@@ -677,8 +677,15 @@ class WrfTranslator:
             else:  # a real case has specified = .true. (WRF's lateral boundaries need one condition per side)
                 self.error("WRF case not identified: no ideal_case, specified = .false. and an unknown directory "
                            "name; pass --case.")
-                case_name = "real"
+                case_name = None
 
+        if case_name is None:
+            case_name = "real"
+        elif case_name == "real" and not specified:
+            # domain 1 then has no condition on any side (open and periodic sides are errors below): wrf.exe stops
+            # with "Error in boundary condition specification" (share/module_bc.F boundary_condition_check)
+            self.error("WRF specified = .false. in a real case is not supported: WRF stops without a lateral "
+                       "boundary condition on domain 1.")
         sections["run"]["case"] = case_name
 
         # 3. Determine run_time
@@ -708,7 +715,7 @@ class WrfTranslator:
                 t1 = datetime.datetime(e_yr, e_mo, e_dy, e_hr, e_mi, e_se)
                 total_s = int((t1 - t0).total_seconds())
             except Exception as e:
-                self.warn(f"Could not compute run duration from start/end dates: {e}")
+                self.error(f"Could not compute run duration from start/end dates: {e}")
                 total_s = 3600
 
         sections["run"]["run_time"] = total_s
@@ -947,7 +954,7 @@ class WrfTranslator:
         if damp_opt != 0:
             sections["dyn"]["damp_opt"] = damp_opt
             if damp_opt not in SUPPORTED_OPTIONS["damp_opt"]:
-                self.warn(f"WRF damp_opt = {damp_opt} is not supported; CPPWRF supports damp_opt 0, 1, 2 and 3.")
+                self.error(f"WRF damp_opt = {damp_opt} is not supported; CPPWRF supports damp_opt 0, 1, 2 and 3.")
             zdamp = self.get_opt("dynamics", "zdamp", 5000.0)
             dampcoef = self.get_opt("dynamics", "dampcoef", 0.2)
             sections["dyn"]["zdamp"] = int(zdamp) if float(zdamp).is_integer() else zdamp
@@ -972,15 +979,15 @@ class WrfTranslator:
         if diff_opt != 0:
             sections["dyn"]["diff_opt"] = diff_opt
             if diff_opt not in SUPPORTED_OPTIONS["diff_opt"]:
-                self.warn(f"WRF diff_opt = {diff_opt} is not directly supported; CPPWRF supports diff_opt 0, 1 and 2.")
+                self.error(f"WRF diff_opt = {diff_opt} is not supported; CPPWRF supports diff_opt 0, 1 and 2.")
 
         km_opt = self.get_opt("dynamics", "km_opt", 1)
         if (diff_opt != 0 or km_opt != 1) and km_opt is not None:
             if km_opt not in (0, 1):
                 sections["dyn"]["km_opt"] = km_opt
             if km_opt not in SUPPORTED_OPTIONS["km_opt"] and km_opt != 0:
-                self.warn(f"WRF km_opt = {km_opt} is not supported; CPPWRF supports km_opt "
-                          + ", ".join(str(k) for k in sorted(SUPPORTED_OPTIONS["km_opt"])) + ".")
+                self.error(f"WRF km_opt = {km_opt} is not supported; CPPWRF supports km_opt "
+                           + ", ".join(str(k) for k in sorted(SUPPORTED_OPTIONS["km_opt"])) + ".")
 
         c_s = self.get_opt("dynamics", "c_s", None)
         if c_s is not None and (km_opt in (3, 4) or float(c_s) != 0.25):
