@@ -10,7 +10,9 @@
 
 namespace cppwrf {
 
-enum class Parity { Even, Odd };
+// OddFace: odd about the face, whose value changes sign too (WRF set_physical_bc2d 'u' in x: dat(ids-i) =
+// -dat(ids+i) from i = 0, i.e. muu at the walls; the 3-D 'u' and the 'v' loops start at i = 1)
+enum class Parity { Even, Odd, OddFace };
 
 void fill_halo(Field3& f, const Grid& g, Parity px, Parity py);
 void fill_halo(Field2& f, const Grid& g, Parity px, Parity py);

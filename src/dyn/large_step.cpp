@@ -654,13 +654,17 @@ void LargeStep::prep(State& s, const BaseState& b) const {
   parallel_for(Range3D{0, g.nx + 1, 0, nyv, 0, 1},
                KMu{s.mu_2.cview(), b.mub.view(), s.mut.view(), s.muu.view(), s.muv.view(), g.nx, g.ny, nyv,
                    g.flat_x(), g.flat_y() && !g.two_d()});
-  fill_halos({&s.mut, &s.muu, &s.muv}, g);
+  fill_halo(s.mut, g);
   parallel_for(Range3D{0, g.nx + 1, 0, nyv, 0, g.nz + 1},
                KPrep3{s.u_2.cview(), s.v_2.cview(), s.w_2.cview(), s.al.cview(), s.ph_2.cview(), s.muu.cview(),
                       s.muv.cview(), s.mut.cview(), b.alb.view(), b.phb.view(), b.msfuy.view(), b.msfvx_inv.view(),
                       b.msfty.view(), c, s.ru.view(), s.rv.view(),
                       s.rw.view(), s.alt.view(), s.php.view(), g.nx, g.ny, nyv, g.nz});
   fill_halos({&s.ru, &s.rv, &s.rw, &s.alt, &s.php}, g);
+  // rk_phys_bc_dry_1 after ru / rv: set_physical_bc2d(muu, 'u') / (muv, 'v') are odd in their staggered
+  // direction on symmetric sides, and the 'u' loop also flips the sign of muu on the walls
+  fill_halo(s.muu, g, Parity::OddFace, Parity::Even);
+  fill_halo(s.muv, g, Parity::Even, Parity::Odd);
   column_for(g.columns(), KWW{s.u_2.cview(), s.v_2.cview(), s.mu_2.cview(), b.mub.view(), s.ww.view(), b.msftx.view(),
                               b.msfuy.view(), b.msfvx_inv.view(), c, real(b.rdx), real(b.rdy), g.nz});
   fill_halo(s.ww, g);

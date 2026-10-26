@@ -40,6 +40,7 @@ struct HaloLine {
   bool periodic;
   bool odd;
   bool flat = false;  // specified: copy the outermost row outward (WRF set_physical_bc*)
+  bool odd_face = false;  // symmetric: the wall face itself changes sign too (Parity::OddFace)
   CPPWRF_HD void operator()(int a, int b, int k) const {
     const int nl = face ? 4 : 3;
     int i = a < nl ? (face ? -a : -1 - a) : n + (a - nl);
@@ -58,7 +59,10 @@ struct HaloLine {
     real v = base[src * sn];
     // symmetric: the wall face itself (src == i) keeps its value (WRF set_physical_bc3d fills only
     // ids-1.. / ide+1..: u(ids-i) = -u(ids+i)); odd fields change sign in the mirror
-    if (!periodic && !flat && src == i) return;
+    if (!periodic && !flat && src == i) {
+      if (odd_face) base[i * sn] = -v;
+      return;
+    }
     if (!periodic && !flat && odd) v = -v;
     base[i * sn] = v;
   }
@@ -98,12 +102,12 @@ struct HaloMulti {
 void fill_impl(real* p, const Layout& L, const Grid& g, bool ux, bool vy, Parity px, Parity py) {
   const int nk = L.nz;
   {  // x direction over interior rows
-    HaloLine h{p, 1, L.sj, L.sk, g.nx, ux, g.bc_x == BC::Periodic, px == Parity::Odd, g.flat_x()};
+    HaloLine h{p, 1, L.sj, L.sk, g.nx, ux, g.bc_x == BC::Periodic, px != Parity::Even, g.flat_x(), px == Parity::OddFace};
     int na = ux ? 8 : 6;
     parallel_for(Range3D{0, L.ny, 0, na, 0, nk}, HaloLineT{h});  // rows as the fastest thread index
   }
   if (!g.two_d()) {  // y direction over full x extent incl. halos -> corners
-    HaloLine h{p, L.sj, 1, L.sk, g.ny, vy, g.bc_y == BC::Periodic, py == Parity::Odd, g.flat_y()};
+    HaloLine h{p, L.sj, 1, L.sk, g.ny, vy, g.bc_y == BC::Periodic, py != Parity::Even, g.flat_y(), py == Parity::OddFace};
     int na = vy ? 8 : 6;
     parallel_for(Range3D{0, na, -Grid::halo, L.nx + Grid::halo, 0, nk}, h);
   }
