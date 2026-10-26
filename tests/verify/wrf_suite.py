@@ -157,6 +157,17 @@ CASES = [
     ("real_p9_fp32_1h", "cuda", "configs/real_p9_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P9", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P9/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 6e-4, "W": 1e-2, "THM": 1e-5, "QV": 2e-3}),
+    # MYNN = P6 with the MYNN surface layer (sf_sfclay_physics = 5), the MYNN-EDMF PBL (bl_pbl_physics = 5,
+    # icloud_bl = 1) and RRTMG every 10 min; reference WRF-4.8.0-r8d8. Bit-identical for 3 steps and 1 h.
+    ("real_mynn_r8_fp64_cpu", "cpu_dp", "configs/real_mynn_r8.ini", [],
+     f"{WR}/run_MYNN_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
+                       "QNICE", "QNRAIN", "RAINNC")}),
+    ("real_mynn_r8_fp64_cpu_1h", "cpu_dp", "configs/real_mynn_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_MYNN_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_MYNN_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
+                       "QNICE", "QNRAIN", "RAINNC")}),
     # V1-V3: other regions and map projections from the global GFS of 2026-10-12 00 UTC (WPS on the low
     # resolution global geography): V1 tropics (Bay of Bengal, Mercator, 15 km, P4 physics), V2 Arctic
     # (Svalbard, polar stereographic, 15 km, P4 physics: sea ice, glacier land ice, polar night), V3 Alps
@@ -491,6 +502,7 @@ def main():
                              ("p8", "configs/real_p8_r8.ini", "run_P8_r8"),
                              ("p9", "configs/real_p9_r8.ini", "run_P9_r8"),
                              ("nmp1", "configs/real_nmp1_r8.ini", "run_NMP1_r8"),
+                             ("mynn", "configs/real_mynn_r8.ini", "run_MYNN_r8"),
                              ("t1", "configs/real_t1.ini", "run_R1_r8")):
             rname = f"restart_{tag}_fp64"
             if not wanted(rname):

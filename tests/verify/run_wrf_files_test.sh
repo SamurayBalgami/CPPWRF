@@ -35,6 +35,7 @@ p7|configs/real_p7_r8.ini|$R/run_P7_r8/steps|$R/rst_P7_r8|
 p8|configs/real_p8_r8.ini|$R/run_P8_r8/steps|$R/rst_P8_r8|--set run.run_time=600
 p9|configs/real_p9_r8.ini|$R/run_P9_r8/steps|$R/rst_P9_r8|
 mp8|configs/real_mp8_r8.ini|$R/run_mp8_r8/steps|$R/rst_mp8_r8|
+mynn|configs/real_mynn_r8.ini|$R/run_MYNN_r8/steps|$R/rst_MYNN_r8|
 r1|configs/real_r1.ini|$R/run_R1_r8|-|
 t1|configs/real_t1.ini|$R/run_T1_r8|-|--set output.wrf_namelist=$R/run_T1_r8/namelist.input
 n1|configs/real_n1_steps.ini|$R/run_N1_r8/steps|-|
