@@ -1011,7 +1011,7 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
     k.ck = ck.view(); k.cka = cka.view(); k.cd = cd.view(); k.cda = cda.view();
     k.tb = d_mynn_psi_;
     k.itimestep = int(itimestep);
-    k.restart = false;
+    k.restart = restart_flag;  // module_surface_driver.F: restart=restart_flag
     k.isfflx = o_.isfflx;
     k.xice_threshold = xice_threshold;
     column_for(cols, k);

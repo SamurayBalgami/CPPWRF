@@ -119,6 +119,9 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   }
 
   long itimestep = 0;  // WRF grid%itimestep (incremented in part1, as solve_em does per step)
+  // WRF solve_em's restart_flag: the restart alarm rings at the end of this step (Is_alarm_tstep); the MYNN
+  // surface layer skips its z/L iteration at itimestep 1 when it is set (module_sf_mynnsfc_land.F90 etc.)
+  bool restart_flag = false;
   int stepbl = 1;      // WRF grid%stepbl (set_physics_rconfigs: nint(bldt*60/dt), >= 1)
   int stepcu = 1;      // WRF grid%stepcu (cu_init: max(nint(cudt*60/dt), 1))
   // true (model): keep WRF's grid%t_1 for conv_t_tendf_to_moist, i.e. theta_m at the start of the

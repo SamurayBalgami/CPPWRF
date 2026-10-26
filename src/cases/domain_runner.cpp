@@ -641,6 +641,9 @@ void DomainRunner::before_step(long n) {
     if (p % out_iv_ == 0) do_snap(p);
   }
   step_start_ = std::chrono::steady_clock::now();
+  // solve_em: restart_flag = Is_alarm_tstep(restart alarm) (PrevRingTime + interval <= CurrTime + dt), i.e. the
+  // alarm rings at the end of step n
+  if (m_.suite) m_.suite->restart_flag = rst_due(n);
   if (m_.before_step) m_.before_step(n);
 #ifdef CPPWRF_HAVE_NETCDF
   // sst_update: med_before_solve_io reads auxinput4 after the history output, every auxinput4_interval
