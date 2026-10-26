@@ -456,7 +456,7 @@ std::vector<std::pair<std::string, IntField2*>> PhysicsSuite::carried_int() {
   return v;
 }
 
-void PhysicsSuite::part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies&) {
+void PhysicsSuite::part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies&) {
   ++itimestep;  // solve_em: grid%itimestep = grid%itimestep + 1
   if (rainncv_mp_) rainncv.copy_from(*rainncv_mp_);  // the microphysics' grid%rainncv and grid%sr
   if (sr_mp_) sr.copy_from(*sr_mp_);

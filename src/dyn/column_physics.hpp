@@ -4,7 +4,8 @@
 // the dycore only calls it at WRF's points of the time step (solve_em):
 //   RK stage 1, after rk_step_prep and init_zero_tendency (LargeStep::zero_tendf):
 //     part1  = first_rk_step_part1: phy_prep, radiation_driver, surface_driver, pbl_driver,
-//              cumulus_driver (updates the surface state, fills the uncoupled R*TEN fields)
+//              cumulus_driver (updates the surface state, fills the uncoupled R*TEN fields; the MYNN
+//              PBL writes qke_adv of WRF's scalar array, both time levels as rk_update_scalar's copy)
 //   RK stage 1, before the stage-1 diffusion and the rest of rk_tendency:
 //     part2  = first_rk_step_part2: calculate_phy_tend, update_phy_ten (adds into t.ru_tendf,
 //              t.rv_tendf, t.t_tendf, t.q_tendf; the diffusion is added after it, as in WRF)
@@ -17,7 +18,7 @@ namespace cppwrf::dyn {
 class ColumnPhysics {
  public:
   virtual ~ColumnPhysics() = default;
-  virtual void part1(const State& s, const BaseState& b, Tendencies& t) = 0;
+  virtual void part1(State& s, const BaseState& b, Tendencies& t) = 0;
   virtual void part2(const State& s, const BaseState& b, Tendencies& t) = 0;
   virtual void after_rk(const State& s, const BaseState& b) = 0;
   // Advective forcing for cumulus schemes that need it (WRF RTHFTEN / RQVFTEN, set_tend in

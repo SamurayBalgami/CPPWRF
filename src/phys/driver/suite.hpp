@@ -109,7 +109,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   PhysicsSuite(const Grid& g, const SuiteOptions& o);
   ~PhysicsSuite() override;
 
-  void part1(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) override;
+  void part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) override;
   void part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) override;
   void after_rk(const dyn::State& s, const dyn::BaseState& b) override;
   Field3* th_forcing() override { return o_.cu_physics == 16 || o_.cu_physics == 3 ? &pt.rthften : nullptr; }
@@ -251,7 +251,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   Field3 zero3_;  // qc/qi stand-ins for YSU/MYJ (flag_qc = flag_qi = false)
 
   void surface_driver(const dyn::State& s, const dyn::BaseState& b);
-  void pbl_driver(const dyn::State& s, const dyn::BaseState& b);
+  void pbl_driver(dyn::State& s, const dyn::BaseState& b);
   void cumulus_driver(const dyn::State& s, const dyn::BaseState& b);
   void convtrans_prep(const dyn::State& s);
   void advance_ppt(const dyn::State& s);

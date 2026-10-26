@@ -51,8 +51,8 @@ std::vector<std::string> wrf_names(const std::string& n) {
   };
   static const std::map<std::string, std::string> moist = {
       {"qv", "QVAPOR"}, {"qc", "QCLOUD"}, {"qr", "QRAIN"}, {"qi", "QICE"}, {"qs", "QSNOW"},
-      {"qg", "QGRAUP"}, {"qni", "QNICE"}, {"qnr", "QNRAIN"}};
-  if (n.rfind("q1_", 0) == 0 || n.rfind("q2_", 0) == 0) {  // moist arrays have one time level (q_1 = q_2
+      {"qg", "QGRAUP"}, {"qni", "QNICE"}, {"qnr", "QNRAIN"}, {"qke_adv", "qke_adv"}};
+  if (n.rfind("q1_", 0) == 0 || n.rfind("q2_", 0) == 0) {  // moist/scalar arrays have one time level (q_1 = q_2
     const std::string q = n.substr(3);                      // at the step start); tke_1 / tke_2
     auto it = moist.find(q);
     if (it != moist.end()) return {it->second};

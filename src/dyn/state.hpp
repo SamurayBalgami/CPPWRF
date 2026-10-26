@@ -56,6 +56,7 @@ struct State {
   std::vector<Field3> q_1, q_2;
   int n_moist = 0;
   int P_QV = -1, P_QC = -1, P_QR = -1, P_QI = -1, P_QS = -1, P_QG = -1, P_QNI = -1, P_QNR = -1, P_TKE = -1;  // indices into q_* (-1: absent)
+  int P_QKE_ADV = -1;  // WRF scalar qke_adv (bl_pbl_physics = 5): advected, written by the MYNN PBL
   Field3 qtot;  // M, sum of the moist species of the stage state; allocated if n_moist > 0
   Field3 cqu, cqv, cqw;  // WRF calc_cq moisture coefficients (U, V, W points), with qtot
   Field3 h_diabatic;  // M, microphysics heating of the last step [theta_m K/s] (WRF h_diabatic); with qtot

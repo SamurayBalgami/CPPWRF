@@ -249,6 +249,10 @@ void init_real_case(const io::Config& cfg, Model& m) {
     s.add_scalar(g, "tke", false);
     m.tend->add_scalar(g, "tke");
   }
+  if (cfg.get_int("phys.bl_pbl_physics", 0) == 5) {  // Registry package mynnpblscheme: scalar:qke_adv
+    s.add_scalar(g, "qke_adv", false);
+    m.tend->add_scalar(g, "qke_adv");
+  }
   if (s.P_QV < 0) throw std::runtime_error("case = real needs qv in moist.species");
   const std::vector<double>& qv = d.qvapor;
   const std::string wi_path = dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01");
@@ -270,6 +274,7 @@ void init_real_case(const io::Config& cfg, Model& m) {
     if (nm == "qni") extra_q = read_var_if_present(wi_path, "QNICE", qv.size());
     else if (nm == "qnr") extra_q = read_var_if_present(wi_path, "QNRAIN", qv.size());
     else if (nm == "tke") extra_q = read_var_if_present(wi_path, "TKE", qv.size());
+    else if (nm == "qke_adv") extra_q = read_var_if_present(wi_path, "qke_adv", qv.size());
     const std::vector<double>* src = nm == "qc" ? &d.qcloud : nm == "qr" ? &d.qrain : nm == "qi" ? &d.qice
                                      : nm == "qs" ? &d.qsnow : nm == "qg" ? &d.qgraup
                                      : (!extra_q.empty() ? &extra_q : nullptr);

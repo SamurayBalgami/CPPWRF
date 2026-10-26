@@ -93,6 +93,8 @@ struct KMynnPbl {
   V3 rublten, rvblten, rthblten, rqvblten, rqcblten, rqiblten;
   V2 pblh, maxwidth, maxmf, ztop_plume, excess_h, excess_q;
   View2<int> kpbl;
+  V3 qke_adv_1, qke_adv_2;  // the scalar qke_adv (State q_1 / q_2), when present
+  bool has_qke_adv = false;
   CPPWRF_HD void operator()(int i, int j) const {
     using namespace mynnedmf;
     Column<kMaxLevels> c;
@@ -152,6 +154,8 @@ struct KMynnPbl {
       qc_bl(i, j, kk) = c.qc_bl[k] / (one - c.sqv[k]);
       qi_bl(i, j, kk) = c.qi_bl[k] / (one - c.sqv[k]);
       cldfra_bl(i, j, kk) = c.cldfra_bl[k];
+      // qke_adv(i,k,j) = qke_adv1(k) into grid%scalar; rk_update_scalar (rk_step 1) then copies it to the old level
+      if (has_qke_adv) qke_adv_2(i, j, kk) = qke_adv_1(i, j, kk) = c.qke_adv[k];
     }
     kpbl(i, j) = c.kpbl;
     pblh(i, j) = c.pblh;
@@ -163,7 +167,7 @@ struct KMynnPbl {
 }  // namespace
 
 // module_pbl_driver.F pbl_driver for YSUSCHEME / MYJPBLSCHEME
-void PhysicsSuite::pbl_driver(const dyn::State& s, const dyn::BaseState& b) {
+void PhysicsSuite::pbl_driver(dyn::State& s, const dyn::BaseState& b) {
   if (o_.bl_pbl_physics == 0) return;  // module_pbl_driver: no PBL scheme (surface fluxes reach diff_opt 2)
   const Range2D cols = g_.columns();
   const bool run_param = itimestep == 1 || o_.bldt == 0 || stepbl == 1 || itimestep % stepbl == 0;
@@ -222,6 +226,8 @@ void PhysicsSuite::pbl_driver(const dyn::State& s, const dyn::BaseState& b) {
     k.rqvblten = pt.rqvblten.view(); k.rqcblten = pt.rqcblten.view(); k.rqiblten = pt.rqiblten.view();
     k.pblh = pblh.view(); k.maxwidth = maxwidth.view(); k.maxmf = maxmf.view(); k.ztop_plume = ztop_plume.view();
     k.excess_h = excess_h.view(); k.excess_q = excess_q.view(); k.kpbl = kpbl.view();
+    k.has_qke_adv = s.P_QKE_ADV >= 0;
+    if (k.has_qke_adv) { k.qke_adv_1 = s.q_1[s.P_QKE_ADV].view(); k.qke_adv_2 = s.q_2[s.P_QKE_ADV].view(); }
     column_for(cols, k);
   }
   if (o_.gwd_opt == 1) {

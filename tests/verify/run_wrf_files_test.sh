@@ -10,6 +10,8 @@
 # resumes from the same wrfrst file).
 # RQCBLTEN and RQIBLTEN are not compared: without qc/qi WRF leaves them uninitialised. Neither are QZ0 and
 # USTM of f1 (fractional sea ice with sfclayrev): WRF averages them with uninitialised open-water locals.
+# MYNN's first step depends on a restart alarm ringing at its end (solve_em's restart_flag), so its history
+# with restart_interval 1 differs from the plain run: mynn (no restart files) and mynnr (rst_/rsm_ only).
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -35,7 +37,8 @@ p7|configs/real_p7_r8.ini|$R/run_P7_r8/steps|$R/rst_P7_r8|
 p8|configs/real_p8_r8.ini|$R/run_P8_r8/steps|$R/rst_P8_r8|--set run.run_time=600
 p9|configs/real_p9_r8.ini|$R/run_P9_r8/steps|$R/rst_P9_r8|
 mp8|configs/real_mp8_r8.ini|$R/run_mp8_r8/steps|$R/rst_mp8_r8|
-mynn|configs/real_mynn_r8.ini|$R/run_MYNN_r8/steps|$R/rst_MYNN_r8|
+mynn|configs/real_mynn_r8.ini|$R/run_MYNN_r8/steps|-|
+mynnr|configs/real_mynn_r8.ini|$R/rst_MYNN_r8|$R/rst_MYNN_r8|
 r1|configs/real_r1.ini|$R/run_R1_r8|-|
 t1|configs/real_t1.ini|$R/run_T1_r8|-|--set output.wrf_namelist=$R/run_T1_r8/namelist.input
 n1|configs/real_n1_steps.ini|$R/run_N1_r8/steps|-|
