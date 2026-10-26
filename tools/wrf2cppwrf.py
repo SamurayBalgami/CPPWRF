@@ -882,25 +882,33 @@ class WrfTranslator:
                     return None
                 return kinds[0]
 
-            # symmetric walls: not verified against WRF. The only ideal data (em_quarter_ss) has a wind across the
-            # walls, with which WRF's own solution breaks down within a step (W -35 m/s at the top after 12 s)
             bcx = lateral_bc("x")
-            if bcx == "symmetric":
-                self.error("WRF symmetric_xs/xe lateral boundaries are not supported (not verified against WRF).")
-            elif bcx is not None:
-                sections["domain"]["bc_x"] = bcx  # open: BC::Open (src/cases/model.cpp)
+            if bcx is not None:
+                sections["domain"]["bc_x"] = bcx  # open: BC::Open, symmetric: BC::Symmetric (src/cases/model.cpp)
 
             bcy = lateral_bc("y")
-            if (ny > 1 or "bc_x" in sections["domain"]) and bcy == "symmetric":
-                self.error("WRF symmetric_ys/ye lateral boundaries are not supported (not verified against WRF).")
-            elif (ny > 1 or "bc_x" in sections["domain"]) and bcy is not None:
+            if (ny > 1 or "bc_x" in sections["domain"]) and bcy is not None:
                 sections["domain"]["bc_y"] = bcy
 
         # 7. Ideal Case Def Section [case]
         if case_name.startswith("em_"):
             # ideal.exe reads input_sounding from the run directory, i.e. next to namelist.input
             nml_dir = os.path.dirname(self.namelist_path) if self.namelist_path else "."
-            sections["case"] = {"sounding_file": os.path.join(os.path.abspath(nml_dir), "input_sounding")}
+            snd = os.path.join(os.path.abspath(nml_dir), "input_sounding")
+            sections["case"] = {"sounding_file": snd}
+            # symmetric walls need zero normal wind there: with a wind across them WRF keeps the wall value of
+            # the normal velocity while muu changes sign at the wall, and its solution breaks down (the model
+            # checks the interpolated wall winds; here any nonzero u / v of the sounding)
+            dom = sections.get("domain", {})
+            cols = [c for c, bc in ((3, dom.get("bc_x")), (4, dom.get("bc_y") if dom.get("ny", 1) > 1 else None))
+                    if bc == "symmetric"]
+            if cols and os.path.exists(snd):
+                rows = [l.split() for l in open(snd).read().splitlines()[1:]]
+                for c in cols:
+                    if any(len(r) > c and float(r[c]) != 0.0 for r in rows):
+                        self.error(f"WRF symmetric_{'x' if c == 3 else 'y'}s/{'x' if c == 3 else 'y'}e with a "
+                                   f"nonzero input_sounding {'u' if c == 3 else 'v'}: a wind across the walls is "
+                                   f"not supported (WRF's solution breaks down).")
         elif case_name == "straka":
             sections["case"] = {
                 "xc": 25550,

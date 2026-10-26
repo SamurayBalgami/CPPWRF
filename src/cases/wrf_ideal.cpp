@@ -604,6 +604,21 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
     m.tend->add_scalar(gr, "tke");
   }
   if (s.P_QV < 0) throw std::runtime_error(name + " needs qv in moist.species (WRF carries qv for every mp_physics)");
+  // symmetric walls with a wind across them: WRF keeps the wall value of the normal velocity (never advanced)
+  // while set_physical_bc2d(muu, 'u') flips the sign of muu there and advect_scalar_pd limits the halo cells,
+  // and its solution breaks down within a minute; only zero normal wind at the walls is ported (and verified)
+  for (int k = 0; k < nz; ++k) {
+    if (gr.bc_x == BC::Symmetric)
+      for (int j = 0; j < jm; ++j)
+        if (u1[(std::size_t(k) * jm + j) * nxs] != 0. || u1[(std::size_t(k) * jm + j) * nxs + nx] != 0.)
+          throw std::runtime_error("symmetric_xs/xe: the input_sounding u at the x walls must be 0 (WRF's solution "
+                                   "with a wind across the walls breaks down; not ported)");
+    if (gr.bc_y == BC::Symmetric && ny > 1)
+      for (int i = 0; i < nx; ++i)
+        if (v1[std::size_t(k) * jvm * nx + i] != 0. || v1[(std::size_t(k) * jvm + ny) * nx + i] != 0.)
+          throw std::runtime_error("symmetric_ys/ye: the input_sounding v at the y walls must be 0 (WRF's solution "
+                                   "with a wind across the walls breaks down; not ported)");
+  }
   auto mi = [&](int i, int j, int k) { return (std::size_t(k) * jm + (jm == 1 ? 0 : j)) * nx + i; };
   s.u_2.fill_host([&](int i, int j, int k) { return u1[(std::size_t(k) * jm + (jm == 1 ? 0 : j)) * nxs + i]; });
   s.v_2.fill_host([&](int i, int j, int k) { return v1[(std::size_t(k) * jvm + (jvm == 1 ? 0 : j)) * nx + i]; });
