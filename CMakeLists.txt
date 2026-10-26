@@ -185,6 +185,9 @@ foreach(src ${CPPWRF_UNIT_TESTS})
   set_tests_properties(${name} PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=2;OMP_WAIT_POLICY=passive")
 endforeach()
 
+# Namelist translator (tools/wrf2cppwrf.py; python3, no WRF data needed)
+add_subdirectory(tests/tools)
+
 # Differential tests against the original WRF Fortran (gfortran; slow): physics schemes, the
 # physics driver glue, diffusion kernels, lateral boundaries. ctest -L diff runs them.
 option(CPPWRF_DIFF_TESTS "Register the WRF-Fortran differential tests with ctest" OFF)
