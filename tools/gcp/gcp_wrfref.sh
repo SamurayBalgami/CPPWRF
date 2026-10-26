@@ -2,7 +2,7 @@
 # WRF reference runs for the suite on a Google Compute Engine spot VM (Intel; see gcp_run.sh).
 #
 #   CPPWRF_GCP_PROJECT=... CPPWRF_GCP_BUCKET=... tools/gcp/gcp_wrfref.sh REFS.txt [--machine TYPE] [--data OBJ,...]
-#       [--files NAME,...] [--cases NAME,...] [--runs DIR] [--out DIR]
+#       [--files NAME,...] [--cases NAME,...] [--runs DIR] [--out DIR] [--check-only]
 #
 # REFS.txt: one reference per line "NAME BASE_RUN WRF_EXE section.key=value ..." as gcp_matrix.sh's variants
 # (time_control.run_seconds / history_interval_s set the run). The VM makes run_NAME and run_NAME/steps (3 steps,
@@ -10,23 +10,25 @@
 # make_resumed_refs.sh) and, with --files / --cases, runs run_wrf_files_test.sh / wrf_suite.py (exact case names)
 # of the committed HEAD against them. The references are unpacked into --runs (default $CPPWRF_WRF_RUNS, an
 # existing run_NAME stops the script), the links to the VM's inputs pointing to the files of DIR/BASE_RUN and
-# wrf.exe to $WRF_R8 / $WRF_R8D8 (default ~/wrf_real/WRF-4.8.0-r8[d8]/main/wrf.exe).
+# wrf.exe to $WRF_R8 / $WRF_R8D8 (default ~/wrf_real/WRF-4.8.0-r8[d8]/main/wrf.exe). --check-only: only the tests
+# on the VM (the references are neither uploaded nor unpacked).
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_GCP_PROJECT:?set CPPWRF_GCP_PROJECT}" "${CPPWRF_GCP_BUCKET:?set CPPWRF_GCP_BUCKET}"
 P=$CPPWRF_GCP_PROJECT BK=$CPPWRF_GCP_BUCKET
 REFS=$1; shift
-MACHINE=c3-highcpu-22 DATA=matrix_data.tar OUT= FILES= CASES= RUNS=${CPPWRF_WRF_RUNS:-$HOME/wrf_real480}
+MACHINE=c3-highcpu-22 DATA=matrix_data.tar OUT= FILES= CASES= FETCH=1 RUNS=${CPPWRF_WRF_RUNS:-$HOME/wrf_real480}
 WRF_R8=${WRF_R8:-$HOME/wrf_real/WRF-4.8.0-r8/main/wrf.exe} WRF_R8D8=${WRF_R8D8:-$HOME/wrf_real/WRF-4.8.0-r8d8/main/wrf.exe}
 ZONES=us-central1-a,us-central1-b,us-central1-c,us-central1-f,us-east1-b,us-east1-c,us-east1-d,us-east4-a,us-east4-b,us-east4-c
 while [ $# -gt 0 ]; do
   case $1 in
     --machine) MACHINE=$2; shift 2 ;; --data) DATA=$2; shift 2 ;; --out) OUT=$2; shift 2 ;;
-    --files) FILES=$2; shift 2 ;; --cases) CASES=$2; shift 2 ;; --runs) RUNS=$2; shift 2 ;; *) sed -n '2,14p' "$0"; exit 2 ;;
+    --files) FILES=$2; shift 2 ;; --cases) CASES=$2; shift 2 ;; --runs) RUNS=$2; shift 2 ;;
+    --check-only) FETCH=0; shift ;; *) sed -n '2,15p' "$0"; exit 2 ;;
   esac
 done
 names=$(grep -v '^\s*#' "$REFS" | awk 'NF {print $1}')
-for n in $names; do [ ! -e "$RUNS/run_$n" ] || { echo "[gcp_wrfref] $RUNS/run_$n exists"; exit 1; }; done
+[ $FETCH = 0 ] || for n in $names; do [ ! -e "$RUNS/run_$n" ] || { echo "[gcp_wrfref] $RUNS/run_$n exists"; exit 1; }; done
 STAMP=$(date +%Y%m%d-%H%M%S)-$(printf %04x $RANDOM) VM=cppwrf-wrfref-$STAMP RES=results/wrfref-$STAMP
 OUT=${OUT:-${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}/gcp/wrfref-$STAMP}; mkdir -p "$OUT"
 [ -z "$(git -C "$REPO" status --porcelain --untracked-files=no)" ] || echo "note: uncommitted changes are not sent (HEAD only)"
@@ -41,7 +43,7 @@ for z in ${ZONES//,/ }; do
        --provisioning-model=SPOT --instance-termination-action=DELETE --max-run-duration=4h \
        --image-family=debian-13 --image-project=debian-cloud --boot-disk-size=60GB --boot-disk-type=pd-balanced \
        --scopes=storage-rw --metadata-from-file=startup-script="$REPO/tools/gcp/remote_wrfref.sh" \
-       --metadata="^@^bucket=$BK@src=src/$STAMP.tar.gz@data=$DATA@result=$RES@refs=src/$STAMP.refs.txt@files=$FILES@cases=$CASES" \
+       --metadata="^@^bucket=$BK@src=src/$STAMP.tar.gz@data=$DATA@result=$RES@refs=src/$STAMP.refs.txt@files=$FILES@cases=$CASES@fetch=$FETCH" \
        > "$OUT/create.log" 2>&1; then ZONE=$z; break; fi
   why=$(grep -oE "stockout|ZONE_RESOURCE_POOL_EXHAUSTED|Quota '[A-Z_]*'|does not exist|not available|not supported" "$OUT/create.log" | head -1)
   echo "[gcp_wrfref] $z: ${why:-error}"
@@ -59,7 +61,7 @@ done
 for f in job.log refs.out cmake.log files.log suite.log; do
   gcloud storage cp "gs://$BK/$RES/$f" "$OUT/" --project "$P" -q 2>/dev/null || true
 done
-if gcloud storage ls "gs://$BK/$RES/refs.tar" --project "$P" > /dev/null 2>&1; then
+if [ $FETCH = 1 ] && gcloud storage ls "gs://$BK/$RES/refs.tar" --project "$P" > /dev/null 2>&1; then
   gcloud storage cat "gs://$BK/$RES/refs.tar" --project "$P" | tar xf - -C "$RUNS"
   # the VM's links -> the same local files (base run inputs, the other reference directories, wrf.exe)
   for n in $names; do

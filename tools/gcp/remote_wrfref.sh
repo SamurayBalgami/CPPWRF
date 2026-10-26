@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Startup script of the reference VM (tools/gcp/gcp_wrfref.sh): unpacks the WRF runs and wrf.exe, makes every
 # reference of the list (tools/gcp/wrf_ref_run.py: run_NAME and run_NAME/steps, in parallel) and its restart
-# references (tests/verify/make_restart_refs.sh, make_resumed_refs.sh), uploads them as refs.tar (links kept);
+# references (tests/verify/make_restart_refs.sh, make_resumed_refs.sh), uploads them as refs.tar (links kept; not
+# with fetch=0);
 # with `files` / `cases` it then builds CPPWRF and runs run_wrf_files_test.sh / wrf_suite.py against them.
 md() { curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1"; }
-B=$(md bucket) SRC=$(md src) DATA=$(md data) RES=$(md result) REFS=$(md refs) FILES=$(md files) CASES=$(md cases)
+B=$(md bucket) SRC=$(md src) DATA=$(md data) RES=$(md result) REFS=$(md refs) FILES=$(md files) CASES=$(md cases) FETCH=$(md fetch)
 J=/opt/job W=/opt/job/wrf_runs; mkdir -p $J $W; exec > $J/job.log 2>&1
 put() { gcloud storage cp "$@" "gs://$B/$RES/" || true; }
 trap 'put $J/job.log $J/refs.out $J/files.log $J/suite.log; date > $J/done; put $J/done; poweroff' EXIT
@@ -25,7 +26,7 @@ names=$(grep -v '^\s*#' $J/refs.txt | awk 'NF {print $1}')
   CPPWRF_WRF_RUNS=$W bash $J/src/tests/verify/make_resumed_refs.sh $names; } >> $J/refs.out 2>&1
 dirs=$(for n in $names; do for p in run rst rsm; do [ -d "$W/${p}_$n" ] && echo "${p}_$n"; done; done)
 # shellcheck disable=SC2086
-tar cf $J/refs.tar -C $W $dirs && put $J/refs.tar
+[ "$FETCH" = 0 ] || { tar cf $J/refs.tar -C $W $dirs && put $J/refs.tar; }
 [ -n "$FILES$CASES" ] || exit 0
 cmake -S $J/src -B $J/build -DCMAKE_BUILD_TYPE=Release -DCPPWRF_DOUBLE=ON -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_NATIVE=OFF \
   -DCMAKE_CXX_FLAGS="-march=skylake -mtune=skylake" > $J/cmake.log 2>&1 && cmake --build $J/build -j"$(nproc)" --target cppwrf >> $J/cmake.log 2>&1
