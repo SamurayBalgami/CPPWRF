@@ -229,10 +229,7 @@ struct RrtmgLwTables {
 
 static_assert(sizeof(RrtmgLwTables) == 1435576, "RrtmgLwTables size must be exactly 1435576 bytes");
 
-// Loads precomputed tables from binary dump file
+// Loads the tables dump (tests/phys/ra_rrtmg_lw/dump_tables.f90, data/rrtmg/rrtmg_lw_tables.bin)
 bool load_rrtmg_lw_tables(const std::string& filepath, RrtmgLwTables& tables);
-
-// Global default tables instance (host)
-RrtmgLwTables& get_default_rrtmg_lw_tables();
 
 }  // namespace cppwrf::phys

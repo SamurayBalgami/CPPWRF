@@ -423,7 +423,6 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
 #pragma omp parallel
   {
     auto lws = std::make_unique<RrtmgLwWorkspace>();
-    lws->init_pointers();
     auto sws = std::make_unique<RrtmgSwWorkspace>();
     std::vector<double> cp8w(nz + 1), ct8w(nz + 1), cp(nz), cpi(nz), cdz(nz), ct(nz), crho(nz), cqv(nz),
         zero(nz, 0.0), ccf(nz, 0.0), co3(nz, 0.0), rlw(nz), rlwc(nz), rsw(nz), rswc(nz), cqc(nz, 0.0),

@@ -1,13 +1,7 @@
-#include <cstdio>
 #include "phys/ra_rrtmg_lw/rrtmg_lw.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
-
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 
 namespace cppwrf::phys {
 
@@ -121,7 +115,7 @@ RrtmgLwCallConfig rrtmg_lw_call_config(int num_levels, const RrtmgLwConfig& conf
 
 
 // WRF rrtmg_lw (inatm, cldprmc, setcoef, taumol, rtrnmc) for one column whose McICA subcolumn
-// cloud arrays are already in ws (cldfmc, ciwpmc, clwpmc, cswpmc, taucmc). Layer arrays have
+// cloud arrays are already in ws (cldfmc, taucmc). Layer arrays have
 // nlayers entries, level arrays nlayers + 1 (index 0 = surface); pressures in mb, emis per band.
 void rrtmg_lw_core(int nlayers, double cp, const double* play, const double* plev, const double* tlay,
                    const double* tlev, double tsk, const double* h2ovmr, const double* o3vmr, const double* co2vmr,
@@ -240,123 +234,6 @@ void rrtmg_lw_column(
   const LwColumnOut o = rrtmg_lw_finish(c, v, sd_const(pi3d), SD{rthratenlw, 1}, SD{rthratenlwc, 1});
   glw = o.glw; olr = o.olr; lwcf = o.lwcf; lwupt = o.lwupt; lwuptc = o.lwuptc; lwdnt = o.lwdnt;
   lwdntc = o.lwdntc; lwupb = o.lwupb; lwupbc = o.lwupbc; lwdnb = o.lwdnb; lwdnbc = o.lwdnbc;
-}
-
-void rrtmg_lwrad(
-    int num_cols,
-    int nz,
-    const RrtmgLwConfig& config,
-    const RrtmgLwTables& tables,
-    const double* tsk,
-    const double* emiss,
-    const double* xland,
-    const double* xice,
-    const double* snow,
-    const double* xlat,
-    const double* p8w,
-    const double* t8w,
-    const double* p3d,
-    const double* pi3d,
-    const double* dz8w,
-    const double* t3d,
-    const double* rho3d,
-    const double* qv3d,
-    const double* qc3d,
-    const double* qr3d,
-    const double* qi3d,
-    const double* qs3d,
-    const double* qg3d,
-    const double* cldfra3d,
-    double* glw,
-    double* olr,
-    double* lwcf,
-    double* lwupt,
-    double* lwuptc,
-    double* lwdnt,
-    double* lwdntc,
-    double* lwupb,
-    double* lwupbc,
-    double* lwdnb,
-    double* lwdnbc,
-    double* rthratenlw,
-    double* rthratenlwc
-) {
-  int num_threads = 1;
-#ifdef _OPENMP
-  num_threads = omp_get_max_threads();
-#endif
-
-  std::vector<RrtmgLwWorkspace> workspaces(num_threads);
-  for (auto& ws : workspaces) {
-    ws.init_pointers();
-  }
-
-#pragma omp parallel for schedule(dynamic, 1)
-  for (int col = 0; col < num_cols; ++col) {
-    int tid = 0;
-#ifdef _OPENMP
-    tid = omp_get_thread_num();
-#endif
-    RrtmgLwWorkspace& ws = workspaces[tid];
-
-    // Gather 1D profiles for this column
-    double col_p8w[RRTMG_LW_MAX_LAYERS + 1];
-    double col_t8w[RRTMG_LW_MAX_LAYERS + 1];
-    for (int k = 0; k <= nz; ++k) {
-      col_p8w[k] = p8w[k * num_cols + col];
-      col_t8w[k] = t8w[k * num_cols + col];
-    }
-
-    double col_p3d[RRTMG_LW_MAX_LAYERS];
-    double col_pi3d[RRTMG_LW_MAX_LAYERS];
-    double col_dz8w[RRTMG_LW_MAX_LAYERS];
-    double col_t3d[RRTMG_LW_MAX_LAYERS];
-    double col_rho3d[RRTMG_LW_MAX_LAYERS];
-    double col_qv3d[RRTMG_LW_MAX_LAYERS];
-    double col_qc3d[RRTMG_LW_MAX_LAYERS];
-    double col_qr3d[RRTMG_LW_MAX_LAYERS];
-    double col_qi3d[RRTMG_LW_MAX_LAYERS];
-    double col_qs3d[RRTMG_LW_MAX_LAYERS];
-    double col_qg3d[RRTMG_LW_MAX_LAYERS];
-    double col_cldfra3d[RRTMG_LW_MAX_LAYERS];
-
-    for (int k = 0; k < nz; ++k) {
-      int idx = k * num_cols + col;
-      col_p3d[k] = p3d[idx];
-      col_pi3d[k] = pi3d[idx];
-      col_dz8w[k] = dz8w[idx];
-      col_t3d[k] = t3d[idx];
-      col_rho3d[k] = rho3d[idx];
-      col_qv3d[k] = qv3d[idx];
-      col_qc3d[k] = qc3d[idx];
-      col_qr3d[k] = qr3d[idx];
-      col_qi3d[k] = qi3d[idx];
-      col_qs3d[k] = qs3d[idx];
-      col_qg3d[k] = qg3d[idx];
-      col_cldfra3d[k] = cldfra3d[idx];
-    }
-
-    double col_rthratenlw[RRTMG_LW_MAX_LAYERS];
-    double col_rthratenlwc[RRTMG_LW_MAX_LAYERS];
-
-    rrtmg_lw_column(
-        nz, config, tables,
-        tsk[col], emiss[col], xland[col], xice[col], snow[col], xlat[col],
-        col_p8w, col_t8w, col_p3d, col_pi3d, col_dz8w, col_t3d, col_rho3d,
-        col_qv3d, col_qc3d, col_qr3d, col_qi3d, col_qs3d, col_qg3d, col_cldfra3d, nullptr,
-        glw[col], olr[col], lwcf[col],
-        lwupt[col], lwuptc[col], lwdnt[col], lwdntc[col],
-        lwupb[col], lwupbc[col], lwdnb[col], lwdnbc[col],
-        col_rthratenlw, col_rthratenlwc,
-        ws
-    );
-
-    for (int k = 0; k < nz; ++k) {
-      int idx = k * num_cols + col;
-      rthratenlw[idx] = col_rthratenlw[k];
-      rthratenlwc[idx] = col_rthratenlwc[k];
-    }
-  }
 }
 
 } // namespace cppwrf::phys
