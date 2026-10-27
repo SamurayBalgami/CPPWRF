@@ -221,56 +221,6 @@ struct Wsm6Params {
         return (std::max(b, qmin) - c) / (1.0 + d * d / (rv * e) * c / (a * a));
     }
 
-    CPPWRF_HD inline void slope_rain(int km, const Real* qrs, const Real* den, const Real* denfac, const Real* t, Real* vt) const {
-        for (int k = 0; k < km; ++k) {
-            Real rslope, rslopeb;
-            if (qrs[k] <= qcrmin) {
-                rslope = rslopermax;
-                rslopeb = rsloperbmax;
-            } else {
-                Real lamdar = std::sqrt(std::sqrt(pidn0r / (qrs[k] * den[k])));
-                rslope = 1.0 / lamdar;
-                rslopeb = std::pow(rslope, bvtr);
-            }
-            vt[k] = pvtr * rslopeb * denfac[k];
-            if (qrs[k] <= 0.0) vt[k] = 0.0;
-        }
-    }
-
-    CPPWRF_HD inline void slope_snow(int km, const Real* qrs, const Real* den, const Real* denfac, const Real* t, Real* vt) const {
-        for (int k = 0; k < km; ++k) {
-            Real supcol = t0c - t[k];
-            Real n0sfac = std::max(std::min(std::exp(alpha * supcol), n0smax / n0s), static_cast<Real>(1.0));
-            Real rslope, rslopeb;
-            if (qrs[k] <= qcrmin) {
-                rslope = rslopesmax;
-                rslopeb = rslopesbmax;
-            } else {
-                Real lamdas = std::sqrt(std::sqrt(pidn0s * n0sfac / (qrs[k] * den[k])));
-                rslope = 1.0 / lamdas;
-                rslopeb = std::pow(rslope, bvts);
-            }
-            vt[k] = pvts * rslopeb * denfac[k];
-            if (qrs[k] <= 0.0) vt[k] = 0.0;
-        }
-    }
-
-    CPPWRF_HD inline void slope_graup(int km, const Real* qrs, const Real* den, const Real* denfac, const Real* t, Real* vt) const {
-        for (int k = 0; k < km; ++k) {
-            Real rslope, rslopeb;
-            if (qrs[k] <= qcrmin) {
-                rslope = rslopegmax;
-                rslopeb = rslopegbmax;
-            } else {
-                Real lamdag = std::sqrt(std::sqrt(pidn0g / (qrs[k] * den[k])));
-                rslope = 1.0 / lamdag;
-                rslopeb = std::pow(rslope, bvtg);
-            }
-            vt[k] = pvtg * rslopeb * denfac[k];
-            if (qrs[k] <= 0.0) vt[k] = 0.0;
-        }
-    }
-
     CPPWRF_HD inline void slope_wsm6(int km, const Real* qr, const Real* qs, const Real* qg,
                                     const Real* den, const Real* denfac, const Real* t,
                                     Real rslope[][3], Real rslopeb[][3], Real rslope2[][3],
