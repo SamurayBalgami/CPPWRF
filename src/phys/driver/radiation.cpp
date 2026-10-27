@@ -200,6 +200,15 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
     throw std::runtime_error("radiation: only ra_lw_physics = ra_sw_physics = 4 (RRTMG) are ported");
   if (o.aer_opt != 0) throw std::runtime_error("radiation: aer_opt != 0 is not ported");
   if (o.o3input != 2 && o.o3input != 0) throw std::runtime_error("radiation: o3input must be 0 or 2");
+  // McICA overlaps 1-5 (WRF's cldovrlp 0 leaves the clouds out of RRTMG; not ported)
+  if (o.cldovrlp < 1 || o.cldovrlp > 5) throw std::runtime_error("radiation: cldovrlp must be 1 to 5");
+  {  // the LW column arrays hold RRTMG_LW_SWEEP_MAX layers: the model's and the buffer layers up to 0 hPa
+    RrtmgLwConfig lc;
+    lc.p_top = o.p_top;
+    if (rrtmg_lw_call_config(g.nz, lc, false, false, false).nlayers > RRTMG_LW_SWEEP_MAX)
+      throw std::runtime_error("radiation: RRTMG LW layers (nz + nint(p_top/400 Pa)) exceed " +
+                               std::to_string(RRTMG_LW_SWEEP_MAX));
+  }
   stepra_ = o.radt == 0 ? 1 : std::max(1, int(std::lround(o.radt * 60. / g.dt)));
   p_->lw = std::make_unique<RrtmgLwTables>();
   p_->sw = std::make_unique<RrtmgSwTables>();
