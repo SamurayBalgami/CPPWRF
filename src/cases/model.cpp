@@ -251,6 +251,7 @@ Model Model::build(const io::Config& cfg) {
     pp.mp_tend_lim = real(cfg.get_double("phys.mp_tend_lim", 10.0));
     pp.hail_opt = int(cfg.get_int("phys.hail_opt", 0));
     pp.table_dir = cfg.get_string("phys.table_dir", cfg.get_string("real.dir", ""));
+    pp.force_read_thompson = cfg.get_bool("phys.force_read_thompson", false);
     // phy_init: has_reqc = has_reqi = has_reqs = 1 with use_mp_re = 1, RRTMG LW + SW and WSM6 or Thompson
     pp.microp_re = cfg.get_int("phys.use_mp_re", 1) == 1 && cfg.get_int("phys.ra_lw_physics", 0) == 4 &&
                    cfg.get_int("phys.ra_sw_physics", 0) == 4 && (pp.mp_physics == 6 || pp.mp_physics == 8);

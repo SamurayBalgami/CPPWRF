@@ -19,6 +19,7 @@ struct PhysicsParams {
   int hail_opt = 0;          // WSM6 graupel (0) or hail (1) parameters, WRF namelist hail_opt
   real mp_tend_lim = 10;     // K/s, WRF namelist mp_tend_lim (limit on the mp heating rate)
   std::string table_dir;     // Thompson: WRF's qr_acr_qg_V4.dat, qr_acr_qsV2.dat, freezeH2O.dat if there
+  bool force_read_thompson = false;  // WRF namelist force_read_thompson: those files must be there
   bool microp_re = false;    // WSM6 / Thompson effective radii for RRTMG (WRF has_reqc = has_reqi = has_reqs = 1:
                              // use_mp_re = 1 with RRTMG LW and SW)
 };

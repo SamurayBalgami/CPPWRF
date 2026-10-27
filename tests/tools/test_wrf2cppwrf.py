@@ -555,6 +555,23 @@ class TestValidationAndWarnings(unittest.TestCase):
         self.assertEqual(p["kim_tofd"], True)
         self.assertEqual(p["tofd_factor"], 0.005)
 
+    def test_force_read_thompson(self):
+        def phys(mp, extra):
+            t = WrfTranslator(parse_namelist(real_case(f"""
+            &time_control /
+            &domains time_step = 60 /
+            &physics mp_physics = {mp}, {extra} /
+            &dynamics /
+            """)))
+            gen = t.translate()
+            self.assertEqual(t.errors, [])
+            self.assertFalse([w for w in t.warnings if "thompson" in w])
+            return gen["phys"]
+        self.assertTrue(phys(8, "force_read_thompson = .true.")["force_read_thompson"])
+        self.assertNotIn("force_read_thompson", phys(8, "force_read_thompson = .false."))
+        self.assertNotIn("force_read_thompson", phys(6, "force_read_thompson = .true."))  # read only by Thompson
+        self.assertNotIn("write_thompson_tables", phys(8, "write_thompson_tables = .false."))
+
     def test_opt_thcnd(self):
         base = """
         &time_control /

@@ -242,6 +242,7 @@ Every option supported by the CPPWRF runtime is cataloged below, along with its 
 | `[phys]` | `mp_physics` | integer | `0` | Microphysics scheme (0 = off, 1 = Kessler, 6 = WSM6, 8 = Thompson) | `mp_physics` |
 | `[phys]` | `hail_opt`, `use_mp_re` | integer | `0`, `1` | WSM6 graupel/hail switch (0/1) and microphysics effective radii coupling to RRTMG (0/1) | `hail_opt`, `use_mp_re` |
 | `[phys]` | `mp_tend_lim` | double | `10.0` | Heating rate limiter for microphysics ($K/s$) | `mp_tend_lim` |
+| `[phys]` | `force_read_thompson` | bool | `false` | Thompson: `qr_acr_qg_V4.dat`, `qr_acr_qsV2.dat` and `freezeH2O.dat` must be in `table_dir` (else an error, as WRF stops) instead of being computed | `force_read_thompson` |
 | `[phys]` | `sf_sfclay_physics` | integer | `1` | Surface layer formulation (0 = off, 1 = Revised MM5 / sfclayrev, 2 = Eta / MYJ) | `sf_sfclay_physics` |
 | `[phys]` | `isfflx`, `kim_tofd`, `tofd_factor` | int/bool/double | `1`, `false`, `0.003` | Surface heat/moisture flux switch and turbulent orographic form drag options | `isfflx`, `kim_tofd`, `tofd_factor` |
 | `[phys]` | `sf_surface_physics`, `num_soil_layers`, `rdmaxalb` | int/bool | `2`, `4`, `true` | Land surface model (0 = off, 2 = Unified Noah, 4 = Noah-MP v5.1.2), soil layers (4), snow albedo source | `sf_surface_physics`, `num_soil_layers`, `rdmaxalb` |
