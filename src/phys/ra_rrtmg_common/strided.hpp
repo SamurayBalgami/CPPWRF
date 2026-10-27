@@ -81,8 +81,7 @@ struct CSD2 {
   CPPWRF_FORCEINLINE CSD operator[](int a) const { return CSD{p + std::ptrdiff_t(a) * n * s, s}; }
 };
 
-// views of local stride-1 arrays
+// view of a local stride-1 array
 CPPWRF_FORCEINLINE SD sd(double* p) { return SD{p, 1}; }
-CPPWRF_FORCEINLINE SI si(int* p) { return SI{p, 1}; }
 
 }  // namespace cppwrf::phys

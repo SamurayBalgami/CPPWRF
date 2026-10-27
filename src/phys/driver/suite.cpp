@@ -464,6 +464,8 @@ void PhysicsSuite::part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies
   if (rad_) {  // radiation_driver: xtime (minutes) and julian of the step start
     const double xtime = double(itimestep - 1) * g_.dt / 60.;
     const double julian = wrf_julian(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt);
+    // first_rk_step_part1: YR of the current time (WRFU_TimeGet YY), not the start year
+    const int yr = wrf_year(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt);
     auto q = [&](int n) -> const Field3* { return n >= 0 ? &s.q_2[n] : nullptr; };
     RadiationInputs ri{&prep.t_phy, &prep.p_hyd, &prep.p_hyd_w, &prep.pi_phy, &prep.rho, &prep.dz8w,
                        &prep.t8w, &s.q_2[s.P_QV], q(s.P_QC), q(s.P_QI), q(s.P_QS), re_cloud_, re_ice_,
@@ -474,7 +476,7 @@ void PhysicsSuite::part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies
       ri.qc_bl = &qc_bl;
       ri.qi_bl = &qi_bl;
     }
-    rad_->run(itimestep, xtime, julian, ri,
+    rad_->run(itimestep, xtime, julian, yr, ri,
               RadiationOutputs{&pt.rthraten, &glw, &gsw, &swdown, &coszen, &cldfra, &rthratenlw, &rthratensw,
                                &rthratenlwc, &rthratenswc, &o3rad, &lwcf, &swcf, &hrang,
                                {&lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &olr}, {&swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc}});

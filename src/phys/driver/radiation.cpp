@@ -200,6 +200,8 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
     throw std::runtime_error("radiation: only ra_lw_physics = ra_sw_physics = 4 (RRTMG) are ported");
   if (o.aer_opt != 0) throw std::runtime_error("radiation: aer_opt != 0 is not ported");
   if (o.o3input != 2 && o.o3input != 0) throw std::runtime_error("radiation: o3input must be 0 or 2");
+  // icld = cldovrlp in mcica_subcol_lw / _sw: 0 (clear sky only) is not ported, other values stop WRF
+  if (o.cldovrlp < 1 || o.cldovrlp > 5) throw std::runtime_error("radiation: cldovrlp must be 1..5");
   stepra_ = o.radt == 0 ? 1 : std::max(1, int(std::lround(o.radt * 60. / g.dt)));
   p_->lw = std::make_unique<RrtmgLwTables>();
   p_->sw = std::make_unique<RrtmgSwTables>();
@@ -260,7 +262,7 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
 
 RadiationDriver::~RadiationDriver() = default;
 
-bool RadiationDriver::run(long itimestep, double xtime, double julian, const RadiationInputs& in,
+bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, const RadiationInputs& in,
                           const RadiationOutputs& out) {
   // run decision (radiation_driver, no adaptive time step)
   const bool run_param = itimestep == 1 || o_.radt == 0. || stepra_ == 1 ||
@@ -272,11 +274,11 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
   solcon_ = solcon;
   RrtmgLwConfig lc;
   lc.icloud = o_.icloud; lc.cldovrlp = o_.cldovrlp; lc.idcor = o_.idcor; lc.p_top = o_.p_top;
-  lc.yr = o_.julyr; lc.julian = julian; lc.o3input = o_.o3input;
-  if (o_.ghg_input == 1) p_->gases.interpolate(o_.julyr, julian, lc.co2, lc.n2o, lc.ch4, lc.cfc11, lc.cfc12);
+  lc.yr = yr; lc.julian = julian; lc.o3input = o_.o3input;
+  if (o_.ghg_input == 1) p_->gases.interpolate(yr, julian, lc.co2, lc.n2o, lc.ch4, lc.cfc11, lc.cfc12);
   else rrtmg_default_gases(lc);
   RrtmgSwConfig sc;
-  sc.icloud = o_.icloud; sc.cldovrlp = o_.cldovrlp; sc.idcor = o_.idcor; sc.p_top = o_.p_top; sc.yr = o_.julyr;
+  sc.icloud = o_.icloud; sc.cldovrlp = o_.cldovrlp; sc.idcor = o_.idcor; sc.p_top = o_.p_top; sc.yr = yr;
   sc.julian = julian; sc.solcon = solcon; sc.o3input = o_.o3input; sc.co2 = lc.co2; sc.n2o = lc.n2o; sc.ch4 = lc.ch4;
   int nm = 0, np = 0;
   double f1 = 0, f2 = 0;
