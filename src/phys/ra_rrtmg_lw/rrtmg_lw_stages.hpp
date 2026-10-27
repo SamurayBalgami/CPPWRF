@@ -174,6 +174,20 @@ CPPWRF_FORCEINLINE void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumn
   const double snowh = 0.001 * in.snow;
   const double icefrac = in.xice;
   constexpr double rliqland = 8.0, rliqocean = 14.0, rliqice = 14.0, tmelt = 273.16;
+  // relcalc / reicalc at the layer temperature t (RRTMG_LWRAD passes them tlay)
+  auto relcalc = [&](double t) {
+    double reliq = rliqland + (rliqocean - rliqland) * std::min(1.0, std::max(0.0, (tmelt - t) * 0.05));
+    reliq += (rliqocean - reliq) * std::min(1.0, std::max(0.0, snowh * 10.0));
+    reliq += (rliqocean - reliq) * std::min(1.0, std::max(0.0, 1.0 - landm));
+    reliq += (rliqice - reliq) * std::min(1.0, std::max(0.0, icefrac));
+    return reliq;
+  };
+  auto reicalc = [&](double t) {
+    int idx = static_cast<int>(t - 179.0);
+    idx = std::min(std::max(idx, 1), 94);
+    const double corr = t - static_cast<int>(t);
+    return kc.retab[idx - 1] * (1.0 - corr) + kc.retab[idx] * corr;
+  };
 
   // base layer vertical variables, gases, cloud physical properties
   v.pz[0] = in.p8w[0] / 100.0;
@@ -227,17 +241,9 @@ CPPWRF_FORCEINLINE void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumn
       qi1 = 0.;
       reice1d = 10.;
     }
-    // relcalc / reicalc
-    double reliq = rliqland + (rliqocean - rliqland) * std::min(1.0, std::max(0.0, (tmelt - t3) * 0.05));
-    reliq += (rliqocean - reliq) * std::min(1.0, std::max(0.0, snowh * 10.0));
-    reliq += (rliqocean - reliq) * std::min(1.0, std::max(0.0, 1.0 - landm));
-    reliq += (rliqice - reliq) * std::min(1.0, std::max(0.0, icefrac));
-    int idx = static_cast<int>(t3 - 179.0);
-    idx = std::min(std::max(idx, 1), 94);
-    double corr = t3 - static_cast<int>(t3);
-    double reice = kc.retab[idx - 1] * (1.0 - corr) + kc.retab[idx] * corr;
-    if (inflglw >= 3) reliq = recloud1d;
-    if (iceflglw >= 4) reice = reice1d;
+    // relcalc / reicalc (the top model layer again below, after the buffer changed its temperature)
+    double reliq = inflglw >= 3 ? recloud1d : relcalc(t3);
+    double reice = iceflglw >= 4 ? reice1d : reicalc(t3);
     if (iceflglw == 3) {  // Fu (1996) generalized effective size
       reice = reice * 1.0315;
       reice = std::min(140.0, reice);
@@ -304,6 +310,12 @@ CPPWRF_FORCEINLINE void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumn
   for (int L = num_levels; L <= nlayers; ++L) {
     v.tz[L] = varint(L) + (v.tz[num_levels - 1] - vtop);
     v.tavel[L - 1] = 0.5 * (v.tz[L] + v.tz[L - 1]);
+  }
+  // RRTMG_LWRAD calls relcalc / reicalc after this adjustment: the top model layer's sizes use its new tlay
+  {
+    const int k = num_levels - 1;
+    if (inflglw < 3) v.relqmc[k] = relcalc(v.tavel[k]);
+    if (iceflglw == 3) v.reicmc[k] = std::min(140.0, reicalc(v.tavel[k]) * 1.0315);
   }
   for (int L = num_levels; L < nlayers; ++L) {
     for (int m = 0; m < 7; ++m) v.wkl[m][L] = v.wkl[m][num_levels - 1];
