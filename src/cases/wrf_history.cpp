@@ -799,6 +799,15 @@ void WrfHistory::feedback_physics(WrfHistory& child, int ipos, int jpos, int rat
   }
 }
 
+void WrfHistory::keep_ht_coarse() {
+  const Grid& g = m_.g;
+  for (const wrf_io::OutVar& v : fb_schema_->restart_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real))))
+    if (v.name == "HT_COARSE") {
+      std::vector<double> h;
+      if (value("HGT", "ht", v.dimlens, h)) fed_[v.name] = std::move(h);
+    }
+}
+
 void WrfHistory::feedback_from(WrfHistory& child, int ipos, int jpos, int ratio) {
   const Grid& g = m_.g;
   const Grid& cg = child.m_.g;

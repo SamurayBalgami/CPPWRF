@@ -660,10 +660,13 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
       }
   for (int i = 0; i < max_dom; ++i) doms[i].runner->prepare_output();
 #endif
-  // med_nest_initial's feedback (feedback != 0) of the history fields the model does not carry, then
-  // start_domain(parent) (start_em, topo_wind = 0): CTOPO = CTOPO2 = 1 again (the fed-back average of ones is
-  // 1 + 1 ulp)
+  // med_nest_initial: parent%ht_coarse = parent%ht; its feedback (feedback != 0) of the history fields the model
+  // does not carry, then start_domain(parent) (start_em, topo_wind = 0): CTOPO = CTOPO2 = 1 again (the fed-back
+  // average of ones is 1 + 1 ulp)
   auto initial_history_feedback = [&](int i, int c_idx) {
+#ifdef CPPWRF_HAVE_NETCDF
+    if (doms[i].runner->history()) doms[i].runner->history()->keep_ht_coarse();
+#endif
     if (doms[c_idx].spec.feedback == 0) return;
 #ifdef CPPWRF_HAVE_NETCDF
     if (doms[i].runner->history() && doms[c_idx].runner->history()) {

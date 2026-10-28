@@ -49,6 +49,9 @@ class WrfHistory {
   // feedback function (copy_fcn / copy_fcnm / copy_fcni) takes the child's values inside the nest
   void feedback_physics(WrfHistory& child, int ipos, int jpos, int ratio);
   void feedback_from(WrfHistory& child, int i_parent_start, int j_parent_start, int ratio);
+  // med_nest_initial: parent%ht_coarse = parent%ht when a nest starts or restarts, with or without feedback
+  // (share/mediation_integrate.F:789, 908)
+  void keep_ht_coarse();
   // a run resumed from a restart file at time_sec: START_DATE is the restart time
   void set_restart_time(double time_sec) { restart_sec_ = time_sec; }
 
