@@ -37,6 +37,10 @@ CPPWRF_FORCEINLINE void taumol_sw(
 ) {
   constexpr double oneminus = 1.0 - 1.0e-6;
 
+  // WRF zeroes sfluxzen first (module_ra_rrtmg_sw.F taumol_sw): with laytrop = nlayers (model top at more
+  // than ~191 hPa) bands 16, 17, 27, 28 and 29 never reach their laysolfr and keep 0
+  for (int ig = 0; ig < 112; ++ig) sfluxzen[ig] = 0.0;
+
   // Band 16 (2600-3250 cm-1): ng16 = 6, offset = 0
   {
     const auto& b = tables.b16;
