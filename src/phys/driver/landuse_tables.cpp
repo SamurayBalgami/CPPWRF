@@ -103,7 +103,6 @@ bool read_landuse_table(const std::string& filepath,
   }
   std::cerr << "LANDUSE dataset '" << dataset_name << "' not found in " << filepath << "\n";
   return false;
-  return true;
 }
 
 }  // namespace cppwrf::phys::driver

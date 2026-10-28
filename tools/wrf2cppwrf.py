@@ -369,6 +369,14 @@ DEFAULT_ONLY_OPTIONS = {
     ("time_control", "cycling"): (False, "cycling of the input state"),
     ("dfi_control", "dfi_opt"): (0, "digital filter initialisation"),
     ("domains", "allowed"): (True, "domains that are not integrated (grid_allowed)"),
+    ("dynamics", "use_q_diabatic"): (0, "qv / qc diabatic terms in the scalar tendencies (q_diabatic_add)"),
+    ("dynamics", "rad_nudge"): (0, "theta relaxation to the initial profile (theta_relaxation)"),
+    # history output options (fields or streams CPPWRF does not write)
+    ("time_control", "nwp_diagnostics"): (0, "NWP diagnostics in the history output (WSPD10MAX, UP_HELI_MAX, ...)"),
+    ("time_control", "output_diagnostics"): (0, "time-window diagnostics (auxhist3)"),
+    ("dynamics", "do_avgflx_em"): (0, "time-averaged mass fluxes in the history output (AVGFLX_*)"),
+    ("dynamics", "do_avgflx_cugd"): (0, "time-averaged convective mass fluxes in the history output (AVGFLX_*)"),
+    ("physics", "acc_phy_tend"): (0, "accumulated physics tendencies in the history output (ATHCUTEN, ...)"),
     # physics and surface options of WRF's drivers that CPPWRF does not port (they change results or the output)
     ("physics", "ua_phys"): (False, "UA Noah snow physics"),
     ("physics", "sf_surface_mosaic"): (0, "Noah mosaic land use"),
@@ -478,8 +486,8 @@ IGNORED_WRF_OPTIONS = {
     "io_form_auxinput4": "wrflowinp format (NetCDF); used with sst_update = 1",
     "auxinput4_inname": "wrflowinp file name; used with sst_update = 1",
     "auxinput4_interval": "wrflowinp interval; used with sst_update = 1",
-    "dx": "Real case grid spacing read directly from wrfinput",
-    "dy": "Real case grid spacing read directly from wrfinput",
+    "dx": "Grid spacing (real case: the namelist value, checked against wrfinput as input_wrf does)",
+    "dy": "Grid spacing (real case: the namelist value, checked against wrfinput as input_wrf does)",
     # &physics
     "ifsnow": "Snow effects flag (used by the slab LSM only)",
     "num_soil_layers": "4 soil layers (Noah, Noah-MP)",
@@ -885,12 +893,12 @@ class WrfTranslator:
                 sections["real"]["dir"] = r_dir_abs
 
             # namelist values that wrf.exe checks against the input file (start_em.F, input_wrf.F: fatal
-            # when they differ); the model makes the same checks
+            # when they differ); the model makes the same checks. dx / dy (Registry default 200) are also the
+            # grid spacing wrf.exe integrates with (grid%dx), not the file's DX / DY
             sections["real"]["p_top_requested"] = self.get_opt("domains", "p_top_requested", 5000.0)
             sections["real"]["iso_temp"] = self.get_opt("dynamics", "iso_temp", 200.0)
             for k in ("dx", "dy"):
-                if self.has_opt("domains", k):
-                    sections["real"][k] = self.get_opt("domains", k, None)
+                sections["real"][k] = self.get_opt("domains", k, 200.0)
 
             # In configs/real_p1..p4 and nested configs, wrfinput/wrfbdy are written explicitly
             if self.explicit_files or has_physics_suite or max_dom > 1:
@@ -1506,6 +1514,13 @@ class WrfTranslator:
             # module_cu_gfl_wrf: the shallow plume runs for ishallow == 1 only; the other ported schemes ignore it
             if self.get_opt("physics", "ishallow", 0) == 1:
                 sections.setdefault("phys", {})["ishallow"] = 1
+
+        # check_a_mundo: cu_diag = 1 needs a Grell scheme (GF, G3, GD) or KF-CuP on that domain (fatal otherwise);
+        # with those schemes it is set to 1 whatever the namelist says
+        for d, cu_diag in enumerate(self.get_opt_list("physics", "cu_diag")[:max(1, self._max_dom)]):
+            if cu_diag == 1 and self.get_dom_opt("physics", "cu_physics", d, 0) != 3:
+                self.error(f"WRF cu_diag = 1 on domain {d + 1} requires Grell-Freitas cumulus (cu_physics = 3); "
+                           "wrf.exe stops.")
 
         if self.has_opt("physics", "clos_choice"):
             clos_choice = self.get_opt("physics", "clos_choice", 0)
