@@ -11,9 +11,13 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get -qq update && apt-get -qq install -y build-essential cmake libnetcdf-dev libnetcdff-dev python3-netcdf4 python3-numpy > /dev/null
 gcloud storage cp "gs://$B/$SRC" $J/src.tar.gz && gcloud storage cp "gs://$B/$VARS" $J/variants.txt
 mkdir -p $J/src $J/data $J/work && tar xzf $J/src.tar.gz -C $J/src
-for d in ${DATA//,/ }; do gcloud storage cp "gs://$B/$d" $J/data.tar && tar xf $J/data.tar -C $J/data && rm $J/data.tar; done
+# a missing input or a failed build is a line of the result (gcp_matrix.sh then exits with 1)
+for d in ${DATA//,/ }; do
+  { gcloud storage cp "gs://$B/$d" $J/data.tar && tar xf $J/data.tar -C $J/data && rm $J/data.tar; } || echo "MATRIX_DATA_FAILED $d" >> $J/setup.out
+done
 cmake -S $J/src -B $J/build -DCMAKE_BUILD_TYPE=Release -DCPPWRF_DOUBLE=ON -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_NATIVE=OFF \
-  -DCMAKE_CXX_FLAGS="-march=skylake -mtune=skylake" > $J/cmake.log 2>&1 && cmake --build $J/build -j"$(nproc)" --target cppwrf cppwrf_real >> $J/cmake.log 2>&1
+  -DCMAKE_CXX_FLAGS="-march=skylake -mtune=skylake" > $J/cmake.log 2>&1 && cmake --build $J/build -j"$(nproc)" --target cppwrf cppwrf_real >> $J/cmake.log 2>&1 \
+  || echo "MATRIX_BUILD_FAILED (cmake.log)" >> $J/setup.out
 put $J/cmake.log
 (while sleep 60; do put $J/matrix.out; done) &
 # a variant whose executable is real_*.exe compares WRF real.exe with cppwrf_real (tools/gcp/real_variant.py)
@@ -23,6 +27,6 @@ grep -v '^\s*#' $J/variants.txt | grep -v '^\s*$' | while read -r name base exe 
     *) echo "python3 $J/src/tools/gcp/matrix_variant.py $J/data/runs $J/work $J/data/wrf/$exe $J/build/cppwrf $name $base $sets" ;;
   esac
 done > $J/cmds.txt
-xargs -P "$(nproc)" -I{} sh -c '{}' < $J/cmds.txt > $J/matrix.out 2>&1
+{ cat $J/setup.out 2>/dev/null; xargs -P "$(nproc)" -I{} sh -c '{}' < $J/cmds.txt; } > $J/matrix.out 2>&1
 [ -d $J/work/keep ] && tar cf $J/keep.tar -C $J/work/keep . && put $J/keep.tar  # run.keep=1 references
 echo "MATRIX_DONE" >> $J/matrix.out

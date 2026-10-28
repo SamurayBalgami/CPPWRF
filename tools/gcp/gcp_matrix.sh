@@ -7,6 +7,8 @@
 # the data tar's runs/, WRF_EXE a file of its wrf/: wrf_r8.exe or wrf_r8d8.exe). Each variant runs 3 minutes in
 # WRF and CPPWRF (tools/gcp/matrix_variant.py); the result lines go to OUT/matrix.out. The data tar (default
 # matrix_data.tar in the bucket) is made with tools/gcp/stage_matrix_data.sh. The source is the committed HEAD.
+# Exit status 1 when the matrix is incomplete: a variant without a result line, a VM that ended early, a failed
+# build or data download, a variant whose comparison failed (HARNESS-ERROR); differences are results (status 0).
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_GCP_PROJECT:?set CPPWRF_GCP_PROJECT}" "${CPPWRF_GCP_BUCKET:?set CPPWRF_GCP_BUCKET}"
@@ -35,12 +37,24 @@ for z in ${ZONES//,/ }; do
 done
 [ -n "$ZONE" ] || { echo "[gcp_matrix] no zone had $MACHINE"; cat "$OUT/create.log"; exit 1; }
 echo "[gcp_matrix] $VM in $ZONE"
+gone=0
 while :; do
   sleep 60
   gcloud storage cp "gs://$BK/$RES/matrix.out" "$OUT/" --project "$P" -q 2>/dev/null || true
   gcloud storage ls "gs://$BK/$RES/done" --project "$P" > /dev/null 2>&1 && break
-  gcloud compute instances describe "$VM" --zone "$ZONE" --project "$P" > /dev/null 2>&1 || { echo "[gcp_matrix] VM gone (spot preemption?)"; break; }
+  st=$(gcloud compute instances describe "$VM" --zone "$ZONE" --project "$P" --format='value(status)' 2>/dev/null || echo GONE)
+  case $st in RUNNING|STAGING|PROVISIONING) gone=0 ;; *) gone=$((gone + 1)) ;; esac
+  # three checks in a row: one failed describe call (network) must not end a running job
+  [ $gone -lt 3 ] || { echo "[gcp_matrix] VM $st (spot preemption?)"; break; }
 done
 gcloud storage cp "gs://$BK/$RES/*" "$OUT/" --project "$P" -q 2>/dev/null || true
 gcloud storage rm -r "gs://$BK/$RES" "gs://$BK/src/$STAMP.tar.gz" "gs://$BK/src/$STAMP.variants.txt" --project "$P" -q 2>/dev/null || true
 echo "[gcp_matrix] results in $OUT"; grep -v "^MATRIX_DONE" "$OUT/matrix.out" 2>/dev/null | cut -c1-300 || true
+# completeness: every variant has a result line, the job ended, the build and the data were there
+bad=0
+grep -q "^MATRIX_DONE" "$OUT/matrix.out" 2>/dev/null || { echo "[gcp_matrix] INCOMPLETE: the job did not end (no MATRIX_DONE)"; bad=1; }
+grep -E "^MATRIX_(BUILD|DATA)_FAILED|^[^ ]+ HARNESS-ERROR" "$OUT/matrix.out" 2>/dev/null && bad=1
+missing=$(grep -v '^\s*#' "$VARS" | awk 'NF {print $1}' | while read -r n; do
+  grep -q "^$n " "$OUT/matrix.out" 2>/dev/null || echo "$n"; done | tr '\n' ' ' || true)
+[ -z "$missing" ] || { echo "[gcp_matrix] INCOMPLETE: no result for $missing"; bad=1; }
+exit $bad
