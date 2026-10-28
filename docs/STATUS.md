@@ -104,6 +104,10 @@ vectorised loops and CPPWRF call the same glibc libmvec functions, and glibc's `
 different last bits on AMD EPYC (all scalar libm functions and the other libmvec functions tested agree).
 WRF itself therefore differs between the two; on AMD, CPPWRF differs from Intel-made references by
 about 1e-14 after one step. The suite runs on Intel machines (`tools/gcp/gcp_run.sh`).
+The CPU result does not depend on the OpenMP thread count or on the Intel machine: P4, P6, P8, P9, MYNN,
+P1 with Noah-MP and the two-way nest N3s (1 h, both domains) and em_quarter_ss (30 min) with 1, 16 and 44
+threads are bit-identical to serial WRF on c3 (Sapphire Rapids) and n2 machines (`run.threads` in
+tools/gcp/gcp_matrix.sh). The required build flags are in [USER_GUIDE.md](USER_GUIDE.md#required-flags-and-determinism).
 
 Restarts reproduce an uninterrupted run bit for bit (P1, A01, P7, P8, P9, NMP1, MYNN, MYNNSF1, MYNNSF2, MYNNX1, MYNNX2, T1; P1 also in FP32 on the GPU), and a run
 resumed from WRF's own wrfrst files continues as WRF does (also the two-way physics nest N3, both domains).
