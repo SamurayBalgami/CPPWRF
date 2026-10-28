@@ -1299,18 +1299,23 @@ class WrfTranslator:
                         sections["phys"]["tofd_factor"] = tofd_factor
 
                 if bl_pbl == 5 or sf_sfclay == 5:
-                    # MYNN: only WRF's default options are ported (Registry.EM_COMMON)
+                    # MYNN: only WRF's default options are ported (Registry.EM_COMMON). Most are max_domains options
+                    # that WRF passes per domain (config_flags in module_pbl_driver / module_surface_driver), so
+                    # every domain's value is checked (a missing entry is the Registry default, pad_max_domains).
+                    # spp_pbl (&stoch) is a DEFAULT_ONLY_OPTIONS entry; pert_mynn (&stoch) acts only with
+                    # multi_perturb = 1
                     mynn_defaults = (("bl_mynn_tkeadvect", False), ("bl_mynn_cloudpdf", 2), ("bl_mynn_mixlength", 1),
                                      ("bl_mynn_edmf", 1), ("bl_mynn_edmf_dd", 0), ("bl_mynn_edmf_mom", 1),
                                      ("bl_mynn_edmf_tke", 0), ("bl_mynn_mixscalars", 0), ("bl_mynn_mixaerosols", 1),
                                      ("bl_mynn_mixnumcon", 0), ("bl_mynn_output", 0), ("bl_mynn_cloudmix", 1),
                                      ("bl_mynn_mixqt", 0), ("bl_mynn_ess", 1), ("tke_budget", 0),
-                                     ("sf_mynn_sfcflux_land", 0), ("sf_mynn_sfcflux_water", 1), ("pert_mynn", False),
-                                     ("spp_pbl", 0), ("mynn_chem_vertmx", False))
+                                     ("sf_mynn_sfcflux_land", 0), ("sf_mynn_sfcflux_water", 1))
                     for mk, mdef in mynn_defaults:
-                        if self.has_opt("physics", mk) and self.get_opt("physics", mk, mdef) != mdef:
-                            self.error(f"WRF {mk} = {self.get_opt('physics', mk, mdef)} is not supported; "
-                                       f"CPPWRF's MYNN uses WRF's default {mk} = {mdef}.")
+                        for val in self.get_opt_list("physics", mk)[:max(1, self._max_dom)]:
+                            if val != mdef:
+                                self.error(f"WRF {mk} = {val} is not supported; "
+                                           f"CPPWRF's MYNN uses WRF's default {mk} = {mdef}.")
+                                break
                     closure = self.get_opt("physics", "bl_mynn_closure", 2.6)
                     if abs(float(closure) - 2.6) > 1e-9:
                         self.error(f"WRF bl_mynn_closure = {closure} is not supported; CPPWRF's MYNN uses 2.6.")
