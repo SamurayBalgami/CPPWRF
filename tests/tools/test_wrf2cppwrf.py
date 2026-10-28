@@ -706,7 +706,9 @@ class TestValidationAndWarnings(unittest.TestCase):
                 ("&physics sf_sfclay_physics = 1, sf_surface_physics = 2, bl_pbl_physics = 2 /",
                  "use myjsfc scheme"),
                 ("&physics sf_sfclay_physics = 2, sf_surface_physics = 2, bl_pbl_physics = 1 /",
-                 "use sfclay scheme")]:
+                 "use sfclay scheme"),
+                ("&physics sf_sfclay_physics = 2, sf_surface_physics = 2, bl_pbl_physics = 2, isfflx = 0 /",
+                 "uninitialised memory")]:
             t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n&domains time_step = 60 /\n{fragment}\n")))
             t.translate()
             self.assertIn(expected_err, " ".join(t.errors), fragment)
