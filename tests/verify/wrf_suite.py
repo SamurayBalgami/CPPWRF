@@ -241,6 +241,35 @@ CASES = [
     ("real_mynnsf2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_mynnsf2_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_MYNNSF2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 8e-4, "W": 2e-2, "THM": 2e-5, "QV": 4e-4}),  # L4: U 2.6e-4 W 5.4e-3 THM 5.6e-6 QV 1.1e-4
+    # MYNNX1 / MYNNX2 = MYNN (P6 inputs, MYNN-EDMF PBL and MYNN surface layer, RRTMG radt 10) with the non-default
+    # MYNN options: X1 bl_mynn_tkeadvect, cloudpdf 1, mixlength 2, closure 3.0, edmf_tke 1, mixqt 1, output 1,
+    # tke_budget 1, sf_mynn_sfcflux_land 2 / _water 3, grav_settling 2; X2 bl_mynn_edmf 0, cloudmix 0, cloudpdf 0,
+    # mixlength 0, closure 2.5, ess 0, mixscalars 1, sf_mynn_sfcflux_land 3 / _water 4, grav_settling 1.
+    # Reference WRF-4.8.0-r8d8; bit-identical for 3 steps and 1 h. The cuda_dp tolerances are provisional.
+    ("real_mynnx1_r8_fp64_cpu", "cpu_dp", "configs/real_mynnx1_r8.ini", [],
+     f"{WR}/run_MYNNX1_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
+                       "QNICE", "QNRAIN", "RAINNC")}),
+    ("real_mynnx1_r8_fp64_cpu_1h", "cpu_dp", "configs/real_mynnx1_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_MYNNX1_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
+                       "QNICE", "QNRAIN", "RAINNC")}),
+    ("real_mynnx1_r8_fp64_cuda_1h", "cuda_dp", "configs/real_mynnx1_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_MYNNX1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 8e-4, "W": 2e-2, "THM": 2e-5, "QV": 9e-4}),
+    ("real_mynnx2_r8_fp64_cpu", "cpu_dp", "configs/real_mynnx2_r8.ini", [],
+     f"{WR}/run_MYNNX2_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
+                       "QNICE", "QNRAIN", "RAINNC")}),
+    ("real_mynnx2_r8_fp64_cpu_1h", "cpu_dp", "configs/real_mynnx2_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_MYNNX2_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
+                       "QNICE", "QNRAIN", "RAINNC")}),
+    ("real_mynnx2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_mynnx2_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_MYNNX2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 8e-4, "W": 2e-2, "THM": 2e-5, "QV": 9e-4}),
     # V1-V3: other regions and map projections from the global GFS of 2026-10-12 00 UTC (WPS on the low
     # resolution global geography): V1 tropics (Bay of Bengal, Mercator, 15 km, P4 physics), V2 Arctic
     # (Svalbard, polar stereographic, 15 km, P4 physics: sea ice, glacier land ice, polar night), V3 Alps
@@ -485,6 +514,7 @@ RESTARTS = (("p1", "configs/real_p1_r8.ini", "run_P1_r8"), ("a01", "configs/real
             ("p8", "configs/real_p8_r8.ini", "run_P8_r8"), ("p9", "configs/real_p9_r8.ini", "run_P9_r8"),
             ("nmp1", "configs/real_nmp1_r8.ini", "run_NMP1_r8"), ("mynn", "configs/real_mynn_r8.ini", "run_MYNN_r8"),
             ("mynnsf1", "configs/real_mynnsf1_r8.ini", "run_P6_r8"), ("mynnsf2", "configs/real_mynnsf2_r8.ini", "run_P6_r8"),
+            ("mynnx1", "configs/real_mynnx1_r8.ini", "run_P6_r8"), ("mynnx2", "configs/real_mynnx2_r8.ini", "run_P6_r8"),
             ("t1", "configs/real_t1.ini", "run_R1_r8"))
 SPECIAL = ["straka_wrf", "restart_p1_fp32_cuda"] + [f"restart_{t}_fp64" for t, _, _ in RESTARTS]
 
