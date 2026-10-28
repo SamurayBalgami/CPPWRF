@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cmath>
 #include <fstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #if defined(_OPENMP)
@@ -163,12 +164,21 @@ bool read_wrf_dat(const std::string& path, std::initializer_list<std::vector<Rea
 } // namespace
 
 template <typename Real>
-void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& wrf_dat_dir) {
+void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& wrf_dat_dir, bool force_read) {
     // WRF's own table files when present (bit-identical to the WRF run), else computed below
     const std::string dd = wrf_dat_dir.empty() ? std::string(".") : wrf_dat_dir;
     const bool have_qg = !wrf_dat_dir.empty() && read_wrf_dat<Real>(dd + "/qr_acr_qg_V4.dat", {&tables.tcg_racg, &tables.tmr_racg, &tables.tcr_gacr, &tables.tnr_racg, &tables.tnr_gacr});
     const bool have_qs = !wrf_dat_dir.empty() && read_wrf_dat<Real>(dd + "/qr_acr_qsV2.dat", {&tables.tcs_racs1, &tables.tmr_racs1, &tables.tcs_racs2, &tables.tmr_racs2, &tables.tcr_sacr1, &tables.tms_sacr1, &tables.tcr_sacr2, &tables.tms_sacr2, &tables.tnr_racs1, &tables.tnr_racs2, &tables.tnr_sacr1, &tables.tnr_sacr2});
     const bool have_fz = !wrf_dat_dir.empty() && read_wrf_dat<Real>(dd + "/freezeH2O.dat", {&tables.tpi_qrfz, &tables.tni_qrfz, &tables.tpg_qrfz, &tables.tnr_qrfz, &tables.tpi_qcfz, &tables.tni_qcfz});
+    // force_read_thompson: qr_acr_qg, qr_acr_qs and freezeH2O (in this order) stop instead of computing
+    auto require = [&](bool have, const char* name) {
+        if (!force_read || have) return;
+        const std::string why = std::ifstream(dd + "/" + name) ? "Error reading " : "Non-existent ";
+        throw std::runtime_error(why + name + ". Aborting because force_read_thompson is .true.");
+    };
+    require(have_qg, "qr_acr_qg_V4.dat");
+    require(have_qs, "qr_acr_qsV2.dat");
+    require(have_fz, "freezeH2O.dat");
     // Physical constants matching module_mp_thompson.F
     constexpr double PI = 3.1415926536;
     constexpr double rho_w = 1000.0;
@@ -916,7 +926,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     }
 }
 
-template void init_thompson_tables<double>(ThompsonHostTables<double>& tables, const std::string&);
-template void init_thompson_tables<float>(ThompsonHostTables<float>& tables, const std::string&);
+template void init_thompson_tables<double>(ThompsonHostTables<double>& tables, const std::string&, bool);
+template void init_thompson_tables<float>(ThompsonHostTables<float>& tables, const std::string&, bool);
 
 } // namespace cppwrf::phys::mp_thompson

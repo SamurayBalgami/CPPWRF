@@ -572,12 +572,14 @@ struct ThompsonDeviceTables {
     const ThompsonTablesView<Real>& view() const { return view_; }
 };
 
-// WRF's table files when present, else the tables computed as thompson_init does
+// WRF's table files when present, else the tables computed as thompson_init does; force_read (WRF
+// force_read_thompson): a missing or unreadable table file is an error, as in qr_acr_qg / qr_acr_qs / freezeH2O
 template <typename Real>
-void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& wrf_dat_dir = "");
+void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& wrf_dat_dir = "",
+                          bool force_read = false);
 
 // Explicit instantiations declared
-extern template void init_thompson_tables<double>(ThompsonHostTables<double>& tables, const std::string&);
-extern template void init_thompson_tables<float>(ThompsonHostTables<float>& tables, const std::string&);
+extern template void init_thompson_tables<double>(ThompsonHostTables<double>& tables, const std::string&, bool);
+extern template void init_thompson_tables<float>(ThompsonHostTables<float>& tables, const std::string&, bool);
 
 } // namespace cppwrf::phys::mp_thompson

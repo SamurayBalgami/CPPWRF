@@ -115,7 +115,7 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
     graupelncv = Field2(g, Stagger::M, "graupelncv");
     sr = Field2(g, Stagger::M, "sr");
     phys::mp_thompson::ThompsonHostTables<real> h;
-    phys::mp_thompson::init_thompson_tables(h, p_.table_dir);
+    phys::mp_thompson::init_thompson_tables(h, p_.table_dir, p_.force_read_thompson);
     tp_.upload(h);
 #if defined(CPPWRF_USE_CUDA)
     if (cudaDeviceSetLimit(cudaLimitStackSize, 64 * 1024) != cudaSuccess)

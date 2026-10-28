@@ -1195,6 +1195,11 @@ class WrfTranslator:
             if mp_physics != 0:
                 sections["phys"]["mp_physics"] = mp_physics
                 self.check_supported("mp_physics", mp_physics)
+            # thompson_init (qr_acr_qg, qr_acr_qs, freezeH2O): a missing or unreadable .dat table is fatal
+            # instead of computed; write_thompson_tables only writes the computed tables (no effect on results)
+            if self.get_opt("physics", "force_read_thompson", False) and mp_physics == 8:
+                sections["phys"]["force_read_thompson"] = True
+            self.get_opt("physics", "write_thompson_tables", True)
 
             if has_physics_suite:
                 sections["phys"]["sf_sfclay_physics"] = sf_sfclay
