@@ -159,34 +159,4 @@ CPPWRF_HD inline void cldprmc_sw_elem(int inflag, int iceflag, int liqflag, int 
   }
 }
 
-CPPWRF_HD inline void cldprmc_sw(
-    int nlayers,
-    int inflag,
-    int iceflag,
-    int liqflag,
-    const double* cldfmc,      // (nlayers, ngptsw)
-    const double* ciwpmc,      // (nlayers, ngptsw)
-    const double* clwpmc,      // (nlayers, ngptsw)
-    const double* cswpmc,      // (nlayers, ngptsw)
-    const double* reicmc,      // (nlayers)
-    const double* relqmc,      // (nlayers)
-    const double* resnmc,      // (nlayers)
-    const double* fsfcmc,      // (nlayers, ngptsw)
-    double* taormc,            // (nlayers, ngptsw)
-    double* taucmc,            // (nlayers, ngptsw)
-    double* ssacmc,            // (nlayers, ngptsw)
-    double* asmcmc,            // (nlayers, ngptsw)
-    const RrtmgSwTables& tables
-) {
-  constexpr int ngptsw = 112;
-  for (int lay = 0; lay < nlayers; ++lay) {
-    for (int ig = 0; ig < ngptsw; ++ig) {
-      int idx = lay * ngptsw + ig;
-      cldprmc_sw_elem(inflag, iceflag, liqflag, ig, cldfmc[idx], ciwpmc[idx], clwpmc[idx], cswpmc[idx], reicmc[lay],
-                      relqmc[lay], resnmc[lay], fsfcmc[idx], taormc[idx], taucmc[idx], ssacmc[idx], asmcmc[idx],
-                      tables);
-    }
-  }
-}
-
 }  // namespace cppwrf::phys

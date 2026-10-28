@@ -17,30 +17,12 @@
 
 namespace cppwrf::phys {
 
-constexpr int RRTMG_SW_MAX_LAYERS = 128;
-
-// Per-thread column workspace to avoid dynamic allocations
+// Per-thread column workspace: the stage views of rrtmg_sw_stages.hpp (stride 1); cldfmc holds the McICA
+// subcolumn flags rrtmg_sw_core takes ([layer][g-point])
 struct RrtmgSwWorkspace {
-  double cldfmc[RRTMG_SW_MAX_LAYERS * 112];
-  double ciwpmc[RRTMG_SW_MAX_LAYERS * 112];
-  double clwpmc[RRTMG_SW_MAX_LAYERS * 112];
-  double cswpmc[RRTMG_SW_MAX_LAYERS * 112];
-  double taucmc[RRTMG_SW_MAX_LAYERS * 112];
-  double taormc[RRTMG_SW_MAX_LAYERS * 112];
-  double ssacmc[RRTMG_SW_MAX_LAYERS * 112];
-  double asmcmc[RRTMG_SW_MAX_LAYERS * 112];
-  double fsfcmc[RRTMG_SW_MAX_LAYERS * 112];
-  double wkl[7][RRTMG_SW_MAX_LAYERS];
-  double* wkl_ptrs[7];
-  // stride-1 storage of the stage views (rrtmg_sw_stages.hpp) of the column driver
+  double cldfmc[RRTMG_SW_COL_MAX * 112];
   std::vector<double> d;
   std::vector<int> i;
-
-  void init_pointers() {
-    for (int m = 0; m < 7; ++m) {
-      wkl_ptrs[m] = wkl[m];
-    }
-  }
 };
 
 struct RrtmgSwConfig {
@@ -122,50 +104,6 @@ void rrtmg_sw_column(
     const double* re_cloud = nullptr,
     const double* re_ice = nullptr,
     const double* re_snow = nullptr
-);
-
-// Multi-column driver (OpenMP CPU or sequential)
-void rrtmg_swrad(
-    int num_cols,
-    int nz,
-    const RrtmgSwConfig& config,
-    const RrtmgSwTables& tables,
-    const double* coszen,
-    const double* albedo,
-    const double* xland,
-    const double* xice,
-    const double* snow,
-    const double* xlat,
-    const double* p8w,
-    const double* t8w,
-    const double* p3d,
-    const double* pi3d,
-    const double* dz8w,
-    const double* t3d,
-    const double* rho3d,
-    const double* qv3d,
-    const double* qc3d,
-    const double* qr3d,
-    const double* qi3d,
-    const double* qs3d,
-    const double* qg3d,
-    const double* cldfra3d,
-    double* gsw,
-    double* swcf,
-    double* swupt,
-    double* swuptc,
-    double* swdnt,
-    double* swdntc,
-    double* swupb,
-    double* swupbc,
-    double* swdnb,
-    double* swdnbc,
-    double* swvisdir,
-    double* swvisdif,
-    double* swnirdir,
-    double* swnirdif,
-    double* rthratensw,
-    double* rthratenswc
 );
 
 } // namespace cppwrf::phys

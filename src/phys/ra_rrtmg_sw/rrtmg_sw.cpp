@@ -3,11 +3,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <iostream>
-
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 
 namespace cppwrf::phys {
 
@@ -152,115 +147,6 @@ void rrtmg_sw_column(
   gsw = o.gsw; swcf = o.swcf; swupt = o.swupt; swuptc = o.swuptc; swdnt = o.swdnt; swdntc = o.swdntc;
   swupb = o.swupb; swupbc = o.swupbc; swdnb = o.swdnb; swdnbc = o.swdnbc; swvisdir = o.swvisdir;
   swvisdif = o.swvisdif; swnirdir = o.swnirdir; swnirdif = o.swnirdif;
-}
-
-void rrtmg_swrad(
-    int num_cols,
-    int nz,
-    const RrtmgSwConfig& config,
-    const RrtmgSwTables& tables,
-    const double* coszen,
-    const double* albedo,
-    const double* xland,
-    const double* xice,
-    const double* snow,
-    const double* xlat,
-    const double* p8w,
-    const double* t8w,
-    const double* p3d,
-    const double* pi3d,
-    const double* dz8w,
-    const double* t3d,
-    const double* rho3d,
-    const double* qv3d,
-    const double* qc3d,
-    const double* qr3d,
-    const double* qi3d,
-    const double* qs3d,
-    const double* qg3d,
-    const double* cldfra3d,
-    double* gsw,
-    double* swcf,
-    double* swupt,
-    double* swuptc,
-    double* swdnt,
-    double* swdntc,
-    double* swupb,
-    double* swupbc,
-    double* swdnb,
-    double* swdnbc,
-    double* swvisdir,
-    double* swvisdif,
-    double* swnirdir,
-    double* swnirdif,
-    double* rthratensw,
-    double* rthratenswc
-) {
-#pragma omp parallel
-  {
-    RrtmgSwWorkspace ws;
-
-#pragma omp for schedule(static)
-    for (int col = 0; col < num_cols; ++col) {
-      double col_p8w[RRTMG_SW_MAX_LAYERS + 1];
-      double col_t8w[RRTMG_SW_MAX_LAYERS + 1];
-
-      for (int k = 0; k < nz + 1; ++k) {
-        int idx = k * num_cols + col;
-        col_p8w[k] = p8w[idx];
-        col_t8w[k] = t8w[idx];
-      }
-
-      double col_p3d[RRTMG_SW_MAX_LAYERS];
-      double col_pi3d[RRTMG_SW_MAX_LAYERS];
-      double col_dz8w[RRTMG_SW_MAX_LAYERS];
-      double col_t3d[RRTMG_SW_MAX_LAYERS];
-      double col_rho3d[RRTMG_SW_MAX_LAYERS];
-      double col_qv3d[RRTMG_SW_MAX_LAYERS];
-      double col_qc3d[RRTMG_SW_MAX_LAYERS];
-      double col_qr3d[RRTMG_SW_MAX_LAYERS];
-      double col_qi3d[RRTMG_SW_MAX_LAYERS];
-      double col_qs3d[RRTMG_SW_MAX_LAYERS];
-      double col_qg3d[RRTMG_SW_MAX_LAYERS];
-      double col_cldfra3d[RRTMG_SW_MAX_LAYERS];
-
-      for (int k = 0; k < nz; ++k) {
-        int idx = k * num_cols + col;
-        col_p3d[k] = p3d[idx];
-        col_pi3d[k] = pi3d[idx];
-        col_dz8w[k] = dz8w[idx];
-        col_t3d[k] = t3d[idx];
-        col_rho3d[k] = rho3d[idx];
-        col_qv3d[k] = qv3d[idx];
-        col_qc3d[k] = qc3d[idx];
-        col_qr3d[k] = qr3d[idx];
-        col_qi3d[k] = qi3d[idx];
-        col_qs3d[k] = qs3d[idx];
-        col_qg3d[k] = qg3d[idx];
-        col_cldfra3d[k] = cldfra3d ? cldfra3d[idx] : 0.0;
-      }
-
-      double col_rthratensw[RRTMG_SW_MAX_LAYERS];
-      double col_rthratenswc[RRTMG_SW_MAX_LAYERS];
-
-      rrtmg_sw_column(
-          nz, config, tables,
-          coszen[col], albedo[col], xland[col], xice[col], snow[col], xlat[col],
-          col_p8w, col_t8w, col_p3d, col_pi3d, col_dz8w, col_t3d, col_rho3d,
-          col_qv3d, col_qc3d, col_qr3d, col_qi3d, col_qs3d, col_qg3d, col_cldfra3d, nullptr,
-          gsw[col], swcf[col], swupt[col], swuptc[col], swdnt[col], swdntc[col],
-          swupb[col], swupbc[col], swdnb[col], swdnbc[col],
-          swvisdir[col], swvisdif[col], swnirdir[col], swnirdif[col],
-          col_rthratensw, col_rthratenswc, ws
-      );
-
-      for (int k = 0; k < nz; ++k) {
-        int idx = k * num_cols + col;
-        rthratensw[idx] = col_rthratensw[k];
-        rthratenswc[idx] = col_rthratenswc[k];
-      }
-    }
-  }
 }
 
 } // namespace cppwrf::phys
