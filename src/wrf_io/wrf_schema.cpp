@@ -69,8 +69,10 @@ std::string WrfConfig::get(const std::string& name0, int dom) const {
     if (entries_) {  // WRF's namelist read
       auto e = entries_->find(name);
       const std::vector<std::string> v = nl_.values(d->second.first, name);
-      const std::size_t at = e != entries_->end() && e->second == "max_domains" ? std::size_t(dom - 1) : 0;
-      return at < v.size() ? v[at] : d->second.second;
+      std::size_t at = e != entries_->end() && e->second == "max_domains" ? std::size_t(dom - 1) : 0;
+      // initial_config (frame/module_configure.F): mp_physics(i) = mp_physics(max_dom) for every domain
+      if (name == "mp_physics") at = std::size_t(std::max(1, integer("max_dom")) - 1);
+      return at < v.size() && !v[at].empty() ? v[at] : d->second.second;  // "": a null value
     }
     auto r = nl_.raw(d->second.first, name, dom);
     if (r) return *r;
@@ -83,8 +85,8 @@ double WrfConfig::num(const std::string& name, int dom) const {
   std::string v = get(name, dom);
   if (v.empty()) return 0;
   std::string t = to_lower(v);
-  if (t == ".true." || t == "t" || t == ".t.") return 1;
-  if (t == ".false." || t == "f" || t == ".f.") return 0;
+  if (!t.empty() && t[0] == '.') t = t.substr(1);
+  if (!t.empty() && (t[0] == 't' || t[0] == 'f')) return t[0] == 't';  // a logical: [.]T... or [.]F...
   for (char& c : v)
     if (c == 'd' || c == 'D') c = 'e';
   return std::strtod(v.c_str(), nullptr);

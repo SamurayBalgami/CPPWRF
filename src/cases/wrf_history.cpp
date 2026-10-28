@@ -126,8 +126,9 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
       auto it = def.find(k);
       if (it == def.end()) return c.set(k, v);
       auto e = entries.find(k);
-      const std::size_t n = nl.values(it->second.first, k).size();
-      if (n <= (e != entries.end() && e->second == "max_domains" ? std::size_t(dom - 1) : 0)) c.set(k, v);
+      const std::vector<std::string> n = nl.values(it->second.first, k);
+      const std::size_t at = e != entries.end() && e->second == "max_domains" ? std::size_t(dom - 1) : 0;
+      if (at >= n.size() || n[at].empty()) c.set(k, v);
     }
   } c{*wc_, *nl_, schema_->defaults(), dom, schema_->entries()};
   const Grid& g = m_.g;
