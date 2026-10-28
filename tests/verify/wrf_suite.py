@@ -455,6 +455,15 @@ CASES = [
 ]
 
 
+# restart_<tag>_fp64: 3 steps straight vs restarted after step 1 (restart_p1)
+RESTARTS = (("p1", "configs/real_p1_r8.ini", "run_P1_r8"), ("p7", "configs/real_p7_r8.ini", "run_P7_r8"),
+            ("p8", "configs/real_p8_r8.ini", "run_P8_r8"), ("p9", "configs/real_p9_r8.ini", "run_P9_r8"),
+            ("nmp1", "configs/real_nmp1_r8.ini", "run_NMP1_r8"), ("mynn", "configs/real_mynn_r8.ini", "run_MYNN_r8"),
+            ("mynnsf1", "configs/real_mynnsf1_r8.ini", "run_P6_r8"), ("mynnsf2", "configs/real_mynnsf2_r8.ini", "run_P6_r8"),
+            ("t1", "configs/real_t1.ini", "run_R1_r8"))
+SPECIAL = ["straka_wrf", "restart_p1_fp32_cuda"] + [f"restart_{t}_fp64" for t, _, _ in RESTARTS]
+
+
 def run(binary, cfg, sets, out):
     shutil.rmtree(out, ignore_errors=True)
     cmd = [binary, os.path.join(REPO, cfg), "--set", f"output.dir={out}"]
@@ -577,6 +586,11 @@ def main():
     def wanted(name):
         return not only or (name in only if a.exact else any(o in name for o in only))
 
+    unknown = [o for o in only or [] if not any(o == n if a.exact else o in n for n in [c[0] for c in CASES] + SPECIAL)]
+    if unknown:  # a misspelt case would otherwise make an empty suite that passes
+        print(f"ERROR no case named {', '.join(unknown)}", flush=True)
+        sys.exit(2)
+
     def done(path, good):  # the outputs of passing cases are deleted (they take tens of GB)
         if good and not a.keep:
             shutil.rmtree(path, ignore_errors=True)
@@ -633,36 +647,30 @@ def main():
             print(f"SKIP  {name:22s} (reference missing: {', '.join(missing)})", flush=True)
             count["SKIP"] += 1
             continue
-        (cpu if key == "cpu_dp" else gpu).append((t, lambda n=name, b=b, c=cfg, s=sets, r=refs, t=t, tl=tol: case(n, b, c, s, r, t, tl)))
+        (cpu if key == "cpu_dp" else gpu).append((t, name, lambda n=name, b=b, c=cfg, s=sets, r=refs, t=t, tl=tol: case(n, b, c, s, r, t, tl)))
     if a.cpu_dp and os.path.exists(a.cpu_dp):
         if not only or wanted("straka_wrf"):
             p = os.path.join(a.out, "straka")
-            cpu.append((0, lambda p=p: special("straka_wrf", lambda: straka(a.cpu_dp, p), p)))
-        for tag, cfg, rd in (("p1", "configs/real_p1_r8.ini", "run_P1_r8"),
-                             ("p7", "configs/real_p7_r8.ini", "run_P7_r8"),
-                             ("p8", "configs/real_p8_r8.ini", "run_P8_r8"),
-                             ("p9", "configs/real_p9_r8.ini", "run_P9_r8"),
-                             ("nmp1", "configs/real_nmp1_r8.ini", "run_NMP1_r8"),
-                             ("mynn", "configs/real_mynn_r8.ini", "run_MYNN_r8"),
-                             ("mynnsf1", "configs/real_mynnsf1_r8.ini", "run_P6_r8"),
-                             ("mynnsf2", "configs/real_mynnsf2_r8.ini", "run_P6_r8"),
-                             ("t1", "configs/real_t1.ini", "run_R1_r8")):
+            cpu.append((0, "straka_wrf", lambda p=p: special("straka_wrf", lambda: straka(a.cpu_dp, p), p)))
+        for tag, cfg, rd in RESTARTS:
             rname = f"restart_{tag}_fp64"
             if not wanted(rname):
                 continue
             p = os.path.join(a.out, f"restart_{tag}")
-            cpu.append((0, lambda r=rname, c=cfg, d=rd, p=p: special(r, lambda: restart_p1(a.cpu_dp, p, c, d), p)))
+            cpu.append((0, rname, lambda r=rname, c=cfg, d=rd, p=p: special(r, lambda: restart_p1(a.cpu_dp, p, c, d), p)))
     if a.cuda and os.path.exists(a.cuda) and wanted("restart_p1_fp32_cuda"):  # single precision, GPU
         p = os.path.join(a.out, "restart_p1_fp32_cuda")
-        gpu.append((0, lambda p=p: special("restart_p1_fp32_cuda", lambda: restart_p1(a.cuda, p), p)))
+        gpu.append((0, "restart_p1_fp32_cuda", lambda p=p: special("restart_p1_fp32_cuda", lambda: restart_p1(a.cuda, p), p)))
     # longest simulated time first; each task prints its line as soon as it ends; GPU cases share the one GPU
-    cpu = [f for _, f in sorted(cpu, key=lambda x: -x[0])]
-    gpu = [f for _, f in gpu]
+    cpu = sorted(cpu, key=lambda x: -x[0])
     from concurrent.futures import ThreadPoolExecutor, as_completed
     with ThreadPoolExecutor(max(1, a.jobs)) as pc, ThreadPoolExecutor(1) as pg:
-        futs = [pc.submit(f) for f in cpu] + [pg.submit(f) for f in gpu]
+        futs = {pc.submit(f): n for _, n, f in cpu} | {pg.submit(f): n for _, n, f in gpu}
         for f in as_completed(futs):
-            good, line = f.result()
+            try:
+                good, line = f.result()
+            except Exception as e:  # noqa: BLE001 - a case the harness cannot finish fails, the others go on
+                good, line = False, f"FAIL  {futs[f]:22s} harness error: {type(e).__name__}: {e}"
             print(line, flush=True)
             count["SKIP" if good is None else "PASS" if good else "FAIL"] += 1
     print(f"SUITE PASS {count['PASS']} FAIL {count['FAIL']} SKIP {count['SKIP']}", flush=True)
