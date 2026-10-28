@@ -1,0 +1,12 @@
+# Data tars in gs://cppwrf-data-244589 that the full VM suite needs (tools/gcp/gcp_run.sh --data, comma-joined).
+# A change that adds suite references adds its tar here.
+suite_data.tar
+ideal_data.tar
+dycore_data.tar
+hy1_data.tar
+nest_data.tar
+n3_data.tar
+p1t2_data.tar
+sqys_data.tar
+mynn_data.tar
+sym_data.tar
