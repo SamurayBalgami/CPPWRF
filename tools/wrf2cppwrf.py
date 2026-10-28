@@ -594,6 +594,28 @@ class WrfTranslator:
             self.warn(f"Option &{group}.{key} has {len(vals)} values {vals}; selecting domain 1 value ({vals[0]}).")
         return vals[0]
 
+    def history_interval_steps(self, d: int, dt: float) -> int:
+        """Domain d's history interval in steps of dt, 0 without one. set_timekeeping_alarms (inc/): the interval is
+        history_interval_d/_h/_m/_s together (history_interval in minutes for an unset _m); history_begin*/_end*
+        (alarm start and stop) and an interval that is not a multiple of dt (the alarm then rings at the first step
+        past each multiple of it) are errors."""
+        def opt(k):
+            v = self.get_dom_opt("time_control", k, d, 0, fallback_d0=False)
+            return v if isinstance(v, (int, float)) else 0
+        for k in ("history_begin", "history_end"):
+            for u in ("", "_y", "_d", "_h", "_m", "_s"):
+                if opt(k + u) != 0:
+                    self.error(f"WRF {k + u} = {opt(k + u)} (domain {d + 1}) is not supported: CPPWRF writes the "
+                               "history from the start to the end of the run.")
+        m = opt("history_interval_m") or opt("history_interval")
+        iv = opt("history_interval_d") * 86400 + opt("history_interval_h") * 3600 + m * 60 + opt("history_interval_s")
+        if iv <= 0:
+            return 0
+        n = float(iv) / dt
+        if abs(n - round(n)) > 1e-9 * max(1.0, n):
+            self.error(f"WRF history interval {iv} s (domain {d + 1}) is not a multiple of the time step {dt} s.")
+        return max(1, round(n))
+
     def has_opt(self, group: str, key: str) -> bool:
         grp = self.nml.get(group, {})
         return key in grp and len(grp[key]) > 0
@@ -1576,16 +1598,9 @@ class WrfTranslator:
         if case_name.startswith("em_") and self.namelist_path:
             # ideal cases: the history / restart files take WRF's namelist values (radt, cudt, iofields, ...)
             sections["output"]["wrf_namelist"] = os.path.abspath(self.namelist_path)
-        hist_s = self.get_opt("time_control", "history_interval_s", 0)
-        hist_m = self.get_opt("time_control", "history_interval", 0)
-
         dt_val = float(sections["time"]["dt"])
-        if hist_s and hist_s > 0:
-            out_interval = max(1, round(float(hist_s) / dt_val))
-        elif hist_m and hist_m > 0:
-            out_interval = max(1, round(float(hist_m * 60) / dt_val))
-        else:
-            out_interval = max(1, round(float(total_s) / dt_val))
+        hist_iv = self.history_interval_steps(0, dt_val)
+        out_interval = hist_iv if hist_iv else max(1, round(float(total_s) / dt_val))
 
         diag_interval = 1 if (out_interval == 1 or case_name in ("hill2d",)) else min(10, out_interval)
         sections["output"]["diag_interval"] = diag_interval
@@ -1810,14 +1825,7 @@ class WrfTranslator:
                 child_dt = dom_dt[p_idx] / float(ts_ratio)  # the model derives it the same way (no [d0N] dt)
                 dom_dt[d] = child_dt
 
-                hist_s_d = self.get_dom_opt("time_control", "history_interval_s", d, 0, fallback_d0=False)
-                hist_m_d = self.get_dom_opt("time_control", "history_interval", d, 0, fallback_d0=False)
-                if hist_s_d and hist_s_d > 0:
-                    child_out_iv = max(1, round(float(hist_s_d) / child_dt))
-                elif hist_m_d and hist_m_d > 0:
-                    child_out_iv = max(1, round(float(hist_m_d * 60) / child_dt))
-                else:
-                    child_out_iv = dom_out_iv[p_idx] * ts_ratio
+                child_out_iv = self.history_interval_steps(d, child_dt) or dom_out_iv[p_idx] * ts_ratio
                 child_diag_iv = 1 if child_out_iv == 1 else min(child_out_iv, dom_diag_iv[p_idx] * ts_ratio)
                 dom_out_iv[d] = child_out_iv
                 dom_diag_iv[d] = child_diag_iv
