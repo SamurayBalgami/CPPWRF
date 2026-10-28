@@ -7,13 +7,16 @@ WORK/NAME; CPPWRF runs the configuration tools/wrf2cppwrf.py makes from that nam
 of every common frame (by Times) of each domain's wrfout is compared at tolerance 0. Prints one line:
 NAME d0N frames N differing: none | {VAR: 'time npoints/maxdiff', ...}  (or NAME WRF-FAILED / CPPWRF-FAILED);
 variables only WRF writes are listed as wrf-only-vars.
-run.keep=1 copies WRF's namelist.input, inputs and wrfout files to WORK/keep/run_NAME (a suite reference)."""
+run.keep=1 copies WRF's namelist.input, inputs and wrfout files to WORK/keep/run_NAME (a suite reference).
+run.file=NAME:TEXT writes the file NAME (e.g. an iofields_filename list) into the run directory. Values are
+percent-decoded (%20 blank, %0A new line, %27 quote, %23 #, %7C |), as the variant line passes through sh -c."""
 import glob, os, re, subprocess, sys
+import urllib.parse
 import netCDF4
 import numpy as np
 
 runs, work, wrfexe, cppwrf, name, base = sys.argv[1:7]
-sets = [a.split("=", 1) for a in sys.argv[7:]]
+sets = [(k, urllib.parse.unquote(v)) for k, v in (a.split("=", 1) for a in sys.argv[7:])]
 repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 R = os.path.join(work, name)
 subprocess.run(["rm", "-rf", R])
@@ -46,6 +49,12 @@ for sk, v in sets:
     sec, k = sk.split(".", 1)
     if (sec, k) == ("run", "keep"):  # run.keep=1: WRF's run (namelist, inputs, wrfout) kept as a reference
         keep = v not in ("0", "false", ".false.")
+        continue
+    if (sec, k) == ("run", "file"):  # run.file=NAME:TEXT: a file of the run directory (both models)
+        fn, text = v.split(":", 1)
+        if os.path.lexists(os.path.join(R, fn)):  # never write through a link into the base run
+            os.remove(os.path.join(R, fn))
+        open(os.path.join(R, fn), "w").write(text)
         continue
     if (sec, k) == ("run", "remove"):  # run.remove=f1,f2: files of the base run left out (both models)
         for f in v.split(","):
@@ -118,9 +127,10 @@ for kind in ("wrfout", "wrfrst"):  # history frames, then restart files (both st
         if not w and not cw:
             continue
         A, B = load(cw), load(w)
-        bad, nframes, wrf_only = {}, {}, set()
+        bad, nframes, wrf_only, cppwrf_only = {}, {}, set(), set()
         for k in sorted(set(A) & set(B)):
             (a, ta), (b, tb) = A[k], B[k]
+            cppwrf_only |= {v for v in a.variables if v not in b.variables}
             for v in b.variables:
                 if v not in a.variables and b[v].dtype.kind != "S":
                     wrf_only.add(v)
@@ -146,6 +156,8 @@ for kind in ("wrfout", "wrfrst"):  # history frames, then restart files (both st
             only = f" only-cppwrf {sorted(set(A) - set(B))} only-wrf {sorted(set(B) - set(A))}"
         if wrf_only:  # variables WRF writes and CPPWRF does not
             only += f" wrf-only-vars {sorted(wrf_only)}"
+        if cppwrf_only:  # variables CPPWRF writes and WRF does not
+            only += f" cppwrf-only-vars {sorted(cppwrf_only)}"
         for v in bad:
             if nframes.get(v, 0) > 1:
                 bad[v] += f" [{nframes[v]} frames]"
