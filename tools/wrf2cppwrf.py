@@ -488,7 +488,6 @@ UNSUPPORTED_PHYSICS_SWITCHES = {
     "seaice_thickness_opt": "Variable sea-ice thickness option",
     "seaice_snowdepth_opt": "Sea-ice snow depth option",
     "seaice_albedo_opt": "Sea-ice albedo option",
-    "grav_settling": "Fog/droplet gravitational settling",
     "ra_call_offset": "Radiation call offset",
     "shalwater_z0": "Shallow-water roughness formulation",
     "scm_force_flux": "Single-column model prescribed surface flux",
@@ -1848,6 +1847,20 @@ class WrfTranslator:
                 if val not in (0, False):
                     self.error(f"WRF {unsup_key} = {val} ({desc}) is not supported by CPPWRF.")
                     break
+
+        # grav_settling (max_domains, 0; 1, 2): fog water deposition, module_sf_fogdes.F in the surface driver (VDFG,
+        # DFGDP into RAINBL) and module_bl_fogdes.F in the PBL driver (qc settling into RQCBLTEN); both read qc_curr
+        gs_vals = self.get_opt_list("physics", "grav_settling")[:max(1, self._max_dom)] or [0]
+        if any(v not in (0, 1, 2) for v in gs_vals):
+            self.error(f"WRF grav_settling = {gs_vals} is not supported; WRF's values are 0, 1 and 2.")
+        elif any(v != gs_vals[0] for v in gs_vals):
+            self.error(f"WRF grav_settling with different values per domain ({gs_vals}) is not supported by CPPWRF.")
+        elif gs_vals[0] != 0:
+            if "phys" not in sections or mp_physics == 0 or bl_pbl == 0 or sf_sfclay == 0:
+                self.error("WRF grav_settling > 0 needs a microphysics scheme with qc, a PBL scheme and a surface "
+                           "layer in CPPWRF.")
+            else:
+                sections["phys"]["grav_settling"] = gs_vals[0]
 
         if self.has_opt("bdy_control", "spec_bdy_width"):
             spec_bdy = self.get_opt("bdy_control", "spec_bdy_width", 5)

@@ -1082,6 +1082,25 @@ class TestWrfNamelistSemantics(unittest.TestCase):
             t.translate()
             self.assertIn(err, " ".join(t.errors), (opt, val))
 
+    def test_grav_settling(self):
+        """module_sf_fogdes.F / module_bl_fogdes.F: grav_settling 1, 2 reach [phys]; 3, per-domain values and
+        a run without a PBL scheme are errors."""
+        base = "&physics mp_physics = 8, sf_sfclay_physics = 1, sf_surface_physics = 2, "
+        for pbl, val, want in (("1", "1", 1), ("5", "2", 2)):
+            t = WrfTranslator(parse_namelist(real_case(
+                f"&time_control /\n&domains time_step = 60 /\n{base}bl_pbl_physics = {pbl}, grav_settling = {val} /\n")))
+            cfg = t.translate()
+            self.assertEqual(t.errors, [], val)
+            self.assertEqual(cfg["phys"]["grav_settling"], want)
+        t = WrfTranslator(parse_namelist(real_case(
+            f"&time_control /\n&domains time_step = 60 /\n{base}bl_pbl_physics = 1 /\n")))
+        self.assertNotIn("grav_settling", t.translate()["phys"])
+        for nl, err in ((f"{base}bl_pbl_physics = 1, grav_settling = 3 /", "grav_settling = [3]"),
+                        (f"{base}bl_pbl_physics = 0, grav_settling = 1 /", "needs a microphysics scheme")):
+            t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n&domains time_step = 60 /\n{nl}\n")))
+            t.translate()
+            self.assertIn(err, " ".join(t.errors), nl)
+
 
 class TestExecution2Steps(unittest.TestCase):
     """Verify that generated INI executes for 2 steps (binary: $CPPWRF_BIN, default build/cppwrf)."""

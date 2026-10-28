@@ -214,6 +214,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.bl_mynn_mixscalars = int(cfg.get_int("phys.bl_mynn_mixscalars", 0));
   o.bl_mynn_output = int(cfg.get_int("phys.bl_mynn_output", 0));
   o.tke_budget = int(cfg.get_int("phys.tke_budget", 0));
+  o.grav_settling = int(cfg.get_int("phys.grav_settling", 0));
   o.cu_physics = int(cfg.get_int("phys.cu_physics", 0));
   o.num_soil_layers = int(cfg.get_int("phys.num_soil_layers", 4));
   o.bldt = cfg.get_double("phys.bldt", 0.0);

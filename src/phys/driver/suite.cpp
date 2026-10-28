@@ -115,6 +115,19 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
                                "bl_mynn_edmf 0|1, bl_mynn_edmf_mom|edmf_tke|cloudmix|mixqt|ess|mixscalars|output 0|1, "
                                "tke_budget 0|1, bl_mynn_closure 2.5|2.6|3.0");
   }
+  // grav_settling 0, 1, 2 (Registry); sf_fogdes stops for land-use data other than USGS and
+  // MODIFIED_IGBP_MODIS_NOAH; the deposition runs in the surface and PBL drivers
+  if (o.grav_settling < 0 || o.grav_settling > 2)
+    throw std::runtime_error("PhysicsSuite: grav_settling must be 0, 1 or 2");
+  if (o.grav_settling > 0) {
+    std::string lu = o.mminlu;
+    while (!lu.empty() && (lu.back() == ' ' || lu.back() == '\0')) lu.pop_back();
+    if (lu != "USGS" && lu != "MODIFIED_IGBP_MODIS_NOAH")
+      throw std::runtime_error("PhysicsSuite: grav_settling needs USGS or MODIFIED_IGBP_MODIS_NOAH land use (as "
+                               "WRF's sf_fogdes), not " + lu);
+    if (o.bl_pbl_physics == 0 || o.sf_sfclay_physics == 0)
+      throw std::runtime_error("PhysicsSuite: grav_settling needs a PBL scheme and a surface layer");
+  }
   // module_physics_init.F pbl_select: YSU stops unless isfc = 1 (sfclay), MYJ unless isfc = 2 (myjsfc)
   if (o.bl_pbl_physics == 1 && o.sf_sfclay_physics != 1)
     throw std::runtime_error("PhysicsSuite: bl_pbl_physics=1 (YSU) needs sf_sfclay_physics=1, as WRF");
@@ -291,6 +304,10 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       mk3(qshear, g, "qshear"); mk3(qbuoy, g, "qbuoy"); mk3(qdiss, g, "qdiss"); mk3(qwt, g, "qwt");
       mk3(dqke, g, "dqke");
     }
+  }
+  if (o.grav_settling > 0) {
+    vdfg = Field2(g, Stagger::M, "vdfg");
+    dfgdp = Field2(g, Stagger::M, "dfgdp");
   }
   if (o.bl_pbl_physics == 2) {
     lowlyr.upload(std::vector<int>(lowlyr.layout().total, 1));

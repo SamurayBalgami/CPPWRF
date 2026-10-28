@@ -6,6 +6,7 @@
 #include "phys/bl_mynn/mynnedmf.hpp"
 #include "phys/bl_ysu/ysu.hpp"
 #include "phys/driver/wrf_constants.hpp"
+#include "phys/fogdes/fogdes.hpp"
 
 #include "phys/driver/suite_internal.hpp"
 
@@ -180,6 +181,21 @@ struct KMynnPbl {
   }
 };
 
+
+// module_pbl_driver.F bl_fogdes (grav_settling >= 1) after the PBL scheme and the gravity wave drag:
+// the settling of qc_curr with the deposition velocity VDFG of the surface driver, added to RQCBLTEN
+struct KBlFogdes {
+  C3 qc, dz8w;
+  C2 vdfg;
+  V3 rqcblten;
+  int grav_settling, nz;
+  CPPWRF_HD void operator()(int i, int j) const {
+    auto q = [&](int k) { return qc(i, j, k); };
+    auto dz = [&](int k) { return dz8w(i, j, k); };
+    auto dqc = [&](int k) -> real& { return rqcblten(i, j, k); };
+    fogdes::bl_fogdes(grav_settling, vdfg(i, j), nz, q, dz, dqc);
+  }
+};
 }  // namespace
 
 // module_pbl_driver.F pbl_driver for YSUSCHEME / MYJPBLSCHEME
@@ -271,6 +287,11 @@ void PhysicsSuite::pbl_driver(dyn::State& s, const dyn::BaseState& b) {
     k.omax = elvmax.cview(); k.dx = dx2d.cview(); k.sina = b.sina.view(); k.cosa = b.cosa.view();
     k.dusfcg = dusfcg.view(); k.dvsfcg = dvsfcg.view();
     column_for(cols, k);
+  }
+  if (o_.grav_settling >= 1) {
+    if (!flag_qc) throw std::runtime_error("grav_settling: the microphysics must carry qc (qc_curr)");
+    column_for(cols, KBlFogdes{s.q_2[s.P_QC].cview(), prep.dz8w.cview(), vdfg.cview(), pt.rqcblten.view(),
+                               o_.grav_settling, g_.nz});
   }
 }
 

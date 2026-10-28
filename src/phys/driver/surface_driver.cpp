@@ -10,6 +10,7 @@
 #include "core/vm_dump.hpp"
 #include "phys/driver/noah_ice.hpp"
 #include "phys/driver/wrf_constants.hpp"
+#include "phys/fogdes/fogdes.hpp"
 #include "phys/lsm_noah/noah.hpp"
 
 #include "phys/driver/suite_internal.hpp"
@@ -74,6 +75,26 @@ struct KSfcRatios {
     // scalar libm: gfortran does not vectorise this loop of surface_driver
     tratx(i, j) = (t_phy(i, j, 0) * rpow(real(wrfc::p1000mb) * real(0.001) / (p_phy(i, j, 0) / real(1000.)),
                                      real(wrfc::rcp))) / th2(i, j);
+  }
+};
+// grav_settling > 0 after the surface layer: sf_fogdes (qc_curr, rho, dz8w of level kts), then
+// RAINBL = MAX(RAINBL + DFGDP, 0) (the fog deposit reaches the land surface as precipitation)
+struct KSfFogdes {
+  C3 qc, rho, dz8w;
+  CI2 ivgtyp;
+  C2 lai, wspd;
+  V2 vdfg, dfgdp, rainbl;
+  int grav_settling;
+  bool usgs;
+  real dtbl;
+  CPPWRF_HD void operator()(int i, int j) const {
+    real v = vdfg(i, j), d = real(0.);
+    fogdes::sf_fogdes(grav_settling, usgs, ivgtyp(i, j), lai(i, j), wspd(i, j), qc(i, j, 0), rho(i, j, 0),
+                      dz8w(i, j, 0), dtbl, v, d);
+    vdfg(i, j) = v;
+    dfgdp(i, j) = d;
+    rainbl(i, j) = rainbl(i, j) + dfgdp(i, j);
+    rainbl(i, j) = rainbl(i, j) > real(0.0) ? rainbl(i, j) : real(0.0);
   }
 };
 // RA = WSPD/UST**2 before the Noah call (Noah-CMAQ consistency)
@@ -1022,6 +1043,14 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
 
   column_for(cols, KSfcRatios{u_phytmp.cview(), v_phytmp.cview(), prep.t_phy.cview(), prep.p_hyd.cview(), u10.cview(),
                               v10.cview(), th2.cview(), uratx.view(), vratx.view(), tratx.view(), g_.nx});
+  if (o_.grav_settling > 0) {
+    if (s.P_QC < 0) throw std::runtime_error("grav_settling: the microphysics must carry qc (qc_curr)");
+    std::string lu = o_.mminlu;
+    while (!lu.empty() && (lu.back() == ' ' || lu.back() == '\0')) lu.pop_back();
+    column_for(cols, KSfFogdes{s.q_2[s.P_QC].cview(), prep.rho.cview(), prep.dz8w.cview(), ivgtyp.cview(),
+                               lai.cview(), wspd.cview(), vdfg.view(), dfgdp.view(), rainbl.view(), o_.grav_settling,
+                               lu == "USGS", dtbl});
+  }
   if (o_.isfflx != 0) {
     const int nsoil = o_.num_soil_layers;
     column_for(cols, KNoahRa{wspd.cview(), ust.cview(), ra.view()});
