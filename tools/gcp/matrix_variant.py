@@ -194,10 +194,13 @@ doms = [f"d{i:02d}" for i in range(1, int(getkey(nl, "domains", "max_dom", "1"))
 
 
 def stream_files(d, kind, dom):
-    """The files of a stream (wrfout: by history_outname, wrfrst) of domain dom in directory d."""
-    pat = f"wrfrst_{dom}_*" if kind == "wrfrst" else \
-        getkey(nl, "time_control", "history_outname", "wrfout_d<domain>_<date>").replace("<domain>", dom[1:]).replace("<date>", "*")
-    return glob.glob(os.path.join(d, pat))
+    """The files of a stream (wrfout: by history_outname, wrfrst: by rst_outname) of domain dom in directory d."""
+    key, dflt = ("rst_outname", "wrfrst_d<domain>_<date>") if kind == "wrfrst" else \
+        ("history_outname", "wrfout_d<domain>_<date>")
+    pat = getkey(nl, "time_control", key, dflt).replace("<domain>", dom[1:])
+    for tag in ("<date>", "<year>", "<month>", "<day>", "<hour>"):
+        pat = pat.replace(tag, "*")
+    return glob.glob(os.path.join(d, glob.escape(pat).replace("[*]", "*")))
 
 
 def cdir_of(cout, d):
