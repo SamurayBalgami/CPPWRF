@@ -1,18 +1,16 @@
 #pragma once
 // MYNN-EDMF PBL scheme (WRF v4.8.0 phys/MYNN-EDMF, bl_pbl_physics = 5): mynnedmf, mynn_tendencies,
-// moisture_check, retrieve_exchange_coeffs and the column part of mynnedmf_driver (pre/post run) for WRF's
-// default options: bl_mynn_edmf = 1, bl_mynn_edmf_mom = 1, bl_mynn_edmf_tke = 0, bl_mynn_edmf_dd = 0,
-// bl_mynn_cloudpdf = 2, bl_mynn_mixlength = 1, bl_mynn_closure = 2.6, bl_mynn_cloudmix = 1, bl_mynn_mixqt = 0,
-// bl_mynn_ess = 1, bl_mynn_tkeadvect = .false., tke_budget = 0, bl_mynn_mixscalars = 0, bl_mynn_mixnumcon = 0,
-// spp_pbl = 0, no chemistry; a microphysics with qc, qi and qs (flag_qs: WRF passes the snow content
-// uninitialised otherwise). Column state in specific contents, 1-based (k = 1 .. kte).
+// moisture_check, retrieve_exchange_coeffs and the column part of mynnedmf_driver (pre/post run) for the options
+// in Options (bl_mynn_edmf 0 / 1, edmf_mom, edmf_tke, cloudpdf, mixlength, closure 2.5 / 2.6 / 3.0, cloudmix,
+// mixqt, ess, tkeadvect) and tke_budget; bl_mynn_edmf_dd = 0, bl_mynn_mixnumcon = 0, spp_pbl = 0, no chemistry
+// (bl_mynn_mixscalars mixes WRF's unconnected zero scalar only); a microphysics with qc, qi and qs (flag_qs: WRF
+// passes the snow content uninitialised otherwise). Column state in specific contents, 1-based (k = 1 .. kte).
 #include "phys/bl_mynn/mynnedmf_mf.hpp"
 #include "phys/bl_mynn/mynnedmf_turb.hpp"
 
 namespace cppwrf::phys::mynnedmf {
 
 inline constexpr int kMaxLevels = 128;  // Column<kMaxLevels> in the model
-inline constexpr real closure_default = real(2.6);
 inline constexpr real ckmod = real(1.0);
 inline constexpr real taue = real(80.);
 
@@ -64,22 +62,23 @@ CPPWRF_HD inline void moisture_check(int kte, real delt, const real* dp, const r
   }
 }
 
-// mynn_tendencies, implicit mass-flux form (bl_mynn_edmf = 1), bl_mynn_mixqt = 0, bl_mynn_cloudmix = 1,
+// mynn_tendencies, implicit mass-flux form (bl_mynn_edmf 0 or 1), bl_mynn_mixqt 0 / 1, bl_mynn_cloudmix 0 / 1,
 // flag_qc = flag_qi = .true., no number concentrations / aerosols / ozone; the snow arguments are zero
 // (mynnedmf passes kzero1); no downdraft fluxes (sd_* = 0)
 template <int K>
 CPPWRF_HD inline void mynn_tendencies(int kte, real delt, const real* dz, const real* rho, const real* u, const real* v,
-                                      const real* th, const real* tk, const real* qv, real psfc, const real* exner,
-                                      real* thl, const real* sqv, const real* sqc, const real* sqi, real ust, real flt,
-                                      real flqv, real flqc, real wspd, real uoce, real voce, const real* tcd,
-                                      const real* qcd, const real* dfm, const real* dfh, real* du, real* dv, real* dth,
-                                      real* dqv, real* dqc, real* dqi, real* dqs, const real* diss_heat,
-                                      const real* s_aw1, const real* s_awthl1, const real* s_awqv1,
-                                      const real* s_awqc1, const real* s_awu1, const real* s_awv1, int bl_mynn_edmf,
-                                      int bl_mynn_edmf_mom) {
+                                      const real* th, const real* tk, const real* qv, real psfc, const real* p,
+                                      const real* exner, real* thl, const real* sqv, const real* sqc, const real* sqi,
+                                      const real* sqw, real ust, real flt, real flq, real flqv, real flqc, real wspd,
+                                      real uoce, real voce, const real* tcd, const real* qcd, const real* dfm,
+                                      const real* dfh, real* du, real* dv, real* dth, real* dqv, real* dqc, real* dqi,
+                                      real* dqs, const real* diss_heat, const real* s_aw1, const real* s_awthl1,
+                                      const real* s_awqt1, const real* s_awqv1, const real* s_awqc1,
+                                      const real* s_awu1, const real* s_awv1, int bl_mynn_cloudmix, int bl_mynn_mixqt,
+                                      int bl_mynn_edmf, int bl_mynn_edmf_mom) {
   constexpr int kts = 1;
   real dtz[K + 2], delp[K + 2], rhoinv[K + 2], a[K + 2], b[K + 2], c[K + 2], d[K + 2], x[K + 2], sqv2[K + 2],
-      sqc2[K + 2], sqi2[K + 2], sqs2[K + 2], rhoz[K + 3], khdz[K + 3], kmdz[K + 3];
+      sqc2[K + 2], sqi2[K + 2], sqs2[K + 2], sqw2[K + 2], rhoz[K + 3], khdz[K + 3], kmdz[K + 3];
   // zero downdraft fluxes and the zero environmental subsidence / detrainment tendencies (env_subs = .false.)
   constexpr real sd = zero, sub = zero, det = zero;
   const real onoff = (bl_mynn_edmf_mom == 0) ? zero : one;
@@ -191,8 +190,35 @@ CPPWRF_HD inline void mynn_tendencies(int kte, real delt, const real* dz, const 
     tridiag2<K>(kte, a, b, c, d, x);
     for (k = kts; k <= kte; ++k) thl[k] = x[k];
   }
-  // sqc (bl_mynn_cloudmix > 0, flag_qc)
-  {
+  // sqw (bl_mynn_mixqt > 0)
+  if (bl_mynn_mixqt > 0) {
+    int k = kts;
+    a[k] = -dtz[k] * khdz[k] * rhoinv[k];
+    b[k] = one + dtz[k] * (khdz[k + 1] + khdz[k]) * rhoinv[k] - p5 * dtz[k] * rhoinv[k] * s_aw1[k + 1] -
+           p5 * dtz[k] * rhoinv[k] * sd;
+    c[k] = -dtz[k] * khdz[k + 1] * rhoinv[k] - p5 * dtz[k] * rhoinv[k] * s_aw1[k + 1] - p5 * dtz[k] * rhoinv[k] * sd;
+    d[k] = sqw[k] + dtz[k] * rhosfc * flq * rhoinv[k] + qcd[k] * delt - dtz[k] * rhoinv[k] * s_awqt1[k + 1] +
+           dtz[k] * rhoinv[k] * sd;
+    for (k = kts + 1; k <= kte - 1; ++k) {
+      a[k] = -dtz[k] * khdz[k] * rhoinv[k] + p5 * dtz[k] * rhoinv[k] * s_aw1[k] + p5 * dtz[k] * rhoinv[k] * sd;
+      b[k] = one + dtz[k] * (khdz[k] + khdz[k + 1]) * rhoinv[k] + p5 * dtz[k] * rhoinv[k] * (s_aw1[k] - s_aw1[k + 1]) +
+             p5 * dtz[k] * rhoinv[k] * (sd - sd);
+      c[k] = -dtz[k] * khdz[k + 1] * rhoinv[k] - p5 * dtz[k] * rhoinv[k] * s_aw1[k + 1] - p5 * dtz[k] * rhoinv[k] * sd;
+      d[k] = sqw[k] + qcd[k] * delt + dtz[k] * rhoinv[k] * (s_awqt1[k] - s_awqt1[k + 1]) -
+             dtz[k] * rhoinv[k] * (sd - sd);
+    }
+    a[kte] = zero;
+    b[kte] = one;
+    c[kte] = zero;
+    d[kte] = sqw[kte];
+    tridiag2<K>(kte, a, b, c, d, sqw2);
+  } else {
+    for (int k = kts; k <= kte; ++k) sqw2[k] = sqw[k];
+  }
+  // sqc (bl_mynn_mixqt = 0; mixed when bl_mynn_cloudmix > 0, flag_qc)
+  if (bl_mynn_mixqt == 0 && bl_mynn_cloudmix == 0) {
+    for (int k = kts; k <= kte; ++k) sqc2[k] = sqc[k];
+  } else if (bl_mynn_mixqt == 0) {
     int k = kts;
     a[k] = -dtz[k] * khdz[k] * rhoinv[k];
     b[k] = one + dtz[k] * (khdz[k + 1] + khdz[k]) * rhoinv[k] - p5 * dtz[k] * rhoinv[k] * s_aw1[k + 1] -
@@ -215,7 +241,9 @@ CPPWRF_HD inline void mynn_tendencies(int kte, real delt, const real* dz, const 
     tridiag2<K>(kte, a, b, c, d, sqc2);
   }
   // sqv (bl_mynn_mixqt = 0)
-  {
+  if (bl_mynn_mixqt > 0) {
+    for (int k = kts; k <= kte; ++k) sqv2[k] = sqv[k];
+  } else {
     int k = kts;
     real qvflux = flqv;
     if (qvflux < zero) qvflux = c_max(qvflux, (c_min(real(0.9) * sqv[kts] - real(1e-8), zero) / dtz[kts]));
@@ -240,7 +268,9 @@ CPPWRF_HD inline void mynn_tendencies(int kte, real delt, const real* dz, const 
     tridiag2<K>(kte, a, b, c, d, sqv2);
   }
   // sqi (bl_mynn_cloudmix > 0, flag_qi): only downdraft fluxes
-  {
+  if (bl_mynn_cloudmix == 0) {
+    for (int k = kts; k <= kte; ++k) sqi2[k] = sqi[k];
+  } else {
     int k = kts;
     a[k] = -dtz[k] * khdz[k] * rhoinv[k];
     b[k] = one + dtz[k] * (khdz[k + 1] + khdz[k]) * rhoinv[k] - p5 * dtz[k] * rhoinv[k] * sd;
@@ -259,10 +289,37 @@ CPPWRF_HD inline void mynn_tendencies(int kte, real delt, const real* dz, const 
     tridiag2<K>(kte, a, b, c, d, sqi2);
   }
   for (int k = kts; k <= kte; ++k) sqs2[k] = zero;  // snow not mixed: sqs2 = sqs = kzero1
+  if (bl_mynn_mixqt > 0) {  // partition the mixed total water
+    for (int k = kts; k <= kte; ++k) {
+      const real th_new = thl[k] + xlvcp / exner[k] * sqc[k] + xlscp / exner[k] * sqi[k];
+      const real t = th_new * exner[k];
+      const real qsat = qsat_blend(t, p[k]);
+      if (sqc[k] > zero || sqi[k] > zero) {
+        sqv2[k] = c_min(sqw2[k], qsat);
+        const real portion_qc = sqc[k] / (sqc[k] + sqi[k]);
+        const real portion_qi = sqi[k] / (sqc[k] + sqi[k]);
+        const real condensate = c_max(sqw2[k] - qsat, zero);
+        sqc2[k] = condensate * portion_qc;
+        sqi2[k] = condensate * portion_qi;
+      } else {
+        sqv2[k] = sqw2[k];
+        sqi2[k] = zero;
+        sqc2[k] = zero;
+      }
+    }
+  }
   for (int k = kts; k <= kte; ++k) dqv[k] = (sqv2[k] - sqv[k]) / delt;
-  for (int k = kts; k <= kte; ++k) dqc[k] = (sqc2[k] - sqc[k]) / delt;
-  for (int k = kts; k <= kte; ++k) dqi[k] = (sqi2[k] - sqi[k]) / delt;
-  for (int k = kts; k <= kte; ++k) dqs[k] = real(0.);
+  if (bl_mynn_cloudmix > 0) {
+    for (int k = kts; k <= kte; ++k) dqc[k] = (sqc2[k] - sqc[k]) / delt;
+    for (int k = kts; k <= kte; ++k) dqi[k] = (sqi2[k] - sqi[k]) / delt;
+    for (int k = kts; k <= kte; ++k) dqs[k] = real(0.);
+  } else {
+    for (int k = kts; k <= kte; ++k) {
+      dqc[k] = real(0.);
+      dqi[k] = real(0.);
+      dqs[k] = real(0.);
+    }
+  }
   moisture_check(kte, delt, delp, exner, sqv2, sqc2, sqi2, sqs2, thl, dqv, dqc, dqi, dqs, dth);
   for (int k = kts; k <= kte; ++k)
     dth[k] = (thl[k] + xlvcp / exner[k] * sqc[k] + xlscp / exner[k] * (sqi[k]) - th[k]) / delt;
@@ -282,19 +339,26 @@ struct Column {
   // out
   real du[K + 2], dv[K + 2], dth[K + 2], dqv[K + 2], dqc[K + 2], dqi[K + 2];
   real edmf_a[K + 2], edmf_w[K + 2], edmf_qt[K + 2], edmf_thl[K + 2], edmf_ent[K + 2], edmf_qc[K + 2];
+  real dqke[K + 2], qwt[K + 2], qshear[K + 2], qbuoy[K + 2], qdiss[K + 2];  // tke_budget = 1
   real pblh, maxwidth, maxmf, ztop_plume, excess_h, excess_q, maxmf_dd, maxwidth_dd, maxtkeprod, cldtop_cooling,
       ent_eff;
   int kpbl;
 };
 
-// mynnedmf (initflag: first step; restart = cycling = .false.)
+// mynnedmf (initflag: first step; restart = cycling = .false.); tke_budget = 1 fills c.dqke, qwt, qshear, qbuoy, qdiss
 template <int K>
-CPPWRF_HD inline void mynnedmf(Column<K>& c, int initflag, real delt, real dx, real xland, real ts, real ps, real ust,
-                               real hfx, real qfx, real wspd, real uoce, real voce) {
+CPPWRF_HD inline void mynnedmf(Column<K>& c, const Options& op, int tke_budget, int initflag, real delt, real dx,
+                               real xland, real ts, real ps, real ust, real hfx, real qfx, real wspd, real uoce,
+                               real voce) {
   constexpr int kts = 1;
   const int kte = c.kte;
-  constexpr int bl_mynn_edmf = 1, bl_mynn_edmf_mom = 1, bl_mynn_edmf_tke = 0, bl_mynn_ess = 1;
-  const real closure = closure_default;
+  const int bl_mynn_edmf = op.edmf, bl_mynn_edmf_mom = op.edmf_mom, bl_mynn_edmf_tke = op.edmf_tke,
+            bl_mynn_ess = op.ess;
+  const real closure = op.closure;
+  real* qwt = tke_budget == 1 ? c.qwt : nullptr;
+  real* qdiss = tke_budget == 1 ? c.qdiss : nullptr;
+  real* qshear = tke_budget == 1 ? c.qshear : nullptr;
+  real* qbuoy = tke_budget == 1 ? c.qbuoy : nullptr;
   real thl1[K + 2], thv1[K + 2], thlv1[K + 2], qv1[K + 2], qc1[K + 2], qi1[K + 2], sqw1[K + 2], thl_tot1[K + 2],
       qc_tot1[K + 2], qi_tot1[K + 2], dfm1[K + 2], dfh1[K + 2], dfq1[K + 2], tcd1[K + 2], qcd1[K + 2], pdk1[K + 2],
       pdt1[K + 2], pdq1[K + 2], pdc1[K + 2], vt1[K + 2], vq1[K + 2], sgm1[K + 2], diss_heat1[K + 2],
@@ -335,6 +399,14 @@ CPPWRF_HD inline void mynnedmf(Column<K>& c, int initflag, real delt, real dx, r
       c.km[k] = zero;
       c.kh[k] = zero;
     }
+    if (tke_budget == 1)
+      for (int k = kts; k <= kte; ++k) {
+        c.qwt[k] = zero;
+        c.qshear[k] = zero;
+        c.qbuoy[k] = zero;
+        c.qdiss[k] = zero;
+        c.dqke[k] = zero;
+      }
     zw1[kts] = zero;
     for (int k = kts; k <= kte; ++k) {
       sqw1[k] = c.sqv[k] + c.sqc[k] + c.sqi[k];
@@ -351,9 +423,14 @@ CPPWRF_HD inline void mynnedmf(Column<K>& c, int initflag, real delt, real dx, r
     rmolh = zero;
     mym_initialize<K>(kte, ckmod, taue, xland, c.pblh, c.dz, dx, zw1, c.pres, c.ex, c.u, c.v, thl1, c.sqv, c.th, thv1,
                       thlv1, c.sh, c.sm, ust, rmol, c.el, c.qke, c.tsq, c.qsq, c.cov, psig_bl, c.cldfra_bl,
-                      bl_mynn_ess, c.edmf_w, c.edmf_a, initialize_qke);
+                      op.mixlength, bl_mynn_ess, c.edmf_w, c.edmf_a, initialize_qke);
+    if (op.tkeadvect)
+      for (int k = kts; k <= kte; ++k) c.qke_adv[k] = c.qke[k];
   }
-  // bl_mynn_tkeadvect = .false.
+  if (op.tkeadvect)
+    for (int k = kts; k <= kte; ++k) c.qke[k] = c.qke_adv[k];
+  if (tke_budget == 1)
+    for (int k = kts; k <= kte; ++k) c.dqke[k] = c.qke[k];
   real cldfra_bl1_old[K + 2], qc_bl1_old[K + 2];
   for (int k = kts; k <= kte; ++k) {
     cldfra_bl1_old[k] = c.cldfra_bl[k];
@@ -425,15 +502,16 @@ CPPWRF_HD inline void mynnedmf(Column<K>& c, int initflag, real delt, real dx, r
       phh = one / std::sqrt(one - cphh_unst * zet);
     }
   }
-  mym_condensation<K>(kte, c.dz, zw1, xland, thl1, sqw1, c.sqc, c.sqi, c.sqs, c.pres, c.ex, c.tsq, c.qsq, c.qc_bl,
-                      c.qi_bl, c.cldfra_bl, c.pblh, vt1, vq1, c.th, sgm1, closure);
+  mym_condensation<K>(kte, c.dz, zw1, xland, thl1, sqw1, c.sqc, c.sqi, c.sqs, c.pres, c.ex, c.tsq, c.qsq, c.cov,
+                      c.sh, c.el, op.cloudpdf, c.qc_bl, c.qi_bl, c.cldfra_bl, c.pblh, vt1, vq1, c.th, sgm1, closure);
   for (int k = kts; k <= kte; ++k) tkeprod_up[k] = zero;
   MfOut mo{};
   if (bl_mynn_edmf > 0) {
-    dmp_mf<K>(kte, delt, zw1, c.dz, c.pres, c.rho, bl_mynn_edmf_mom, c.u, c.v, c.w, c.th, thl1, thv1, c.tk, sqw1,
-              c.sqv, c.sqc, c.qke, c.qsq, c.ex, vt1, vq1, ust, flt, fltv, flq, c.pblh, c.kpbl, dx, xland, th_sfc,
-              c.edmf_a, c.edmf_w, c.edmf_qt, c.edmf_thl, c.edmf_ent, c.edmf_qc, s_aw1, s_awthl1, s_awqt1, s_awqv1,
-              s_awqc1, s_awu1, s_awv1, c.qc_bl, c.cldfra_bl, psig_shcu, mo, tkeprod_up, c.el);
+    dmp_mf<K>(kte, delt, zw1, c.dz, c.pres, c.rho, bl_mynn_edmf_mom, bl_mynn_edmf_tke, closure, c.u, c.v, c.w, c.th,
+              thl1, thv1, c.tk, sqw1, c.sqv, c.sqc, c.qke, c.qsq, c.ex, vt1, vq1, ust, flt, fltv, flq, c.pblh, c.kpbl,
+              dx, xland, th_sfc, c.edmf_a, c.edmf_w, c.edmf_qt, c.edmf_thl, c.edmf_ent, c.edmf_qc, s_aw1, s_awthl1,
+              s_awqt1, s_awqv1, s_awqc1, s_awu1, s_awv1, s_awqke1, s_awqsq1, c.qc_bl, c.cldfra_bl, psig_shcu, mo,
+              tkeprod_up, c.el);
     c.maxwidth = mo.maxwidth;
     c.maxmf = mo.maxmf;
     c.ztop_plume = mo.ztop;
@@ -455,10 +533,11 @@ CPPWRF_HD inline void mynnedmf(Column<K>& c, int initflag, real delt, real dx, r
   }
   (void)thl_tot1;
   mym_turbulence<K>(kte, xland, closure, ckmod, taue, c.dz, dx, zw1, c.pres, c.ex, c.u, c.v, thl1, thv1, thlv1, sqw1,
-                    c.qke, c.tsq, vt1, vq1, rmol, fltv, c.pblh, c.th, c.sh, c.sm, c.el, dfm1, dfh1, dfq1, tcd1, qcd1,
-                    pdk1, pdt1, pdq1, pdc1, psig_bl, c.cldfra_bl, bl_mynn_ess, c.edmf_w, c.edmf_a, tkeprod_up);
+                    c.qke, c.tsq, c.qsq, c.cov, vt1, vq1, rmol, flt, fltv, flq, c.pblh, c.th, c.sh, c.sm, c.el, dfm1,
+                    dfh1, dfq1, tcd1, qcd1, pdk1, pdt1, pdq1, pdc1, qshear, qbuoy, psig_bl, c.cldfra_bl,
+                    op.mixlength, bl_mynn_ess, c.edmf_w, c.edmf_a, tkeprod_up);
   mym_predict<K>(kte, closure, delt2, c.dz, ust, pmz, phh, c.el, dfq1, c.rho, pdk1, pdt1, pdq1, pdc1, c.qke, c.tsq,
-                 c.qsq, c.cov, s_aw1, s_awqke1, s_awqsq1, bl_mynn_edmf, bl_mynn_edmf_tke);
+                 c.qsq, c.cov, s_aw1, s_awqke1, s_awqsq1, bl_mynn_edmf, bl_mynn_edmf_tke, qwt, qdiss);
   // dissipative heating: gfortran vectorises this loop (glibc libmvec pow and exp, kte-1 trips)
   for (int k = kts; k <= kte - 1; ++k) {
     diss_heat1[k] = c_min(c_max(vm::pow(c.qke[k], real(1.5), k - kts, kte - 1) /
@@ -468,15 +547,39 @@ CPPWRF_HD inline void mynnedmf(Column<K>& c, int initflag, real delt, real dx, r
     diss_heat1[k] = diss_heat1[k] * vm::exp(real(-10000.) / c_max(c.pres[k], one), k - kts, kte - 1);
   }
   diss_heat1[kte] = zero;
-  mynn_tendencies<K>(kte, delt, c.dz, c.rho, c.u, c.v, c.th, c.tk, qv1, ps, c.ex, thl1, c.sqv, c.sqc, c.sqi, ust, flt,
-                     flqv, flqc, wspd, uoce, voce, tcd1, qcd1, dfm1, dfh1, c.du, c.dv, c.dth, c.dqv, c.dqc, c.dqi, dqs1,
-                     diss_heat1, s_aw1, s_awthl1, s_awqv1, s_awqc1, s_awu1, s_awv1, bl_mynn_edmf, bl_mynn_edmf_mom);
+  mynn_tendencies<K>(kte, delt, c.dz, c.rho, c.u, c.v, c.th, c.tk, qv1, ps, c.pres, c.ex, thl1, c.sqv, c.sqc, c.sqi,
+                     sqw1, ust, flt, flq, flqv, flqc, wspd, uoce, voce, tcd1, qcd1, dfm1, dfh1, c.du, c.dv, c.dth,
+                     c.dqv, c.dqc, c.dqi, dqs1, diss_heat1, s_aw1, s_awthl1, s_awqt1, s_awqv1, s_awqc1, s_awu1, s_awv1,
+                     op.cloudmix, op.mixqt, bl_mynn_edmf, bl_mynn_edmf_mom);
   c.km[kts] = zero;
   c.kh[kts] = zero;
   for (int k = kts + 1; k <= kte; ++k) {
     const real dzk = p5 * (c.dz[k] + c.dz[k - 1]);
     c.km[k] = dfm1[k] * dzk;
     c.kh[k] = dfh1[k] * dzk;
+  }
+  if (tke_budget == 1) {
+    const real phi_m = phim(zet);
+    const real ust3 = ust * ust * ust;
+    int k = kts;
+    c.qshear[k] = real(4.) * (ust3 * phi_m / (karman * c.dz[k])) - c.qshear[k + 1];
+    c.qbuoy[k] = real(4.) * (-(ust3 * zet / (karman * c.dz[k]))) - c.qbuoy[k + 1];
+    real dummy1[K + 2], dummy2[K + 2];
+    for (k = kts; k <= kte - 1; ++k) {
+      dummy1[k] = p5 * (c.qshear[k] + c.qshear[k + 1]);
+      dummy2[k] = p5 * (c.qbuoy[k] + c.qbuoy[k + 1]);
+      c.dqke[k] = p5 * (c.qke[k] - c.dqke[k]) / delt;
+    }
+    for (k = kts; k <= kte - 1; ++k) {
+      c.qshear[k] = dummy1[k];
+      c.qbuoy[k] = dummy2[k];
+    }
+    k = kte;
+    c.qshear[k] = zero;
+    c.qbuoy[k] = zero;
+    c.qwt[k] = zero;
+    c.qdiss[k] = zero;
+    c.dqke[k] = zero;
   }
   for (int k = kts; k <= kte; ++k) c.qke_adv[k] = c.qke[k];
 }

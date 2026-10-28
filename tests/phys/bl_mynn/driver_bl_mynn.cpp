@@ -66,8 +66,8 @@ int main(int argc, char** argv) {
         c.sqi[k] = qi[k] / (one + qv[k]);
         c.sqs[k] = qs[k] / (one + qv[k]);
       }
-      mynnedmf<K>(c, initflag, delt, dx, I2(0, i), I2(1, i), I2(3, i), I2(4, i), hfx1, qfx1, I2(8, i), I2(10, i),
-                  I2(11, i));
+      mynnedmf<K>(c, Options{}, 0, initflag, delt, dx, I2(0, i), I2(1, i), I2(3, i), I2(4, i), hfx1, qfx1, I2(8, i),
+                  I2(10, i), I2(11, i));
       for (int k = 1; k <= nz; ++k) {  // mynnedmf_post_run
         const double sq = qv[k] / (one + qv[k]);
         const double sqv = sq + c.dqv[k] * delt;

@@ -101,6 +101,20 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   // The sea-ice wrappers of sfclayrev / MYJSFC are verified with YSU / MYJ only (no MYNN reference with sea ice)
   if (o.bl_pbl_physics == 5 && o.fractional_seaice == 1)
     throw std::runtime_error("PhysicsSuite: bl_pbl_physics=5 (MYNN) with fractional_seaice=1 is not supported");
+  if (o.bl_pbl_physics == 5) {  // bl_mynn_* values with a port (WRF's SELECT CASE / IF branches)
+    const mynnedmf::Options& m = o.mynn;
+    const bool ok = (m.cloudpdf >= -2 && m.cloudpdf <= 2) && (m.mixlength >= 0 && m.mixlength <= 2) &&
+                    (m.edmf == 0 || m.edmf == 1) && (m.edmf_mom == 0 || m.edmf_mom == 1) &&
+                    (m.edmf_tke == 0 || m.edmf_tke == 1) && (m.cloudmix == 0 || m.cloudmix == 1) &&
+                    (m.mixqt == 0 || m.mixqt == 1) && (m.ess == 0 || m.ess == 1) &&
+                    (m.closure == real(2.5) || m.closure == real(2.6) || m.closure == real(3.0)) &&
+                    (o.bl_mynn_mixscalars == 0 || o.bl_mynn_mixscalars == 1) &&
+                    (o.bl_mynn_output == 0 || o.bl_mynn_output == 1) && (o.tke_budget == 0 || o.tke_budget == 1);
+    if (!ok)
+      throw std::runtime_error("PhysicsSuite: MYNN options with a port: bl_mynn_cloudpdf -2..2, bl_mynn_mixlength 0..2, "
+                               "bl_mynn_edmf 0|1, bl_mynn_edmf_mom|edmf_tke|cloudmix|mixqt|ess|mixscalars|output 0|1, "
+                               "tke_budget 0|1, bl_mynn_closure 2.5|2.6|3.0");
+  }
   // module_physics_init.F pbl_select: YSU stops unless isfc = 1 (sfclay), MYJ unless isfc = 2 (myjsfc)
   if (o.bl_pbl_physics == 1 && o.sf_sfclay_physics != 1)
     throw std::runtime_error("PhysicsSuite: bl_pbl_physics=1 (YSU) needs sf_sfclay_physics=1, as WRF");
@@ -266,6 +280,14 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
     maxwidth = Field2(g, Stagger::M, "maxwidth"); maxmf = Field2(g, Stagger::M, "maxmf");
     ztop_plume = Field2(g, Stagger::M, "ztop_plume"); excess_h = Field2(g, Stagger::M, "excess_h");
     excess_q = Field2(g, Stagger::M, "excess_q");
+    if (o.bl_mynn_output > 0) {
+      mk3(edmf_a, g, "edmf_a"); mk3(edmf_w, g, "edmf_w"); mk3(edmf_thl, g, "edmf_thl"); mk3(edmf_qt, g, "edmf_qt");
+      mk3(edmf_ent, g, "edmf_ent"); mk3(edmf_qc, g, "edmf_qc");
+    }
+    if (o.tke_budget == 1) {
+      mk3(qshear, g, "qshear"); mk3(qbuoy, g, "qbuoy"); mk3(qdiss, g, "qdiss"); mk3(qwt, g, "qwt");
+      mk3(dqke, g, "dqke");
+    }
   }
   if (o.bl_pbl_physics == 2) {
     lowlyr.upload(std::vector<int>(lowlyr.layout().total, 1));
@@ -433,6 +455,11 @@ std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
     for (Field3* f : {&qke, &tsq, &qsq, &cov, &sh3d, &sm3d, &qc_bl, &qi_bl, &cldfra_bl})
       v.emplace_back("sfc_" + f->name(), f);
     if (o_.sf_sfclay_physics != 2) v.emplace_back("sfc_el_pbl", &el_pbl);  // with MYJSFC: carried above
+    if (o_.bl_mynn_output > 0)
+      for (Field3* f : {&edmf_a, &edmf_w, &edmf_thl, &edmf_qt, &edmf_ent, &edmf_qc})
+        v.emplace_back("sfc_" + f->name(), f);
+    if (o_.tke_budget == 1)
+      for (Field3* f : {&qshear, &qbuoy, &qdiss, &qwt, &dqke}) v.emplace_back("sfc_" + f->name(), f);
   }
   if (o_.sf_surface_physics == 4) {
     for (Field3* f : {&tsnoxy, &snicexy, &snliqxy, &zsnsoxy, &albsoildirxy, &albsoildifxy, &smoiseq, &acc_etranixy})
@@ -550,7 +577,8 @@ std::vector<const Field2*> PhysicsSuite::fields2() const {
   }
   if (o_.gwd_opt == 1) v.insert(v.end(), {&dusfcg, &dvsfcg});
   if (o_.sf_sfclay_physics == 5) v.push_back(&cqs);
-  if (o_.bl_pbl_physics == 5) v.insert(v.end(), {&maxwidth, &maxmf, &ztop_plume, &excess_h, &excess_q});
+  if (o_.bl_pbl_physics == 5 && o_.mynn.edmf > 0)  // package mynn_dmp_edmf1
+    v.insert(v.end(), {&maxwidth, &maxmf, &ztop_plume, &excess_h, &excess_q});
   if (o_.fractional_seaice == 1 || o_.sst_update == 1) v.insert(v.end(), {&sst, &tsk_save});
   if (o_.sst_update == 1) v.push_back(&xicem);
   return v;
@@ -562,7 +590,11 @@ std::vector<const Field3*> PhysicsSuite::fields3() const {
     v.insert(v.end(), {&tsnoxy, &snicexy, &snliqxy, &zsnsoxy, &albsoildirxy, &albsoildifxy, &smoiseq, &acc_etranixy});
   }
   if (o_.gwd_opt == 1) v.insert(v.end(), {&dtaux3d, &dtauy3d});
-  if (o_.bl_pbl_physics == 5) v.insert(v.end(), {&qke, &tsq, &qsq, &cov, &sh3d, &sm3d, &qc_bl, &qi_bl, &cldfra_bl});
+  if (o_.bl_pbl_physics == 5) {
+    v.insert(v.end(), {&qke, &tsq, &qsq, &cov, &sh3d, &sm3d, &qc_bl, &qi_bl, &cldfra_bl});
+    if (o_.bl_mynn_output > 0) v.insert(v.end(), {&edmf_a, &edmf_w, &edmf_thl, &edmf_qt, &edmf_ent, &edmf_qc});
+    if (o_.tke_budget == 1) v.insert(v.end(), {&qshear, &qbuoy, &qdiss, &qwt, &dqke});
+  }
   return v;
 }
 

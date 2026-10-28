@@ -324,7 +324,7 @@ SUPPORTED_OPTIONS = {
         0: "None / off",
         1: "YSU (Yonsei University) planetary boundary layer",
         2: "MYJ (Mellor-Yamada-Janjic) planetary boundary layer",
-        5: "MYNN-EDMF planetary boundary layer (WRF's default bl_mynn_* options)",
+        5: "MYNN-EDMF planetary boundary layer",
     },
     "cu_physics": {
         0: "None / off",
@@ -1545,17 +1545,35 @@ class WrfTranslator:
                         sections["phys"][key] = val
 
                 if bl_pbl == 5 or sf_sfclay == 5:
-                    # MYNN: only WRF's default options are ported (Registry.EM_COMMON). Most are max_domains options
-                    # that WRF passes per domain (config_flags in module_pbl_driver / module_surface_driver), so
-                    # every domain's value is checked (a missing entry is the Registry default, pad_max_domains),
-                    # each in its own namelist group (pert_mynn, spp_pbl: &stoch)
-                    mynn_defaults = (("bl_mynn_tkeadvect", False), ("bl_mynn_cloudpdf", 2), ("bl_mynn_mixlength", 1),
-                                     ("bl_mynn_edmf", 1), ("bl_mynn_edmf_dd", 0), ("bl_mynn_edmf_mom", 1),
-                                     ("bl_mynn_edmf_tke", 0), ("bl_mynn_mixscalars", 0), ("bl_mynn_mixaerosols", 1),
-                                     ("bl_mynn_mixnumcon", 0), ("bl_mynn_output", 0), ("bl_mynn_cloudmix", 1),
-                                     ("bl_mynn_mixqt", 0), ("bl_mynn_ess", 1), ("tke_budget", 0),
+                    # MYNN options (Registry.EM_COMMON). Most are max_domains options that WRF passes per domain
+                    # (config_flags in module_pbl_driver / module_surface_driver), so every domain's value is checked
+                    # (a missing entry is the Registry default, pad_max_domains), each in its own namelist group
+                    # (pert_mynn, spp_pbl: &stoch). Ported values (module_bl_mynnedmf.F90's branches) must be the
+                    # same on all domains; the others stay at WRF's default.
+                    mynn_ported = {  # option: (WRF default, values with a port)
+                        "bl_mynn_tkeadvect": (False, (False, True)), "bl_mynn_cloudpdf": (2, (0, 1, -1, 2, -2)),
+                        "bl_mynn_mixlength": (1, (0, 1, 2)), "bl_mynn_edmf": (1, (0, 1)),
+                        "bl_mynn_edmf_mom": (1, (0, 1)), "bl_mynn_edmf_tke": (0, (0, 1)),
+                        "bl_mynn_mixscalars": (0, (0, 1)), "bl_mynn_output": (0, (0, 1)),
+                        "bl_mynn_cloudmix": (1, (0, 1)), "bl_mynn_mixqt": (0, (0, 1)), "bl_mynn_ess": (1, (0, 1)),
+                        "tke_budget": (0, (0, 1))}
+                    mynn_defaults = (("bl_mynn_edmf_dd", 0), ("bl_mynn_mixaerosols", 1), ("bl_mynn_mixnumcon", 0),
                                      ("sf_mynn_sfcflux_land", 0), ("sf_mynn_sfcflux_water", 1), ("pert_mynn", False),
                                      ("spp_pbl", 0), ("mynn_chem_vertmx", False))
+                    if bl_pbl != 5:  # the PBL options matter only with the MYNN PBL
+                        mynn_defaults = tuple((k, d) for k, (d, _) in mynn_ported.items()) + mynn_defaults
+                        mynn_ported = {}
+                    for mk, (mdef, mok) in mynn_ported.items():
+                        vals = self.get_opt_list("physics", mk)[:max(1, self._max_dom)] or [mdef]
+                        if any(v not in mok for v in vals):
+                            bad = next(v for v in vals if v not in mok)
+                            self.error(f"WRF {mk} = {bad} is not supported; CPPWRF's MYNN supports {mk} = "
+                                       f"{', '.join(str(v) for v in mok)}.")
+                        elif any(v != vals[0] for v in vals):
+                            self.error(f"WRF {mk} with different values per domain ({vals}) is not supported by "
+                                       "CPPWRF.")
+                        elif vals[0] != mdef:
+                            sections["phys"][mk] = vals[0]
                     for mk, mdef in mynn_defaults:  # every domain's entry (most are max_domains options)
                         grp = REGISTRY_DEFAULTS.get(mk, ("physics",))[0]
                         for v in self.get_opt_list(grp, mk)[:max(1, self._max_dom)]:
@@ -1564,8 +1582,11 @@ class WrfTranslator:
                                            f"{mk} = {mdef}.")
                                 break
                     closure = self.get_opt("physics", "bl_mynn_closure", 2.6)
-                    if abs(float(closure) - 2.6) > 1e-9:
-                        self.error(f"WRF bl_mynn_closure = {closure} is not supported; CPPWRF's MYNN uses 2.6.")
+                    if bl_pbl == 5 and not any(abs(float(closure) - c) < 1e-9 for c in (2.5, 2.6, 3.0)):
+                        self.error(f"WRF bl_mynn_closure = {closure} is not supported; CPPWRF's MYNN supports 2.5, 2.6 "
+                                   "and 3.0.")
+                    elif bl_pbl == 5 and abs(float(closure) - 2.6) > 1e-9:
+                        sections["phys"]["bl_mynn_closure"] = float(closure)
                     # module_physics_init.F pbl_init: MYNNPBLSCHEME stops unless isfc is 5, 1 or 2
                     if bl_pbl == 5 and sf_sfclay not in (1, 2, 5):
                         self.error("WRF bl_pbl_physics = 5 (MYNN) needs sf_sfclay_physics = 1, 2 or 5 (module_physics_init: "
@@ -1577,7 +1598,10 @@ class WrfTranslator:
                         self.error("WRF bl_pbl_physics = 5 needs a microphysics with qc, qi and qs (mp_physics 6 or 8): "
                                    "WRF passes the MYNN-EDMF an uninitialised snow content otherwise.")
                     if bl_pbl == 5 and (self.get_opt("physics", "ishallow", 0) > 0 or self.get_opt("physics", "shcu_physics", 0) > 0):
-                        self.error("WRF bl_mynn_edmf > 0 requires shcu_physics = 0 and ishallow = 0.")
+                        if sections["phys"].get("bl_mynn_edmf", 1) > 0:
+                            self.error("WRF bl_mynn_edmf > 0 requires shcu_physics = 0 and ishallow = 0.")
+                        else:
+                            self.error("WRF bl_mynn_edmf = 0 with shcu_physics or ishallow is not supported by CPPWRF.")
                 # module_physics_init.F pbl_select: YSU needs isfc = 1 (sfclay), MYJ isfc = 2 (myjsfc)
                 if bl_pbl == 1 and sf_sfclay != 1:
                     self.error("WRF bl_pbl_physics = 1 (YSU) needs sf_sfclay_physics = 1 "

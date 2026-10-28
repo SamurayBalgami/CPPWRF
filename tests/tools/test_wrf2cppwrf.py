@@ -1031,9 +1031,49 @@ class TestWrfNamelistSemantics(unittest.TestCase):
 
     def test_mynn_options_of_every_domain(self):
         text = self.NEST + ("&physics mp_physics = 2*8, sf_sfclay_physics = 2*5, bl_pbl_physics = 2*5,"
+                            " bl_mynn_edmf_dd = 0, 1 /\n")
+        t, _ = self.translate(text)
+        self.assertTrue(any("bl_mynn_edmf_dd = 1" in e for e in t.errors), t.errors)
+        # a ported option must be the same on all domains
+        text = self.NEST + ("&physics mp_physics = 2*8, sf_sfclay_physics = 2*5, bl_pbl_physics = 2*5,"
                             " bl_mynn_edmf = 1, 0 /\n")
         t, _ = self.translate(text)
-        self.assertTrue(any("bl_mynn_edmf = 0" in e for e in t.errors), t.errors)
+        self.assertTrue(any("bl_mynn_edmf with different values per domain" in e for e in t.errors), t.errors)
+        text = self.NEST + ("&physics mp_physics = 2*8, sf_sfclay_physics = 2*5, bl_pbl_physics = 2*5,"
+                            " bl_mynn_edmf = 2*0, bl_mynn_mixlength = 2 /\n")
+        t, sec = self.translate(text)
+        self.assertEqual(t.errors, [])
+        self.assertEqual((sec["phys"]["bl_mynn_edmf"], sec["phys"]["bl_mynn_mixlength"]), (0, 2))
+
+    def test_mynn_ported_options(self):
+        """module_bl_mynnedmf.F90: the ported option values reach [phys]; unported ones are errors."""
+        base = "&physics mp_physics = 8, sf_sfclay_physics = 5, sf_surface_physics = 2, bl_pbl_physics = 5, "
+        for opt, val, key, want in (("bl_mynn_cloudpdf", "0", "bl_mynn_cloudpdf", 0),
+                                    ("bl_mynn_cloudpdf", "-1", "bl_mynn_cloudpdf", -1),
+                                    ("bl_mynn_mixlength", "0", "bl_mynn_mixlength", 0),
+                                    ("bl_mynn_edmf_mom", "0", "bl_mynn_edmf_mom", 0),
+                                    ("bl_mynn_edmf_tke", "1", "bl_mynn_edmf_tke", 1),
+                                    ("bl_mynn_cloudmix", "0", "bl_mynn_cloudmix", 0),
+                                    ("bl_mynn_mixqt", "1", "bl_mynn_mixqt", 1),
+                                    ("bl_mynn_ess", "0", "bl_mynn_ess", 0),
+                                    ("bl_mynn_mixscalars", "1", "bl_mynn_mixscalars", 1),
+                                    ("bl_mynn_output", "1", "bl_mynn_output", 1),
+                                    ("tke_budget", "1", "tke_budget", 1),
+                                    ("bl_mynn_tkeadvect", ".true.", "bl_mynn_tkeadvect", True),
+                                    ("bl_mynn_closure", "2.5", "bl_mynn_closure", 2.5),
+                                    ("bl_mynn_closure", "3.0", "bl_mynn_closure", 3.0)):
+            t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n&domains time_step = 60 /\n{base}{opt} = {val} /\n")))
+            cfg = t.translate()
+            self.assertEqual(t.errors, [], (opt, val))
+            self.assertEqual(cfg["phys"][key], want, (opt, val))
+        for opt, val, err in (("bl_mynn_edmf", "2", "bl_mynn_edmf = 2"), ("bl_mynn_edmf_dd", "1", "bl_mynn_edmf_dd = 1"),
+                              ("bl_mynn_mixlength", "3", "bl_mynn_mixlength = 3"),
+                              ("bl_mynn_closure", "2.7", "bl_mynn_closure = 2.7"),
+                              ("bl_mynn_mixnumcon", "1", "bl_mynn_mixnumcon = 1"),
+                              ("sf_mynn_sfcflux_water", "0", "sf_mynn_sfcflux_water = 0")):
+            t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n&domains time_step = 60 /\n{base}{opt} = {val} /\n")))
+            t.translate()
+            self.assertIn(err, " ".join(t.errors), (opt, val))
 
 
 class TestExecution2Steps(unittest.TestCase):

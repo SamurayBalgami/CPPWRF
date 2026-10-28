@@ -1,9 +1,9 @@
 #pragma once
 // MYNN-EDMF turbulence closure (WRF v4.8.0 phys/MYNN-EDMF/module_bl_mynnedmf.F90): mym_level2 (bl_mynn_ess
-// 0 and 1), boulac_length, mym_length (bl_mynn_mixlength = 1), mym_initialize, mym_turbulence (closure < 3),
-// mym_predict (bl_mynn_edmf <= 1, closure < 3) and mym_condensation (bl_mynn_cloudpdf = 2). Columns are
-// 1-based (k = 1 .. kte, interface arrays 1 .. kte+1); K bounds kte. The downdraft (edmf_dd), TKE-budget and
-// SPP inputs are zero (bl_mynn_edmf_dd = 0, tke_budget = 0, spp_pbl = 0).
+// 0 and 1), boulac_length, mym_length (bl_mynn_mixlength 0, 1, 2), mym_initialize, mym_turbulence and
+// mym_predict (bl_mynn_edmf <= 1, closure 2.5 / 2.6 / 3.0, tke_budget) and mym_condensation (bl_mynn_cloudpdf
+// 0, 1, 2 and -1, -2). Columns are 1-based (k = 1 .. kte, interface arrays 1 .. kte+1); K bounds kte. The
+// downdraft (edmf_dd) and SPP inputs are zero (bl_mynn_edmf_dd = 0, spp_pbl = 0).
 #include "phys/bl_mynn/mynnedmf_common.hpp"
 
 namespace cppwrf::phys::mynnedmf {
@@ -193,12 +193,12 @@ CPPWRF_HD inline void boulac_length(int kte, const real* zw, const real* dz, con
   lb2[kte] = lb2[kte - 1];
 }
 
-// mym_length, bl_mynn_mixlength = 1 (nonlocal BouLac form); qkw, qtw inout
+// mym_length, bl_mynn_mixlength = 1 (nonlocal BouLac form)
 template <int K>
-CPPWRF_HD inline void mym_length(int kte, real xland, const real* dz, real dx, const real* zw, real rmol, real fltv,
-                                 const real* u1, const real* v1, const real* qke, const real* qpe, const real* dtv,
-                                 real* el, real pblh, const real* theta, real* qkw, real* qtw, real Psig_bl,
-                                 const real* edmf_w1, const real* edmf_a1) {
+CPPWRF_HD inline void mym_length1(int kte, real xland, const real* dz, real dx, const real* zw, real rmol, real fltv,
+                                  const real* u1, const real* v1, const real* qke, const real* qpe, const real* dtv,
+                                  real* el, real pblh, const real* theta, real* qkw, real* qtw, const real* edmf_w1,
+                                  const real* edmf_a1) {
   constexpr int kts = 1;
   constexpr real qkw_elb_min = real(0.05);
   real qtke[K + 2], elBLmin[K + 2], elBLavg[K + 2], thetaw[K + 2];
@@ -290,7 +290,153 @@ CPPWRF_HD inline void mym_length(int kte, real xland, const real* dz, real dx, c
     if ((xland - real(1.5)) >= zero) el[k] = el[k] * wt_u1;
     el[k] = el[k] * (one - wt) + elBLavg[k] * wt;
   }
+}
+
+// mym_length, bl_mynn_mixlength = 0 (original MYNN mixing length)
+template <int K>
+CPPWRF_HD inline void mym_length0(int kte, const real* dz, const real* zw, real rmol, real flt, real flq,
+                                  const real* vt, const real* vq, const real* qke, const real* dtv, real* el, real pblh,
+                                  real* qkw, real* qtw) {
+  constexpr int kts = 1;
+  constexpr real mindz = real(250.), maxdz = real(750.);
+  const real cns = real(2.7), alp1 = real(0.23), alp2 = one, alp3 = five, alp4 = hundred;
+  const real pblh2 = pblh + dz[kts];
+  real h1 = c_max(p3 * pblh2, mindz);
+  h1 = c_min(h1, maxdz);
+  qkw[kts] = std::sqrt(c_max(qke[kts], qkemin));
+  for (int k = kts + 1; k <= kte; ++k) {
+    const real afk = dz[k] / (dz[k] + dz[k - 1]);
+    const real abk = one - afk;
+    qkw[k] = std::sqrt(c_max(qke[k] * abk + qke[k - 1] * afk, qkemin));
+  }
+  for (int k = kts; k <= kte; ++k) qtw[k] = qkw[k];
+  real elt = real(1.0e-5);
+  real vsc = real(1.0e-5);
+  int k = kts + 1;
+  real zwk = zw[k];
+  while (zwk <= pblh2 + h1) {
+    const real dzk = p5 * (dz[k] + dz[k - 1]);
+    const real qdz = c_max(qkw[k] - qmin, real(0.03)) * dzk;
+    elt = elt + qdz * zwk;
+    vsc = vsc + qdz;
+    k = k + 1;
+    zwk = zw[k];
+  }
+  elt = alp1 * elt / vsc;
+  const real vflx = (vt[kts] + one) * flt + (vq[kts] + tv0) * flq;
+  vsc = rpow(gtr * elt * c_max(vflx, zero), p333);
+  el[kts] = zero;
   for (k = kts + 1; k <= kte; ++k) {
+    zwk = zw[k];
+    real elb, elf;
+    if (dtv[k] > zero) {
+      const real bv = std::sqrt(gtr * dtv[k]);
+      elb = alp2 * qkw[k] / bv * (one + alp3 / alp2 * std::sqrt(vsc / (bv * elt)));
+      elf = alp2 * qkw[k] / bv;
+    } else {
+      elb = real(1.0e10);
+      elf = elb;
+    }
+    real els;
+    if (rmol > real(0.0)) els = karman * zwk / (one + cns * c_min(zwk * rmol, zmax));
+    else els = karman * zwk * rpow(one - alp4 * zwk * rmol, p2);
+    el[k] = c_min(elb / (elb / elt + elb / els + one), elf);
+  }
+}
+
+// mym_length, bl_mynn_mixlength = 2 (local mixing length; the downdraft term edmf_a_dd1 * edmf_w_dd1 is 0)
+template <int K>
+CPPWRF_HD inline void mym_length2(int kte, const real* dz, const real* zw, real rmol, real fltv, const real* qke,
+                                  const real* qpe, const real* dtv, real* el, real pblh, real* qkw, real* qtw,
+                                  const real* edmf_w1, const real* edmf_a1) {
+  constexpr int kts = 1;
+  constexpr real ctau = real(1000.);
+  const real cns = real(3.5), alp1 = real(0.22), alp2 = p3, alp3 = real(2.5), alp4 = five, alp5 = alp2, alp6 = fifty;
+  real qtke[K + 2];
+  const real pblh2 = c_max(pblh, real(200.));
+  real h1 = c_max(p3 * pblh2, real(300.));
+  h1 = c_min(h1, real(600.));
+  const real h2 = h1 * p5;
+  qtke[kts] = c_max(p5 * qke[kts], p5 * qkemin);
+  qkw[kts] = std::sqrt(c_max(qke[kts], qkemin));
+  qtw[kts] = std::sqrt(c_max(qke[kts] + qpe[kts], qkemin));
+  for (int k = kts + 1; k <= kte; ++k) {
+    const real afk = dz[k] / (dz[k] + dz[k - 1]);
+    const real abk = one - afk;
+    qkw[k] = std::sqrt(c_max(qke[k] * abk + qke[k - 1] * afk, qkemin));
+    qtw[k] = std::sqrt(c_max((qke[k] + qpe[k]) * abk + (qke[k - 1] + qpe[k - 1]) * afk, qkemin));
+    qtke[k] = p5 * (qkw[k] * qkw[k]);
+  }
+  real elt = real(1.0e-5);
+  real vsc = real(1.0e-5);
+  const real pblh_plus_ent = c_max(pblh + h1, real(100.));
+  int k = kts + 1;
+  real zwk = zw[k];
+  while (zwk <= pblh_plus_ent) {
+    const real dzk = p5 * (dz[k] + dz[k - 1]);
+    const real qdz = c_min(c_max(qkw[k] - qmin, real(0.03)), real(30.0)) * dzk;
+    elt = elt + qdz * zwk;
+    vsc = vsc + qdz;
+    k = k + 1;
+    zwk = zw[k];
+  }
+  elt = c_min(c_max(alp1 * elt / vsc, ten), real(400.));
+  const real vflx = fltv;
+  vsc = rpow(gtr * elt * c_max(vflx, zero), p333);
+  el[kts] = zero;
+  for (k = kts + 1; k <= kte; ++k) {
+    zwk = zw[k];
+    const real dzk = p5 * (dz[k] + dz[k - 1]);
+    const real qkw_mf = c_max((p5 * (edmf_a1[k] + edmf_a1[k - 1])) * (p5 * (edmf_w1[k] + edmf_w1[k - 1])),
+                              std::fabs(zero * zero));
+    real elb, elf, elb_mf;
+    if (dtv[k] > real(0.0)) {
+      const real bv = c_max(std::sqrt(gtr * dtv[k]), real(0.001));
+      elb_mf = c_max(alp2 * qkw[k], alp6 * qkw_mf) / bv * (one + alp3 * std::sqrt(vsc / (bv * elt)));
+      elb = c_min(c_max(alp5 * qkw[k], alp6 * qkw_mf) / bv, zwk);
+      const real wstar = real(1.25) * rpow(gtr * pblh * c_max(vflx, real(1.0e-4)), p333);
+      real tau_cloud = c_min(c_max(ctau * wstar / grav, real(30.)), real(150.));
+      const real wt = p5 * std::tanh((zwk - (pblh2 + h1)) / h2) + p5;
+      tau_cloud = tau_cloud * (real(1.) - wt) + fifty * wt;
+      elf = c_min(c_max(tau_cloud * std::sqrt(c_min(qtke[k], forty)), alp6 * qkw_mf / bv), zwk);
+    } else {
+      const real wstar = real(1.25) * rpow(gtr * pblh * c_max(vflx, real(1.0e-4)), p333);
+      real tau_cloud = c_min(c_max(ctau * wstar / grav, fifty), real(200.));
+      const real wt = p5 * std::tanh((zwk - (pblh2 + h1)) / h2) + p5;
+      tau_cloud = tau_cloud * (one - wt) + c_max(hundred, dzk * p25) * wt;
+      elb = c_min(tau_cloud * std::sqrt(c_min(qtke[k], real(40.))), zwk);
+      elf = elb;
+      elb_mf = elb;
+    }
+    elf = elf / (one + (elf / real(800.)));
+    elb_mf = c_max(elb_mf, real(0.01));
+    real els;
+    if (rmol > real(0.0)) els = karman * zwk / (one + cns * c_min(zwk * rmol, zmax));
+    else els = karman * zwk * rpow(one - alp4 * zwk * rmol, p2);
+    const real wt = p5 * std::tanh((zwk - (pblh2 + h1)) / h2) + p5;
+    el[k] = std::sqrt((els * els) / (one + ((els * els) / (elt * elt)) + ((els * els) / (elb_mf * elb_mf))));
+    el[k] = el[k] * (one - wt) + elf * wt;
+  }
+}
+
+// mym_length (WRF's SELECT CASE (bl_mynn_mixlength), then the blend with the LES length scale); qkw, qtw inout.
+// vt, vq, flt, flq are used by mixlength 0 only
+template <int K>
+CPPWRF_HD inline void mym_length(int kte, real xland, const real* dz, real dx, const real* zw, real rmol, real flt,
+                                 real fltv, real flq, const real* vt, const real* vq, const real* u1, const real* v1,
+                                 const real* qke, const real* qpe, const real* dtv, real* el, real pblh,
+                                 const real* theta, real* qkw, real* qtw, real Psig_bl, int mixlength,
+                                 const real* edmf_w1, const real* edmf_a1) {
+  constexpr int kts = 1;
+  if (mixlength == 0) {
+    mym_length0<K>(kte, dz, zw, rmol, flt, flq, vt, vq, qke, dtv, el, pblh, qkw, qtw);
+  } else if (mixlength == 2) {
+    mym_length2<K>(kte, dz, zw, rmol, fltv, qke, qpe, dtv, el, pblh, qkw, qtw, edmf_w1, edmf_a1);
+  } else if (mixlength == 1) {
+    mym_length1<K>(kte, xland, dz, dx, zw, rmol, fltv, u1, v1, qke, qpe, dtv, el, pblh, theta, qkw, qtw, edmf_w1,
+                   edmf_a1);
+  }
+  for (int k = kts + 1; k <= kte; ++k) {
     const real el_les = p25 * p5 * (dz[k] + dz[k - 1]);
     el[k] = el[k] * Psig_bl + (one - Psig_bl) * c_min(el_les, el[k]);
   }
@@ -303,7 +449,8 @@ CPPWRF_HD inline void mym_initialize(int kte, real ckmod, real taue, real xland,
                                      const real* thl, const real* qw, const real* theta, const real* thv,
                                      const real* thlv, real* sh, real* sm, real ust, real rmol, real* el, real* qke,
                                      real* tsq, real* qsq, real* cov, real Psig_bl, const real* cldfra_bl1,
-                                     int bl_mynn_ess, const real* edmf_w1, const real* edmf_a1, bool initialize_qke) {
+                                     int bl_mynn_mixlength, int bl_mynn_ess, const real* edmf_w1, const real* edmf_a1,
+                                     bool initialize_qke) {
   constexpr int kts = 1;
   constexpr real pmz = 1., phh = 1., flt = 0., fltv = 0., flq = 0.;
   real ql[K + 2], pdk[K + 2], pdt[K + 2], pdq[K + 2], pdc[K + 2], dtl[K + 2], dqw[K + 2], dtv[K + 2], gm[K + 2],
@@ -340,8 +487,8 @@ CPPWRF_HD inline void mym_initialize(int kte, real ckmod, real taue, real xland,
   }
   constexpr int lmax = 5;
   for (int l = 1; l <= lmax; ++l) {
-    mym_length<K>(kte, xland, dz, dx, zw, rmol, fltv, u, v, qke, qpe, dtv, el, pblh, theta, qkw, qtw, Psig_bl,
-                  edmf_w1, edmf_a1);
+    mym_length<K>(kte, xland, dz, dx, zw, rmol, flt, fltv, flq, vt, vq, u, v, qke, qpe, dtv, el, pblh, theta, qkw,
+                  qtw, Psig_bl, bl_mynn_mixlength, edmf_w1, edmf_a1);
     for (int k = kts + 1; k <= kte; ++k) {
       const real elq = el[k] * qkw[k];
       pdk[k] = elq * (sm[k] * gm[k] + sh[k] * gh[k]);
@@ -377,16 +524,19 @@ CPPWRF_HD inline void mym_initialize(int kte, real ckmod, real taue, real xland,
   cov[kte] = cov[kte - 1];
 }
 
-// mym_turbulence (closure < 3.0; tkeprod_dn = 0); sh, sm are overwritten with the final stability functions
+// mym_turbulence (tkeprod_dn = 0: no downdrafts); sh, sm are overwritten with the final stability functions.
+// qshear / qbuoy (tke_budget = 1) may be null
 template <int K>
 CPPWRF_HD inline void mym_turbulence(int kte, real xland, real closure, real ckmod, real taue, const real* dz, real dx,
                                      const real* zw, const real* p, const real* exner, const real* u, const real* v,
                                      const real* thl, const real* thv, const real* thlv, const real* qw,
-                                     const real* qke, const real* tsq, const real* vt, const real* vq, real rmol,
-                                     real fltv, real pblh, const real* theta, real* sh, real* sm, real* el, real* dfm,
-                                     real* dfh, real* dfq, real* tcd, real* qcd, real* pdk, real* pdt, real* pdq,
-                                     real* pdc, real Psig_bl, const real* cldfra_bl1, int bl_mynn_ess,
-                                     const real* edmf_w1, const real* edmf_a1, const real* TKEprod_up) {
+                                     const real* qke, const real* tsq, const real* qsq, const real* cov,
+                                     const real* vt, const real* vq, real rmol, real flt, real fltv, real flq,
+                                     real pblh, const real* theta, real* sh, real* sm, real* el, real* dfm, real* dfh,
+                                     real* dfq, real* tcd, real* qcd, real* pdk, real* pdt, real* pdq, real* pdc,
+                                     real* qshear, real* qbuoy, real Psig_bl, const real* cldfra_bl1,
+                                     int bl_mynn_mixlength, int bl_mynn_ess, const real* edmf_w1,
+                                     const real* edmf_a1, const real* TKEprod_up) {
   constexpr int kts = 1;
   constexpr real Prlimit_fre = real(6.0), Prlimit_sfc = real(4.0);
   real qkw[K + 2], qtw[K + 2], dtl[K + 2], dqw[K + 2], dtv[K + 2], gm[K + 2], gh[K + 2], qpe[K + 2];
@@ -405,10 +555,12 @@ CPPWRF_HD inline void mym_turbulence(int kte, real xland, real closure, real ckm
   }
   mym_level2<K>(kte, ckmod, bl_mynn_ess, zw, dz, xland, pblh, u, v, thl, thv, thlv, theta, p, exner, qke, cldfra_bl1,
                 edmf_a1, edmf_w1, qw, vt, vq, dtl, dqw, dtv, gm, gh, sm, sh);
-  mym_length<K>(kte, xland, dz, dx, zw, rmol, fltv, u, v, qke, qpe, dtv, el, pblh, theta, qkw, qtw, Psig_bl, edmf_w1,
-                edmf_a1);
+  mym_length<K>(kte, xland, dz, dx, zw, rmol, flt, fltv, flq, vt, vq, u, v, qke, qpe, dtv, el, pblh, theta, qkw, qtw,
+                Psig_bl, bl_mynn_mixlength, edmf_w1, edmf_a1);
   for (int k = kts + 1; k <= kte; ++k) {
     const real dzk = p5 * (dz[k] + dz[k - 1]);
+    const real afk = dz[k] / (dz[k] + dz[k - 1]);
+    const real abk = one - afk;
     const real elsq = el[k] * el[k];
     real q3sq = qkw[k] * qkw[k];
     const real q2sq = b1 * elsq * (sm[k] * gm[k] + sh[k] * gh[k]);
@@ -425,19 +577,25 @@ CPPWRF_HD inline void mym_turbulence(int kte, real xland, real closure, real ckm
     Prlim = wt * Prlim + (one - wt) * c_min(Prlimit_sfc, Prlim);
     const real gmel = gm[k] * elsq;
     const real ghel = gh[k] * elsq;
-    const real dlsq = elsq;
+    real dlsq = elsq;
     if (q3sq / dlsq < -gh[k]) q3sq = -dlsq * gh[k];
-    real qdiv;
+    real qdiv, e1, e2, e3, e4, eden;
     if (q3sq < q2sq) {
       qdiv = std::sqrt(q3sq / q2sq);
       sh[k] = sh[k] * qdiv;
       sm[k] = sm[k] * qdiv;
+      e1 = q3sq - e1c * ghel * a2fac * (qdiv * qdiv);
+      e2 = q3sq - e2c * ghel * a2fac * (qdiv * qdiv);
+      e3 = e1 + e3c * ghel * (a2fac * a2fac) * (qdiv * qdiv);
+      e4 = e1 - e4c * ghel * a2fac * (qdiv * qdiv);
+      eden = e2 * e4 + e3 * e5c * gmel * (qdiv * qdiv);
+      eden = c_max(eden, real(1.0e-20));
     } else {
-      const real e1 = q3sq - e1c * ghel * a2fac;
-      const real e2 = q3sq - e2c * ghel * a2fac;
-      const real e3 = e1 + e3c * ghel * (a2fac * a2fac);
-      const real e4 = e1 - e4c * ghel * a2fac;
-      real eden = e2 * e4 + e3 * e5c * gmel;
+      e1 = q3sq - e1c * ghel * a2fac;
+      e2 = q3sq - e2c * ghel * a2fac;
+      e3 = e1 + e3c * ghel * (a2fac * a2fac);
+      e4 = e1 - e4c * ghel * a2fac;
+      eden = e2 * e4 + e3 * e5c * gmel;
       eden = c_max(eden, real(1.0e-20));
       qdiv = one;
       sm[k] = q3sq * a1 * (e3 - three * c1 * e4) / eden;
@@ -448,8 +606,60 @@ CPPWRF_HD inline void mym_turbulence(int kte, real xland, real closure, real ckm
     if (sh[k] < sh25min) sh[k] = sh25min;
     const real shb = c_max(sh[k], real(0.004));
     sm[k] = c_min(sm[k], Prlim * shb);
-    // closure < 3: no level-3 terms
-    const real gamt = zero, gamq = zero, gamv = zero;
+    real gamt, gamq, gamv;
+    if (closure >= real(3.0)) {  // level 3: the countergradient terms (Nakanishi and Niino 2009)
+      real t2sq = qdiv * b2 * elsq * sh[k] * (dtl[k] * dtl[k]);
+      real r2sq = qdiv * b2 * elsq * sh[k] * (dqw[k] * dqw[k]);
+      real c2sq = qdiv * b2 * elsq * sh[k] * dtl[k] * dqw[k];
+      real t3sq = c_max(tsq[k] * abk + tsq[k - 1] * afk, zero);
+      real r3sq = c_max(qsq[k] * abk + qsq[k - 1] * afk, zero);
+      real c3sq = cov[k] * abk + cov[k - 1] * afk;
+      c3sq = std::copysign(c_min(std::fabs(c3sq), std::sqrt(t3sq * r3sq)), c3sq);
+      const real vtt = one + vt[k] * abk + vt[k - 1] * afk;
+      const real vqq = tv0 + vq[k] * abk + vq[k - 1] * afk;
+      t2sq = vtt * t2sq + vqq * c2sq;
+      r2sq = vtt * c2sq + vqq * r2sq;
+      c2sq = c_max(vtt * t2sq + vqq * r2sq, real(0.0));
+      t3sq = vtt * t3sq + vqq * c3sq;
+      r3sq = vtt * c3sq + vqq * r3sq;
+      c3sq = c_max(vtt * t3sq + vqq * r3sq, real(0.0));
+      const real cw25 = e1 * (e2 + three * c1 * e5c * gmel * (qdiv * qdiv)) / (three * eden);
+      dlsq = elsq;
+      if (q3sq / dlsq < -gh[k]) q3sq = -dlsq * gh[k];
+      // auh, aum, adh, adm, aeh, aem, Req, Rsl: no effect (Rsl is overwritten and unused)
+      e2 = q3sq - e2c * ghel * a2fac * (qdiv * qdiv);
+      e3 = q3sq + e3c * ghel * (a2fac * a2fac) * (qdiv * qdiv);
+      e4 = q3sq - e4c * ghel * a2fac * (qdiv * qdiv);
+      eden = e2 * e4 + e3 * e5c * gmel * (qdiv * qdiv);
+      const real wden = cc3 * (gtr * gtr) * (dlsq * dlsq) / elsq * (qdiv * qdiv) *
+                        (e2 * e4c * a2fac - e3c * e5c * gmel * (a2fac * a2fac) * (qdiv * qdiv));
+      if (wden != zero) {
+        const real clow = q3sq * (real(0.12) - cw25) * eden / wden;
+        const real cupp = q3sq * (real(0.76) - cw25) * eden / wden;
+        if (wden > zero) c3sq = c_min(c_max(c3sq, c2sq + clow), c2sq + cupp);
+        else c3sq = c_max(c_min(c3sq, c2sq + clow), c2sq + cupp);
+      }
+      e1 = e2 + e5c * gmel * (qdiv * qdiv);
+      eden = c_max(eden, real(1.0e-20));
+      const real e6c = real(3.0) * (a2 * a2fac) * cc3 * gtr * dlsq / elsq;
+      real enum_;
+      if (t2sq >= zero) enum_ = c_max(qdiv * e6c * (t3sq - t2sq), real(0.0));
+      else enum_ = c_min(qdiv * e6c * (t3sq - t2sq), real(0.0));
+      gamt = -e1 * enum_ / eden;
+      if (r2sq >= zero) enum_ = c_max(qdiv * e6c * (r3sq - r2sq), real(0.0));
+      else enum_ = c_min(qdiv * e6c * (r3sq - r2sq), real(0.0));
+      gamq = -e1 * enum_ / eden;
+      enum_ = c_max(qdiv * e6c * (c3sq - c2sq), real(0.0));
+      const real smd =
+          dlsq * enum_ * gtr / eden * (qdiv * qdiv) * (e3c * (a2fac * a2fac) + e4c * a2fac) * a1 / (a2 * a2fac);
+      gamv = e1 * enum_ * gtr / eden;
+      sm[k] = sm[k] + smd;
+      qdiv = one;
+    } else {
+      gamt = zero;
+      gamq = zero;
+      gamv = zero;
+    }
     const real cldavg = p5 * (cldfra_bl1[k - 1] + cldfra_bl1[k]);
     const real mfmax = c_max(p5 * (edmf_a1[k - 1] + edmf_a1[k]) * p5 * (edmf_w1[k - 1] + edmf_w1[k]),
                              std::fabs(zero * zero));
@@ -470,6 +680,10 @@ CPPWRF_HD inline void mym_turbulence(int kte, real xland, real closure, real ckm
     dfm[k] = elqt * sm[k] / dzk;
     dfh[k] = elq * sh[k] / dzk;
     dfq[k] = dfm[k];
+    if (qshear) {  // tke_budget = 1
+      qshear[k] = elq * sm[k] * gm[k];
+      qbuoy[k] = elq * (sh[k] * gh[k] + gamv) + p5 * zero + p5 * TKEprod_up[k];
+    }
   }
   dfm[kts] = zero;
   dfh[kts] = zero;
@@ -489,12 +703,13 @@ CPPWRF_HD inline void mym_turbulence(int kte, real xland, real closure, real ckm
   }
 }
 
-// mym_predict (bl_mynn_edmf <= 1 implicit form; closure < 3)
+// mym_predict (bl_mynn_edmf <= 1: implicit form); qwt / qdiss (tke_budget = 1) may be null
 template <int K>
 CPPWRF_HD inline void mym_predict(int kte, real closure, real delt, const real* dz, real ust, real pmz, real phh,
                                   const real* el, const real* dfq, const real* rho, real* pdk, real* pdt, real* pdq,
                                   real* pdc, real* qke, real* tsq, real* qsq, real* cov, const real* s_aw1,
-                                  const real* s_awqke1, const real* s_awqsq1, int bl_mynn_edmf, int bl_mynn_edmf_tke) {
+                                  const real* s_awqke1, const real* s_awqsq1, int bl_mynn_edmf, int bl_mynn_edmf_tke,
+                                  real* qwt, real* qdiss) {
   constexpr int kts = 1;
   real qkw[K + 2], bp[K + 2], rp[K + 2], df3q[K + 2], dtz[K + 2], a[K + 2], b[K + 2], c[K + 2], d[K + 2], x[K + 2],
       rhoinv[K + 2], rhoz[K + 3], kqdz[K + 3], kmdz[K + 3];
@@ -555,6 +770,29 @@ CPPWRF_HD inline void mym_predict(int kte, real closure, real delt, const real* 
     qke[k] = c_max(x[k], qkemin);
     qke[k] = c_min(qke[k], real(150.));
   }
+  if (qwt) {  // tke_budget = 1
+    real tke_up[K + 2], dzinv[K + 2];
+    for (int k = kts; k <= kte; ++k) {
+      tke_up[k] = p5 * qke[k];
+      dzinv[k] = one / dz[k];
+    }
+    int k = kts;
+    qwt[k] = dzinv[k] * ((kqdz[k + 1] * (tke_up[k + 1] - tke_up[k]) - kqdz[k] * tke_up[k]) +
+                         p5 * rhoinv[k] *
+                             (s_aw1[k + 1] * tke_up[k + 1] + (s_aw1[k + 1] - s_aw1[k]) * tke_up[k] +
+                              (s_awqke1[k] - s_awqke1[k + 1])) *
+                             onoff);
+    for (k = kts + 1; k <= kte - 1; ++k)
+      qwt[k] = dzinv[k] * ((kqdz[k + 1] * (tke_up[k + 1] - tke_up[k]) - kqdz[k] * (tke_up[k] - tke_up[k - 1])) +
+                           p5 * rhoinv[k] *
+                               (s_aw1[k + 1] * tke_up[k + 1] + (s_aw1[k + 1] - s_aw1[k]) * tke_up[k] -
+                                s_aw1[k] * tke_up[k - 1] + (s_awqke1[k] - s_awqke1[k + 1])) *
+                               onoff);
+    k = kte;
+    qwt[k] = dzinv[k] * (-kqdz[k] * (tke_up[k] - tke_up[k - 1]) +
+                         p5 * rhoinv[k] * (-s_aw1[k] * tke_up[k] - s_aw1[k] * tke_up[k - 1] + s_awqke1[k]) * onoff);
+    for (k = kts; k <= kte; ++k) qdiss[k] = bp[k] * tke_up[k];
+  }
   if (closure > real(2.5)) {
     for (int k = kts; k <= kte - 1; ++k) {
       const real b2l = b2 * p5 * (el[k + 1] + el[k]);
@@ -587,28 +825,69 @@ CPPWRF_HD inline void mym_predict(int kte, real closure, real delt, const real* 
     }
     qsq[kte] = qsq[kte - 1];
   }
-  // closure < 2.7: temperature variance from the level 2 diagnostic (2.7 <= closure < 3 is rejected)
-  for (int k = kts; k <= kte - 1; ++k) {
-    real b2l;
-    if (qkw[k] <= zero) b2l = zero;
-    else b2l = b2 * real(0.25) * (el[k + 1] + el[k]) / qkw[k];
-    tsq[k] = c_min(three, c_max(zero, b2l * (pdt[k + 1] + pdt[k])));
+  if (closure >= real(2.7)) {  // prognostic temperature variance
+    for (int k = kts; k <= kte - 1; ++k) {
+      const real b2l = b2 * p5 * (el[k + 1] + el[k]);
+      bp[k] = two * qkw[k] / b2l;
+      rp[k] = pdt[k + 1] + pdt[k];
+    }
+    for (int k = kts; k <= kte - 1; ++k) {
+      a[k] = -dtz[k] * kmdz[k] * rhoinv[k];
+      b[k] = one + dtz[k] * (kmdz[k] + kmdz[k + 1]) * rhoinv[k] + bp[k] * delt;
+      c[k] = -dtz[k] * kmdz[k + 1] * rhoinv[k];
+      d[k] = rp[k] * delt + c_max(zero, tsq[k]);
+    }
+    a[kte] = real(-1.);
+    b[kte] = one;
+    c[kte] = zero;
+    d[kte] = zero;
+    tridiag2<K>(kte, a, b, c, d, x);
+    for (int k = kts; k <= kte; ++k) tsq[k] = c_min(three, c_max(zero, x[k]));
+  } else {
+    for (int k = kts; k <= kte - 1; ++k) {
+      real b2l;
+      if (qkw[k] <= zero) b2l = zero;
+      else b2l = b2 * real(0.25) * (el[k + 1] + el[k]) / qkw[k];
+      tsq[k] = c_min(three, c_max(zero, b2l * (pdt[k + 1] + pdt[k])));
+    }
+    tsq[kte] = tsq[kte - 1];
   }
-  tsq[kte] = tsq[kte - 1];
-  for (int k = kts; k <= kte - 1; ++k) {
-    real b2l;
-    if (qkw[k] <= zero) b2l = zero;
-    else b2l = b2 * real(0.25) * (el[k + 1] + el[k]) / qkw[k];
-    cov[k] = b2l * (pdc[k + 1] + pdc[k]);
+  if (closure >= real(3.0)) {  // prognostic covariance
+    for (int k = kts; k <= kte - 1; ++k) {
+      const real b2l = b2 * p5 * (el[k + 1] + el[k]);
+      bp[k] = two * qkw[k] / b2l;
+      rp[k] = pdc[k + 1] + pdc[k];
+    }
+    for (int k = kts; k <= kte - 1; ++k) {
+      a[k] = -dtz[k] * kmdz[k] * rhoinv[k];
+      b[k] = one + dtz[k] * (kmdz[k] + kmdz[k + 1]) * rhoinv[k] + bp[k] * delt;
+      c[k] = -dtz[k] * kmdz[k + 1] * rhoinv[k];
+      d[k] = rp[k] * delt + cov[k];
+    }
+    a[kte] = real(-1.);
+    b[kte] = one;
+    c[kte] = zero;
+    d[kte] = zero;
+    tridiag2<K>(kte, a, b, c, d, x);
+    for (int k = kts; k <= kte; ++k) cov[k] = x[k];
+  } else {
+    for (int k = kts; k <= kte - 1; ++k) {
+      real b2l;
+      if (qkw[k] <= zero) b2l = zero;
+      else b2l = b2 * real(0.25) * (el[k + 1] + el[k]) / qkw[k];
+      cov[k] = b2l * (pdc[k + 1] + pdc[k]);
+    }
+    cov[kte] = cov[kte - 1];
   }
-  cov[kte] = cov[kte - 1];
 }
 
-// mym_condensation, bl_mynn_cloudpdf = 2 (Chaboureau and Bechtold), closure < 3; qs is the snow content
+// mym_condensation, bl_mynn_cloudpdf 0 (original MYNN), 1 / -1 (Kuwano), 2 / -2 (Chaboureau and Bechtold;
+// negative values: no subgrid clouds); qs is the snow content, sh and el the previous step's (cloudpdf 1)
 template <int K>
 CPPWRF_HD inline void mym_condensation(int kte, const real* dz, const real* zw, real xland, const real* thl,
                                        const real* qw, const real* qc, const real* qi, const real* qs, const real* p,
-                                       const real* exner, const real* tsq, const real* qsq, real* qc_bl1, real* qi_bl1,
+                                       const real* exner, const real* tsq, const real* qsq, const real* cov,
+                                       const real* sh, const real* el, int cloudpdf, real* qc_bl1, real* qi_bl1,
                                        real* cldfra_bl1, real pblh1, real* vt, real* vq, const real* th, real* sgm,
                                        real closure) {
   constexpr int kts = 1;
@@ -626,6 +905,49 @@ CPPWRF_HD inline void mym_condensation(int kte, const real* dz, const real* zw, 
       break;
   }
   const int k_tropo = (kts + 2 > k + 2) ? kts + 2 : k + 2;
+  if (cloudpdf == 0 || cloudpdf == 1 || cloudpdf == -1) {
+    for (k = kts; k <= kte - 1; ++k) {
+      const real t = th[k] * exner[k];
+      const real esat = esat_blend(t);
+      const real qsl = ep_2 * esat / c_max(real(1.e-4), (p[k] - ep_3 * esat));
+      const real dqsl = qsl * ep_2 * xlv / (r_d * (t * t));
+      alp[k] = one / (one + dqsl * xlvcp);
+      bet[k] = dqsl * exner[k];
+      if (cloudpdf == 0) {
+        const real t3sq = c_max(tsq[k], zero);
+        real r3sq = c_max(qsq[k], zero);
+        real c3sq = cov[k];
+        c3sq = std::copysign(c_min(std::fabs(c3sq), std::sqrt(t3sq * r3sq)), c3sq);
+        r3sq = r3sq + (bet[k] * bet[k]) * t3sq - real(2.0) * bet[k] * c3sq;
+        sgm[k] = std::sqrt(c_max(r3sq, real(1.0e-10)));
+      } else {
+        const real dzk = (k == kts) ? real(0.5) * dz[k] : dz[k];
+        const int km1 = (k - 1 > kts) ? k - 1 : kts;
+        const real dth = real(0.5) * (thl[k + 1] + thl[k]) - real(0.5) * (thl[k] + thl[km1]);
+        const real dqw = real(0.5) * (qw[k + 1] + qw[k]) - real(0.5) * (qw[k] + qw[km1]);
+        const real grad = dqw / dzk - bet[k] * (dth / dzk);
+        sgm[k] = std::sqrt(c_max((alp[k] * alp[k] * c_max(el[k] * el[k], p1) * b2 * c_max(sh[k], real(0.03))) / four *
+                                     (grad * grad),
+                                 real(1.0e-10)));
+      }
+      const real qmq = qw[k] - qsl;
+      q1[k] = qmq / sgm[k];
+      cldfra_bl1[k] = real(0.5) * (one + std::erf(q1[k] * rr2));
+      const real q1k = q1[k];
+      const real eq1 = rrp * std::exp(real(-0.5) * q1k * q1k);
+      const real qll = c_max(cldfra_bl1[k] * q1k + eq1, zero);
+      const real ql = alp[k] * sgm[k] * qll;
+      const real liq_frac = c_min(one, c_max(zero, (t - real(240.0)) / real(29.0)));
+      qc_bl1[k] = liq_frac * ql;
+      qi_bl1[k] = (one - liq_frac) * ql;
+      const real q2p = xlvcp / exner[k];
+      const real pt = thl[k] + q2p * ql;
+      const real qt = one + p608 * qw[k] - (real(1.) + p608) * (qc_bl1[k] + qi_bl1[k]) * cldfra_bl1[k];
+      const real rac = alp[k] * (cldfra_bl1[k] - qll * eq1) * (q2p * qt - (real(1.) + p608) * pt);
+      vt[k] = qt - one - rac * bet[k];
+      vq[k] = p608 * pt - tv0 + rac;
+    }
+  } else if (cloudpdf == 2 || cloudpdf == -2) {
   const real pblh2 = c_max(ten, pblh1);
   for (k = kts; k <= kte - 1; ++k) {
     const real zagl = zw[k] + p5 * dz[k];
@@ -644,8 +966,11 @@ CPPWRF_HD inline void mym_condensation(int kte, const real* dz, const real* zw, 
     const real qmq = qw_pert - qsat_tk;
     real r3sq = c_max(qsq[k], zero);
     const real t3sq = c_max(tsq[k], zero);
+    real c3sq = cov[k];
+    c3sq = std::copysign(c_min(std::fabs(c3sq), std::sqrt(t3sq * r3sq)), c3sq);
     if (closure < real(2.7)) r3sq = r3sq;
-    else r3sq = r3sq + (bet[k] * bet[k]) * t3sq;  // 2.7 <= closure < 3
+    else if (closure < real(3.0)) r3sq = r3sq + (bet[k] * bet[k]) * t3sq;
+    else r3sq = r3sq + (bet[k] * bet[k]) * t3sq - two * bet[k] * c3sq;
     sgm[k] = c_max(real(1e-13), std::sqrt(r3sq));
     sgm[k] = c_min(sgm[k], qw[k] * p5);
     real wt = c_min(one, c_max(zero, dz[k] - real(100.)) / real(500.));
@@ -719,6 +1044,14 @@ CPPWRF_HD inline void mym_condensation(int kte, const real* dz, const real* zw, 
     const real beta = (th[k] / t) * (xl / cp) - real(1.61) * th[k];
     vt[k] = qww - cfmax * beta * bb * Fng - one;
     vq[k] = alpha + cfmax * beta * a[k] * Fng - tv0;
+  }
+  }
+  if (cloudpdf < 0) {
+    for (k = kts; k <= kte - 1; ++k) {
+      cldfra_bl1[k] = zero;
+      qc_bl1[k] = zero;
+      qi_bl1[k] = zero;
+    }
   }
   vt[kte] = vt[kte - 1];
   vq[kte] = vq[kte - 1];

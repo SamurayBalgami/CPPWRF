@@ -22,6 +22,7 @@
 #include "core/grid.hpp"
 #include "dyn/column_physics.hpp"
 #include "dyn/state.hpp"
+#include "phys/bl_mynn/mynnedmf_common.hpp"
 #include "phys/cu_kf/kf.hpp"
 #include "phys/cu_kf/kf_tables.hpp"
 #include "phys/driver/phy_prep.hpp"
@@ -64,8 +65,12 @@ class IntField2 {
 struct SuiteOptions {
   int sf_sfclay_physics = 1;     // 1 = SFCLAYREVSCHEME, 2 = MYJSFCSCHEME, 5 = MYNNSFCSCHEME
   int sf_surface_physics = 2;    // 2 = LSMSCHEME (Noah), 4 = NOAHMPSCHEME (Noah-MP v5.1.2)
-  int bl_pbl_physics = 1;        // 1 = YSUSCHEME, 2 = MYJPBLSCHEME, 5 = MYNNPBLSCHEME (default bl_mynn_* options)
+  int bl_pbl_physics = 1;        // 1 = YSUSCHEME, 2 = MYJPBLSCHEME, 5 = MYNNPBLSCHEME
   int icloud_bl = 1;             // MYNN subgrid clouds in the radiation (CLDFRA_BL, QC_BL, QI_BL)
+  mynnedmf::Options mynn;        // bl_mynn_* options of the MYNN-EDMF PBL
+  int bl_mynn_mixscalars = 0;    // MYNN mixing of WRF's generic scalar (not connected in WRF: no effect)
+  int bl_mynn_output = 0;        // 1: EDMF_A, EDMF_W, EDMF_THL, EDMF_QT, EDMF_ENT, EDMF_QC (and zero SUB_/DET_*3D)
+  int tke_budget = 0;            // 1: the MYNN TKE budget (QSHEAR, QBUOY, QDISS, QWT, DQKE)
   int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME, 3 = GFLSCHEME, 6 = TIEDTKESCHEME, 16 = NTIEDTKESCHEME
   int gwd_opt = 0;                // 1 = KIM orographic gravity wave drag (bl_gwdo)
   double gwd_dx_factor = 2.0;     // effective grid factor of the gwd stress (WRF gwd_dx_factor)
@@ -157,6 +162,8 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   Field3 tke_pbl, el_pbl;             // MYJ PBL 3D TKE and master length scale (el_pbl: MYNN too)
   // MYNN-EDMF state (bl_pbl_physics = 5): 2*TKE, variances, stability functions, subgrid clouds
   Field3 qke, tsq, qsq, cov, sh3d, sm3d, qc_bl, qi_bl, cldfra_bl;
+  Field3 edmf_a, edmf_w, edmf_thl, edmf_qt, edmf_ent, edmf_qc;  // bl_mynn_output = 1
+  Field3 qshear, qbuoy, qdiss, qwt, dqke;                        // tke_budget = 1
   Field2 cqs, maxwidth, maxmf, ztop_plume, excess_h, excess_q;
   // gwd_opt = 1: subgrid orography statistics (wrfinput CON, OA1-4, OL1-4, ELVMAX) and the drag diagnostics
   Field2 oc12d, oa1, oa2, oa3, oa4, ol1, ol2, ol3, ol4, elvmax, dusfcg, dvsfcg;

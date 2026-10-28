@@ -38,6 +38,8 @@ inline constexpr real qmin = real(0.0);
 inline constexpr real zmax = real(1.0);
 inline constexpr real Sqfac = real(3.0);
 inline constexpr real qkemin = real(1.e-5);
+inline constexpr real rr2 = real(0.7071068);
+inline constexpr real rrp = real(0.3989423);
 inline constexpr real pr = real(0.74);
 inline constexpr real g1 = real(0.235);
 inline constexpr real b1 = real(24.0);
@@ -62,8 +64,21 @@ inline constexpr real p01 = real(0.01), p1 = real(0.1), p2 = real(0.2), p25 = re
                       p333 = real(1.0) / real(3.0), p4 = real(0.4), p5 = real(0.5), p666 = real(2.0) / real(3.0),
                       p95 = real(0.95);
 
-// qsat_blend: Flatau polynomials, blended between liquid and ice (WRF's esat_blend feeds only unused or
-// unported code: qsl in DMP_mf, bl_mynn_cloudpdf 0 / 1)
+// MYNN namelist options (Registry.EM_COMMON; WRF's defaults)
+struct Options {
+  int cloudpdf = 2;       // bl_mynn_cloudpdf: 0, 1 / -1, 2 / -2
+  int mixlength = 1;      // bl_mynn_mixlength: 0, 1, 2
+  int edmf = 1;           // bl_mynn_edmf: 0, 1 (implicit mass flux)
+  int edmf_mom = 1;       // bl_mynn_edmf_mom
+  int edmf_tke = 0;       // bl_mynn_edmf_tke
+  int cloudmix = 1;       // bl_mynn_cloudmix
+  int mixqt = 0;          // bl_mynn_mixqt
+  int ess = 1;            // bl_mynn_ess
+  bool tkeadvect = false; // bl_mynn_tkeadvect
+  real closure = real(2.6);
+};
+
+// esat_blend and qsat_blend: Flatau polynomials, blended between liquid and ice
 inline constexpr real J0 = real(.611583699E03), J1 = real(.444606896E02), J2 = real(.143177157E01),
                       J3 = real(.264224321E-1), J4 = real(.299291081E-3), J5 = real(.203154182E-5),
                       J6 = real(.702620698E-8), J7 = real(.379534310E-11), J8 = real(-.321582393E-13);
@@ -76,6 +91,16 @@ CPPWRF_HD inline real esl_poly(real XC) {
 }
 CPPWRF_HD inline real esi_poly(real XC) {
   return K0 + XC * (K1 + XC * (K2 + XC * (K3 + XC * (K4 + XC * (K5 + XC * (K6 + XC * (K7 + XC * K8)))))));
+}
+
+CPPWRF_HD inline real esat_blend(real t) {
+  const real XC = c_max(real(-80.), t - t0c);
+  if (t >= (t0c - real(6.))) return esl_poly(XC);
+  if (t <= tice) return esi_poly(XC);
+  const real ESL = esl_poly(XC);
+  const real ESI = esi_poly(XC);
+  const real chi = ((t0c - real(6.)) - t) / ((t0c - real(6.)) - tice);
+  return (one - chi) * ESL + chi * ESI;
 }
 
 CPPWRF_HD inline real qsat_blend(real t, real P) {
@@ -107,6 +132,42 @@ CPPWRF_HD inline real xl_blend(real t) {
   const real xlst = xls + (cpv - cice) * (t - t0c);
   const real chi = (t0c - t) / (t0c - tice);
   return (one - chi) * xlvt + chi * xlst;
+}
+
+// phim: the stability function for momentum (bl_mynn_stfunc = 0 uses it only for the TKE budget)
+CPPWRF_HD inline real phim(real zet) {
+  constexpr real am_st = real(6.1), bm_st = real(2.5), rbm_st = real(1.) / bm_st;
+  constexpr real am_unst = real(10.);
+  real phi_m;
+  if (zet >= zero) {
+    const real dummy_0 = one + rpow(zet, bm_st);
+    const real dummy_1 = zet + rpow(dummy_0, rbm_st);
+    const real dummy_11 = one + rpow(dummy_0, rbm_st - real(1)) * rpow(zet, bm_st - one);
+    const real dummy_2 = (-am_st / dummy_1) * dummy_11;
+    phi_m = one - zet * dummy_2;
+  } else {
+    real dummy_0 = rpow(one - cphm_unst * zet, real(0.25));
+    phi_m = one / dummy_0;
+    const real dummy_psi = two * std::log(p5 * (one + dummy_0)) + std::log(p5 * (one + dummy_0 * dummy_0)) -
+                           two * std::atan(dummy_0) + real(1.570796);
+    dummy_0 = (one - am_unst * zet);
+    real dummy_1 = rpow(dummy_0, p333);
+    real dummy_11 = -p333 * am_unst * rpow(dummy_0, -p666);
+    real dummy_2 = p333 * (dummy_1 * dummy_1 + dummy_1 + one);
+    real dummy_22 = p333 * dummy_11 * (two * dummy_1 + one);
+    const real dummy_3 = real(0.57735) * (two * dummy_1 + one);
+    const real dummy_33 = real(1.1547) * dummy_11;
+    const real dummy_4 = real(1.5) * std::log(dummy_2) - real(1.73205) * std::atan(dummy_3) + real(1.813799364);
+    const real dummy_44 =
+        (real(1.5) / dummy_2) * dummy_22 - real(1.73205) * dummy_33 / (one + dummy_3 * dummy_3);
+    dummy_0 = zet * zet;
+    dummy_1 = one / (one + dummy_0);
+    dummy_11 = two * zet;
+    dummy_2 = ((one - phi_m) / zet + dummy_11 * dummy_4 + dummy_0 * dummy_44) * dummy_1;
+    dummy_22 = -dummy_11 * (dummy_psi + dummy_0 * dummy_4) * (dummy_1 * dummy_1);
+    phi_m = one - zet * (dummy_2 + dummy_22);
+  }
+  return phi_m;
 }
 
 // tridiag2 (1-based a, b, c, d, x of kte elements; a(1) is not used)

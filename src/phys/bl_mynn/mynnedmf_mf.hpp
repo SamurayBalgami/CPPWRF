@@ -1,7 +1,8 @@
 #pragma once
-// MYNN-EDMF dynamic multi-plume mass flux (WRF v4.8.0 module_bl_mynnedmf.F90 DMP_mf, condensation_edmf) for
-// WRF's defaults: env_subs = .false. (no subsidence/detrainment tendencies), bl_mynn_edmf_tke = 0,
-// bl_mynn_mixscalars = 0, bl_mynn_mixnumcon = 0, no aerosols / chemistry, spp_pbl = 0. The plume-size loops of
+// MYNN-EDMF dynamic multi-plume mass flux (WRF v4.8.0 module_bl_mynnedmf.F90 DMP_mf, condensation_edmf):
+// env_subs = .false. (no subsidence/detrainment tendencies), bl_mynn_edmf_mom 0 / 1, bl_mynn_edmf_tke 0 / 1;
+// the generic scalar of bl_mynn_mixscalars is WRF's zero dummy (not connected), bl_mynn_mixnumcon = 0, no
+// aerosols / chemistry, spp_pbl = 0. The plume-size loops of
 // NUP = 8 trips: the area loop uses glibc's libmvec pow in WRF's build (vm::pow with n = 8), the sum for cn
 // (a reduction) the scalar pow.
 #include "phys/bl_mynn/mynnedmf_common.hpp"
@@ -35,13 +36,15 @@ struct MfOut {
 // DMP_mf: qt1 = sqw, qv1 = sqv, qc1 = sqc (specific contents); ts = theta at the surface (th_sfc)
 template <int K>
 CPPWRF_HD inline void dmp_mf(int kte, real dt, const real* zw1, const real* dz1, const real* pres1, const real* rho1,
-                             int momentum_opt, const real* u1, const real* v1, const real* w1, const real* th1,
+                             int momentum_opt, int tke_opt, real bl_mynn_closure, const real* u1, const real* v1,
+                             const real* w1, const real* th1,
                              const real* thl1, const real* thv1, const real* tk1, const real* qt1, const real* qv1,
                              const real* qc1, const real* qke1, const real* qsq1, const real* ex1, real* vt1, real* vq1,
                              real ust, real flt, real fltv, real flq, real pblh, int kpbl, real dx, real landsea,
                              real ts, real* edmf_a1, real* edmf_w1, real* edmf_qt1, real* edmf_thl1, real* edmf_ent1,
                              real* edmf_qc1, real* s_aw1, real* s_awthl1, real* s_awqt1, real* s_awqv1, real* s_awqc1,
-                             real* s_awu1, real* s_awv1, real* qc_bl1, real* cldfra_bl1, real Psig_shcu, MfOut& o,
+                             real* s_awu1, real* s_awv1, real* s_awqke1, real* s_awqsq1, real* qc_bl1,
+                             real* cldfra_bl1, real Psig_shcu, MfOut& o,
                              real* tkeprod_up, const real* el1) {
   constexpr int kts = 1;
   constexpr int nup = 8;
@@ -50,7 +53,7 @@ CPPWRF_HD inline void dmp_mf(int kte, real dt, const real* zw1, const real* dz1,
   constexpr real pgfac = real(0.00);
   (void)dt; (void)ust; (void)th1;
   real UPW[K + 3][nup + 1], UPTHL[K + 3][nup + 1], UPQT[K + 3][nup + 1], UPQC[K + 3][nup + 1], UPA[K + 3][nup + 1],
-      UPU[K + 3][nup + 1], UPV[K + 3][nup + 1], ENT[K + 2][nup + 1];
+      UPU[K + 3][nup + 1], UPV[K + 3][nup + 1], UPQKE[K + 3][nup + 1], UPQSQ[K + 3][nup + 1], ENT[K + 2][nup + 1];
   real exneri[K + 2], dzi[K + 2], rhoi[K + 2], qti[K + 2], edmf_th1[K + 2];
   int ktop_plume[nup + 1];
   int ktop = 0;
@@ -68,6 +71,8 @@ CPPWRF_HD inline void dmp_mf(int kte, real dt, const real* zw1, const real* dz1,
       UPU[k][ip] = zero;
       UPV[k][ip] = zero;
       UPQC[k][ip] = zero;
+      UPQKE[k][ip] = zero;
+      UPQSQ[k][ip] = zero;
     }
   for (int k = kts; k <= kte; ++k)
     for (int ip = 1; ip <= nup; ++ip) ENT[k][ip] = real(0.001);
@@ -87,6 +92,8 @@ CPPWRF_HD inline void dmp_mf(int kte, real dt, const real* zw1, const real* dz1,
     s_awqc1[k] = zero;
     s_awu1[k] = zero;
     s_awv1[k] = zero;
+    s_awqke1[k] = zero;
+    s_awqsq1[k] = zero;
   }
   real nup2 = nup;
   for (int k = kts; k <= kte; ++k) tkeprod_up[k] = zero;
@@ -194,6 +201,8 @@ CPPWRF_HD inline void dmp_mf(int kte, real dt, const real* zw1, const real* dz1,
       UPTHL[2][ip] = (thl1[kts] * dz1[kts + 1] + thl1[kts + 1] * dz1[kts]) / dzs + exc_heat;
       exc_moist = exc_fac * UPW[2][ip] * sigmaQT / sigmaW;
       UPQT[2][ip] = (qt1[kts] * dz1[kts + 1] + qt1[kts + 1] * dz1[kts]) / dzs + exc_moist;
+      UPQKE[2][ip] = (qke1[kts] * dz1[kts + 1] + qke1[kts + 1] * dz1[kts]) / dzs;
+      UPQSQ[2][ip] = (qsq1[kts] * dz1[kts + 1] + qsq1[kts + 1] * dz1[kts]) / dzs;
     }
     rhoi[kts] = rho1[kts];
     dzi[kts] = p5 * dz1[kts];
@@ -231,6 +240,8 @@ CPPWRF_HD inline void dmp_mf(int kte, real dt, const real* zw1, const real* dz1,
         const real THLn = UPTHL[k][ip] * (one - EntExp) + thl1[k] * EntExp;
         const real Un = UPU[k][ip] * (one - EntExm) + u1[k] * EntExm + dxsa * pgfac * (Uk - Ukm1);
         const real Vn = UPV[k][ip] * (one - EntExm) + v1[k] * EntExm + dxsa * pgfac * (Vk - Vkm1);
+        const real QKEn = UPQKE[k][ip] * (one - EntExp) + qke1[k] * EntExp;
+        const real QSQn = UPQSQ[k][ip] * (one - EntExp) + qsq1[k] * EntExp;
         const real Pk = (pres1[k] * dz1[k + 1] + pres1[k + 1] * dz1[k]) / (dz1[k] + dz1[k + 1]);
         real THVn;
         condensation_edmf(QTn, THLn, Pk, zw1[k + 1], THVn, QCn);
@@ -259,6 +270,8 @@ CPPWRF_HD inline void dmp_mf(int kte, real dt, const real* zw1, const real* dz1,
           UPQC[k + 1][ip] = QCn;
           UPU[k + 1][ip] = Un;
           UPV[k + 1][ip] = Vn;
+          UPQKE[k + 1][ip] = QKEn;
+          UPQSQ[k + 1][ip] = QSQn;
           UPA[k + 1][ip] = UPA[k][ip];
           ktop = (ktop > k) ? ktop : k;
         } else {
@@ -292,6 +305,15 @@ CPPWRF_HD inline void dmp_mf(int kte, real dt, const real* zw1, const real* dz1,
           s_awu1[k] = s_awu1[k] + rhoi[k] * UPA[k][ip] * UPW[k][ip] * UPU[k][ip] * Psig_w;
           s_awv1[k] = s_awv1[k] + rhoi[k] * UPA[k][ip] * UPW[k][ip] * UPV[k][ip] * Psig_w;
         }
+    if (tke_opt > 0) {
+      for (int ip = 1; ip <= nup; ++ip)
+        for (int k = kts; k <= kte - 1; ++k)
+          s_awqke1[k] = s_awqke1[k] + rhoi[k] * UPA[k][ip] * UPW[k][ip] * UPQKE[k][ip] * Psig_w;
+      if (bl_mynn_closure > real(2.5))
+        for (int ip = 1; ip <= nup; ++ip)
+          for (int k = kts; k <= kte - 1; ++k)
+            s_awqsq1[k] = s_awqsq1[k] + rhoi[k] * UPA[k][ip] * UPW[k][ip] * UPQSQ[k][ip] * Psig_w;
+    }
     real flx1;
     if (std::fabs(s_aw1[kts + 1]) > real(1e-8))
       flx1 = c_max(s_aw1[kts + 1] * (thv1[kts] - thv1[kts + 1]) / dzi[kts + 1], real(1.0e-6));
@@ -312,6 +334,11 @@ CPPWRF_HD inline void dmp_mf(int kte, real dt, const real* zw1, const real* dz1,
           s_awu1[k] = s_awu1[k] * adjustment;
           s_awv1[k] = s_awv1[k] * adjustment;
         }
+      if (tke_opt > 0) {
+        for (int k = kts; k <= kte + 1; ++k) s_awqke1[k] = s_awqke1[k] * adjustment;
+        if (bl_mynn_closure > real(2.5))
+          for (int k = kts; k <= kte + 1; ++k) s_awqsq1[k] = s_awqsq1[k] * adjustment;
+      }
       for (int k = kts; k <= kte + 1; ++k)
         for (int ip = 1; ip <= nup; ++ip) UPA[k][ip] = UPA[k][ip] * adjustment;
     }

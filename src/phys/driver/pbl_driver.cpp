@@ -86,6 +86,10 @@ struct KGwdo {
 // k = 0 .. nz-1 are the scheme's k = 1 .. kte
 struct KMynnPbl {
   int nz, initflag;
+  mynnedmf::Options op;
+  int tke_budget = 0, bl_mynn_output = 0;
+  V3 edmf_a, edmf_w, edmf_thl, edmf_qt, edmf_ent, edmf_qc;  // bl_mynn_output > 0
+  V3 qshear, qbuoy, qdiss, qwt, dqke;                        // tke_budget = 1
   real delt, dx;
   C3 dz8w, u, v, w, th, t, p, pi, rho, qv, qc, qi, qs;
   C2 xland, tsk, psfc, ust, hfx, qfx, wspd, uoce, voce;
@@ -121,7 +125,9 @@ struct KMynnPbl {
         c.qc_bl[k] = qc_bl(i, j, kk); c.qi_bl[k] = qi_bl(i, j, kk); c.cldfra_bl[k] = cldfra_bl(i, j, kk);
         c.qke[k] = qke(i, j, kk); c.qsq[k] = qsq(i, j, kk); c.tsq[k] = tsq(i, j, kk); c.cov[k] = cov(i, j, kk);
         c.sh[k] = sh3d(i, j, kk); c.sm[k] = sm3d(i, j, kk); c.kh[k] = exch_h(i, j, kk); c.km[k] = exch_m(i, j, kk);
-        c.el[k] = el(i, j, kk); c.qke_adv[k] = qke(i, j, kk);  // bl_mynn_tkeadvect = .false.
+        c.el[k] = el(i, j, kk);
+        // bl_mynn_tkeadvect: the advected scalar qke_adv (grid%scalar), else qke
+        c.qke_adv[k] = op.tkeadvect ? qke_adv_2(i, j, kk) : qke(i, j, kk);
       }
     }
     for (int k = 1; k <= nz; ++k) {  // mynnedmf_pre_run
@@ -130,8 +136,8 @@ struct KMynnPbl {
       c.sqi[k] = qi1[k] / (one + qv1[k]);
       c.sqs[k] = qs1[k] / (one + qv1[k]);
     }
-    mynnedmf::mynnedmf<kMaxLevels>(c, initflag, delt, dx, xland(i, j), tsk(i, j), psfc(i, j), ust(i, j), hfx1, qfx1,
-                                   wspd(i, j), uoce(i, j), voce(i, j));
+    mynnedmf::mynnedmf<kMaxLevels>(c, op, tke_budget, initflag, delt, dx, xland(i, j), tsk(i, j), psfc(i, j),
+                                   ust(i, j), hfx1, qfx1, wspd(i, j), uoce(i, j), voce(i, j));
     for (int k = 1; k <= nz; ++k) {  // mynnedmf_post_run
       const real sq = qv1[k] / (one + qv1[k]);
       const real sqv = sq + c.dqv[k] * delt;
@@ -154,13 +160,23 @@ struct KMynnPbl {
       qc_bl(i, j, kk) = c.qc_bl[k] / (one - c.sqv[k]);
       qi_bl(i, j, kk) = c.qi_bl[k] / (one - c.sqv[k]);
       cldfra_bl(i, j, kk) = c.cldfra_bl[k];
+      if (tke_budget == 1) {
+        dqke(i, j, kk) = c.dqke[k]; qwt(i, j, kk) = c.qwt[k]; qshear(i, j, kk) = c.qshear[k];
+        qbuoy(i, j, kk) = c.qbuoy[k]; qdiss(i, j, kk) = c.qdiss[k];
+      }
+      if (bl_mynn_output > 0) {
+        edmf_a(i, j, kk) = c.edmf_a[k]; edmf_w(i, j, kk) = c.edmf_w[k]; edmf_qt(i, j, kk) = c.edmf_qt[k];
+        edmf_thl(i, j, kk) = c.edmf_thl[k]; edmf_ent(i, j, kk) = c.edmf_ent[k]; edmf_qc(i, j, kk) = c.edmf_qc[k];
+      }
       // qke_adv(i,k,j) = qke_adv1(k) into grid%scalar; rk_update_scalar (rk_step 1) then copies it to the old level
       if (has_qke_adv) qke_adv_2(i, j, kk) = qke_adv_1(i, j, kk) = c.qke_adv[k];
     }
     kpbl(i, j) = c.kpbl;
     pblh(i, j) = c.pblh;
-    maxwidth(i, j) = c.maxwidth; maxmf(i, j) = c.maxmf; ztop_plume(i, j) = c.ztop_plume;
-    excess_h(i, j) = c.excess_h; excess_q(i, j) = c.excess_q;
+    if (op.edmf > 0) {
+      maxwidth(i, j) = c.maxwidth; maxmf(i, j) = c.maxmf; ztop_plume(i, j) = c.ztop_plume;
+      excess_h(i, j) = c.excess_h; excess_q(i, j) = c.excess_q;
+    }
   }
 };
 
@@ -213,6 +229,15 @@ void PhysicsSuite::pbl_driver(dyn::State& s, const dyn::BaseState& b) {
       throw std::runtime_error("bl_pbl_physics=5: the microphysics must carry qc, qi and qs");
     KMynnPbl k{};
     k.nz = g_.nz; k.initflag = itimestep == 1 ? 1 : 0; k.delt = dtbl; k.dx = real(g_.dx);
+    k.op = o_.mynn; k.tke_budget = o_.tke_budget; k.bl_mynn_output = o_.bl_mynn_output;
+    if (o_.tke_budget == 1) {
+      k.qshear = qshear.view(); k.qbuoy = qbuoy.view(); k.qdiss = qdiss.view(); k.qwt = qwt.view();
+      k.dqke = dqke.view();
+    }
+    if (o_.bl_mynn_output > 0) {
+      k.edmf_a = edmf_a.view(); k.edmf_w = edmf_w.view(); k.edmf_thl = edmf_thl.view(); k.edmf_qt = edmf_qt.view();
+      k.edmf_ent = edmf_ent.view(); k.edmf_qc = edmf_qc.view();
+    }
     k.dz8w = prep.dz8w.cview(); k.u = prep.u_phy.cview(); k.v = prep.v_phy.cview(); k.w = s.w_2.cview();
     k.th = prep.th_phy.cview(); k.t = prep.t_phy.cview(); k.p = prep.p_hyd.cview(); k.pi = prep.pi_phy.cview();
     k.rho = prep.rho.cview(); k.qv = s.q_2[s.P_QV].cview(); k.qc = s.q_2[s.P_QC].cview();
@@ -227,6 +252,8 @@ void PhysicsSuite::pbl_driver(dyn::State& s, const dyn::BaseState& b) {
     k.pblh = pblh.view(); k.maxwidth = maxwidth.view(); k.maxmf = maxmf.view(); k.ztop_plume = ztop_plume.view();
     k.excess_h = excess_h.view(); k.excess_q = excess_q.view(); k.kpbl = kpbl.view();
     k.has_qke_adv = s.P_QKE_ADV >= 0;
+    if (o_.mynn.tkeadvect && !k.has_qke_adv)
+      throw std::runtime_error("bl_mynn_tkeadvect: the scalar qke_adv is missing");
     if (k.has_qke_adv) { k.qke_adv_1 = s.q_1[s.P_QKE_ADV].view(); k.qke_adv_2 = s.q_2[s.P_QKE_ADV].view(); }
     column_for(cols, k);
   }
