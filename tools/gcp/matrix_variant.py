@@ -3,24 +3,35 @@
 
 One WRF-vs-CPPWRF comparison of a namelist variant: the WRF run RUNS/BASE (inputs and namelist.input) runs
 3 minutes with history every minute and the given namelist changes (key replaced or added in &SECTION), in
-WORK/NAME; CPPWRF runs the configuration tools/wrf2cppwrf.py makes from that namelist; every common variable
-of every common frame (by Times) of each domain's wrfout is compared at tolerance 0. Prints one line:
-NAME d0N frames N differing: none | {VAR: 'time npoints/maxdiff', ...}  (or NAME WRF-FAILED with CPPWRF's
-status on the same namelist, TRANSLATE-FAILED / CPPWRF-FAILED);
-variables only WRF writes are listed as wrf-only-vars.
+WORK/NAME; CPPWRF runs the configuration tools/wrf2cppwrf.py makes from that namelist; every variable of every frame (by
+Times) of each domain's wrfout and wrfrst files is compared at tolerance 0 (tests/verify/exact.py: NaN equals only
+NaN, -0 differs from +0), with the types, dimensions, variable and global attributes (TITLE aside). Prints one
+line per domain and stream: NAME d0N [wrfrst] frames N differing: none | {VAR: 'time npoints/maxdiff ...', ...};
+times, variables or metadata only one model has are differences too ('(times)', '(wrf-only-vars)',
+'(cppwrf-only-vars)', '(metadata)'). Or NAME WRF-FAILED with CPPWRF's status on the same namelist,
+TRANSLATE-FAILED / CPPWRF-FAILED / IDEAL-FAILED / NO-OUTPUT / HARNESS-ERROR (the script itself failed).
 run.keep=1 copies WRF's namelist.input, inputs and wrfout files to WORK/keep/run_NAME (a suite reference);
 run.delete=section.key,... deletes namelist lines (the option then takes its Registry default), as real_variant.py.
 Input files of the base run read by both models can be edited: run.sub=FILE:OLD:NEW replaces every OLD by NEW
 (percent-encoded: %20 a blank, %0A a newline), run.head=FILE:N keeps the first N lines, run.copy=FILE:OTHER
 takes the base run's file OTHER. CPPWRF always runs when WRF fails (NAME WRF-FAILED [...]; cppwrf: RUNS or its failure: does CPPWRF reject
 the input as WRF does); run.both=1 is accepted for older variant files.
-run.atts=1 also lists the global attributes (TITLE aside) that differ in the first common history frame's files.
+run.atts=1 is accepted for older variant files (the attributes are always compared).
 run.file=NAME:TEXT writes the file NAME (e.g. an iofields_filename list) into the run directory. Values are
 percent-decoded keys and values (%20 blank, %0A new line, %27 quote, %23 #, %7C |), as the variant line passes through sh -c."""
 import glob, os, re, subprocess, sys
 import urllib.parse
-import netCDF4
 import numpy as np
+
+
+def harness_error(t, e, tb):  # a variant that cannot run or be compared is a result line, never a missing one
+    print(f"{sys.argv[5] if len(sys.argv) > 5 else '?'} HARNESS-ERROR {t.__name__}: {e}", flush=True)
+    sys.__excepthook__(t, e, tb)
+
+
+sys.excepthook = harness_error
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tests", "verify"))
+import exact  # noqa: E402
 
 runs, work, wrfexe, cppwrf, name, base = sys.argv[1:7]
 sets = [(urllib.parse.unquote(k), urllib.parse.unquote(v)) for k, v in (a.split("=", 1) for a in sys.argv[7:])]
@@ -51,7 +62,7 @@ for k, v in [("run_days", "0"), ("run_hours", "0"), ("run_minutes", "0"), ("run_
              ("history_interval_s", "60, 60, 60"), ("frames_per_outfile", "10000"), ("restart", ".false.")]:
     nl = setkey(nl, "time_control", k, v)
 nl = re.sub(r"^\s*history_interval\s*=.*\n", "", nl, flags=re.M)
-keep = atts = False
+keep = False
 for sk, v in sets:
     sec, k = sk.split(".", 1)
     if (sec, k) == ("run", "keep"):  # run.keep=1: WRF's run (namelist, inputs, wrfout) kept as a reference
@@ -75,8 +86,7 @@ for sk, v in sets:
             os.remove(p)
         open(p, "w", encoding="latin-1", newline="").write(text)
         continue
-    if (sec, k) == ("run", "atts"):  # run.atts=1: compare the global attributes too
-        atts = v not in ("0", "false", ".false.")
+    if (sec, k) == ("run", "atts"):  # always on (see above)
         continue
     if (sec, k) == ("run", "file"):  # run.file=NAME:TEXT: a file of the run directory (both models)
         fn, text = v.split(":", 1)
@@ -157,66 +167,18 @@ if unread:  # a translated option the model never read
     print(f"{name} UNREAD-KEYS {unread}", flush=True)
 
 
-def load(files):
-    m = {}
-    for f in sorted(files):
-        ds = netCDF4.Dataset(f)
-        for t in range(len(ds["Times"])):
-            m[ds["Times"][t].tobytes().decode()] = (ds, t)
-    return m
-
-
-for kind in ("wrfout", "wrfrst"):  # history frames, then restart files (both streams' common variables)
-    for d in ("d01", "d02", "d03"):
-        w = glob.glob(os.path.join(R, f"{kind}_{d}_*"))
+doms = sorted({m for f in glob.glob(os.path.join(R, "wrf*_d*_*")) + glob.glob(os.path.join(out, "wrf*_d*_*")) +
+               glob.glob(os.path.join(out, "d*", "wrf*_d*_*"))
+               for m in re.findall(r"^wrf(?:out|rst)_(d\d\d)_", os.path.basename(f))})
+if not doms:
+    print(f"{name} NO-OUTPUT neither model wrote a wrfout or wrfrst file", flush=True)
+for kind in ("wrfout", "wrfrst"):  # history frames, then restart files
+    for d in doms:
         cdir = os.path.join(out, d) if os.path.isdir(os.path.join(out, d)) else out
-        cw = glob.glob(os.path.join(cdir, f"{kind}_{d}_*"))
-        if not w and not cw:
+        if not glob.glob(os.path.join(R, f"{kind}_{d}_*")) + glob.glob(os.path.join(cdir, f"{kind}_{d}_*")):
             continue
-        A, B = load(cw), load(w)
-        bad, nframes, wrf_only, cppwrf_only = {}, {}, set(), set()
-        for k in sorted(set(A) & set(B)):
-            (a, ta), (b, tb) = A[k], B[k]
-            cppwrf_only |= {v for v in a.variables if v not in b.variables}
-            for v in b.variables:
-                if v not in a.variables and b[v].dtype.kind != "S":
-                    wrf_only.add(v)
-                if v not in a.variables or b[v].dtype.kind == "S" or "Time" not in b[v].dimensions:
-                    continue
-                x = np.atleast_1d(np.asarray(a[v][ta], float))
-                y = np.atleast_1d(np.asarray(b[v][tb], float))
-                if x.shape != y.shape:
-                    if v not in bad:  # WRF's values per leading index (e.g. soil layers)
-                        yl = y.reshape(y.shape[0], -1) if y.ndim > 1 else y.reshape(-1, 1)
-                        bad[v] = f"shape cppwrf {x.shape} wrf {y.shape} wrf min/max per level " + \
-                                 " ".join(f"{r.min():.4g}/{r.max():.4g}" for r in yl)
-                    continue
-                dd = np.abs(x - y)
-                dd[np.isnan(x) & np.isnan(y)] = 0
-                if dd.max() > 0:
-                    nframes[v] = nframes.get(v, 0) + 1
-                if dd.max() > 0 and v not in bad:
-                    im = int(np.nanargmax(dd))
-                    bad[v] = f"{k} {(dd > 0).sum()}/{dd.max():.2e} (cppwrf {x.flat[im]:.6g} wrf {y.flat[im]:.6g} at {im})"
-        only = ""
-        if set(A) != set(B):  # times written by one model only
-            only = f" only-cppwrf {sorted(set(A) - set(B))} only-wrf {sorted(set(B) - set(A))}"
-        if wrf_only:  # variables WRF writes and CPPWRF does not
-            only += f" wrf-only-vars {sorted(wrf_only)}"
-        if cppwrf_only:  # variables CPPWRF writes and WRF does not
-            only += f" cppwrf-only-vars {sorted(cppwrf_only)}"
-        for v in bad:
-            if nframes.get(v, 0) > 1:
-                bad[v] += f" [{nframes[v]} frames]"
-        common = sorted(set(A) & set(B))
-        if atts and common:  # global attributes of the files holding the first common frame
-            a, b = A[common[0]][0], B[common[0]][0]
-            ga = {x: repr(a.getncattr(x)) for x in a.ncattrs() if x != "TITLE"}
-            gb = {x: repr(b.getncattr(x)) for x in b.ncattrs() if x != "TITLE"}
-            dif = {x: f"cppwrf {ga.get(x)} wrf {gb.get(x)}" for x in sorted(set(ga) | set(gb)) if ga.get(x) != gb.get(x)}
-            if list(ga) != list(gb) and not dif:
-                dif = {"(order)": "global attribute order differs"}
-            only += f" global-atts {dif if dif else 'same'}"
+        bad, n = exact.compare_stream(glob.glob(os.path.join(cdir, f"{kind}_{d}_*")),
+                                      glob.glob(os.path.join(R, f"{kind}_{d}_*")))
         tag = d if kind == "wrfout" else f"{d} {kind}"
-        print(f"{name} {tag} frames {len(set(A) & set(B))}{only} differing: {bad if bad else 'none'}", flush=True)
+        print(f"{name} {tag} frames {n} differing: {bad if bad else 'none'}", flush=True)
 subprocess.run(["rm", "-rf", out] + glob.glob(os.path.join(R, "wrfout_*")) + glob.glob(os.path.join(R, "wrfrst_*")))

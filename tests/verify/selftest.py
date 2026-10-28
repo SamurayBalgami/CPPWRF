@@ -78,7 +78,7 @@ def expect(name, rep, should_fail, failures):
 
 def main():
     failures = []
-    tmp = tempfile.mkdtemp(prefix="cppwrf_selftest_")
+    tmp = tempfile.mkdtemp(prefix="cppwrf_selftest_", dir=os.environ.get("CPPWRF_SCRATCH"))
     nx, nz = 512, 64
     diag_ok = [{"step": 0, "time": 0, "dry_mass": 1e10, "theta_mass": 3e12},
                {"step": 1800, "time": 900, "dry_mass": 1e10, "theta_mass": 3e12}]
@@ -147,8 +147,108 @@ def main():
     expect("compare identical", verify.run_compare(a, a, 1e-12), False, failures)
     expect("compare different", verify.run_compare(a, b, 1e-6), True, failures)
 
+    exact_faults(tmp, failures)
+
     print("\nSELFTEST", "FAILED: " + ", ".join(failures) if failures else "PASSED", f"(data in {tmp})")
     return 1 if failures else 0
+
+
+def write_wrfout(path, times, fault=None, drop=None):
+    """A small wrfout-like file (Times, U, W with WRF's -0, T, QVAPOR; global and variable attributes);
+    fault(name, array, frame) edits a value array before it is written, fault('(file)', dataset, None) the file;
+    drop: a variable left out."""
+    import netCDF4
+    ds = netCDF4.Dataset(path, "w")
+    ds.createDimension("Time", None)
+    ds.createDimension("DateStrLen", 19)
+    for n, k in (("bottom_top", 4), ("bottom_top_stag", 5), ("south_north", 3), ("west_east", 5), ("west_east_stag", 6)):
+        ds.createDimension(n, k)
+    ds.setncatts({"TITLE": "test", "DX": np.float32(1000.0), "MP_PHYSICS": np.int32(6)})
+    rng = np.random.default_rng(1)
+    vs = {"U": ("bottom_top", "south_north", "west_east_stag"), "W": ("bottom_top_stag", "south_north", "west_east"),
+          "T": ("bottom_top", "south_north", "west_east"), "QVAPOR": ("bottom_top", "south_north", "west_east")}
+    ts = ds.createVariable("Times", "S1", ("Time", "DateStrLen"))
+    for n, dims in vs.items():
+        if n != drop:
+            ds.createVariable(n, "f8", ("Time",) + dims).setncatts({"MemoryOrder": "XYZ", "units": "m s-1"})
+    for it, t in enumerate(times):
+        ts[it] = netCDF4.stringtochar(np.array([t], "S19"))
+        for n, dims in vs.items():
+            a = rng.standard_normal([len(ds.dimensions[x]) for x in dims])
+            if n == "W":
+                a[0] = -0.0
+            if fault:
+                fault(n, a, it)
+            if n != drop:
+                ds[n][it] = a
+    if fault:
+        fault("(file)", ds, None)
+    ds.close()
+
+
+def exact_faults(tmp, failures):
+    """Tolerance-0 comparison (exact.py, used by wrf_suite.py and tools/gcp/matrix_variant.py): identical files
+    are identical, each deliberate fault in the CPPWRF-side copy is a difference."""
+    import exact
+    T = ["2026-10-12_00:00:00", "2026-10-12_00:01:00", "2026-10-12_00:02:00"]
+    T4 = T + ["2026-10-12_00:03:00"]
+
+    def at(name, f, it=1, idx=(1, 1, 2)):
+        return lambda n, a, i: f(a, idx) if (n, i) == (name, it) else None
+
+    def ulp(a, i):
+        a[i] = np.nextafter(a[i], np.inf)
+
+    def nan(a, i):
+        a[i] = np.nan
+
+    def nan_and_one(n, a, i):
+        if (n, i) == ("QVAPOR", 2):
+            a[0, 0, 0] = np.nan
+            a[2, 2, 2] += 1.0
+
+    def plus_zero(a, i):
+        a[0] = 0.0
+
+    def gatt(n, ds, i):
+        if n == "(file)":
+            ds.MP_PHYSICS = np.int32(8)
+
+    def vatt(n, ds, i):
+        if n == "(file)":
+            ds["T"].units = "K"
+
+    # name, CPPWRF fault, CPPWRF frames, CPPWRF variable left out, a difference expected, subset (suite references)
+    cases = [("identical", None, T, None, False, False), ("one ulp in T", at("T", ulp), T, None, True, False),
+             ("NaN for a number", at("U", nan), T, None, True, False),
+             ("NaN and 1.0 elsewhere", nan_and_one, T, None, True, False),
+             ("+0 for WRF's -0", at("W", plus_zero, 0), T, None, True, False),
+             ("a frame missing", None, T[:2], None, True, False), ("an extra frame", None, T4, None, True, False),
+             ("a variable missing", None, T, "QVAPOR", True, False),
+             ("a global attribute", gatt, T, None, True, False), ("a variable attribute", vatt, T, None, True, False),
+             ("subset: identical, CPPWRF longer", None, T4, None, False, True),
+             ("subset: one ulp", at("T", ulp, 2), T, None, True, True),
+             ("subset: final frame missing", None, T[:2], None, True, True)]
+    for name, fault, times, drop, should_differ, subset in cases:
+        d = os.path.join(tmp, "exact_" + "".join(c if c.isalnum() else "_" for c in name))
+        os.makedirs(d, exist_ok=True)
+        write_wrfout(os.path.join(d, "wrf"), T)
+        write_wrfout(os.path.join(d, "cpp"), times, fault, drop)
+        bad, n = exact.compare_stream([os.path.join(d, "cpp")], [os.path.join(d, "wrf")], subset=subset,
+                                      until=T[-1] if subset else None)
+        ok = bool(bad) == should_differ
+        print(f"[{'ok' if ok else 'WRONG'}] exact {name}: {'differs ' + str(bad)[:160] if bad else 'identical'}"
+              f" (expected {'a difference' if should_differ else 'identical'})")
+        if not ok:
+            failures.append("exact " + name)
+    d = os.path.join(tmp, "exact_wrf_variable_missing")  # a variable WRF writes and CPPWRF does not, reversed
+    os.makedirs(d, exist_ok=True)
+    write_wrfout(os.path.join(d, "wrf"), T, drop="QVAPOR")
+    write_wrfout(os.path.join(d, "cpp"), T)
+    bad, n = exact.compare_stream([os.path.join(d, "cpp")], [os.path.join(d, "wrf")])
+    print(f"[{'ok' if bad else 'WRONG'}] exact a variable only CPPWRF writes: {str(bad)[:160] if bad else 'identical'}")
+    if not bad:
+        failures.append("exact cppwrf-only variable")
 
 
 if __name__ == "__main__":
