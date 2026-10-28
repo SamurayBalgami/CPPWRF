@@ -147,6 +147,9 @@ CASES = [
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_KESSKF_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
      {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "RAINNC")}),
+    ("real_kesskf_r8_fp64_cuda_1h", "cuda_dp", "configs/real_kesskf_r8.ini",  # L4: U 6.9e-5 W 1.2e-3 THM 1.1e-6 QV 4.4e-5
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_KESSKF_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-4, "W": 4e-3, "THM": 4e-6, "QV": 1.5e-4}),
     # P6 = P5 with Thompson (mp_physics = 8; WRF r8 built with -fdefault-double-8, see PHYSICS_SUITE.md
     # section 11): bit-identical for 3 steps and 1 h
     ("real_p6_r8_fp64_cpu", "cpu_dp", "configs/real_p6_r8.ini", [], f"{WR}/run_P6_r8/steps/wrfout_d01_2026-10-12_00:00:00",
@@ -208,6 +211,9 @@ CASES = [
      f"{WR}/run_MYNN_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
      {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
                        "QNICE", "QNRAIN", "RAINNC")}),
+    ("real_mynn_r8_fp64_cuda_1h", "cuda_dp", "configs/real_mynn_r8.ini",  # L4: U 2.6e-4 W 5.8e-3 THM 5.5e-6 QV 1.1e-4
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_MYNN_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_MYNN_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 8e-4, "W": 2e-2, "THM": 2e-5, "QV": 4e-4}),
     # MYNNSF1 / MYNNSF2 = MYNN with the MYNN-EDMF PBL on the revised MM5 (sf_sfclay_physics = 1) / Eta (2) surface
     # layer instead of the MYNN one, from the P6 inputs; reference WRF-4.8.0-r8d8. Bit-identical for 3 steps and 1 h.
     # The cuda_dp tolerances are provisional (P6-like, to be measured on a GPU).
@@ -222,7 +228,7 @@ CASES = [
                        "QNICE", "QNRAIN", "RAINNC")}),
     ("real_mynnsf1_r8_fp64_cuda_1h", "cuda_dp", "configs/real_mynnsf1_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_MYNNSF1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-4, "W": 5e-3, "THM": 2e-5, "QV": 1e-4}),
+     f"{WR}/run_MYNNSF1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 8e-4, "W": 2e-2, "THM": 2e-5, "QV": 9e-4}),  # L4: U 2.5e-4 W 5.3e-3 THM 5.3e-6 QV 2.9e-4
     ("real_mynnsf2_r8_fp64_cpu", "cpu_dp", "configs/real_mynnsf2_r8.ini", [],
      f"{WR}/run_MYNNSF2_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
      {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
@@ -234,7 +240,7 @@ CASES = [
                        "QNICE", "QNRAIN", "RAINNC")}),
     ("real_mynnsf2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_mynnsf2_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_MYNNSF2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-4, "W": 5e-3, "THM": 2e-5, "QV": 1e-4}),
+     f"{WR}/run_MYNNSF2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 8e-4, "W": 2e-2, "THM": 2e-5, "QV": 4e-4}),  # L4: U 2.6e-4 W 5.4e-3 THM 5.6e-6 QV 1.1e-4
     # V1-V3: other regions and map projections from the global GFS of 2026-10-12 00 UTC (WPS on the low
     # resolution global geography): V1 tropics (Bay of Bengal, Mercator, 15 km, P4 physics), V2 Arctic
     # (Svalbard, polar stereographic, 15 km, P4 physics: sea ice, glacier land ice, polar night), V3 Alps
