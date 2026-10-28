@@ -13,6 +13,8 @@
 # uninitialised open-water locals.
 # MYNN's first step depends on a restart alarm ringing at its end (solve_em's restart_flag), so its history
 # with restart_interval 1 differs from the plain run: mynn (no restart files) and mynnr (rst_/rsm_ only).
+# A case whose reference (run, restart or resumed directory named below) is missing is a SKIP, which fails the
+# test (exit 1) unless CPPWRF_ALLOW_SKIP=1; the last line counts the results.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -68,11 +70,12 @@ su1|configs/real_su1_r8.ini|$R/rst_SU1_r8|$R/rst_SU1_r8|--set run.run_time=180
 hy1|configs/real_p1_r8.ini|$R/run_HY1_r8/steps|-|--set real.dir=$R/run_HY1_r8/steps --set dyn.hypsometric_opt=1
 "
 want=" $* "
-fail=0 n=0
+fail=0 n=0 skip=0
 while IFS='|' read -r name cfg ref rst extra; do
   [ -z "$name" ] && continue
   [ $# -gt 0 ] && [[ "$want" != *" $name "* ]] && continue
-  [ -d "$ref" ] || { echo "SKIP $name: $ref not found"; continue; }
+  [ -d "$ref" ] || { echo "SKIP $name: $ref not found"; skip=$((skip + 1)); continue; }
+  [ "$rst" = "-" ] || [ -d "$rst" ] || { echo "SKIP $name: $rst not found"; skip=$((skip + 1)); continue; }
   sets=(--set output.format=wrfout --set output.out_interval=1 --set output.dir="$WORK/$name")
   if { [ "$rst" != "-" ] && [ -d "$rst" ]; } || compgen -G "$ref/wrfrst_d0*" > /dev/null; then
     sets+=(--set restart.interval=60)
@@ -124,5 +127,6 @@ while IFS='|' read -r name cfg ref rst extra; do
   fi
   if [ $ok = 1 ]; then echo "PASS $name"; rm -rf "${WORK:?}/$name"; else fail=1; fi
 done <<< "$CASES"
-echo "compared $n files"
+echo "compared $n files, $skip cases skipped"
+[ "$skip" = 0 ] || [ "${CPPWRF_ALLOW_SKIP:-0}" = 1 ] || fail=1
 exit $fail

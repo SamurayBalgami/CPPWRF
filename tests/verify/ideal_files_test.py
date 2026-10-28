@@ -9,7 +9,8 @@ CPPWRF_IDEAL_TRANSLATED=1: the configuration is instead tools/wrf2cppwrf.py's tr
 run's namelist.input (sounding: the input_sounding next to it), so the translator is checked as well.
 
 References: ${CPPWRF_WRF_REF} (as wrf_suite.py). Outputs in ${CPPWRF_SCRATCH:-~/cppwrf_scratch}/ideal_files_test,
-deleted for passing cases. Exit status 0 = all PASS.
+deleted for passing cases. Exit status 0 = all PASS; a missing reference is a SKIP that fails unless
+CPPWRF_ALLOW_SKIP=1.
 """
 import os
 import re
@@ -38,13 +39,14 @@ def main():
     exe = os.path.join(sys.argv[1], "cppwrf")
     want = sys.argv[2:]
     work = os.path.join(os.environ.get("CPPWRF_SCRATCH", os.path.expanduser("~/cppwrf_scratch")), "ideal_files_test")
-    ok, n = True, 0
+    ok, n, skip = True, 0, 0
     for name, key, cfg, sets, wo, t, tol in wrf_suite.CASES:
         if not name.startswith("ideal_") or key != "cpu_dp" or (want and name not in want):
             continue
         ref = os.path.dirname(wo)
         if not os.path.exists(wo):
             print(f"SKIP {name}: {wo} not found")
+            skip += 1
             continue
         nl = open(os.path.join(ref, "namelist.input")).read()
         hs, hm = re.search(r"history_interval_s\s*=\s*(\d+)", nl), re.search(r"history_interval\s*=\s*(\d+)", nl)
@@ -89,8 +91,8 @@ def main():
             print(f"FAIL {name}")
             print("\n".join((c.stdout + c.stderr).strip().splitlines()[:20]))
             ok = False
-    print(f"compared {n} files")
-    sys.exit(0 if ok else 1)
+    print(f"compared {n} files, {skip} cases skipped")
+    sys.exit(0 if ok and (not skip or os.environ.get("CPPWRF_ALLOW_SKIP") == "1") else 1)
 
 
 if __name__ == "__main__":
