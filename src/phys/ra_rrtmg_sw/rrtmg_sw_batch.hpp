@@ -25,6 +25,8 @@ struct SwBatchOutput {
   double* diag = nullptr;
   double* rthratenc = nullptr;  // [nz*ncol] clear-sky heating rate (may be nullptr)
   double* cf = nullptr;         // [ncol] SW cloud forcing (may be nullptr)
+  // [7*ncol] (may be nullptr): swvisdir, swvisdif, swnirdir, swnirdif, swddir, swddif, swddirc (d*ncol + col)
+  double* sfc = nullptr;
 };
 
 class RrtmgSwBatch {

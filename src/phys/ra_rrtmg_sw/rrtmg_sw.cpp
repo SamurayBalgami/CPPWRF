@@ -103,20 +103,7 @@ void rrtmg_sw_column(
     const double* qg3d,
     const double* cldfra3d,
     const double* o33d,
-    double& gsw,
-    double& swcf,
-    double& swupt,
-    double& swuptc,
-    double& swdnt,
-    double& swdntc,
-    double& swupb,
-    double& swupbc,
-    double& swdnb,
-    double& swdnbc,
-    double& swvisdir,
-    double& swvisdif,
-    double& swnirdir,
-    double& swnirdif,
+    SwColumnOut& out,
     double* rthratensw,
     double* rthratenswc,
     RrtmgSwWorkspace& ws,
@@ -143,10 +130,7 @@ void rrtmg_sw_column(
   rrtmg_sw_prep(c, in, v, tables, rrtmg_lw_consts());
   for (int g = 0; g < 112; ++g) rrtmg_sw_gpoint(c, g, v, tables);
   for (int lev = 0; lev <= c.nlayers; ++lev) rrtmg_sw_level(lev, v, tables);
-  const SwColumnOut o = rrtmg_sw_finish(c, v, sd_const(pi3d), SD{rthratensw, 1}, SD{rthratenswc, 1});
-  gsw = o.gsw; swcf = o.swcf; swupt = o.swupt; swuptc = o.swuptc; swdnt = o.swdnt; swdntc = o.swdntc;
-  swupb = o.swupb; swupbc = o.swupbc; swdnb = o.swdnb; swdnbc = o.swdnbc; swvisdir = o.swvisdir;
-  swvisdif = o.swvisdif; swnirdir = o.swnirdir; swnirdif = o.swnirdif;
+  out = rrtmg_sw_finish(c, v, sd_const(pi3d), SD{rthratensw, 1}, SD{rthratenswc, 1});
 }
 
 } // namespace cppwrf::phys

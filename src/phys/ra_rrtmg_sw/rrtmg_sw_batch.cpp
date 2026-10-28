@@ -89,6 +89,10 @@ struct KSwFinish {
       const double d[8] = {o.swupt, o.swuptc, o.swdnt, o.swdntc, o.swupb, o.swupbc, o.swdnb, o.swdnbc};
       for (int q = 0; q < 8; ++q) out.diag[std::size_t(q) * nc + col] = d[q];
     }
+    if (out.sfc) {
+      const double d[7] = {o.swvisdir, o.swvisdif, o.swnirdir, o.swnirdif, o.swddir, o.swddif, o.swddirc};
+      for (int q = 0; q < 7; ++q) out.sfc[std::size_t(q) * nc + col] = d[q];
+    }
   }
 };
 

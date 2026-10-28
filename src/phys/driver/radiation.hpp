@@ -52,6 +52,9 @@ struct RadiationOutputs {
   Field2 *lwcf = nullptr, *swcf = nullptr, *hrang = nullptr;
   Field2* lw[9] = {};
   Field2* sw[8] = {};
+  // RRTMG_SWRAD's surface components (restart fields, may be nullptr; 0 at night): SWVISDIR, SWVISDIF, SWNIRDIR,
+  // SWNIRDIF, SWDDIR, SWDDNI, SWDDIF, SWDDIRC, SWDDNIC (DNI = the direct flux / coszen)
+  Field2* swsfc[9] = {};
 };
 
 // grid%julian at the start of a step elapsed_s seconds after the simulation start (julyr, julday, gmt):

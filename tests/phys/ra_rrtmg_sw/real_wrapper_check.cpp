@@ -86,17 +86,17 @@ int main(int argc, char** argv) {
         ccld[k] = cldfra[q]; co3[k] = o3[q];
         cqc[k] = qc[q]; cqi[k] = qi[q]; cqs[k] = qs[q]; crec[k] = rec[q]; crei[k] = rei[q]; cres[k] = res[q];
       }
-      double gsw, swcf, swupt, swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc, a, b, cc, d;
+      SwColumnOut o{};
       rrtmg_sw_column(nz, c, *tables, coszen[q2], albedo[q2], xland[q2], xice[q2], snow[q2], xlat[q2], cp8w.data(),
                       ct8w.data(), cp.data(), cpi.data(), cdz.data(), ct.data(), crho.data(), cqv.data(), cqc.data(),
-                      zero.data(), cqi.data(), cqs.data(), zero.data(), ccld.data(), co3.data(), gsw, swcf, swupt,
-                      swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc, a, b, cc, d, rth.data(), rthc.data(), *ws,
-                      hrc ? crec.data() : nullptr, hri ? crei.data() : nullptr, hrs ? cres.data() : nullptr);
+                      zero.data(), cqi.data(), cqs.data(), zero.data(), ccld.data(), co3.data(), o, rth.data(),
+                      rthc.data(), *ws, hrc ? crec.data() : nullptr, hri ? crei.data() : nullptr,
+                      hrs ? cres.data() : nullptr);
       bool ex = true;
       auto upd = [&](int v, double w, double x) {
         mx[v] = std::max(mx[v], std::abs(w - x)); sc[v] = std::max(sc[v], std::abs(w)); if (w != x) ex = false;
       };
-      upd(0, w_gsw[q2], gsw); upd(1, w_swdnb[q2], swdnb); upd(2, w_swupt[q2], swupt);
+      upd(0, w_gsw[q2], o.gsw); upd(1, w_swdnb[q2], o.swdnb); upd(2, w_swupt[q2], o.swupt);
       for (int k = 0; k < nz; ++k) upd(3, w_rth[I3(i, k + kts, j)], rth[k]);
       ++nday; nexact += ex;
     }

@@ -80,21 +80,8 @@ void rrtmg_sw_column(
     const double* qg3d,  // [nz] kg/kg
     const double* cldfra3d, // [nz]
     const double* o33d,     // [nz] ozone vmr (o3input = 2), else unused
-    // 2D outputs
-    double& gsw,
-    double& swcf,
-    double& swupt,
-    double& swuptc,
-    double& swdnt,
-    double& swdntc,
-    double& swupb,
-    double& swupbc,
-    double& swdnb,
-    double& swdnbc,
-    double& swvisdir,
-    double& swvisdif,
-    double& swnirdir,
-    double& swnirdif,
+    // 2D outputs (gsw, swcf, the TOA / surface fluxes, the surface direct / diffuse components)
+    SwColumnOut& out,
     // 3D outputs
     double* rthratensw,  // [nz] K/s
     double* rthratenswc, // [nz] K/s
