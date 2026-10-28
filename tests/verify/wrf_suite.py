@@ -177,6 +177,33 @@ CASES = [
      f"{WR}/run_MYNN_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
      {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
                        "QNICE", "QNRAIN", "RAINNC")}),
+    # MYNNSF1 / MYNNSF2 = MYNN with the MYNN-EDMF PBL on the revised MM5 (sf_sfclay_physics = 1) / Eta (2) surface
+    # layer instead of the MYNN one, from the P6 inputs; reference WRF-4.8.0-r8d8. Bit-identical for 3 steps and 1 h.
+    # The cuda_dp tolerances are provisional (P6-like, to be measured on a GPU).
+    ("real_mynnsf1_r8_fp64_cpu", "cpu_dp", "configs/real_mynnsf1_r8.ini", [],
+     f"{WR}/run_MYNNSF1_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
+                       "QNICE", "QNRAIN", "RAINNC")}),
+    ("real_mynnsf1_r8_fp64_cpu_1h", "cpu_dp", "configs/real_mynnsf1_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_MYNNSF1_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
+                       "QNICE", "QNRAIN", "RAINNC")}),
+    ("real_mynnsf1_r8_fp64_cuda_1h", "cuda_dp", "configs/real_mynnsf1_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_MYNNSF1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-4, "W": 5e-3, "THM": 2e-5, "QV": 1e-4}),
+    ("real_mynnsf2_r8_fp64_cpu", "cpu_dp", "configs/real_mynnsf2_r8.ini", [],
+     f"{WR}/run_MYNNSF2_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
+                       "QNICE", "QNRAIN", "RAINNC")}),
+    ("real_mynnsf2_r8_fp64_cpu_1h", "cpu_dp", "configs/real_mynnsf2_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_MYNNSF2_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
+                       "QNICE", "QNRAIN", "RAINNC")}),
+    ("real_mynnsf2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_mynnsf2_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_MYNNSF2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-4, "W": 5e-3, "THM": 2e-5, "QV": 1e-4}),
     # V1-V3: other regions and map projections from the global GFS of 2026-10-12 00 UTC (WPS on the low
     # resolution global geography): V1 tropics (Bay of Bengal, Mercator, 15 km, P4 physics), V2 Arctic
     # (Svalbard, polar stereographic, 15 km, P4 physics: sea ice, glacier land ice, polar night), V3 Alps
@@ -527,6 +554,8 @@ def main():
                              ("p9", "configs/real_p9_r8.ini", "run_P9_r8"),
                              ("nmp1", "configs/real_nmp1_r8.ini", "run_NMP1_r8"),
                              ("mynn", "configs/real_mynn_r8.ini", "run_MYNN_r8"),
+                             ("mynnsf1", "configs/real_mynnsf1_r8.ini", "run_P6_r8"),
+                             ("mynnsf2", "configs/real_mynnsf2_r8.ini", "run_P6_r8"),
                              ("t1", "configs/real_t1.ini", "run_R1_r8")):
             rname = f"restart_{tag}_fp64"
             if not wanted(rname):
