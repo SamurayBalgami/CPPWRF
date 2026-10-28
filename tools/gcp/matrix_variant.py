@@ -207,12 +207,14 @@ def cdir_of(cout, d):
     return os.path.join(cout, d) if os.path.isdir(os.path.join(cout, d)) else cout
 
 
-def compare_runs(wdir, cout, label=""):
-    """One line per domain and stream: CPPWRF's files in cout (cout/d0N for nests) against WRF's in wdir."""
+def compare_runs(wdir, cout, label="", inputs=()):
+    """One line per domain and stream: CPPWRF's files in cout (cout/d0N for nests) against WRF's in wdir (its input
+    files `inputs` aside)."""
     seen = False
     for kind in ("wrfout", "wrfrst"):  # history frames, then restart files
         for d in doms:
-            cf, wf = stream_files(cdir_of(cout, d), kind, d), stream_files(wdir, kind, d)
+            cf = stream_files(cdir_of(cout, d), kind, d)
+            wf = [f for f in stream_files(wdir, kind, d) if os.path.basename(f) not in inputs]
             if not cf + wf:
                 continue
             seen = True
@@ -279,7 +281,7 @@ def resume_run(S):
     if c2.returncode != 0:
         print(f"{name} CPPWRF-RESUME-FAILED {(c2.stderr or c2.stdout).strip().splitlines()[-1:]}", flush=True)
         return
-    compare_runs(R2, out2, " resumed")
+    compare_runs(R2, out2, " resumed", inputs=rst)
     for d in doms:  # the resumed histories against WRF's uninterrupted one (its earlier frames are no difference)
         straight = stream_files(R, "wrfout", d)
         for who, files in (("resumed-vs-straight", stream_files(cdir_of(out2, d), "wrfout", d)),

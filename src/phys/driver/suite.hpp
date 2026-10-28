@@ -241,6 +241,9 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   void restarted(long step) {
     itimestep = step;
     t1_lag_set_ = true;
+    // NOAHMP_INIT on a restart (NoahmpWRFinitMod.F90:463): CROPCAT is an output only, NoahmpIO%CROPCAT keeps its
+    // allocation value undefined_int, which replaces the restart file's values
+    if (o_.sf_surface_physics == 4) cropcat.upload(std::vector<int>(cropcat.layout().total, -9999));
   }
 
  private:

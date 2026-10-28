@@ -906,7 +906,7 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
   const Grid& g = m_.g;
   wrf_io::DomainAtts d = domain_atts();
   // output_wrf restart_only: the alarms WRF created (all but 26 and 54) at this time; the history alarm has
-  // just rung (or rings every history_interval), the restart alarm is ringing, 55 counts from the start
+  // just rung (or rings every history_interval), the restart alarm is ringing, 55 counts from the run's start
   const long el = std::lround(time_sec);
   for (int a = 1; a <= 55; ++a) {
     if (a == 26 || a == 54 || (a == 52 && d.grid_id > 1)) continue;  // nests have no boundary alarm
@@ -927,8 +927,12 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
     } else if (a == 51) {
       ring = 1;
       secs = int(std::lround(restart_secs_to_ring));
-    } else if (a == 55) {
-      secs = int(-el);
+    } else if (a == 52) {
+      // set_timekeeping creates d01's boundary alarm ringing; only med_latbound_in of a specified boundary (real
+      // data) turns it off
+      ring = g.bc_x == BC::Specified || g.bc_y == BC::Specified ? 0 : 1;
+    } else if (a == 55) {  // created at the start of this run (the restart time of a resumed run)
+      secs = int(-(el - std::lround(restart_sec_)));
     }
     d.restart_alarms.push_back({n1, ring});
     d.restart_alarms.push_back({n2, secs});
