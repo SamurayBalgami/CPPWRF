@@ -12,7 +12,8 @@
 # in order until one has the machine (spot capacity varies). Use Intel machines (c3, n2, n1): glibc's
 # libmvec log differs on AMD, so AMD runs are not bit-identical to Intel-made WRF references.
 # Exit status 0 only for a complete suite without FAIL or SKIP (wrf_suite.py's SUITE line and exit 0), passing
-# translator tests and no data or build failure on the VM; a VM that ends early is INCOMPLETE (status 1).
+# translator tests and comparator self-test (tests/verify/selftest.py), and no data or build failure on the VM; a
+# VM that ends early is INCOMPLETE (status 1).
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_GCP_PROJECT:?set CPPWRF_GCP_PROJECT}" "${CPPWRF_GCP_BUCKET:?set CPPWRF_GCP_BUCKET}"
@@ -64,6 +65,7 @@ grep -E "^(FAIL|SKIP|ERROR) " "$OUT/suite.log" 2>/dev/null || true
 bad=0
 cat "$OUT/setup.out" 2>/dev/null | grep . && bad=1
 grep -q "^exit 0$" "$OUT/unit.log" 2>/dev/null || { echo "[gcp_run] translator tests: $(tail -1 "$OUT/unit.log" 2>/dev/null || echo 'no unit.log')"; bad=1; }
+grep -q "^exit 0$" "$OUT/selftest.log" 2>/dev/null || { echo "[gcp_run] comparator self-test: $(grep -E "WRONG|SELFTEST" "$OUT/selftest.log" 2>/dev/null || echo 'no selftest.log')"; bad=1; }
 if ! grep -q "^SUITE " "$OUT/suite.log" 2>/dev/null; then echo "[gcp_run] INCOMPLETE: the suite did not end (no SUITE line)"; bad=1
 else grep "^SUITE " "$OUT/suite.log"; grep -q "^exit 0$" "$OUT/suite.log" || bad=1; fi
 exit $bad
