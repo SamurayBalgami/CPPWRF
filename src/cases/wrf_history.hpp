@@ -33,8 +33,10 @@ class WrfHistory {
   // one history frame at model time time_sec after the start (step = WRF's itimestep)
   void write(long step, double time_sec);
   // wrfrst_d0N_<date>: the restart stream at model time time_sec when the restart alarm rings (alarms from the
-  // history interval in seconds; the restart alarm's seconds to its next ring)
-  void write_restart(long step, double time_sec, double history_interval_s, double restart_secs_to_ring);
+  // history alarm's interval and a time it rang, in seconds; the restart alarm's seconds to its next ring; a time the
+  // sst_update alarm rang)
+  void write_restart(long step, double time_sec, double history_interval_s, double history_ref_s,
+                     double restart_secs_to_ring, double auxinput4_ref_s);
   // before step n of a frame that will be written: runs without column physics evaluate phy_prep as
   // first_rk_step_part1 does every step (P_HYD of the frame)
   void before_step(long n);

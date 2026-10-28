@@ -43,6 +43,21 @@ bool is_wrfrst(const std::string& path) {
   return r;
 }
 
+// WRF alarm a of a restart file (output_wrf's WRF_ALARM_ISRINGING_a, WRF_ALARM_SECS_TIL_NEXT_RING_a):
+// {ringing, seconds to the next ring}; seconds -1 when the file has no such alarm
+std::pair<int, long> wrf_alarm(const std::string& path, int a) {
+  std::pair<int, long> r{0, -1};
+  int id, v;
+  if (nc_open(path.c_str(), NC_NOWRITE, &id) != NC_NOERR) return r;
+  char n1[40], n2[40];
+  std::snprintf(n1, sizeof n1, "WRF_ALARM_ISRINGING_%02d", a);
+  std::snprintf(n2, sizeof n2, "WRF_ALARM_SECS_TIL_NEXT_RING_%02d", a);
+  if (nc_get_att_int(id, NC_GLOBAL, n1, &v) == NC_NOERR) r.first = v;
+  if (nc_get_att_int(id, NC_GLOBAL, n2, &v) == NC_NOERR) r.second = v;
+  nc_close(id);
+  return r;
+}
+
 // The WRF variable of a restart field (names of save_restart_file)
 std::vector<std::string> wrf_names(const std::string& n) {
   auto up = [](std::string x) {
@@ -360,6 +375,26 @@ void DomainRunner::load_restart_file(const std::string& path) {
     throw std::runtime_error("run.run_time (" + std::to_string(m_.run_time) + "s / step " + std::to_string(m_.nsteps) +
                              ") is less than restart file step " + std::to_string(start_step));
   }
+  if (wrf_file) {
+    // input_wrf (restart_only) sets the alarms from the file: an input alarm (auxinput4) keeps its interval and
+    // rings next after WRF_ALARM_SECS_TIL_NEXT_RING seconds (share/input_wrf.F:243-279); an output alarm (history)
+    // takes those seconds as its interval as well (RingInterval=interval, share/input_wrf.F:301-325); negative
+    // values are skipped
+    const long hsecs = wrf_alarm(path, 1).second;
+    if (hsecs >= 1700000000) {
+      hist_iv_ = 0;  // a forever interval: no history
+    } else if (hsecs >= 0) {
+      const double st = double(hsecs) / g.dt;
+      if (hsecs == 0 || std::abs(st - std::round(st)) > 1e-9 * st)
+        throw std::runtime_error(path + ": WRF_ALARM_SECS_TIL_NEXT_RING_01 = " + std::to_string(hsecs) +
+                                 " s (the history interval after the restart) is not a multiple of the time step");
+      hist_iv_ = std::lround(st);
+      hist_ref_ = start_step;
+    }
+    const auto [aring, asecs] = wrf_alarm(path, 30);
+    if (asecs >= 0 && asecs < 1700000000) aux4_first_s_ = double(start_step) * g.dt + double(asecs);
+    aux4_ring_at_start_ = aring == 1 ? 1 : 0;
+  }
 
   for (const auto& t : targets3) {
     copy_to_dev(t.f->data() - t.f->layout().offset, bufs[t.buf_idx].data(), t.f->bytes());
@@ -486,6 +521,8 @@ bool DomainRunner::start() {
   out_iv_ = cfg_.get_int("output.out_interval", std::max(1L, m_.nsteps));
   if (diag_iv_ < 1) throw std::runtime_error("output.diag_interval must be >= 1 (got " + std::to_string(diag_iv_) + ")");
   if (out_iv_ < 1) throw std::runtime_error("output.out_interval must be >= 1 (got " + std::to_string(out_iv_) + ")");
+  hist_iv_ = out_iv_;  // load_restart_file may change it
+  hist_ref_ = 0;
 
   if (g.dt <= 0.0) throw std::runtime_error("time.dt must be > 0 (got " + std::to_string(g.dt) + ")");
   if (g.nx <= 0) throw std::runtime_error("grid.nx must be > 0 (got " + std::to_string(g.nx) + ")");
@@ -623,7 +660,7 @@ bool DomainRunner::start() {
 
 void DomainRunner::after_solve(long n) {
 #ifdef CPPWRF_HAVE_NETCDF
-  if (write_wrfout_ && wrfout_ && (n % out_iv_ == 0 || n == m_.nsteps)) wrfout_->after_solve(n);
+  if (write_wrfout_ && wrfout_ && (hist_due(n) || n == m_.nsteps)) wrfout_->after_solve(n);
 #else
   (void)n;
 #endif
@@ -631,14 +668,14 @@ void DomainRunner::after_solve(long n) {
 
 void DomainRunner::before_step(long n) {
 #ifdef CPPWRF_HAVE_NETCDF
-  if (write_wrfout_ && wrfout_ && (n % out_iv_ == 0 || n == m_.nsteps || rst_due(n)))
+  if (write_wrfout_ && wrfout_ && (hist_due(n) || n == m_.nsteps || rst_due(n)))
     wrfout_->before_step(n);
 #endif
   if (pending_ >= 0) {  // deferred frame of the previous step (set_defer_output)
     const long p = pending_;
     pending_ = -1;
     if (p % diag_iv_ == 0) do_diag(p);
-    if (p % out_iv_ == 0) do_snap(p);
+    if (p % out_iv_ == 0 || hist_due(p)) do_snap(p);
   }
   step_start_ = std::chrono::steady_clock::now();
   // solve_em: restart_flag = Is_alarm_tstep(restart alarm) (PrevRingTime + interval <= CurrTime + dt), i.e. the
@@ -646,37 +683,49 @@ void DomainRunner::before_step(long n) {
   if (m_.suite) m_.suite->restart_flag = rst_due(n);
   if (m_.before_step) m_.before_step(n);
 #ifdef CPPWRF_HAVE_NETCDF
-  // sst_update: med_before_solve_io reads auxinput4 after the history output, every auxinput4_interval
-  // (minutes); WRF's alarm counts from the run's start, i.e. the restart time of a resumed run
-  if (m_.suite && m_.suite->options().sst_update == 1) {
-    const double t = double(n - 1) * m_.g.dt;
-    const double tr = double(n - 1 - start_step) * m_.g.dt;
-    const double iv = cfg_.get_double("phys.auxinput4_interval", 360.0) * 60.0;
-    if (iv > 0 && std::fabs(tr - iv * std::round(tr / iv)) < 1e-6) {
-      const std::string wi = cfg_.get_string("real.wrfinput", "wrfinput_d01");
-      std::string lw = wi;
-      if (lw.rfind("wrfinput", 0) == 0) lw.replace(0, 8, "wrflowinp");
-      read_wrflowinp(cfg_.get_string("real.dir") + "/" + cfg_.get_string("real.wrflowinp", lw),
-                     wrf_io::add_seconds(start_date_, std::lround(t)), *m_.suite);
-    }
-  }
+  // sst_update: med_before_solve_io reads auxinput4 after the history output when its alarm rings
+  if (m_.suite && m_.suite->options().sst_update == 1 && aux4_read_step_ != n - 1 && aux4_due(n - 1))
+    read_aux4(n - 1);
 #endif
 }
+
+#ifdef CPPWRF_HAVE_NETCDF
+// AUXINPUT4_ALARM: created at the start with auxinput4_interval (minutes), ringing at the start; a run resumed from
+// a WRF restart file rings first as the file says (load_restart_file)
+bool DomainRunner::aux4_due(long s) const {
+  if (s == start_step && start_step > 0 && aux4_ring_at_start_ >= 0) return aux4_ring_at_start_ == 1;
+  const double t = double(s) * m_.g.dt, iv = cfg_.get_double("phys.auxinput4_interval", 360.0) * 60.0;
+  return iv > 0 && t >= aux4_first_s_ - 1e-6 &&
+         std::fabs((t - aux4_first_s_) - iv * std::round((t - aux4_first_s_) / iv)) < 1e-6;
+}
+
+void DomainRunner::read_aux4(long s) {
+  std::string lw = cfg_.get_string("real.wrfinput", "wrfinput_d01");
+  if (lw.rfind("wrfinput", 0) == 0) lw.replace(0, 8, "wrflowinp");
+  read_wrflowinp(cfg_.get_string("real.dir") + "/" + cfg_.get_string("real.wrflowinp", lw),
+                 wrf_io::add_seconds(start_date_, std::lround(double(s) * m_.g.dt)), *m_.suite);
+  aux4_read_step_ = s;
+}
+#endif
 
 bool DomainRunner::after_step(long n) {
   step_time += std::chrono::duration<double>(std::chrono::steady_clock::now() - step_start_).count();
   bool last = (n == m_.nsteps);
-  if (defer_output_ && !last && (n % diag_iv_ == 0 || n % out_iv_ == 0)) {
+  if (defer_output_ && !last && (n % diag_iv_ == 0 || n % out_iv_ == 0 || hist_due(n))) {
     pending_ = n;
   } else if (n % diag_iv_ == 0 || last) {
     if (!do_diag(n)) return false;
   }
-  if ((n % out_iv_ == 0 || last) && pending_ != n) {
+  if ((n % out_iv_ == 0 || hist_due(n) || last) && pending_ != n) {
     do_snap(n);
   }
 #ifdef CPPWRF_HAVE_NETCDF
   const bool ring = rst_due(n);
   if (ring) rst_prev_ += rst_iv_s_;
+  // d01: med_before_solve_io of the next step reads auxinput4 before med_restart_out writes the restart files of
+  // this time (a nest reads in its own med_before_solve_io, after the parent's med_restart_out)
+  if (ring && !last && domain_tag_ == "d01" && m_.suite && m_.suite->options().sst_update == 1 && aux4_due(n))
+    read_aux4(n);
   if (rst_iv_s_ > 0 && (ring || last) && (rst_end_ <= 0 || n <= rst_end_)) {
     do_restart(n, ring);
   }
@@ -714,7 +763,7 @@ void DomainRunner::do_snap(long n) {
   dyn::State& st = *m_.st;
   dyn::BaseState& base = *m_.base;
 
-  if (write_native_) {
+  if (write_native_ && (n % out_iv_ == 0 || n == m_.nsteps)) {
     auto vars = dyn::snapshot_vars(st, base, g, store_, extra_2d_, extra_3d_);
     snap_->write(n, n * g.dt, vars);
   }
@@ -722,7 +771,7 @@ void DomainRunner::do_snap(long n) {
 #ifdef CPPWRF_HAVE_NETCDF
   // WRF writes history only when the history alarm rings (med_last_solve_io): no extra frame at the last
   // step of a run that is not a multiple of history_interval (the native snapshot above keeps it)
-  if (write_wrfout_ && wrfout_ && n % out_iv_ == 0) wrfout_->write(n, n * g.dt);
+  if (write_wrfout_ && wrfout_ && (n == 0 || hist_due(n))) wrfout_->write(n, n * g.dt);
 #endif
 }
 
@@ -742,8 +791,8 @@ void DomainRunner::do_restart(long n, bool ring) {
   // wrfrst only when WRF's restart alarm rings, not at an off-interval last step; output_wrf writes the seconds
   // to the next ring as interval - (time - PrevRingTime) in whole seconds (share/output_wrf.F:413-435)
   if (wrfout_ && ring)
-    wrfout_->write_restart(n, n * m_.g.dt, double(out_iv_) * m_.g.dt,
-                           std::trunc(rst_iv_s_) - std::trunc(n * m_.g.dt - rst_prev_));
+    wrfout_->write_restart(n, n * m_.g.dt, double(hist_iv_) * m_.g.dt, double(hist_ref_) * m_.g.dt,
+                           std::trunc(rst_iv_s_) - std::trunc(n * m_.g.dt - rst_prev_), aux4_first_s_);
 }
 #endif
 

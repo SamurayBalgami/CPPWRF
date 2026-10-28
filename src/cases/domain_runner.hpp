@@ -78,9 +78,20 @@ class DomainRunner {
 
   long diag_iv_ = 10;
   long out_iv_ = 1;
+  // WRF's HISTORY_ALARM: rings every hist_iv_ steps after step hist_ref_ (the start; a run resumed from a WRF
+  // restart file takes the interval and first ring from it, see load_restart_file); 0: never
+  long hist_iv_ = 1, hist_ref_ = 0;
+  bool hist_due(long n) const { return hist_iv_ > 0 && n > hist_ref_ && (n - hist_ref_) % hist_iv_ == 0; }
   double rst_iv_s_ = 0.0;  // restart interval (s), WRF's RESTART_ALARM
   double rst_prev_ = 0.0;  // the alarm's PrevRingTime (s)
   bool rst_due(long n) const;
+  // sst_update: AUXINPUT4_ALARM rings at aux4_first_s_ + k * interval (from the start, or as the WRF restart file
+  // set it) and at the restart time when a WRF restart file has it ringing (-1: a CPPWRF restart file, by the schedule)
+  double aux4_first_s_ = 0.0;
+  int aux4_ring_at_start_ = -1;
+  long aux4_read_step_ = -1;  // the step (time n * dt) whose wrflowinp record was read last
+  bool aux4_due(long s) const;
+  void read_aux4(long s);
   long rst_end_ = 0;  // restart.end: last step with a restart file (0: no end)
   bool stop_on_nonfinite_ = true;
   std::string start_date_;

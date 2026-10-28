@@ -897,7 +897,8 @@ wrf_io::DomainAtts WrfHistory::domain_atts() {
   return d;
 }
 
-void WrfHistory::write_restart(long step, double time_sec, double history_interval_s, double restart_secs_to_ring) {
+void WrfHistory::write_restart(long step, double time_sec, double history_interval_s, double history_ref_s,
+                               double restart_secs_to_ring, double auxinput4_ref_s) {
   step_ = step;
   time_sec_ = time_sec;
   const std::string date = wrf_io::add_seconds(start_date_, std::lround(time_sec));
@@ -915,15 +916,16 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
     std::snprintf(n2, sizeof n2, "WRF_ALARM_SECS_TIL_NEXT_RING_%02d", a);
     int ring = 0, secs = 1700000000;
     if (a == 1 && history_interval_s > 0) {
-      const long iv = std::lround(history_interval_s);
-      secs = int(iv - el % iv);
+      const long iv = std::lround(history_interval_s), since = el - std::lround(history_ref_s);
+      secs = int(iv - since % iv);  // interval - (time - PrevRingTime)
       // the last step: med_restart_out runs before med_last_solve_io writes that frame
       // nests: med_restart_out of the parent runs before the nest's next med_before_solve_io turns it off
-      if ((step == m_.nsteps || d.grid_id > 1) && el % iv == 0) ring = 1;
-    } else if (a == 30 && auxinput4_interval_s_ > 0) {  // read (and turned off) before med_restart_out
-      const long iv = std::lround(auxinput4_interval_s_);
-      secs = int(iv - el % iv);
-      if (step == m_.nsteps && el % iv == 0) ring = 1;
+      if ((step == m_.nsteps || d.grid_id > 1) && since % iv == 0) ring = 1;
+    } else if (a == 30 && auxinput4_interval_s_ > 0) {
+      const long iv = std::lround(auxinput4_interval_s_), since = el - std::lround(auxinput4_ref_s);
+      secs = int(since < 0 ? -since : iv - since % iv);  // a resumed run before its first ring: RingTime - time
+      // d01 reads (and turns it off) before med_restart_out; at the last step and on nests it is still ringing
+      if ((step == m_.nsteps || d.grid_id > 1) && since >= 0 && since % iv == 0) ring = 1;
     } else if (a == 51) {
       ring = 1;
       secs = int(std::lround(restart_secs_to_ring));
