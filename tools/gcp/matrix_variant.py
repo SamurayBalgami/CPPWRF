@@ -17,7 +17,8 @@ Input files of the base run read by both models can be edited: run.sub=FILE:OLD:
 takes the base run's file OTHER. CPPWRF always runs when WRF fails (NAME WRF-FAILED [...]; cppwrf: RUNS or its failure: does CPPWRF reject
 the input as WRF does); run.both=1 is accepted for older variant files.
 run.atts=1 is accepted for older variant files (the attributes are always compared).
-run.file=NAME:TEXT writes the file NAME (e.g. an iofields_filename list) into the run directory. Values are
+run.file=NAME:TEXT writes the file NAME (e.g. an iofields_filename list) into the run directory.
+run.threads=N runs CPPWRF with OMP_NUM_THREADS=N (default 1; WRF always runs serially). Values are
 percent-decoded keys and values (%20 blank, %0A new line, %27 quote, %23 #, %7C |), as the variant line passes through sh -c."""
 import glob, os, re, subprocess, sys
 import urllib.parse
@@ -63,10 +64,14 @@ for k, v in [("run_days", "0"), ("run_hours", "0"), ("run_minutes", "0"), ("run_
     nl = setkey(nl, "time_control", k, v)
 nl = re.sub(r"^\s*history_interval\s*=.*\n", "", nl, flags=re.M)
 keep = False
+threads = "1"
 for sk, v in sets:
     sec, k = sk.split(".", 1)
     if (sec, k) == ("run", "keep"):  # run.keep=1: WRF's run (namelist, inputs, wrfout) kept as a reference
         keep = v not in ("0", "false", ".false.")
+        continue
+    if (sec, k) == ("run", "threads"):  # run.threads=N: CPPWRF's OpenMP threads (the result must not change)
+        threads = str(int(v))
         continue
     if (sec, k) == ("run", "both"):  # always on (see above)
         continue
@@ -136,7 +141,7 @@ def run_cppwrf():
         return f"TRANSLATE-FAILED {t.stderr.strip().splitlines()[-1:]}", None
     try:
         c = subprocess.run([cppwrf, os.path.join(R, "case.ini"), "--set", f"output.dir={out}", "--set", "run.stop_on_nonfinite=false"], capture_output=True, text=True,
-                           cwd=repo, env=env, timeout=3600)
+                           cwd=repo, env=dict(env, OMP_NUM_THREADS=threads), timeout=3600)
     except subprocess.TimeoutExpired:
         c = subprocess.CompletedProcess([], 124, "", "TIMEOUT after 3600 s")
     if c.returncode != 0:

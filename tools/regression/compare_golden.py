@@ -52,7 +52,7 @@ def compare(run_dir, golden_dir, prec="float32"):
         print(f"FAIL: Golden dir {golden_dir} does not exist.")
         return 1
 
-    is_dp = (prec == "float64" or "dp" in prec)
+    is_dp = prec in ("float64", "fp64") or "dp" in prec  # run.sh passes fp32 / fp64
     rtol = 1e-12 if is_dp else 1e-5
     atol = 1e-12 if is_dp else 1e-5
 

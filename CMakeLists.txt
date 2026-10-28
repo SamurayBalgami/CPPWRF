@@ -30,14 +30,27 @@ else()
 endif()
 
 # Strict IEEE: no fast-math anywhere (determinism and honest stability tests).
-# -ffp-contract=off: no FMA contraction on the CPU, as WRF builds on x86-64 (bitwise-checkable refactors)
+# -ffp-contract=off in every build type, after the user's flags: no FMA contraction on the CPU, as WRF's
+# gfortran build on x86-64 (no -march: no FMA instructions); with -march=native or skylake g++ would
+# otherwise fuse a*b+c (its default is -ffp-contract=fast). CUDA builds: the same for nvcc's host code.
+add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-ffp-contract=off> $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-ffp-contract=off>)
 option(CPPWRF_NATIVE "Tune for the build machine's CPU (-march=native); OFF for portable binaries" ON)
 if(CPPWRF_NATIVE)
-  set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -ffp-contract=off")
+  set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native")
 else()
-  set(CMAKE_CXX_FLAGS_RELEASE "-O3 -ffp-contract=off")
+  set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 endif()
 set(CMAKE_CUDA_FLAGS_RELEASE "-O3")
+# flags that change results: reassociation, reciprocals, flush-to-zero, approximate division / sqrt
+string(TOUPPER "${CMAKE_BUILD_TYPE}" _cppwrf_bt)
+if("${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_cppwrf_bt}}" MATCHES
+   "(-Ofast|-f(fast-math|unsafe-math-optimizations|associative-math|reciprocal-math|finite-math-only)|-ffp-contract=(fast|on))")
+  message(FATAL_ERROR "CMAKE_CXX_FLAGS: '${CMAKE_MATCH_1}' changes the floating-point results (CPPWRF needs strict IEEE)")
+endif()
+if("${CMAKE_CUDA_FLAGS} ${CMAKE_CUDA_FLAGS_${_cppwrf_bt}}" MATCHES
+   "(use_fast_math|ftz=true|prec-div=false|prec-sqrt=false|-Xcompiler=?[^ ]*(-Ofast|-ffast-math))")
+  message(FATAL_ERROR "CMAKE_CUDA_FLAGS: '${CMAKE_MATCH_1}' changes the floating-point results (CPPWRF needs strict IEEE)")
+endif()
 
 enable_testing()
 add_subdirectory(src/io)
