@@ -10,14 +10,14 @@ variables only WRF writes are listed as wrf-only-vars.
 run.keep=1 copies WRF's namelist.input, inputs and wrfout files to WORK/keep/run_NAME (a suite reference).
 run.atts=1 also lists the global attributes (TITLE aside) that differ in the first common history frame's files.
 run.file=NAME:TEXT writes the file NAME (e.g. an iofields_filename list) into the run directory. Values are
-percent-decoded (%20 blank, %0A new line, %27 quote, %23 #, %7C |), as the variant line passes through sh -c."""
+percent-decoded keys and values (%20 blank, %0A new line, %27 quote, %23 #, %7C |), as the variant line passes through sh -c."""
 import glob, os, re, subprocess, sys
 import urllib.parse
 import netCDF4
 import numpy as np
 
 runs, work, wrfexe, cppwrf, name, base = sys.argv[1:7]
-sets = [(k, urllib.parse.unquote(v)) for k, v in (a.split("=", 1) for a in sys.argv[7:])]
+sets = [(urllib.parse.unquote(k), urllib.parse.unquote(v)) for k, v in (a.split("=", 1) for a in sys.argv[7:])]
 repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 R = os.path.join(work, name)
 subprocess.run(["rm", "-rf", R])
