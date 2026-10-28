@@ -6,13 +6,15 @@ RUNS/BASE holds met_em files, namelist.input and `precision` (float / double, th
 programs run in WORK/NAME with the changed namelist; every file WRF writes (wrfinput_d0N, wrfbdy_d01,
 wrflowinp_d0N, ...) is compared with tests/init_real/compare_real.py (values at tolerance 0, variables, dimensions,
 attributes). Special keys: run.remove=FILE,... leaves base files out; run.delete=section.key,... deletes namelist
-lines (the key then takes its default). Prints one line per variant:
+lines (the key then takes its default); run.file=NAME:TEXT writes a file into the run directory. Values are
+percent-decoded as in matrix_variant.py. Prints one line per variant:
 NAME real files N differing: none | {FILE: 'n variables / m metadata', ...}  (or REAL-FAILED / CPPWRF-REAL-FAILED,
 with the files only one program wrote)."""
 import glob, os, re, subprocess, sys
+import urllib.parse
 
 runs, work, realexe, cppreal, name, base = sys.argv[1:7]
-sets = [a.split("=", 1) for a in sys.argv[7:]]
+sets = [(k, urllib.parse.unquote(v)) for k, v in (a.split("=", 1) for a in sys.argv[7:])]
 repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 R = os.path.join(work, name)
 subprocess.run(["rm", "-rf", R])
@@ -42,6 +44,11 @@ for sk, v in sets:
         for f in v.split(","):
             if os.path.lexists(os.path.join(R, f)):
                 os.remove(os.path.join(R, f))
+    elif (sec, k) == ("run", "file"):  # run.file=NAME:TEXT: a file of the run directory (both programs)
+        fn, text = v.split(":", 1)
+        if os.path.lexists(os.path.join(R, fn)):  # never write through a link into the base run
+            os.remove(os.path.join(R, fn))
+        open(os.path.join(R, fn), "w").write(text)
     elif (sec, k) == ("run", "delete"):
         for sk2 in v.split(","):
             s2, k2 = sk2.split(".", 1)
