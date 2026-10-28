@@ -46,14 +46,14 @@ DATA=$SCRATCH/colab/cache/data_$key.tar
 [ -f "$DATA" ] || python3 "$REPO/tools/colab/stage_data.py" --only "$CASES,$BENCH" --no-thompson-tables "$DATA"
 
 # ---- remote
-colab usage | tail -3
+timeout 120 colab usage | tail -3 || true
 echo "[colab_run] new session $S ($GPU)"
-colab new -s "$S" --gpu "$GPU"
 cleanup() {
   if [ "$KEEP" = 1 ]; then echo "[colab_run] --keep: session $S left running (colab stop -s $S)"
-  else colab stop -s "$S" || echo "[colab_run] WARNING: could not stop $S, check: colab sessions"; fi
+  else timeout 300 colab stop -s "$S" || echo "[colab_run] WARNING: could not stop $S, check: colab sessions"; fi
 }
 trap cleanup EXIT
+timeout 900 colab new -s "$S" --gpu "$GPU"
 # uploads go through Jupyter's contents API, which refuses large files (and `colab upload` exits 0 anyway):
 # send 32 MiB parts, join them on the VM and check the md5
 upload() {
@@ -63,7 +63,7 @@ upload() {
   local total t0=$SECONDS
   total=$(ls "$parts" | wc -l)
   for p in "$parts"/p*; do
-    if ! colab upload -s "$S" "$p" "$dst.part.$(basename "$p")" 2>&1 | grep -q "Uploaded"; then
+    if ! timeout 900 colab upload -s "$S" "$p" "$dst.part.$(basename "$p")" 2>&1 | grep -q "Uploaded"; then
       echo "[colab_run] upload of part $(basename "$p") of $src failed"; rm -rf "$parts"; return 1
     fi
     n=$((n + 1))
@@ -82,7 +82,7 @@ upload() {
     "o = open('$dst', 'wb')" \
     "for p in parts: o.write(open(p, 'rb').read()); os.remove(p)" \
     "o.close()" \
-    "print('MD5', hashlib.md5(open('$dst', 'rb').read()).hexdigest())" | colab exec -s "$S" --timeout 600)
+    "print('MD5', hashlib.md5(open('$dst', 'rb').read()).hexdigest())" | timeout 900 colab exec -s "$S" --timeout 600 || true)
   case $got in
     *"MD5 $sum"*) echo "[colab_run] uploaded $src ($n parts)" ;;
     *) echo "[colab_run] $dst: md5 mismatch"; return 1 ;;
@@ -92,33 +92,39 @@ upload "$OUT/src.tar.gz" /content/src.tar.gz || exit 1
 upload "$DATA" /content/data.tar || exit 1
 upload "$OUT/commit.txt" /content/commit.txt || exit 1
 upload "$REPO/tools/colab/remote_job.py" /content/remote_job.py || exit 1
-colab exec -s "$S" --timeout 120 --env CPPWRF_JOB_CASES="$CASES" --env CPPWRF_JOB_BENCH="$BENCH" <<'EOF'
+timeout 300 colab exec -s "$S" --timeout 120 --env CPPWRF_JOB_CASES="$CASES" --env CPPWRF_JOB_BENCH="$BENCH" <<'EOF'
 import os, subprocess
 env = dict(os.environ)
 subprocess.Popen("nohup python3 /content/remote_job.py > /content/remote_job.log 2>&1 &", shell=True, env=env)
 print("job started")
 EOF
-# poll: the job writes /content/job/done; show the summary as it grows
+# poll: the job writes /content/job/done (also when it fails); JOB-DIED: no done file and no job process
 miss=0
 while :; do
   sleep 60
-  st=$(colab exec -s "$S" --timeout 60 <<'EOF' 2>/dev/null || true
-import os
-print("DONE" if os.path.exists("/content/job/done") else "RUNNING")
+  st=$(timeout 180 colab exec -s "$S" --timeout 60 <<'EOF' 2>/dev/null || true
+import os, subprocess
+alive = subprocess.run(["pgrep", "-f", "remote_job.py"], capture_output=True).returncode == 0
+print("JOB-DONE" if os.path.exists("/content/job/done") else "JOB-RUNNING" if alive else "JOB-DIED")
 s = "/content/job/summary.txt"
 print(open(s).read().splitlines()[-1] if os.path.exists(s) and open(s).read() else "(starting)")
 EOF
 )
-  echo "[colab_run] $(date +%H:%M) $(echo "$st" | tr '\n' ' ')"
-  case $st in *DONE*) break ;; esac
+  echo "[colab_run] $(date +%H:%M) $(echo "$st" | grep -v '^\[colab\]' | tr '\n' ' ')"
+  case $st in *JOB-DONE*|*JOB-DIED*) break ;; esac
   case $st in
-    *RUNNING*) miss=0 ;;
-    *) miss=$((miss + 1)); echo "[colab_run] session not answering ($miss)"; colab sessions || true
+    *JOB-RUNNING*) miss=0 ;;
+    *) miss=$((miss + 1)); echo "[colab_run] session not answering ($miss)"; timeout 120 colab sessions || true
        [ $miss -lt 5 ] || { echo "[colab_run] giving up"; exit 1; } ;;
   esac
 done
-colab download -s "$S" /content/results.tar.gz "$OUT/results.tar.gz"
+case $st in *JOB-DIED*) echo "[colab_run] the job ended without its done file (killed?)"; exit 1 ;; esac
+timeout 1800 colab download -s "$S" /content/results.tar.gz "$OUT/results.tar.gz" || { echo "[colab_run] download failed"; exit 1; }
 tar xzf "$OUT/results.tar.gz" -C "$OUT"
 rm -f "$OUT/src.tar.gz"
 echo "[colab_run] results in $OUT/job"
 cat "$OUT/job/summary.txt"
+if grep -qE "^suite (FAIL|SKIP|ERROR)|^job error" "$OUT/job/summary.txt" ||
+   { [ -n "$CASES" ] && ! grep -q "^suite SUITE " "$OUT/job/summary.txt"; }; then
+  echo "[colab_run] the suite did not pass"; exit 1
+fi

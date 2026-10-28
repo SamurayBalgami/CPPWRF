@@ -40,6 +40,16 @@ def main():
         summary.write(s + "\n")
         summary.flush()
 
+    try:
+        job(note)
+    except Exception as e:  # noqa: BLE001 - colab_run.sh waits for the done file: always write it
+        note(f"job error: {type(e).__name__}: {e}")
+    summary.close()
+    sh("tar czf /content/results.tar.gz -C /content job", "pack.log")
+    open(os.path.join(JOB, "done"), "w").write("done\n")
+
+
+def job(note):
     cases = os.environ.get("CPPWRF_JOB_CASES", "")
     bench = [b for b in os.environ.get("CPPWRF_JOB_BENCH", "").split(",") if b]
     gpu = out("nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader")
@@ -72,7 +82,7 @@ def main():
         sh(f"python3 tests/verify/wrf_suite.py {args} --only {cases} --out /content/suite", "suite.log", cwd=SRC,
            env=env)
         for line in open(os.path.join(JOB, "suite.log")):
-            if re.match(r"(PASS|FAIL|SKIP)\s", line):
+            if re.match(r"(PASS|FAIL|SKIP|ERROR|SUITE)\s", line):
                 note("suite " + line.rstrip())
 
     if bench:  # the suite cases again, without history output, for the stepping time
@@ -89,10 +99,6 @@ def main():
             sh("rm -rf " + o + " && " + " ".join(f"'{c}'" for c in cmd), f"bench-{name}.log", cwd=SRC, env=env)
             m = re.findall(r"stepping ([0-9.]+) s, ([0-9.]+) ns/cell/step", open(os.path.join(JOB, f"bench-{name}.log")).read())
             note(f"bench {name}: " + (f"{m[-1][0]} s stepping, {m[-1][1]} ns/cell/step" if m else "no timing (see log)"))
-
-    summary.close()
-    sh(f"tar czf /content/results.tar.gz -C /content job", "pack.log")
-    open(os.path.join(JOB, "done"), "w").write("done\n")
 
 
 if __name__ == "__main__":
