@@ -69,8 +69,10 @@ std::string WrfConfig::get(const std::string& name0, int dom) const {
     if (entries_) {  // WRF's namelist read
       auto e = entries_->find(name);
       const std::vector<std::string> v = nl_.values(d->second.first, name);
-      const std::size_t at = e != entries_->end() && e->second == "max_domains" ? std::size_t(dom - 1) : 0;
-      return at < v.size() ? v[at] : d->second.second;
+      std::size_t at = e != entries_->end() && e->second == "max_domains" ? std::size_t(dom - 1) : 0;
+      // initial_config (frame/module_configure.F): mp_physics(i) = mp_physics(max_dom) for every domain
+      if (name == "mp_physics") at = std::size_t(std::max(1, integer("max_dom")) - 1);
+      return at < v.size() && !v[at].empty() ? v[at] : d->second.second;  // "": a null value
     }
     auto r = nl_.raw(d->second.first, name, dom);
     if (r) return *r;
@@ -83,8 +85,8 @@ double WrfConfig::num(const std::string& name, int dom) const {
   std::string v = get(name, dom);
   if (v.empty()) return 0;
   std::string t = to_lower(v);
-  if (t == ".true." || t == "t" || t == ".t.") return 1;
-  if (t == ".false." || t == "f" || t == ".f.") return 0;
+  if (!t.empty() && t[0] == '.') t = t.substr(1);
+  if (!t.empty() && (t[0] == 't' || t[0] == 'f')) return t[0] == 't';  // a logical: [.]T... or [.]F...
   for (char& c : v)
     if (c == 'd' || c == 'D') c = 'e';
   return std::strtod(v.c_str(), nullptr);
@@ -315,39 +317,149 @@ std::vector<OutVar> WrfSchema::stream_vars(const WrfConfig& c, int ide, int jde,
   return out;
 }
 
-bool WrfSchema::apply_iofields(const std::string& path) {
-  std::ifstream f(path);
-  if (!f) return false;
-  std::string line;
-  while (std::getline(f, line)) {
-    std::vector<std::string> t = split(line, ':');
-    if (t.size() < 4 || line[0] == '#') continue;
-    const std::string op = rtrim(t[0]), st = to_lower(rtrim(t[1]));
-    if ((op != "+" && op != "-") || (st != "h" && st != "i")) continue;
-    // stream numbers: history = 1, auxhist n = 1 + n, input = 26, auxinput n = 26 + n; bit = number - 1
-    const int idx = (st == "h" ? 0 : 25) + std::atoi(t[2].c_str());
-    const int word = idx / 31;
-    const std::uint32_t mask = 1u << (idx % 31);
-    auto apply = [&](std::uint32_t& s1, std::uint32_t& s2) {
-      std::uint32_t& w = word == 0 ? s1 : s2;
-      if (op == "+") w |= mask; else w &= ~mask;
-    };
-    for (std::string fld : split(t[3], ',')) {
-      std::string look;
-      for (char ch : fld)
-        if (ch != ' ' && ch != '\r') look += char(std::tolower(static_cast<unsigned char>(ch)));
-      if (look.empty()) continue;
-      for (SchemaVar& v : vars_) {
-        if (v.array4d) continue;
-        std::string dn = to_lower(v.dataname);
-        if (v.ntl > 0 && dn.size() > 2) dn = dn.substr(0, dn.size() - 2);
-        if (dn == look) apply(v.s1, v.s2);
-      }
-      for (SchemaMember& m : members_)
-        if (to_lower(m.dname) == look) apply(m.s1, m.s2);
+namespace {
+
+std::string rtrim_blanks(std::string s) {  // Fortran TRIM: trailing blanks only
+  while (!s.empty() && s.back() == ' ') s.pop_back();
+  return s;
+}
+
+// frame/module_domain.F get_fieldstr: field ix (1-based) of `in` between separators c. A separator search
+// starts two characters after the previous separator (an empty field swallows the next separator). false
+// (and "") when there is no such field or it is longer than noutstr + 1 characters.
+bool get_fieldstr(int ix, char c, const std::string& in, long noutstr, std::string& out) {
+  out.clear();
+  const long len = long(rtrim_blanks(in).size());
+  std::vector<long> dexes = {1};
+  long prev = 1;
+  while (dexes.size() < 1000) {  // MAX_DEXES
+    const std::size_t p = prev <= len ? in.find(c, std::size_t(prev - 1)) : std::string::npos;
+    if (p != std::string::npos && long(p) < len) {
+      dexes.push_back(long(p) + 2);  // idex + prev
+      prev = dexes.back() + 1;
+    } else {
+      dexes.push_back(len + 2);
     }
   }
+  if (ix < 1 || ix >= int(dexes.size())) return false;
+  const long a = dexes[std::size_t(ix - 1)], b = dexes[std::size_t(ix)];
+  if ((b - 2) - a > noutstr || a == b) return false;
+  if (b - 1 > a) out = in.substr(std::size_t(a - 1), std::size_t(b - 1 - a));
   return true;
+}
+
+std::string lower_az(std::string s) {  // change_to_lower_case: A-Z only
+  for (char& ch : s)
+    if (ch >= 'A' && ch <= 'Z') ch = char(ch - 'A' + 'a');
+  return s;
+}
+
+}  // namespace
+
+IofieldsResult WrfSchema::apply_iofields(const std::string& path, const WrfConfig& c) {
+  IofieldsResult r;
+  std::ifstream f(path);
+  if (!f) {
+    r.warning = true;
+    r.message = "W A R N I N G : Problem opening " + path;
+    return r;
+  }
+  auto warn = [&](const std::string& m) { r.warning = true; r.message = "W A R N I N G : " + m; };
+  // set_mask / reset_mask (frame/pack_utils.c): stream e is bit e % 31 of word e / 31 (two words)
+  auto change = [&](std::uint32_t& s1, std::uint32_t& s2, char op, int e, const std::string& dname) {
+    if (e < 0 || e / 31 > 1) return;
+    std::uint32_t& w = e / 31 == 0 ? s1 : s2;
+    const std::uint32_t m = 1u << (e % 31);
+    const std::uint32_t old = w;
+    if (op == '+') w |= m;
+    else if (op == '-') w &= ~m;
+    if (w != old) r.changed.push_back({e, dname});
+  };
+  std::string inln;
+  int lineno = 0, strmtyp_int = -1;  // strmtyp_int keeps the previous line's value for an unknown stream type
+  while (std::getline(f, inln)) {
+    if (!inln.empty() && inln.back() == '\r') inln.pop_back();  // a CRLF line ends the record
+    if (inln.size() > 8000) inln.resize(8000);                     // CHARACTER*8000 inln
+    if (rtrim_blanks(inln).empty()) break;  // keepgoing = LEN(TRIM(inln)) > 0: a blank line ends the file
+    ++lineno;
+    const std::string at = " Line " + std::to_string(lineno) + " of " + path;
+    if (rtrim_blanks(inln).size() >= 8000) warn("Line too long." + at);
+    if (inln.find('#') != std::string::npos) continue;  // a comment: '#' anywhere on the line
+    bool noerr = true;
+    std::string t1;
+    noerr = get_fieldstr(1, ':', inln, 1, t1) && noerr;
+    const char op = t1.empty() ? ' ' : t1[0];  // CHARACTER*1 op
+    if (op != '+' && op != '-') warn(std::string("unknown operation ") + op + " (should be + or -)." + at);
+    noerr = get_fieldstr(2, ':', inln, 1, t1) && noerr;
+    const char strmtyp = t1.empty() ? ' ' : lower_az(t1.substr(0, 1))[0];
+    if (strmtyp == 'h') strmtyp_int = 1;        // first_history
+    else if (strmtyp == 'i') strmtyp_int = 26;  // first_input
+    else warn(std::string("unknown stream type ") + strmtyp + "." + at);
+    noerr = get_fieldstr(3, ':', inln, 3, t1) && noerr;
+    std::string strmid;  // READ(strmid,'(I3)'): CHARACTER*3, blanks ignored
+    for (char ch : t1.substr(0, 3))
+      if (ch != ' ') strmid += ch;
+    int istrm = 0;
+    if (!strmid.empty()) {
+      std::size_t k = strmid[0] == '+' || strmid[0] == '-' ? 1 : 0;
+      if (k == strmid.size() || strmid.find_first_not_of("0123456789", k) != std::string::npos)
+        throw std::runtime_error("iofields_filename " + path + ": bad stream id '" + t1 + "' at line " +
+                                 std::to_string(lineno) + " (a Fortran read error in WRF)");
+      istrm = std::atoi(strmid.c_str());
+    }
+    if (istrm < 0 || istrm > 25) warn("invalid stream id " + std::to_string(istrm) + " (should be 0 <= id <= 25)." + at);
+    std::string fieldlst;
+    noerr = get_fieldstr(4, ':', inln, 8000, fieldlst) && noerr;
+    if (!noerr) {
+      warn("Problem reading " + path + " at line " + std::to_string(lineno));
+      continue;
+    }
+    const int e = strmtyp_int < 0 ? -1 : strmtyp_int + istrm - 1;
+    int fieldno = 1;
+    noerr = get_fieldstr(fieldno, ',', fieldlst, 8000, t1);
+    while (noerr) {
+      const std::string lookee = rtrim_blanks(lower_az(t1.substr(0, 256)));  // CHARACTER*256 lookee
+      bool found = false;
+      for (SchemaVar& v : vars_) {
+        if (v.array4d) {  // a scalar array: its members in use
+          for (SchemaMember& m : members_)
+            if (m.array == v.varname && in_use(m.conds, c) && rtrim_blanks(lower_az(m.dname)) == lookee) {
+              found = true;
+              change(m.s1, m.s2, op, e, m.dname);
+            }
+          continue;
+        }
+        if (!in_use(v.conds, c)) continue;  // not allocated: not on the state variable list
+        std::string dn = v.dataname;
+        if (v.ntl > 0 && dn.size() >= 2) dn.resize(dn.size() - 2);
+        if (rtrim_blanks(lower_az(dn)) == lookee) {
+          found = true;
+          change(v.s1, v.s2, op, e, v.dataname);
+        }
+      }
+      if (!found) warn("Unable to modify mask for " + lookee + ".  Variable not found. File: " + path + " at line " +
+                       std::to_string(lineno));
+      ++fieldno;
+      noerr = get_fieldstr(fieldno, ',', fieldlst, 256, t1);
+    }
+  }
+  return r;
+}
+
+void apply_iofields_option(WrfSchema& s, const WrfConfig& c, const std::string& dir, const std::vector<int>& input_bits) {
+  std::string io = c.get("iofields_filename");
+  if (io.size() >= 2 && (io.front() == '"' || io.front() == '\'') && io.back() == io.front())
+    io = io.substr(1, io.size() - 2);
+  if (rtrim_blanks(io).empty() || rtrim_blanks(io) == "NONE_SPECIFIED") return;
+  if (io.front() != '/' && !dir.empty()) io = dir + "/" + io;
+  const IofieldsResult r = s.apply_iofields(io, c);
+  if (r.warning && !c.logical("ignore_iofields_warning"))  // modify_io_masks1: wrf_error_fatal
+    throw std::runtime_error("iofields_filename: " + r.message +
+                             " (WRF stops: set ignore_iofields_warning to true in namelist to ignore)");
+  for (const auto& [bit, name] : r.changed)
+    if (std::find(input_bits.begin(), input_bits.end(), bit) != input_bits.end())
+      throw std::runtime_error("iofields_filename " + io + ": " + name + " on input stream i:" +
+                               std::to_string(bit - 25) + " is not supported (CPPWRF reads its input files whole)");
 }
 
 const SchemaVar* WrfSchema::find(const std::string& varname) const {

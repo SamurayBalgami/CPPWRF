@@ -601,6 +601,87 @@ class WrfTranslator:
                     default = vals[0]
                 vals.extend([default] * (self._max_dom - len(vals)))
 
+    def history_steps(self, d: int, dt: float, fallback: int) -> int:
+        """Steps between the history frames of domain index d (set_timekeeping_alarms.inc: the interval is
+        history_interval_d + _h + _m + _s, history_interval_m 0 taking history_interval; a domain without an entry
+        has the Registry default 0, and no interval means no history). The alarm rings at the first step at or past
+        each multiple of the interval: with WRF-format output only a multiple of the time step is ported. Native
+        output without an interval keeps `fallback`."""
+        def v(key):
+            return self.get_dom_opt("time_control", key, d, 0, fallback_d0=False) or 0
+        m = v("history_interval_m") or v("history_interval")
+        sec = v("history_interval_d") * 86400 + v("history_interval_h") * 3600 + m * 60 + v("history_interval_s")
+        wrf_files = self.output_format in ("wrfout", "both")
+        tag = f"Domain d{d + 1:02d}: " if d > 0 else ""
+        if sec <= 0:
+            if wrf_files:
+                self.error(f"{tag}WRF writes no history without a history interval (history_interval, "
+                           "history_interval_d/h/m/s); not supported by CPPWRF.")
+            return fallback
+        steps = sec / dt
+        if wrf_files and abs(steps - round(steps)) > 1e-9 * steps:
+            self.error(f"{tag}WRF history interval {sec} s is not a multiple of the time step {dt:g} s (WRF's alarm then "
+                       "rings at the first step past each interval): not supported by CPPWRF.")
+        return max(1, round(steps))
+
+    def check_history_stream(self):
+        """History and auxiliary history stream options CPPWRF does not port (registry.io_boilerplate); the output
+        file options only with WRF-format output."""
+        self.check_iofields_input()
+        # the history fields of these diagnostics (module_diagnostics_driver) are not ported
+        for key, desc in (("nwp_diagnostics", "WSPD10MAX, UP_HELI_MAX, ... in the history"),
+                          ("output_diagnostics", "T2MIN, T2MAX, ... of the auxhist3 stream and the restart file")):
+            if self.get_opt("time_control", key, 0) != 0:
+                self.error(f"WRF {key} = {self.get_opt('time_control', key, 0)} ({desc}) is not supported by CPPWRF.")
+        if self.output_format not in ("wrfout", "both"):
+            return
+        for key in ("history_begin", "history_begin_y", "history_begin_d", "history_begin_h", "history_begin_m",
+                    "history_begin_s", "history_end", "history_end_y", "history_end_d", "history_end_h", "history_end_m",
+                    "history_end_s"):
+            if any(x not in (0, None) for x in self.get_opt_list("time_control", key)[:max(1, self._max_dom)]):
+                self.error(f"WRF {key} is not supported (CPPWRF writes the history from the start to the end).")
+        outname = str(self.get_opt("time_control", "history_outname", "wrfout_d<domain>_<date>")).strip()
+        if outname != "wrfout_d<domain>_<date>":
+            self.error(f"WRF history_outname = '{outname}' is not supported; CPPWRF writes wrfout_d<domain>_<date>.")
+        io_form = self.get_opt("time_control", "io_form_history", 2)
+        if io_form != 2:
+            self.error(f"WRF io_form_history = {io_form} is not supported; CPPWRF writes NetCDF (2).")
+        # med_hist_out: an auxiliary history stream with an interval and an io_form writes auxhistN files
+        for n in range(1, 25):
+            iv = [x for k in ("", "_d", "_h", "_m", "_s")
+                  for x in self.get_opt_list("time_control", f"auxhist{n}_interval{k}")[:max(1, self._max_dom)]]
+            if any(x not in (0, None) for x in iv) and self.get_opt("time_control", f"io_form_auxhist{n}", 0) != 0:
+                self.error(f"WRF auxhist{n} output (auxhist{n}_interval, io_form_auxhist{n}) is not supported by CPPWRF.")
+
+    def check_iofields_input(self):
+        """iofields_filename lines for the input streams i:0 (wrfinput) and i:4 (wrflowinp): WRF's input_wrf then reads
+        other fields (frame/module_domain.F modify_io_masks1); CPPWRF reads those files whole. Read as WRF does: up to
+        the first blank line, lines with a '#' skipped, the first character of the operation and stream fields."""
+        for d, name in enumerate(self.get_opt_list("time_control", "iofields_filename")[:max(1, self._max_dom)]):
+            name = str(name).strip()
+            if not name or name == "NONE_SPECIFIED":
+                continue
+            path = name if os.path.isabs(name) or not self.namelist_path else \
+                os.path.join(os.path.dirname(self.namelist_path), name)
+            try:
+                lines = open(path, errors="replace").read().split("\n")
+            except OSError:
+                continue  # the model reports it (ignore_iofields_warning)
+            for line in lines:
+                line = line.rstrip("\r")[:8000]
+                if not line.rstrip(" "):
+                    break
+                if "#" in line:
+                    continue
+                f = line.split(":")  # get_fieldstr: op and stream type at most 2 characters, stream id at most 4
+                if len(f) < 4 or len(f[0]) > 2 or len(f[1]) > 2 or len(f[2]) > 4:
+                    continue
+                sid = f[2][:3].replace(" ", "")  # READ(strmid(1:3),'(I3)')
+                if f[0][:1] in ("+", "-") and f[1][:1].lower() == "i" and \
+                        (sid == "" or sid.lstrip("+").isdigit() and int(sid) in (0, 4)):
+                    self.error(f"Domain d{d + 1:02d}: iofields_filename {name}: input stream changes ({line.strip()}) are "
+                               "not supported (CPPWRF reads wrfinput and wrflowinp whole).")
+
     def apply_physics_suite(self):
         """WRF setup_physics_suite: the -1 physics options take the values of physics_suite (CONUS, tropical)."""
         suite = str(self.get_opt("physics", "physics_suite", "none")).strip().lower()
@@ -1589,16 +1670,9 @@ class WrfTranslator:
         if case_name.startswith("em_") and self.namelist_path:
             # ideal cases: the history / restart files take WRF's namelist values (radt, cudt, iofields, ...)
             sections["output"]["wrf_namelist"] = os.path.abspath(self.namelist_path)
-        hist_s = self.get_opt("time_control", "history_interval_s", 0)
-        hist_m = self.get_opt("time_control", "history_interval", 0)
-
+        self.check_history_stream()
         dt_val = float(sections["time"]["dt"])
-        if hist_s and hist_s > 0:
-            out_interval = max(1, round(float(hist_s) / dt_val))
-        elif hist_m and hist_m > 0:
-            out_interval = max(1, round(float(hist_m * 60) / dt_val))
-        else:
-            out_interval = max(1, round(float(total_s) / dt_val))
+        out_interval = self.history_steps(0, dt_val, max(1, round(float(total_s) / dt_val)))
 
         diag_interval = 1 if (out_interval == 1 or case_name in ("hill2d",)) else min(10, out_interval)
         sections["output"]["diag_interval"] = diag_interval
@@ -1823,14 +1897,7 @@ class WrfTranslator:
                 child_dt = dom_dt[p_idx] / float(ts_ratio)  # the model derives it the same way (no [d0N] dt)
                 dom_dt[d] = child_dt
 
-                hist_s_d = self.get_dom_opt("time_control", "history_interval_s", d, 0, fallback_d0=False)
-                hist_m_d = self.get_dom_opt("time_control", "history_interval", d, 0, fallback_d0=False)
-                if hist_s_d and hist_s_d > 0:
-                    child_out_iv = max(1, round(float(hist_s_d) / child_dt))
-                elif hist_m_d and hist_m_d > 0:
-                    child_out_iv = max(1, round(float(hist_m_d * 60) / child_dt))
-                else:
-                    child_out_iv = dom_out_iv[p_idx] * ts_ratio
+                child_out_iv = self.history_steps(d, child_dt, dom_out_iv[p_idx] * ts_ratio)
                 child_diag_iv = 1 if child_out_iv == 1 else min(child_out_iv, dom_diag_iv[p_idx] * ts_ratio)
                 dom_out_iv[d] = child_out_iv
                 dom_diag_iv[d] = child_diag_iv

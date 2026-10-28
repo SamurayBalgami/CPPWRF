@@ -5,19 +5,24 @@ One WRF-vs-CPPWRF comparison of a namelist variant: the WRF run RUNS/BASE (input
 3 minutes with history every minute and the given namelist changes (key replaced or added in &SECTION), in
 WORK/NAME; CPPWRF runs the configuration tools/wrf2cppwrf.py makes from that namelist; every common variable
 of every common frame (by Times) of each domain's wrfout is compared at tolerance 0. Prints one line:
-NAME d0N frames N differing: none | {VAR: 'time npoints/maxdiff', ...}  (or NAME WRF-FAILED / CPPWRF-FAILED);
+NAME d0N frames N differing: none | {VAR: 'time npoints/maxdiff', ...}  (or NAME WRF-FAILED with CPPWRF's
+status on the same namelist, TRANSLATE-FAILED / CPPWRF-FAILED);
 variables only WRF writes are listed as wrf-only-vars.
 run.keep=1 copies WRF's namelist.input, inputs and wrfout files to WORK/keep/run_NAME (a suite reference).
 Input files of the base run read by both models can be edited: run.sub=FILE:OLD:NEW replaces every OLD by NEW
 (percent-encoded: %20 a blank, %0A a newline), run.head=FILE:N keeps the first N lines, run.copy=FILE:OTHER
-takes the base run's file OTHER. run.both=1 runs CPPWRF also when WRF fails (NAME WRF-FAILED [...] CPPWRF-RAN
-or CPPWRF-FAILED [...]: does CPPWRF reject the input as WRF does)."""
-import glob, os, re, subprocess, sys, urllib.parse
+takes the base run's file OTHER. CPPWRF always runs when WRF fails (NAME WRF-FAILED [...]; cppwrf: RUNS or its failure: does CPPWRF reject
+the input as WRF does); run.both=1 is accepted for older variant files.
+run.atts=1 also lists the global attributes (TITLE aside) that differ in the first common history frame's files.
+run.file=NAME:TEXT writes the file NAME (e.g. an iofields_filename list) into the run directory. Values are
+percent-decoded keys and values (%20 blank, %0A new line, %27 quote, %23 #, %7C |), as the variant line passes through sh -c."""
+import glob, os, re, subprocess, sys
+import urllib.parse
 import netCDF4
 import numpy as np
 
 runs, work, wrfexe, cppwrf, name, base = sys.argv[1:7]
-sets = [a.split("=", 1) for a in sys.argv[7:]]
+sets = [(urllib.parse.unquote(k), urllib.parse.unquote(v)) for k, v in (a.split("=", 1) for a in sys.argv[7:])]
 repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 R = os.path.join(work, name)
 subprocess.run(["rm", "-rf", R])
@@ -45,14 +50,13 @@ for k, v in [("run_days", "0"), ("run_hours", "0"), ("run_minutes", "0"), ("run_
              ("history_interval_s", "60, 60, 60"), ("frames_per_outfile", "10000"), ("restart", ".false.")]:
     nl = setkey(nl, "time_control", k, v)
 nl = re.sub(r"^\s*history_interval\s*=.*\n", "", nl, flags=re.M)
-keep = both = False
+keep = atts = False
 for sk, v in sets:
     sec, k = sk.split(".", 1)
     if (sec, k) == ("run", "keep"):  # run.keep=1: WRF's run (namelist, inputs, wrfout) kept as a reference
         keep = v not in ("0", "false", ".false.")
         continue
-    if (sec, k) == ("run", "both"):
-        both = v not in ("0", "false", ".false.")
+    if (sec, k) == ("run", "both"):  # always on (see above)
         continue
     if (sec, k) in (("run", "sub"), ("run", "head"), ("run", "copy")):  # an edited copy of an input file
         f, arg = v.split(":", 1)
@@ -61,7 +65,7 @@ for sk, v in sets:
         if k == "head":
             text = "".join(text.splitlines(True)[:int(arg)])
         elif k == "sub":
-            old, new = (urllib.parse.unquote(x) for x in arg.split(":", 1))
+            old, new = arg.split(":", 1)
             if old not in text:
                 print(f"{name} BAD-VARIANT {old!r} not in {f}")
                 sys.exit(0)
@@ -69,6 +73,15 @@ for sk, v in sets:
         if os.path.lexists(p):
             os.remove(p)
         open(p, "w", encoding="latin-1", newline="").write(text)
+        continue
+    if (sec, k) == ("run", "atts"):  # run.atts=1: compare the global attributes too
+        atts = v not in ("0", "false", ".false.")
+        continue
+    if (sec, k) == ("run", "file"):  # run.file=NAME:TEXT: a file of the run directory (both models)
+        fn, text = v.split(":", 1)
+        if os.path.lexists(os.path.join(R, fn)):  # never write through a link into the base run
+            os.remove(os.path.join(R, fn))
+        open(os.path.join(R, fn), "w").write(text)
         continue
     if (sec, k) == ("run", "remove"):  # run.remove=f1,f2: files of the base run left out (both models)
         for f in v.split(","):
@@ -93,40 +106,42 @@ try:  # a hanging run must not keep the VM
     subprocess.run("./wrf.exe > wrf.log 2>&1", shell=True, cwd=R, env=env, timeout=3600)
 except subprocess.TimeoutExpired:
     open(os.path.join(R, "wrf.log"), "a").write("\nTIMEOUT after 3600 s\n")
+out = os.path.join(R, "cppwrf")
+
+
+def run_cppwrf():
+    """Translate the variant's namelist and run CPPWRF: (None, CompletedProcess) or (failure text, None)."""
+    t = subprocess.run([sys.executable, os.path.join(repo, "tools/wrf2cppwrf.py"), os.path.join(R, "namelist.input"),
+                        "--real-dir", R, "--format", "wrfout", "-o", os.path.join(R, "case.ini")], capture_output=True, text=True)
+    if t.returncode != 0:
+        return f"TRANSLATE-FAILED {t.stderr.strip().splitlines()[-1:]}", None
+    try:
+        c = subprocess.run([cppwrf, os.path.join(R, "case.ini"), "--set", f"output.dir={out}", "--set", "run.stop_on_nonfinite=false"], capture_output=True, text=True,
+                           cwd=repo, env=env, timeout=3600)
+    except subprocess.TimeoutExpired:
+        c = subprocess.CompletedProcess([], 124, "", "TIMEOUT after 3600 s")
+    if c.returncode != 0:
+        return f"CPPWRF-FAILED {(c.stderr or c.stdout).strip().splitlines()[-1:]}", None
+    return None, c
+
+
 if "SUCCESS COMPLETE WRF" not in open(os.path.join(R, "rsl.out.0000") if os.path.exists(os.path.join(R, "rsl.out.0000")) else os.path.join(R, "wrf.log"), errors="replace").read():
     log = open(os.path.join(R, 'wrf.log'), errors='replace').read().strip().splitlines()
     why = [l.strip() for l in log if "ERROR" in l or "FATAL" in l or "Fix " in l][:4] or log[-1:]
-    if not both:
-        print(f"{name} WRF-FAILED {why}")
-        sys.exit(0)
-    wrf_failed = f"{name} WRF-FAILED {why}"
-else:
-    wrf_failed = None
-if keep and not wrf_failed:  # WORK/keep/run_NAME: what the suite needs of the reference (remote_matrix.sh uploads keep.tar)
+    fail, _ = run_cppwrf()  # CPPWRF must reject what WRF rejects
+    print(f"{name} WRF-FAILED {why}; cppwrf: {fail if fail else 'RUNS'}")
+    subprocess.run(["rm", "-rf", out])
+    sys.exit(0)
+if keep:  # WORK/keep/run_NAME: what the suite needs of the reference (remote_matrix.sh uploads keep.tar)
     K = os.path.join(work, "keep", f"run_{name}")
     os.makedirs(K, exist_ok=True)
     for f in ["namelist.input", "wrfinput_d01", "input_sounding"] + sorted(glob.glob(os.path.join(R, "wrfout_d0*"))):
         f = os.path.join(R, f)
         if os.path.exists(f):
             subprocess.run(["cp", "-L", f, K])
-out = os.path.join(R, "cppwrf")
-t = subprocess.run([sys.executable, os.path.join(repo, "tools/wrf2cppwrf.py"), os.path.join(R, "namelist.input"),
-                    "--real-dir", R, "--format", "wrfout", "-o", os.path.join(R, "case.ini")], capture_output=True, text=True)
-if t.returncode != 0:
-    print(f"{wrf_failed + ' ' if wrf_failed else name + ' '}TRANSLATE-FAILED {t.stderr.strip().splitlines()[-1:]}")
-    sys.exit(0)
-try:
-    c = subprocess.run([cppwrf, os.path.join(R, "case.ini"), "--set", f"output.dir={out}", "--set", "run.stop_on_nonfinite=false"], capture_output=True, text=True,
-                       cwd=repo, env=env, timeout=3600)
-except subprocess.TimeoutExpired:
-    c = subprocess.CompletedProcess([], 124, "", "TIMEOUT after 3600 s")
-if c.returncode != 0:
-    print(f"{wrf_failed + ' ' if wrf_failed else name + ' '}CPPWRF-FAILED (exit {c.returncode}) "
-          f"{(c.stderr or c.stdout).strip().splitlines()[-1:]}")
-    sys.exit(0)
-if wrf_failed:
-    print(f"{wrf_failed} CPPWRF-RAN")
-    subprocess.run(["rm", "-rf", out])
+fail, c = run_cppwrf()
+if fail:
+    print(f"{name} {fail}")
     sys.exit(0)
 unread = re.findall(r"unaccessed config key '([^']*)'", c.stderr)
 if unread:  # a translated option the model never read
@@ -150,9 +165,10 @@ for kind in ("wrfout", "wrfrst"):  # history frames, then restart files (both st
         if not w and not cw:
             continue
         A, B = load(cw), load(w)
-        bad, nframes, wrf_only = {}, {}, set()
+        bad, nframes, wrf_only, cppwrf_only = {}, {}, set(), set()
         for k in sorted(set(A) & set(B)):
             (a, ta), (b, tb) = A[k], B[k]
+            cppwrf_only |= {v for v in a.variables if v not in b.variables}
             for v in b.variables:
                 if v not in a.variables and b[v].dtype.kind != "S":
                     wrf_only.add(v)
@@ -178,9 +194,20 @@ for kind in ("wrfout", "wrfrst"):  # history frames, then restart files (both st
             only = f" only-cppwrf {sorted(set(A) - set(B))} only-wrf {sorted(set(B) - set(A))}"
         if wrf_only:  # variables WRF writes and CPPWRF does not
             only += f" wrf-only-vars {sorted(wrf_only)}"
+        if cppwrf_only:  # variables CPPWRF writes and WRF does not
+            only += f" cppwrf-only-vars {sorted(cppwrf_only)}"
         for v in bad:
             if nframes.get(v, 0) > 1:
                 bad[v] += f" [{nframes[v]} frames]"
+        common = sorted(set(A) & set(B))
+        if atts and common:  # global attributes of the files holding the first common frame
+            a, b = A[common[0]][0], B[common[0]][0]
+            ga = {x: repr(a.getncattr(x)) for x in a.ncattrs() if x != "TITLE"}
+            gb = {x: repr(b.getncattr(x)) for x in b.ncattrs() if x != "TITLE"}
+            dif = {x: f"cppwrf {ga.get(x)} wrf {gb.get(x)}" for x in sorted(set(ga) | set(gb)) if ga.get(x) != gb.get(x)}
+            if list(ga) != list(gb) and not dif:
+                dif = {"(order)": "global attribute order differs"}
+            only += f" global-atts {dif if dif else 'same'}"
         tag = d if kind == "wrfout" else f"{d} {kind}"
         print(f"{name} {tag} frames {len(set(A) & set(B))}{only} differing: {bad if bad else 'none'}", flush=True)
 subprocess.run(["rm", "-rf", out] + glob.glob(os.path.join(R, "wrfout_*")) + glob.glob(os.path.join(R, "wrfrst_*")))

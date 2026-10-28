@@ -38,9 +38,6 @@ void NcOut::att_f(const std::string& name, float v) {
 void NcOut::att_d(const std::string& name, double v) {
   ck(nc_put_att_double(nc_, NC_GLOBAL, name.c_str(), NC_DOUBLE, 1, &v), "att " + name);
 }
-void NcOut::att_f(const std::string& name, const std::vector<float>& v) {
-  ck(nc_put_att_float(nc_, NC_GLOBAL, name.c_str(), NC_FLOAT, v.size(), v.data()), "att " + name);
-}
 
 void NcOut::var(const std::string& name, char type, const std::vector<std::string>& dims,
                 const std::map<std::string, std::string>& satts, int field_type) {

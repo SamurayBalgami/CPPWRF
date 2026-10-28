@@ -113,17 +113,6 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
       cfg.get_string("output.wrf_schema", std::string(CPPWRF_DATA_DIR) + "/wrf_schema/wrf-4.8.0.tsv")));
   // the nest feedback (u= fields) does not depend on the I/O streams: the Registry masks before iofields_filename
   fb_schema_ = std::make_unique<wrf_io::WrfSchema>(*schema_);
-  {  // iofields_filename: runtime additions to / removals from the stream masks (relative to the run dir)
-    wrf_io::WrfConfig c0(*nl_, schema_->defaults(), domain_tag_.size() == 3 ? std::atoi(domain_tag_.c_str() + 1) : 1);
-    std::string io = c0.get("iofields_filename");
-    if (!io.empty() && io.front() == '"') io = io.substr(1, io.size() - 2);
-    if (!io.empty() && io != "NONE_SPECIFIED") {
-      const std::string nl_dir = std::filesystem::path(nl_path).parent_path().string();
-      if (io.front() != '/' && !nl_dir.empty()) io = nl_dir + "/" + io;
-      if (!schema_->apply_iofields(io) && !c0.logical("ignore_iofields_warning"))
-        throw std::runtime_error("wrfout: cannot read iofields_filename " + io);
-    }
-  }
   const int dom = domain_tag_.size() == 3 ? std::atoi(domain_tag_.c_str() + 1) : 1;
   wc_ = std::make_unique<wrf_io::WrfConfig>(*nl_, schema_->defaults(), dom, &schema_->entries());
   // the model's options (INI configuration) where namelist.input does not set them
@@ -137,8 +126,9 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
       auto it = def.find(k);
       if (it == def.end()) return c.set(k, v);
       auto e = entries.find(k);
-      const std::size_t n = nl.values(it->second.first, k).size();
-      if (n <= (e != entries.end() && e->second == "max_domains" ? std::size_t(dom - 1) : 0)) c.set(k, v);
+      const std::vector<std::string> n = nl.values(it->second.first, k);
+      const std::size_t at = e != entries.end() && e->second == "max_domains" ? std::size_t(dom - 1) : 0;
+      if (at >= n.size() || n[at].empty()) c.set(k, v);
     }
   } c{*wc_, *nl_, schema_->defaults(), dom, schema_->entries()};
   const Grid& g = m_.g;
@@ -199,6 +189,9 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
       c.set(p, "0");
   }
   wrf_io::derive_config(*wc_, std::max(1, wc_->integer("max_dom")), false);
+  // iofields_filename (input_wrf / output_wrf: modify_io_masks) for the variables in use in this run; the model
+  // reads wrfinput (i:0) and wrflowinp (i:4) whole
+  wrf_io::apply_iofields_option(*schema_, *wc_, std::filesystem::path(nl_path).parent_path().string(), {25, 29});
   frames_per_outfile_ = std::max(1, wc_->integer("frames_per_outfile"));
   if (cfg.get_int("phys.sst_update", 0) == 1)
     auxinput4_interval_s_ = cfg.get_double("phys.auxinput4_interval", 360.0) * 60.0;
@@ -843,7 +836,7 @@ wrf_io::DomainAtts WrfHistory::domain_atts() {
   d.title = " OUTPUT FROM CPPWRF V4.8.0 MODEL";
   d.start_date = restart_sec_ > 0 ? wrf_io::add_seconds(start_date_, std::lround(restart_sec_)) : start_date_;
   d.gmt_date = start_date_;
-  d.simulation_start_date = wc_->get("simulation_start_date").empty() ? start_date_ : start_date_;
+  d.simulation_start_date = start_date_;
   d.ide = g.nx + 1; d.jde = g.ny * jrep_ + 1; d.kde = g.nz + 1;
   d.grid_id = wc_->domain();
   d.parent_id = wc_->integer("parent_id"); d.i_parent_start = wc_->integer("i_parent_start");
@@ -875,9 +868,19 @@ wrf_io::DomainAtts WrfHistory::domain_atts() {
     d.num_land_cat = gatt_i("NUM_LAND_CAT", 21); d.iswater = gatt_i("ISWATER", 17); d.islake = gatt_i("ISLAKE", -1);
     d.isice = gatt_i("ISICE", 15); d.isurban = gatt_i("ISURBAN", 13); d.isoilwater = gatt_i("ISOILWATER", 14);
     wc_->set("num_land_cat", std::to_string(d.num_land_cat));
+    // input_wrf: config_flags%gmt/julyr/julday from the input file (real.exe's geth_julgmt), else the namelist's
+    d.have_julgmt = true;
+    d.gmt = gatt_d("GMT", wc_->num("gmt"));
+    d.julyr = gatt_i("JULYR", wc_->integer("julyr"));
+    d.julday = gatt_i("JULDAY", wc_->integer("julday"));
   } else {  // ideal: no land-use attributes (the namelist defaults)
     d.mminlu = "";
     d.iswater = d.islake = d.isice = d.isurban = d.isoilwater = 0;
+    // ideal.exe writes the namelist's gmt / julyr / julday (Registry defaults 0, 0, 1)
+    d.have_julgmt = true;
+    d.gmt = wc_->num("gmt");
+    d.julyr = wc_->integer("julyr");
+    d.julday = wc_->integer("julday");
   }
   return d;
 }

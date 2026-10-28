@@ -26,7 +26,6 @@ class StreamFile {
              Stream s, bool netcdf4);
   void write(const std::string& date, const StreamValueFn& value);  // appends one record
   std::size_t records() const { return rec_; }
-  const std::vector<OutVar>& vars() const { return vars_; }
 
  private:
   std::unique_ptr<NcOut> nc_;
