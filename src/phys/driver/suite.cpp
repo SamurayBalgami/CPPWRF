@@ -140,6 +140,9 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   if (o.seaice_albedo_opt != 0)
     throw std::runtime_error("PhysicsSuite: seaice_albedo_opt 1 and 2 are not supported (2 needs ALBSI input)");
   if (o.num_soil_layers > noah::kMaxSoilLevels) throw std::runtime_error("PhysicsSuite: too many soil layers");
+  // check_a_mundo sets num_soil_layers = 4 for Noah (SFLX scales ET(1:4) only)
+  if (o.sf_surface_physics == 2 && o.num_soil_layers != 4)
+    throw std::runtime_error("PhysicsSuite: Noah requires num_soil_layers=4");
   if (o.sf_surface_physics == 4) {
     if (o.num_soil_layers != 4) throw std::runtime_error("PhysicsSuite: Noah-MP requires num_soil_layers=4");
     if (o.mminlu == "NLCD40") throw std::runtime_error("PhysicsSuite: Noah-MP does not support NLCD40 landuse");
