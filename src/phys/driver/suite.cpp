@@ -108,6 +108,10 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
     throw std::runtime_error("PhysicsSuite: bl_pbl_physics=1 (YSU) needs sf_sfclay_physics=1, as WRF");
   if (o.bl_pbl_physics == 2 && o.sf_sfclay_physics != 2)
     throw std::runtime_error("PhysicsSuite: bl_pbl_physics=2 (MYJ) needs sf_sfclay_physics=2, as WRF");
+  // isfflx 0 skips the LSMs, the only writers of CHKLOWQ (uninitialised in WRF), which MYJPBL reads
+  if (o.bl_pbl_physics == 2 && o.isfflx == 0)
+    throw std::runtime_error("PhysicsSuite: bl_pbl_physics=2 (MYJ) with isfflx=0 is not supported (WRF reads an "
+                             "uninitialised CHKLOWQ)");
   if (o.sf_sfclay_physics == 5 && o.fractional_seaice == 1)
     throw std::runtime_error("PhysicsSuite: sf_sfclay_physics=5 with fractional_seaice=1 (MYNN_SEAICE_WRAPPER) is not ported");
   if (o.cu_physics != 0 && o.cu_physics != 1 && o.cu_physics != 3 && o.cu_physics != 6 && o.cu_physics != 16)

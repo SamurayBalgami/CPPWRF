@@ -1466,6 +1466,11 @@ class WrfTranslator:
             self.error(f"WRF isfflx = {isfflx} is not supported; CPPWRF supports 0 and 1.")
         elif isfflx != 1 and (has_physics_suite or diff_opt == 2):  # used by these only
             sections.setdefault("phys", {})["isfflx"] = isfflx
+        # isfflx 0 skips the LSMs (module_surface_driver.F:2622), the only writers of CHKLOWQ, an uninitialised
+        # i1 array of solve_em that MYJPBL reads for the surface moisture flux (module_bl_myjpbl.F:548, 576)
+        if isfflx == 0 and 2 in self.get_opt_list("physics", "bl_pbl_physics"):
+            self.error("WRF isfflx = 0 with bl_pbl_physics = 2 (MYJ) is not supported: WRF's MYJ PBL reads CHKLOWQ, "
+                       "which only the land surface schemes set and isfflx = 0 skips (uninitialised memory).")
 
         icloud = self.get_opt("physics", "icloud", 1)
         if icloud not in (0, 1):
