@@ -38,7 +38,7 @@ for z in ${ZONES//,/ }; do
        --scopes=storage-rw --metadata-from-file=startup-script="$REPO/tools/gcp/remote_suite.sh" \
        --metadata="^@^bucket=$BK@src=src/$STAMP.tar.gz@data=$DATA@result=$RES@jobs=$JOBS@threads=$THREADS@cases=$CASES" \
        > "$OUT/create.log" 2>&1; then ZONE=$z; break; fi
-  why=$(grep -oE "stockout|ZONE_RESOURCE_POOL_EXHAUSTED|Quota '[A-Z_]*'|does not exist|not available|not supported" "$OUT/create.log" | head -1)
+  why=$(grep -oE "stockout|ZONE_RESOURCE_POOL_EXHAUSTED|Quota '[A-Z0-9_]*'|does not exist|not available|not supported" "$OUT/create.log" | head -1)
   echo "[gcp_run] $z: ${why:-error}"
   [ -n "$why" ] || { cat "$OUT/create.log"; exit 1; }  # not a capacity or quota problem
 done
