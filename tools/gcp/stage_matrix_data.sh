@@ -11,7 +11,7 @@ for d in "$@"; do
   for f in "$d"/*; do
     b=$(basename "$f")
     case $b in wrfout*|wrfrst*|rsl.*|*.log|*.exe|steps|namelist.output|freezeH2O.dat|ishmael-*|p3_lookupTable*|snicar_*|aerosol*|CAM_ABS_DATA|CAM_AEROPT_DATA|create_p3*|*.nc) ;;
-      *) cp -L "$f" "$T/runs/$n/" 2>/dev/null || true ;;
+      *) cp -L "$f" "$T/runs/$n/" 2>/dev/null || echo "warning: $f not copied (broken link?)" >&2 ;;
     esac
   done
 done
