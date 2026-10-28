@@ -141,6 +141,14 @@ void derive_config(WrfConfig& c, int max_dom, bool real_exe) {
   }
   // mfshconv only with the QNSE PBL (bl_pbl_physics = 4)
   if (c.integer("bl_pbl_physics") != 4) c.set("mfshconv", "0");
+  // check_a_mundo: a domain without NSSL microphysics (mp_physics 18, or 17, 19, 21, 22 which become 18) turns the
+  // NSSL options off (the scalar packages QNDROP, QZRAIN, ... depend on them)
+  for (int id = 1; id <= max_dom; ++id) {
+    const int mp = c.integer("mp_physics", id);
+    if (mp != 17 && mp != 18 && mp != 19 && mp != 21 && mp != 22)
+      for (const char* o : {"nssl_2moment_on", "nssl_hail_on", "nssl_density_on", "nssl_3moment", "nssl_ccn_on"})
+        c.set(o, "0");
+  }
   // wrf.exe: seed_dim from random_seed(size=...) of gfortran's runtime
   if (!real_exe) c.set("seed_dim", "8");
 }

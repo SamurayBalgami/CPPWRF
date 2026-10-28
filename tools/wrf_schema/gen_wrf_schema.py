@@ -5,9 +5,10 @@ WRF's Registry is compiled into Fortran includes (inc/allocs_*.f90: the state va
 I/O metadata; inc/in_use_for_config_*.inc: the package conditions; inc/scalar_indices.inc: the
 members of the 4-D arrays such as moist and scalar). This script reads them and writes one line per
 state variable and per 4-D array member, so that cppwrf_real writes wrfinput/wrfbdy files with the
-same variables, dimensions and attributes as WRF's real.exe.
+same variables, dimensions and attributes as WRF's real.exe. With a third argument it also writes
+tools/wrf_max_domains.py (the per-domain namelist options and their Registry defaults).
 
-usage: gen_wrf_schema.py <WRF build dir> <output .tsv>
+usage: gen_wrf_schema.py <WRF build dir> <output .tsv> [<wrf_max_domains.py>]
 """
 import glob
 import os
@@ -72,7 +73,8 @@ def parse_scalar_tables(inc_dir):
     f = os.path.join(inc_dir, "scalar_indices.inc")
     out = []
     cond = None
-    pkg = re.compile(r"IF\s*\(\s*model_config_rec%(\w+)\(idomain\)\s*==\s*([^)\s]+)\s*\)\s*THEN")
+    # per-domain options carry (idomain), single ones (nssl_2moment_on, aercu_used, ...) not
+    pkg = re.compile(r"IF\s*\(\s*model_config_rec%(\w+)(?:\(idomain\))?\s*==\s*([^)\s]+)\s*\)\s*THEN")
     tab = re.compile(r"(\w+)_(dname|desc|units|boundary)_table\(\s*idomain,\s*P_(\w+)\s*\)\s*=\s*(.*)$")
     st = re.compile(r"(\w+)_streams_table\(\s*idomain,\s*P_(\w+)\s*\)%stream\((\d)\)\s*=\s*(\d+)")
     cur = {}
@@ -100,19 +102,30 @@ def parse_scalar_tables(inc_dir):
     return out
 
 
+def registry_lines(reg_dir, name="Registry.EM"):
+    """The lines of the EM Registry in the order the registry program reads them: Registry.EM with its
+    include files expanded where they appear (registry.chem, registry.var and the other files that
+    Registry.EM does not include are not part of wrf.exe)."""
+    for line in open(os.path.join(reg_dir, name), errors="replace"):
+        t = line.split()
+        if len(t) >= 2 and t[0] == "include":
+            yield from registry_lines(reg_dir, t[1])
+        else:
+            yield line
+
+
 def rconfig_defaults(reg_dir):
-    """namelist option -> (type, group, default, entries) from the Registry rconfig lines (Registry.EM and its
-    includes; the first definition wins); entries: 1, max_domains, ..."""
+    """namelist option -> (type, group, default, entries) from the Registry rconfig lines (the first
+    definition wins, as in WRF's namelist_defaults.inc); entries: 1, max_domains, ..."""
     d = {}
-    files = [os.path.join(reg_dir, "Registry.EM_COMMON")] + sorted(glob.glob(os.path.join(reg_dir, "registry.*")))
-    for f in files:
-        if not os.path.exists(f):
-            continue
-        for line in open(f, errors="replace"):
-            t = line.split()
-            if len(t) >= 6 and t[0] == "rconfig":
-                grp = t[3].split(",")[1] if "," in t[3] else t[3]
-                d.setdefault(t[2].lower(), (t[1], grp, t[5], t[4]))
+    for line in registry_lines(reg_dir):
+        t = line.split()
+        if len(t) >= 6 and t[0] == "rconfig":
+            grp = t[3].split(",")[1] if "," in t[3] else t[3]
+            dv = t[5]
+            if dv.startswith('"') and (len(dv) == 1 or not dv.endswith('"')):  # a quoted default with blanks
+                dv = re.search(r'"[^"]*"', line).group(0)
+            d.setdefault(t[2].lower(), (t[1], grp, dv, t[4]))
     return d
 
 
@@ -120,32 +133,52 @@ def nest_specs(reg_dir):
     """state variable (lower case) -> (down, up): the nest interpolation (d) and feedback (u) of the
     Registry io column, "" when absent, "interp_fcn" / "copy_fcn" for the default functions."""
     out = {}
-    files = [os.path.join(reg_dir, "Registry.EM_COMMON")] + sorted(glob.glob(os.path.join(reg_dir, "registry.*")))
-    for f in files:
-        if not os.path.exists(f):
+    for line in registry_lines(reg_dir):
+        t = line.split()
+        if len(t) < 8 or t[0].lower() != "state":
             continue
-        for line in open(f, errors="replace"):
-            t = line.split()
-            if len(t) < 8 or t[0].lower() != "state":
+        io = t[7]
+        spec = {}
+        i = 0
+        while i < len(io):
+            ch = io[i]
+            if ch in "duf" and i + 1 < len(io) and io[i + 1] == "=":
+                j = io.index(")", i)
+                spec[ch] = io[i + 3:j]
+                i = j + 1
                 continue
-            io = t[7]
-            spec = {}
-            i = 0
-            while i < len(io):
-                ch = io[i]
-                if ch in "duf" and i + 1 < len(io) and io[i + 1] == "=":
-                    j = io.index(")", i)
-                    spec[ch] = io[i + 3:j]
-                    i = j + 1
-                    continue
-                if ch in "duf":
-                    spec.setdefault(ch, {"d": "interp_fcn", "u": "copy_fcn", "f": "bdy_interp"}[ch])
-                if ch == "{":
-                    i = io.index("}", i) + 1
-                    continue
-                i += 1
-            out.setdefault(t[2].lower(), (spec.get("d", ""), spec.get("u", "")))
+            if ch in "duf":
+                spec.setdefault(ch, {"d": "interp_fcn", "u": "copy_fcn", "f": "bdy_interp"}[ch])
+            if ch == "{":
+                i = io.index("}", i) + 1
+                continue
+            i += 1
+        out.setdefault(t[2].lower(), (spec.get("d", ""), spec.get("u", "")))
     return out
+
+
+def python_value(typ, dv):
+    """A Registry default (Fortran syntax: .true., 1.e-5, "text") as the translator's Python value."""
+    if typ == "logical":
+        return dv.lower() in (".true.", "t", ".t.")
+    if typ == "character":
+        return dv.strip('"')
+    if typ == "integer":
+        return int(dv)
+    return float(re.sub("[dD]", "e", dv))
+
+
+def write_max_domains(defaults, path):
+    """tools/wrf_max_domains.py: (group, option) -> Registry default of every max_domains namelist option."""
+    rows = sorted((grp, op, python_value(t, dv)) for op, (t, grp, dv, n) in defaults.items()
+                  if n == "max_domains" and grp != "derived")
+    with open(path, "w") as o:
+        o.write('"""WRF 4.8.0 Registry namelist options with one value per domain (rconfig ... max_domains) and their\n'
+                'defaults (Registry.EM and the files it includes; tools/wrf_schema/gen_wrf_schema.py). WRF gives a domain\n'
+                'without an entry in the namelist the default, not domain 1\'s value."""\n\nMAX_DOMAINS_DEFAULTS = {\n')
+        for grp, op, v in rows:
+            o.write("    (%r, %r): %r,\n" % (grp, op, v))
+        o.write("}\n")
 
 
 def main():
@@ -195,6 +228,8 @@ def main():
             cs = "%s.EQ.%s" % c if c else "-"
             o.write("\t".join(["MEMBER", arr, mem, cs, d.get("dname", ""), d.get("desc", ""), d.get("units", ""),
                                d.get("streams1", "0"), d.get("streams2", "0"), d.get("boundary", "")]) + "\n")
+    if len(sys.argv) > 3:
+        write_max_domains(defaults, sys.argv[3])
 
 
 if __name__ == "__main__":
