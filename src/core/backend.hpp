@@ -313,6 +313,7 @@ enum FatalCode : int {
   kFatalNoahmpRefHeightCanopy = 13,  // reference height <= zero-plane displacement (above canopy)
   kFatalNoahmpRefHeightBare = 14,    // reference height <= zero-plane displacement (bare ground)
   kFatalNoahmpGlacierEnergy = 15,    // glacier surface energy balance error > 0.01 W m-2
+  kFatalNoahUrbanLai = 16,           // Noah rdlai2d: urban point with VEGFRA = 0 and LAI <= 0 (not a WRF stop)
 };
 struct FatalError : std::runtime_error {
   int code;

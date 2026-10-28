@@ -267,6 +267,8 @@ struct KLsmPre {
     if (rdlai2d) {
       if (shdf > real(0.0) && lai(i, j) <= real(0.0)) lai(i, j) = real(0.01);
       xlai(i, j) = lai(i, j);
+      // SFLX turns SHDFAC 0 into 0.05 here, skips CANRES (XLAI = 0) and TRANSP reads the stale PC (R17 U1)
+      if (ic == 0 && vtyp == isurban && shdf <= real(0.0) && lai(i, j) <= real(0.0)) raise_fatal(kFatalNoahUrbanLai);
     }
     vegtyp(i, j) = vtyp;
     soiltyp(i, j) = styp;

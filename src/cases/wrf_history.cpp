@@ -234,9 +234,14 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
       }
       const std::string tables = cfg.get_string("phys.table_dir", real_dir);
       if (std::filesystem::exists(tables + "/LANDUSE.TBL")) {
+        const bool usemonalb = cfg.get_bool("phys.usemonalb", false);
+        std::vector<double> albbck_in, snoalb_in;
+        if (usemonalb && !(from_wrfinput("ALBBCK", n2, albbck_in) && from_wrfinput("SNOALB", n2, snoalb_in)))
+          throw std::runtime_error("usemonalb: " + wrfinput_ + " lacks ALBBCK or SNOALB");
         const LanduseInit li = landuse_init(tables, mminlu, att_i("JULDAY", 0), cen_lat, att_i("ISWATER", 17),
                                             att_i("ISICE", 15), lu, xice, snowc,
-                                            int(cfg.get_int("phys.fractional_seaice", 0)));
+                                            int(cfg.get_int("phys.fractional_seaice", 0)), usemonalb, albbck_in,
+                                            snoalb_in);
         auto rl = [](const std::vector<double>& v) {  // WRF REAL
           std::vector<double> r(v.size());
           for (std::size_t p = 0; p < v.size(); ++p) r[p] = double(real(v[p]));

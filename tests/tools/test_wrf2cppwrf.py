@@ -587,6 +587,29 @@ class TestValidationAndWarnings(unittest.TestCase):
         self.assertEqual(p["kim_tofd"], True)
         self.assertEqual(p["tofd_factor"], 0.005)
 
+    def test_usemonalb_rdlai2d(self):
+        # usemonalb: landuse_init for every LSM; rdlai2d: Noah only (Noah-MP and no LSM ignore it)
+        def phys(extra):
+            t = WrfTranslator(parse_namelist(real_case(f"""
+            &time_control /
+            &domains time_step = 60 /
+            &physics {extra} /
+            &dynamics /
+            """)))
+            gen = t.translate()
+            self.assertEqual(t.errors, [], extra)
+            return gen.get("phys", {})
+        p = phys("sf_sfclay_physics = 1, sf_surface_physics = 2, bl_pbl_physics = 1, usemonalb = .true., rdlai2d = .true.")
+        self.assertEqual((p["usemonalb"], p["rdlai2d"]), (True, True))
+        p = phys("sf_sfclay_physics = 1, sf_surface_physics = 4, bl_pbl_physics = 1, usemonalb = .true., rdlai2d = .true.")
+        self.assertEqual(p["usemonalb"], True)
+        self.assertNotIn("rdlai2d", p)
+        p = phys("sf_sfclay_physics = 1, sf_surface_physics = 2, bl_pbl_physics = 1, usemonalb = .false., rdlai2d = .false.")
+        self.assertNotIn("usemonalb", p)
+        self.assertNotIn("rdlai2d", p)
+        p = phys("usemonalb = .true.")
+        self.assertEqual(p["usemonalb"], True)
+
     def test_force_read_thompson(self):
         def phys(mp, extra):
             t = WrfTranslator(parse_namelist(real_case(f"""

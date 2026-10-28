@@ -34,7 +34,8 @@ bool wants_column_physics(const io::Config& cfg) {
 
 LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu, int julday, double cen_lat,
                          int iswater, int isice, const std::vector<double>& lu, const std::vector<double>& xice,
-                         const std::vector<double>& snowc, int fractional_seaice) {
+                         const std::vector<double>& snowc, int fractional_seaice, bool usemonalb,
+                         const std::vector<double>& albbck_in, const std::vector<double>& snoalb_in) {
   phys::driver::LanduseTables lt;
   if (!phys::driver::read_landuse_table(table_dir + "/LANDUSE.TBL", mminlu, lt))
     throw std::runtime_error("real physics: LANDUSE.TBL lacks " + mminlu);
@@ -72,10 +73,11 @@ LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu
     if (is < 0 || is > lt.n_cats) throw std::runtime_error("real physics: LANDUSE OUTSIDE RANGE");
     if (is == 0) is = iswater;
     const auto& c = lt.categories[isn - 1][is];
-    albbck[p] = c.albd / 100.;
+    albbck[p] = usemonalb ? albbck_in[p] : c.albd / 100.;
     albedo[p] = albbck[p];
     // SCFX(IS) comes from lu_state: the last season read (see above), not season ISN
-    if (snowc[p] > 0.5) albedo[p] = albbck[p] * (1. + lt.categories[std::max(0, lt.n_seasons - 1)][is].scfx);
+    if (snowc[p] > 0.5)
+      albedo[p] = usemonalb ? snoalb_in[p] : albbck[p] * (1. + lt.categories[std::max(0, lt.n_seasons - 1)][is].scfx);
     z0[p] = c.sfz0 / 100.;
     embck[p] = c.sfem;
     emiss[p] = embck[p];
@@ -216,6 +218,8 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.warm_rain = cfg.get_int("phys.mp_physics", 0) == 1;  // mp_init: true only for KESSLERSCHEME
   o.isfflx = int(cfg.get_int("phys.isfflx", 1));
   o.opt_thcnd = int(cfg.get_int("phys.opt_thcnd", 1));
+  o.rdlai2d = cfg.get_bool("phys.rdlai2d", false);      // Noah: LAI from the input instead of the table
+  o.usemonalb = cfg.get_bool("phys.usemonalb", false);  // landuse_init and Noah: ALBBCK from the input
   o.ysu_topdown_pblmix = int(cfg.get_int("phys.ysu_topdown_pblmix", 1));
   o.kim_tofd = cfg.get_bool("phys.kim_tofd", false);
   o.isftcflx = int(cfg.get_int("phys.isftcflx", 0));  // sfclayrev: z0t / z0q and roughness over water
@@ -341,7 +345,9 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   }
   // landuse_init
   const LanduseInit li = landuse_init(o.table_dir, o.mminlu, int(in.att_num("JULDAY", 0)), in.att_num("CEN_LAT", 0.0),
-                                      o.iswater, o.isice, lu, xice, snowc, o.fractional_seaice);
+                                      o.iswater, o.isice, lu, xice, snowc, o.fractional_seaice, o.usemonalb,
+                                      o.usemonalb ? rd2("ALBBCK") : std::vector<double>(),
+                                      o.usemonalb ? snoalb : std::vector<double>());
   const std::vector<double>&albbck = li.albbck, &albedo = li.albedo, &z0 = li.z0, &embck = li.embck,
                             &emiss = li.emiss, &mavail = li.mavail, &xland = li.xland;
   put2(su.albbck, albbck); put2(su.albedo, albedo); put2(su.z0, z0); put2(su.znt, z0);

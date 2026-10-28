@@ -59,7 +59,9 @@ bool wants_column_physics(const io::Config& cfg);
 void init_real_physics(const io::Config& cfg, Model& m);
 // sst_update = 1: the auxinput4 record of `date` (WRF date string) from wrflowinp_d0N into the suite's fields
 void read_wrflowinp(const std::string& path, const std::string& date, phys::driver::PhysicsSuite& su);
-// phy_init's landuse_init (LANDUSE.TBL for the season of julday) on the wrfinput LU_INDEX, SEAICE, SNOWC
+// phy_init's landuse_init (LANDUSE.TBL for the season of julday) on the wrfinput LU_INDEX, SEAICE, SNOWC;
+// usemonalb: ALBBCK keeps the wrfinput value (albbck_in) and snow-covered points take ALBEDO = SNOALB
+// (snoalb_in, the wrfinput SNOALB); both may be empty without usemonalb
 struct LanduseInit {
   std::vector<double> albbck, albedo, z0, embck, emiss, mavail, xland, thc;
   int isn = 1;                  // season (1 summer, 2 winter)
@@ -68,7 +70,8 @@ struct LanduseInit {
 };
 LanduseInit landuse_init(const std::string& table_dir, const std::string& mminlu, int julday, double cen_lat,
                          int iswater, int isice, const std::vector<double>& lu, const std::vector<double>& xice,
-                         const std::vector<double>& snowc, int fractional_seaice);
+                         const std::vector<double>& snowc, int fractional_seaice, bool usemonalb,
+                         const std::vector<double>& albbck_in, const std::vector<double>& snoalb_in);
 
 // Comma-separated list (whitespace trimmed, empty entries dropped).
 std::vector<std::string> split_list(const std::string& s);

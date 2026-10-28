@@ -492,8 +492,6 @@ UNSUPPORTED_PHYSICS_SWITCHES = {
     "ra_call_offset": "Radiation call offset",
     "shalwater_z0": "Shallow-water roughness formulation",
     "scm_force_flux": "Single-column model prescribed surface flux",
-    "rdlai2d": "2D LAI read from input (Noah)",
-    "usemonalb": "Monthly surface albedo from geogrid",
 }
 
 IGNORED_WRF_OPTIONS = {
@@ -1712,6 +1710,14 @@ class WrfTranslator:
             rdmaxalb = self.get_opt("physics", "rdmaxalb", True)
             if not bool(rdmaxalb):
                 sections.setdefault("phys", {})["rdmaxalb"] = False
+        # usemonalb (one value for all domains): phy_init's landuse_init keeps the wrfinput ALBBCK (real.exe's
+        # monthly ALBEDO12M at the start date) and takes SNOALB at snow-covered points, for every LSM; Noah's SFLX
+        # keeps ALBBCK. rdlai2d: Noah's LAI from the input (real.exe's LAI12M, wrflowinp) instead of the table.
+        usemonalb, rdlai2d = self.get_opt("physics", "usemonalb", False), self.get_opt("physics", "rdlai2d", False)
+        if case_name == "real" and bool(usemonalb):
+            sections.setdefault("phys", {})["usemonalb"] = True
+        if 2 in self.get_opt_list("physics", "sf_surface_physics")[:max(1, self._max_dom)] and bool(rdlai2d):
+            sections.setdefault("phys", {})["rdlai2d"] = True
 
         # surface fluxes (surface layer, LSM and the diffusion's surface flux), cloud fractions in RRTMG
         isfflx = self.get_opt("physics", "isfflx", 1)
