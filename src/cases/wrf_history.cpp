@@ -799,6 +799,11 @@ void WrfHistory::feedback_physics(WrfHistory& child, int ipos, int jpos, int rat
   }
 }
 
+void WrfHistory::restart_slopes() {
+  start_em_slopes();
+  for (const char* f : {"TOPOSLPX", "TOPOSLPY", "LAP_HGT", "SLOPE", "SLP_AZI"}) fed_.erase(f);
+}
+
 void WrfHistory::keep_ht_coarse() {
   const Grid& g = m_.g;
   for (const wrf_io::OutVar& v : fb_schema_->restart_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real))))

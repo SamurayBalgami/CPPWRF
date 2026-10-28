@@ -692,6 +692,10 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
       if (!opened[c_idx]) {
         med_nest_initial(doms[idx].spec.cfg, doms[idx].model, doms[c_idx].spec, doms[c_idx].model);
         initial_history_feedback(idx, c_idx);
+#ifdef CPPWRF_HAVE_NETCDF
+        for (int d : {c_idx, idx})
+          if (doms[d].runner->history()) doms[d].runner->history()->restart_slopes();
+#endif
         opened[c_idx] = true;
       }
   };

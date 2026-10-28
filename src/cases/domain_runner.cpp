@@ -660,7 +660,7 @@ bool DomainRunner::start() {
 
 void DomainRunner::after_solve(long n) {
 #ifdef CPPWRF_HAVE_NETCDF
-  if (write_wrfout_ && wrfout_ && (hist_due(n) || n == m_.nsteps)) wrfout_->after_solve(n);
+  if (write_wrfout_ && wrfout_ && (hist_due(n) || n == m_.nsteps || rst_due(n))) wrfout_->after_solve(n);
 #else
   (void)n;
 #endif
