@@ -162,7 +162,8 @@ def run_cppwrf():
 
 if "SUCCESS COMPLETE WRF" not in open(os.path.join(R, "rsl.out.0000") if os.path.exists(os.path.join(R, "rsl.out.0000")) else os.path.join(R, "wrf.log"), errors="replace").read():
     log = open(os.path.join(R, 'wrf.log'), errors='replace').read().strip().splitlines()
-    why = [l.strip() for l in log if "ERROR" in l or "FATAL" in l or "Fix " in l][:4] or [l.strip() for l in log[-8:]]
+    why = [l.strip() for l in log if "ERROR" in l or "FATAL" in l or "Fix " in l][:4] or \
+        [l.strip() for l in log if re.search(r"signal|[Ee]rror|runtime|^#\d+ ", l)][:24] or [l.strip() for l in log[-8:]]
     fail, _ = run_cppwrf()  # CPPWRF must reject what WRF rejects
     print(f"{name} WRF-FAILED {why}; cppwrf: {fail if fail else 'RUNS'}")
     subprocess.run(["rm", "-rf", out])
