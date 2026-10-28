@@ -369,6 +369,14 @@ DEFAULT_ONLY_OPTIONS = {
     ("time_control", "cycling"): (False, "cycling of the input state"),
     ("dfi_control", "dfi_opt"): (0, "digital filter initialisation"),
     ("domains", "allowed"): (True, "domains that are not integrated (grid_allowed)"),
+    ("dynamics", "use_q_diabatic"): (0, "qv / qc diabatic terms in the scalar tendencies (q_diabatic_add)"),
+    ("dynamics", "rad_nudge"): (0, "theta relaxation to the initial profile (theta_relaxation)"),
+    # history output options (fields or streams CPPWRF does not write)
+    ("time_control", "nwp_diagnostics"): (0, "NWP diagnostics in the history output (WSPD10MAX, UP_HELI_MAX, ...)"),
+    ("time_control", "output_diagnostics"): (0, "time-window diagnostics (auxhist3)"),
+    ("dynamics", "do_avgflx_em"): (0, "time-averaged mass fluxes in the history output (AVGFLX_*)"),
+    ("dynamics", "do_avgflx_cugd"): (0, "time-averaged convective mass fluxes in the history output (AVGFLX_*)"),
+    ("physics", "acc_phy_tend"): (0, "accumulated physics tendencies in the history output (ATHCUTEN, ...)"),
     # physics and surface options of WRF's drivers that CPPWRF does not port (they change results or the output)
     ("physics", "ua_phys"): (False, "UA Noah snow physics"),
     ("physics", "sf_surface_mosaic"): (0, "Noah mosaic land use"),
@@ -1402,6 +1410,13 @@ class WrfTranslator:
             # module_cu_gfl_wrf: the shallow plume runs for ishallow == 1 only; the other ported schemes ignore it
             if self.get_opt("physics", "ishallow", 0) == 1:
                 sections.setdefault("phys", {})["ishallow"] = 1
+
+        # check_a_mundo: cu_diag = 1 needs a Grell scheme (GF, G3, GD) or KF-CuP on that domain (fatal otherwise);
+        # with those schemes it is set to 1 whatever the namelist says
+        for d, cu_diag in enumerate(self.get_opt_list("physics", "cu_diag")[:max(1, self._max_dom)]):
+            if cu_diag == 1 and self.get_dom_opt("physics", "cu_physics", d, 0) != 3:
+                self.error(f"WRF cu_diag = 1 on domain {d + 1} requires Grell-Freitas cumulus (cu_physics = 3); "
+                           "wrf.exe stops.")
 
         if self.has_opt("physics", "clos_choice"):
             clos_choice = self.get_opt("physics", "clos_choice", 0)
