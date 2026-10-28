@@ -34,8 +34,9 @@ struct KesslerKernel {
   real rhowater;
   int nz;
   // WRF's i loop of the microphysics part (its..ite = i0..i0+ni-1): gfortran vectorises it through
-  // libmvec (cppwrf::vm lanes); the fall-speed pow of the k loops stays scalar in WRF's object
-  // (strided qr(i,k,j), checked against WRF -r8 flags with odd and even trip counts)
+  // libmvec (cppwrf::vm lanes). Of the fall-speed k loops, the first stays scalar in WRF's object (its
+  // vectorised version is guarded by an overlap check of rhok(1) with the rhok(k) stores, which always
+  // fails) and the one of the split sedimentation steps (nfall > 1) is vectorised over k = kts..kte
   int i0 = 0, ni = 1;
 
   CPPWRF_HD void operator()(int i, int j) const {
@@ -109,7 +110,7 @@ struct KesslerKernel {
         crmax = real(0);
         for (int k = 0; k < nz; ++k) {
           real qrr = max(real(0), prodk[k] * real(0.001) * rhok[k]);
-          vt[k] = real(36.34) * rpow(qrr, real(0.1364)) * vtden[k];
+          vt[k] = real(36.34) * vm::pow(qrr, real(0.1364), k, nz) * vtden[k];
           crmax = max(vt[k] * time_sediment * rdzw[k], crmax);
         }
         int nfall_new = max(1, int(round(real(0.5) + crmax / max_cr_sedimentation)));
