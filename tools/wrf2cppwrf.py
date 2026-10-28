@@ -924,8 +924,16 @@ class WrfTranslator:
                        "time dtbc is a running sum of dt, not verified for a non-integer dt.")
             dt += float(num) / float(den)
         sections["time"]["dt"] = int(dt) if dt.is_integer() else dt
+        # start_em.F: d01 of a real-data run (map_proj /= 0) with dt / dx [s/km] above reasonable_time_step_ratio
+        # stops with "Time step too large"
+        if case_name == "real":
+            dx_km = min(float(self.get_opt("domains", "dx", 200.0)), float(self.get_opt("domains", "dy", 200.0))) / 1000.
+            ratio = float(self.get_opt("domains", "reasonable_time_step_ratio", 6.0))
+            if dt / dx_km > ratio:
+                self.error(f"WRF stops with 'Time step too large': time_step / dx = {dt / dx_km:g} s/km is above "
+                           f"reasonable_time_step_ratio = {ratio:g}.")
 
-        tss = self.get_opt("dynamics", "time_step_sound", 0)
+        tss =self.get_opt("dynamics", "time_step_sound", 0)
         if tss and tss > 0:
             sections["time"]["time_step_sound"] = tss
 
