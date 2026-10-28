@@ -9,10 +9,17 @@ attributes). Special keys: run.remove=FILE,... leaves base files out; run.delete
 lines (the key then takes its default); run.file=NAME:TEXT writes a file into the run directory. Values are
 percent-decoded (keys too) as in matrix_variant.py. Prints one line per variant:
 NAME real files N differing: none | {FILE: 'n variables / m metadata', ...}  (or REAL-FAILED / CPPWRF-REAL-FAILED,
-with the files only one program wrote)."""
+with the files only one program wrote; HARNESS-ERROR when the script itself fails)."""
 import glob, os, re, subprocess, sys
 import urllib.parse
 
+
+def harness_error(t, e, tb):  # a variant that cannot run or be compared is a result line, never a missing one
+    print(f"{sys.argv[5] if len(sys.argv) > 5 else '?'} HARNESS-ERROR {t.__name__}: {e}", flush=True)
+    sys.__excepthook__(t, e, tb)
+
+
+sys.excepthook = harness_error
 runs, work, realexe, cppreal, name, base = sys.argv[1:7]
 sets = [(urllib.parse.unquote(k), urllib.parse.unquote(v)) for k, v in (a.split("=", 1) for a in sys.argv[7:])]
 repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -68,7 +75,7 @@ except subprocess.TimeoutExpired:
 log = open(os.path.join(R, "rsl.out.0000") if os.path.exists(os.path.join(R, "rsl.out.0000"))
            else os.path.join(R, "real.log"), errors="replace").read()
 wrf_ok = "SUCCESS COMPLETE REAL_EM" in log
-wrf_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(R, "wrf*_d0*")))
+wrf_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(R, "wrf*_d[0-9][0-9]*")))
 out = os.path.join(R, "cppwrf")
 os.makedirs(out)
 prec = open(os.path.join(src, "precision")).read().strip() if os.path.exists(os.path.join(src, "precision")) else "double"
@@ -101,4 +108,4 @@ else:
         if f not in wrf_files:
             bad[f] = "not written by real.exe"
     print(f"{name} real files {len(wrf_files)} differing: {bad if bad else 'none'}", flush=True)
-subprocess.run(["rm", "-rf", out] + glob.glob(os.path.join(R, "wrf*_d0*")))
+subprocess.run(["rm", "-rf", out] + glob.glob(os.path.join(R, "wrf*_d[0-9][0-9]*")))
