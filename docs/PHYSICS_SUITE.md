@@ -135,7 +135,8 @@ and `phy_init` provide; the test takes it from WRF after `start_domain`).
   grid%wstar_ysu / delta_ysu.
 - **Noah SFLX** (src/phys/lsm_noah/noah.hpp): `T14 = T1*T1; T14 = T14*T14` grouping in SNOPAC;
   rdlai2d / usemonalb are namelist options (WRF default .false.: LAI and background albedo from
-  the table, ALB is INOUT and becomes ALBBCK); the standalone "skip vegtyp 16 / soil 14" test
+  the table, ALB is INOUT and becomes ALBBCK; .true.: wrfinput LAI / ALBBCK, and landuse_init keeps
+  ALBBCK and takes SNOALB at snow-covered points); the standalone "skip vegtyp 16 / soil 14" test
   must not apply in the driver (MODIS category 16 is barren land): the driver passes an
   `active` mask instead. `opt_thcnd = 2` (McCumber-Pielke conductivity for soil types 3 and 4) is
   bit-identical to WRF r8 over 1 h (P1T2 = P1 with opt_thcnd = 2). Integer exponents

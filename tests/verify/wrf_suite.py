@@ -70,6 +70,23 @@ CASES = [
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P1T2_r8", "phys.opt_thcnd=2", "output.out_interval=10",
       "output.diag_interval=10"],
      f"{WR}/run_P1T2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    # A01 = P1 with usemonalb = .true. (landuse_init keeps the wrfinput ALBBCK, SFLX too) and rdlai2d = .true. (Noah's
+    # LAI from wrfinput); A01V = V2 with both (722 snow-covered land points: ALBEDO = SNOALB in landuse_init).
+    # The cuda_dp tolerances are provisional (P1-like, to be measured on a GPU).
+    ("real_a01_r8_fp64_cpu", "cpu_dp", "configs/real_a01_r8.ini", [],
+     f"{WR}/run_A01_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
+    ("real_a01_r8_fp64_cpu_1h", "cpu_dp", "configs/real_a01_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P1_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_A01_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    ("real_a01_r8_fp64_cuda_1h", "cuda_dp", "configs/real_a01_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P1_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_A01_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-8, "W": 1e-7, "THM": 1e-9, "QV": 1e-7}),
+    ("real_a01v_r8_fp64_cpu_1h", "cpu_dp", "configs/real_v2_r8.ini",
+     ["run.run_time=3600", "output.out_interval=10", "output.diag_interval=10", "phys.usemonalb=true",
+      "phys.rdlai2d=true"],
+     f"{WR}/run_A01V_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QICE": 0.0, "QSNOW": 0.0}),
     ("real_p2_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p2_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P2_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
@@ -456,7 +473,8 @@ CASES = [
 
 
 # restart_<tag>_fp64: 3 steps straight vs restarted after step 1 (restart_p1)
-RESTARTS = (("p1", "configs/real_p1_r8.ini", "run_P1_r8"), ("p7", "configs/real_p7_r8.ini", "run_P7_r8"),
+RESTARTS = (("p1", "configs/real_p1_r8.ini", "run_P1_r8"), ("a01", "configs/real_a01_r8.ini", "run_P1_r8"),
+            ("p7", "configs/real_p7_r8.ini", "run_P7_r8"),
             ("p8", "configs/real_p8_r8.ini", "run_P8_r8"), ("p9", "configs/real_p9_r8.ini", "run_P9_r8"),
             ("nmp1", "configs/real_nmp1_r8.ini", "run_NMP1_r8"), ("mynn", "configs/real_mynn_r8.ini", "run_MYNN_r8"),
             ("mynnsf1", "configs/real_mynnsf1_r8.ini", "run_P6_r8"), ("mynnsf2", "configs/real_mynnsf2_r8.ini", "run_P6_r8"),
