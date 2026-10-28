@@ -229,6 +229,10 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
     throw std::runtime_error("radiation: cannot read rrtmg_lw_tables.bin");
   if (!load_rrtmg_sw_tables(table_file("rrtmg_sw_tables.bin"), *p_->sw))
     throw std::runtime_error("radiation: cannot read rrtmg_sw_tables.bin");
+  // the SW column arrays (CPU and GPU) hold RRTMG_SW_COL_MAX layers: the model's and the one above the top (WRF:
+  // mxlay = 203)
+  if (g.nz + 1 > RRTMG_SW_COL_MAX)
+    throw std::runtime_error("radiation: RRTMG SW layers (nz + 1) exceed " + std::to_string(RRTMG_SW_COL_MAX));
   if (o.ghg_input == 1) p_->gases.load(o.table_dir + "/CAMtr_volume_mixing_ratio");
   p_->xlat = xlat;
   p_->xlong = xlong;
