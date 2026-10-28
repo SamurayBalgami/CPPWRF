@@ -926,6 +926,15 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
   // output_wrf restart_only: the alarms WRF created (all but 26 and 54) at this time; the history alarm has
   // just rung (or rings every history_interval), the restart alarm is ringing, 55 counts from the run's start
   const long el = std::lround(time_sec);
+  // d01's boundary alarm at a boundary time: med_restart_out runs before med_latbound_in reads the next boundary
+  // values, so the alarm is ringing, and the step before set just_read_boundary = Is_alarm_tstep (solve_em.F:5103)
+  const bool specified = g.bc_x == BC::Specified || g.bc_y == BC::Specified;
+  bool bdy_due = false;
+  if (d.grid_id == 1 && specified) {
+    const double iv = wc_->num("interval_seconds"), eps = 1e-6 * g.dt;
+    bdy_due = iv > 0 && std::floor((time_sec + eps) / iv) > std::floor((time_sec - g.dt + eps) / iv);
+  }
+  phy_init_["WE_JUST_D01_LBC"] = {bdy_due ? 1.0 : 0.0};
   for (int a = 1; a <= 55; ++a) {
     if (a == 26 || a == 54 || (a == 52 && d.grid_id > 1)) continue;  // nests have no boundary alarm
     char n1[40], n2[40];
@@ -940,7 +949,9 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
       if ((step == m_.nsteps || d.grid_id > 1) && since % iv == 0) ring = 1;
     } else if (a == 30 && auxinput4_interval_s_ > 0) {
       const long iv = std::lround(auxinput4_interval_s_), since = el - std::lround(auxinput4_ref_s);
-      secs = int(since < 0 ? -since : iv - since % iv);  // a resumed run before its first ring: RingTime - time
+      // a resumed run before its first ring: ESMF_ClockAddAlarm set PrevRingTime to the alarm's first RingTime,
+      // the restart time, and input_wrf's WRFU_AlarmSet leaves it (ESMF_Clock.F90:767)
+      secs = int(since < 0 ? iv - (el - std::lround(restart_sec_)) : iv - since % iv);
       // d01 reads (and turns it off) before med_restart_out; at the last step and on nests it is still ringing
       if ((step == m_.nsteps || d.grid_id > 1) && since >= 0 && since % iv == 0) ring = 1;
     } else if (a == 51) {
@@ -949,7 +960,7 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
     } else if (a == 52) {
       // set_timekeeping creates d01's boundary alarm ringing; only med_latbound_in of a specified boundary (real
       // data) turns it off
-      ring = g.bc_x == BC::Specified || g.bc_y == BC::Specified ? 0 : 1;
+      ring = specified && !bdy_due ? 0 : 1;
     } else if (a == 55) {  // created at the start of this run (the restart time of a resumed run)
       secs = int(-(el - std::lround(restart_sec_)));
     }

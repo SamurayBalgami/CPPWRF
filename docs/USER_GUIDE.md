@@ -328,6 +328,17 @@ files are identical to WRF real*8's (`tests/verify/run_wrf_files_test.sh`, ctest
 The one exception is RQCBLTEN / RQIBLTEN in runs without cloud water / ice, which WRF leaves
 uninitialised.
 
+File names follow WRF's `history_outname` and `rst_outname` (default `wrfout_d<domain>_<date>` and
+`wrfrst_d<domain>_<date>`; `<domain>`, `<date>`, `<year>`, `<month>`, `<day>` and `<hour>` are replaced
+as WRF's construct_filename2a does). The files are written to `output.dir`, so the translator rejects a
+name with a directory part. With `frames_per_outfile`, a new file starts every that many frames, as in
+WRF. CPPWRF writes NetCDF (`io_form_history = 2` and `io_form_restart = 2`); other io_forms (e.g.
+11, parallel NetCDF) are errors. WRF writes no auxiliary history or input streams by default (every
+`io_form_auxhistN` / `io_form_auxinputN` is 0). An auxhist stream with an interval and an io_form is
+an error. Other stream options (auxinput streams other than sst_update's wrflowinp, auxinput4) are
+errors when they change what wrf.exe reads or writes. ndown.exe (one-way
+nesting from a parent run's wrfout) is not part of CPPWRF.
+
 ### Restart Files & Resuming Simulations
 `restart.interval` (seconds) writes restart files. With `output.format = wrfout`, CPPWRF writes WRF's
 `wrfrst_d0N_<date>` files, including the restart stream, the alarm global attributes and every
