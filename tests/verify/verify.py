@@ -368,6 +368,8 @@ def run_compare(a, b, rtol):
         rep.print()
         return rep
     A, B = read_snap(a, common[-1]), read_snap(b, common[-1])
+    for k in sorted(set(A) ^ set(B)):  # a variable one run writes and the other does not
+        rep.add(k, "FAIL", f"only in {a if k in A else b}")
     for k in sorted(A):
         if k.startswith("_") or k not in B:
             continue

@@ -37,20 +37,26 @@ def main(exe, work):
     common = ["time.time_step_sound=4", "dyn.emdiv=0", "run.run_time=1800"]
     run(exe, "configs/squall2d.ini", a, *common)
     run(exe, "configs/squall2d.ini", b, *common, "domain.dx=2000", "domain.map_factor=2")
-    worst = 0.0
-    for s in V.list_steps(a):
+    worst, steps = 0.0, V.list_steps(a)
+    for s in steps:
         sa, sb = V.read_snap(a, s), V.read_snap(b, s)
         for k in ("th_pert", "u", "w", "mu", "qv", "qc", "qr", "p"):
-            worst = max(worst, float(np.abs(sa[k] - sb[k]).max()))
-    rep.check("map_factor_invariance", worst == 0.0, f"max |m=2,dx=2km - m=1,dx=1km| = {worst:.3e} (must be 0)")
+            d = np.abs(sa[k] - sb[k])
+            worst = max(worst, float(d.max()) if np.isfinite(d).all() else np.inf)  # NaN: max() would drop it
+    same = steps and steps == V.list_steps(b)
+    rep.check("map_factor_invariance", same and worst == 0.0,
+              f"max |m=2,dx=2km - m=1,dx=1km| = {worst:.3e} (must be 0) over {len(steps)} snapshots"
+              + ("" if same else f" (snapshots {steps} vs {V.list_steps(b)})"))
     c = os.path.join(work, "inertial")
     run(exe, "configs/inertial.ini", c)
-    err = 0.0
-    for s in V.list_steps(c):
+    err, steps = 0.0, V.list_steps(c)
+    for s in steps:
         sn = V.read_snap(c, s)
         t, f, u0 = sn["_time"], 1e-3, 10.0
-        err = max(err, abs(sn["u"].mean() - u0 * np.cos(f * t)), abs(sn["v"].mean() + u0 * np.sin(f * t)))
-    rep.check("coriolis_inertial", err <= 1e-3, f"max |(u,v) - exact| = {err:.2e} m/s over one period (tol 1e-3)")
+        e = max(abs(sn["u"].mean() - u0 * np.cos(f * t)), abs(sn["v"].mean() + u0 * np.sin(f * t)))
+        err = max(err, e if np.isfinite(e) else np.inf)
+    rep.check("coriolis_inertial", bool(steps) and err <= 1e-3,
+              f"max |(u,v) - exact| = {err:.2e} m/s over one period (tol 1e-3, {len(steps)} snapshots)")
     rep.print()
     return 1 if rep.failed else 0
 

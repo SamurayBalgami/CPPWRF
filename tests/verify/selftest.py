@@ -146,6 +146,13 @@ def main():
     a, b = os.path.join(tmp, "straka_good"), os.path.join(tmp, "straka_asym")
     expect("compare identical", verify.run_compare(a, a, 1e-12), False, failures)
     expect("compare different", verify.run_compare(a, b, 1e-6), True, failures)
+    c = os.path.join(tmp, "straka_no_w")  # a variable the other run does not write
+    write_run(c)
+    write_diag(c, diag_ok)
+    f = fields_for(straka_like(), nx, nz)
+    del f["w"]
+    write_snap(c, 1800, 900.0, f)
+    expect("compare missing variable", verify.run_compare(a, c, 1e-6), True, failures)
 
     exact_faults(tmp, failures)
 
