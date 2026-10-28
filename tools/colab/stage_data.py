@@ -8,7 +8,9 @@ name, so the remote side sets CPPWRF_WRF_RUNS to the unpacked directory and runs
 followed. Left out: other history and restart files, rsl/log files, met_em input, executables and the
 large tables no ported scheme reads; the Thompson .dat tables only for mp_physics = 8 (and not with
 --no-thompson-tables: CPPWRF then computes them, close to but not bit-identical with WRF's files). The reference
-wrfout files keep only the frames and variables tests/verify/compare_real.py compares.
+wrfout files keep only the frames the cases compare, and every variable for a tolerance-0 case (wrf_suite.py
+compares all of them) or else the variables tests/verify/compare_real.py compares. The ideal cases' references
+come with their namelist.input (wrf_suite.py checks the configuration and the global attributes with it).
 """
 import argparse
 import fnmatch
@@ -37,15 +39,15 @@ COMPARED = ["Times", "XTIME", "U", "V", "W", "PH", "PHB", "MU", "MUB", "P", "PB"
             "QSNOW", "QGRAUP", "QNICE", "QNRAIN", "TKE", "RAINNC", "THM"]
 
 
-def trimmed(src, times, dst):
-    """src with only the frames at `times` (seconds) and the compared variables."""
+def trimmed(src, times, dst, every_variable):
+    """src with only the frames at `times` (seconds) and the compared variables (every_variable: all)."""
     with nc.Dataset(src) as a, nc.Dataset(dst, "w", format="NETCDF4") as b:
         xt = np.array(a["XTIME"][:], dtype=float) * 60.0
         frames = [i for i, t in enumerate(xt) if any(abs(t - u) < 1e-6 for u in times)]
         for n, d in a.dimensions.items():
             b.createDimension(n, None if d.isunlimited() else len(d))
         b.setncatts({k: a.getncattr(k) for k in a.ncattrs()})
-        for n in COMPARED:
+        for n in (list(a.variables) if every_variable else COMPARED):
             if n not in a.variables:
                 continue
             v = a[n]
@@ -75,6 +77,7 @@ def main():
     want = a.only.split(",")
     dirs = {}  # run directory -> history files to keep, Thompson tables needed
     ref_times = {}  # reference wrfout -> compared times
+    exact = set()  # reference wrfout files of tolerance-0 cases
     ideal = set()  # files under CPPWRF_WRF_REF: ideal-case soundings and reference wrfout files
     if any("straka" in o for o in want):
         ideal.add(os.path.join(WREF, "run_straka_d1", "wrfout_d01_0001-01-01_00:00:00"))
@@ -87,6 +90,7 @@ def main():
             if snd:
                 ideal.add(snd.replace("${CPPWRF_WRF_REF}", WREF))
             ideal.update(r for r in refs if r.startswith(WREF))
+            ideal.update(os.path.join(os.path.dirname(r), "namelist.input") for r in refs if r.startswith(WREF))
             print(f"{name}: ideal ({len(refs)} reference files)")
             continue
         rd = next((s.split("=", 1)[1] for s in sets if s.startswith("real.dir=")), None)
@@ -102,6 +106,8 @@ def main():
             d = dirs.setdefault(os.path.dirname(r), [set(), False])
             d[0].add(os.path.basename(r))
             ref_times.setdefault(r, set()).add(float(t))
+            if all(x == 0.0 for x in tol.values()):
+                exact.add(r)
         d = dirs.setdefault(rd, [set(), False])
         d[1] = d[1] or (mp.strip() == "8" and not a.no_thompson_tables)
         print(f"{name}: {os.path.relpath(rd, WR)}")
@@ -115,7 +121,7 @@ def main():
                 if p in ref_times:
                     with tempfile.TemporaryDirectory() as tmp:
                         q = os.path.join(tmp, f)
-                        trimmed(p, ref_times[p], q)
+                        trimmed(p, ref_times[p], q, p in exact)
                         tf.add(q, arcname=arc)
                 elif f in THOMPSON or not any(fnmatch.fnmatch(f, s) for s in SKIP):
                     tf.add(p, arcname=arc, recursive=False)
