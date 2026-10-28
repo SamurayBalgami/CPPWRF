@@ -8,8 +8,9 @@
 # ${CPPWRF_WRF_RUNS}/rst_<C>_r8 (tests/verify/make_restart_refs.sh: restart every minute) and
 # ${CPPWRF_WRF_RUNS}/rsm_<C>_r8 (make_resumed_refs.sh: WRF resumed from rst_<C>_r8 at minute 1; CPPWRF
 # resumes from the same wrfrst file).
-# RQCBLTEN and RQIBLTEN are not compared: without qc/qi WRF leaves them uninitialised. Neither are QZ0 and
-# USTM of f1 (fractional sea ice with sfclayrev): WRF averages them with uninitialised open-water locals.
+# RQCBLTEN / RQIBLTEN are not compared when WRF's file has no QCLOUD / QICE: without qc / qi WRF leaves them
+# uninitialised. Neither are QZ0 and USTM of f1 (fractional sea ice with sfclayrev): WRF averages them with
+# uninitialised open-water locals.
 # MYNN's first step depends on a restart alarm ringing at its end (solve_em's restart_flag), so its history
 # with restart_interval 1 differs from the plain run: mynn (no restart files) and mynnr (rst_/rsm_ only).
 set -uo pipefail
@@ -20,7 +21,14 @@ if [ -z "${CPPWRF_WRF_RUNS:-}" ] || [ ! -d "${CPPWRF_WRF_RUNS}" ]; then
 fi
 BUILD_DIR=${1:-${REPO_ROOT}/build}; shift || true
 EXE=${BUILD_DIR}/cppwrf
-CMP="python3 ${REPO_ROOT}/tests/init_real/compare_real.py --ignore RQCBLTEN,RQIBLTEN"
+CMP="python3 ${REPO_ROOT}/tests/init_real/compare_real.py --ignore"
+# the variables not compared in WRF's file $1 (case $2): RQCBLTEN / RQIBLTEN without QCLOUD / QICE, f1's QZ0 / USTM
+ignored() {
+  python3 -c 'import sys, netCDF4
+v = netCDF4.Dataset(sys.argv[1]).variables
+print(",".join([x for x, q in (("RQCBLTEN", "QCLOUD"), ("RQIBLTEN", "QICE")) if q not in v]
+               + (["QZ0", "USTM"] if sys.argv[2] == "f1" else []) or ["-"]))' "$1" "$2"
+}
 WORK=${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}/wrf_files_test
 R=${CPPWRF_WRF_RUNS}
 cd "$REPO_ROOT"
@@ -94,8 +102,7 @@ while IFS='|' read -r name cfg ref rst extra; do
       b=$(basename "$f"); dom=${b:7:3}
       ours=$WORK/$name/$b; [ -f "$ours" ] || ours=$WORK/$name/$dom/$b
       if [ ! -f "$ours" ]; then echo "FAIL $name: $b not written"; ok=0; continue; fi
-      cmp=$CMP; [ "$name" = f1 ] && cmp="$CMP,QZ0,USTM"
-      $cmp "$ours" "$f" > "$WORK/$name/cmp.log" 2>&1 || { ok=0; echo "FAIL $name $b"; head -20 "$WORK/$name/cmp.log"; }
+      $CMP "$(ignored "$f" "$name")" "$ours" "$f" > "$WORK/$name/cmp.log" 2>&1 || { ok=0; echo "FAIL $name $b"; head -20 "$WORK/$name/cmp.log"; }
       n=$((n + 1))
     done
   done
@@ -110,8 +117,7 @@ while IFS='|' read -r name cfg ref rst extra; do
     else
       for f in "$rsm"/wrfout_d0*; do
         b=$(basename "$f"); ours=$rdir/$b; [ -f "$ours" ] || ours=$rdir/${b:7:3}/$b
-        cmp=$CMP; [ "$name" = f1 ] && cmp="$CMP,QZ0,USTM"
-        $cmp "$ours" "$f" > "$rdir/cmp.log" 2>&1 || { ok=0; echo "FAIL $name resumed $b"; head -20 "$rdir/cmp.log"; }
+        $CMP "$(ignored "$f" "$name")" "$ours" "$f" > "$rdir/cmp.log" 2>&1 || { ok=0; echo "FAIL $name resumed $b"; head -20 "$rdir/cmp.log"; }
         n=$((n + 1))
       done
     fi

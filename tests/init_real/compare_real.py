@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""Compare a cppwrf_real output file with WRF real.exe's: every variable's values (tolerance 0),
+"""Compare a cppwrf_real output file with WRF real.exe's: every variable's values (tolerance 0, as
+tests/verify/exact.py: NaN equals only NaN, -0 differs from +0, values as stored),
 the variable list and order, dimensions, types, variable attributes and global attributes.
 TITLE is ignored (it names the program). Exit status 1 on any difference.
 Also used for wrfout/wrfrst files (tests/verify/run_wrf_files_test.sh); --ignore VAR,... skips the
 values of the listed variables.
 
   compare_real.py [--ignore VAR,...] cppwrf_file wrf_file"""
+import os
 import sys
 
 import numpy as np
 from netCDF4 import Dataset
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "verify"))
+import exact  # noqa: E402
 
 
 def values(a, b, skip=()):
@@ -31,10 +36,10 @@ def values(a, b, skip=()):
             print('%-14s shape %s vs %s' % (n, x.shape, y.shape))
             bad += 1
             continue
-        nd = int((x != y).sum())
-        if nd:
+        dif = exact.describe(x, y)
+        if dif:
             bad += 1
-            print('%-14s ndiff=%d/%d maxabs=%.3e' % (n, nd, x.size, np.abs(x - y).max()))
+            print('%-14s %s' % (n, dif))
     return bad
 
 
@@ -81,7 +86,7 @@ def main():
         args = args[2:]
     if len(args) != 2:
         sys.exit('usage: compare_real.py [--ignore VAR,...] cppwrf_file wrf_file')
-    a, b = Dataset(args[0]), Dataset(args[1])
+    a, b = exact.raw(Dataset(args[0])), exact.raw(Dataset(args[1]))
     nv = values(a, b, skip)
     nm = metadata(a, b, {'TITLE'})
     print('%s: %d variables differ, %d metadata differences' % (args[1], nv, nm))
