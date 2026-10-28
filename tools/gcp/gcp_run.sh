@@ -6,13 +6,15 @@
 #
 # The bucket holds the reference data once (tools/colab/stage_data.py's tar, uploaded with
 # `gcloud storage cp`; --data names them, comma-separated, default suite_data.tar,ideal_data.tar); the source is the committed HEAD.
-# Before the suite the VM runs tests/tools/test_wrf2cppwrf.py (the translator; OUT/unit.log).
+# Before the suite the VM runs tests/tools/test_wrf2cppwrf.py (the translator; OUT/unit.log); after the full suite
+# (no --cases) tests/verify/run_wrf_files_test.sh and ideal_files_test.py (OUT/files.log, OUT/idealfiles.log).
 # The VM is a spot VM (Debian 13: the same gcc and glibc as the reference workstation) that powers
 # itself off at the end and is deleted here; --max-run-duration deletes it in any case. The zones are tried
 # in order until one has the machine (spot capacity varies). Use Intel machines (c3, n2, n1): glibc's
 # libmvec log differs on AMD, so AMD runs are not bit-identical to Intel-made WRF references.
 # Exit status 0 only for a complete suite without FAIL or SKIP (wrf_suite.py's SUITE line and exit 0), passing
-# translator tests and comparator self-test (tests/verify/selftest.py), and no data or build failure on the VM; a
+# translator tests and comparator self-test (tests/verify/selftest.py), files tests without FAIL or SKIP (full
+# suite), and no data or build failure on the VM; a
 # VM that ends early is INCOMPLETE (status 1).
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -38,7 +40,7 @@ ZONE=
 for z in ${ZONES//,/ }; do
   if gcloud compute instances create "$VM" --project "$P" --zone "$z" --machine-type "$MACHINE" \
        --provisioning-model=SPOT --instance-termination-action=DELETE --max-run-duration="${MAXH}h" \
-       --image-family=debian-13 --image-project=debian-cloud --boot-disk-size=60GB --boot-disk-type=pd-balanced \
+       --image-family=debian-13 --image-project=debian-cloud --boot-disk-size=200GB --boot-disk-type=pd-balanced \
        --scopes=storage-rw --metadata-from-file=startup-script="$REPO/tools/gcp/remote_suite.sh" \
        --metadata="^@^bucket=$BK@src=src/$STAMP.tar.gz@data=$DATA@result=$RES@jobs=$JOBS@threads=$THREADS@cases=$CASES" \
        > "$OUT/create.log" 2>&1; then ZONE=$z; break; fi
@@ -68,4 +70,12 @@ grep -q "^exit 0$" "$OUT/unit.log" 2>/dev/null || { echo "[gcp_run] translator t
 grep -q "^exit 0$" "$OUT/selftest.log" 2>/dev/null || { echo "[gcp_run] comparator self-test: $(grep -E "WRONG|SELFTEST" "$OUT/selftest.log" 2>/dev/null || echo 'no selftest.log')"; bad=1; }
 if ! grep -q "^SUITE " "$OUT/suite.log" 2>/dev/null; then echo "[gcp_run] INCOMPLETE: the suite did not end (no SUITE line)"; bad=1
 else grep "^SUITE " "$OUT/suite.log"; grep -q "^exit 0$" "$OUT/suite.log" || bad=1; fi
+if [ -z "$CASES" ]; then  # the full suite: the output files tests too (remote_suite.sh)
+  for f in files idealfiles; do
+    if [ ! -f "$OUT/$f.log" ]; then echo "[gcp_run] INCOMPLETE: no $f.log"; bad=1; continue; fi
+    echo "$f: PASS $(grep -c '^PASS ' "$OUT/$f.log") FAIL $(grep -c '^FAIL ' "$OUT/$f.log") SKIP $(grep -c '^SKIP ' "$OUT/$f.log")"
+    grep -E "^(FAIL|SKIP) " "$OUT/$f.log" | cut -c1-200
+    grep -E "^exit [1-9]" "$OUT/$f.log" && bad=1
+  done
+fi
 exit $bad

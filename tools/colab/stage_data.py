@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pack the WRF reference data that the selected wrf_suite.py cases read, for a run on another machine.
 
-  stage_data.py --only NAME[,NAME] [--no-thompson-tables] OUT.tar
+  stage_data.py --only NAME[,NAME] [--no-thompson-tables] [--whole] [--refs-only] [--no-steps] OUT.tar|-
 
 Each case's run directory (real.dir of its configuration or of its --set overrides) is written under its own
 name, so the remote side sets CPPWRF_WRF_RUNS to the unpacked directory and runs the same suite. Links are
@@ -11,6 +11,10 @@ large tables no ported scheme reads; the Thompson .dat tables only for mp_physic
 wrfout files keep only the frames the cases compare, and every variable for a tolerance-0 case (wrf_suite.py
 compares all of them) or else the variables tests/verify/compare_real.py compares. The ideal cases' references
 come with their namelist.input (wrf_suite.py checks the configuration and the global attributes with it).
+--whole: the reference files whole (every frame and variable: wrf_suite.py then compares every frame up to the case's
+time; it needs no work, so OUT can be - for a tar on stdout, e.g. | gcloud storage cp - gs://BUCKET/X.tar, which
+writes nothing locally); --refs-only: only the reference files (and the ideal namelists), not the run directories;
+--no-steps: no reference in a steps/ directory (tools/gcp/stage_files_data.py packs those whole).
 """
 import argparse
 import fnmatch
@@ -72,8 +76,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", required=True)
     ap.add_argument("--no-thompson-tables", action="store_true")
+    ap.add_argument("--whole", action="store_true")
+    ap.add_argument("--refs-only", action="store_true")
+    ap.add_argument("--no-steps", action="store_true")
     ap.add_argument("out")
     a = ap.parse_args()
+    log = (lambda *x: print(*x, file=sys.stderr)) if a.out == "-" else print  # stdout may be the tar
     want = a.only.split(",")
     dirs = {}  # run directory -> history files to keep, Thompson tables needed
     ref_times = {}  # reference wrfout -> compared times
@@ -91,34 +99,39 @@ def main():
                 ideal.add(snd.replace("${CPPWRF_WRF_REF}", WREF))
             ideal.update(r for r in refs if r.startswith(WREF))
             ideal.update(os.path.join(os.path.dirname(r), "namelist.input") for r in refs if r.startswith(WREF))
-            print(f"{name}: ideal ({len(refs)} reference files)")
+            log(f"{name}: ideal ({len(refs)} reference files)")
             continue
         rd = next((s.split("=", 1)[1] for s in sets if s.startswith("real.dir=")), None)
         rd = rd or config_value(cfg, "real", "dir")
         if not rd or "${CPPWRF_WRF_RUNS}" not in rd and not rd.startswith(WR):
-            print(f"{name}: skipped (not a real-data case of CPPWRF_WRF_RUNS)")
+            log(f"{name}: skipped (not a real-data case of CPPWRF_WRF_RUNS)")
             continue
         rd = rd.replace("${CPPWRF_WRF_RUNS}", WR)
         mp = next((s.split("=", 1)[1] for s in sets if s.startswith("phys.mp_physics=")), None)
         mp = mp or config_value(cfg, "phys", "mp_physics") or "0"
-        refs = wo.values() if isinstance(wo, dict) else [wo]
+        refs = [r for r in (wo.values() if isinstance(wo, dict) else [wo]) if not (a.no_steps and "/steps/" in r)]
         for r in refs:
             d = dirs.setdefault(os.path.dirname(r), [set(), False])
             d[0].add(os.path.basename(r))
             ref_times.setdefault(r, set()).add(float(t))
             if all(x == 0.0 for x in tol.values()):
                 exact.add(r)
-        d = dirs.setdefault(rd, [set(), False])
+        d = dirs.setdefault(rd, [set(), False]) if not a.refs_only else [set(), False]
         d[1] = d[1] or (mp.strip() == "8" and not a.no_thompson_tables)
-        print(f"{name}: {os.path.relpath(rd, WR)}")
-    with tarfile.open(a.out, "w", dereference=True) as tf:
+        log(f"{name}: {os.path.relpath(rd, WR)}")
+    tf = tarfile.open(fileobj=sys.stdout.buffer, mode="w|", dereference=True) if a.out == "-" else \
+        tarfile.open(a.out, "w", dereference=True)
+    with tf:
         for d, (keep, thompson) in sorted(dirs.items()):
             for f in sorted(os.listdir(d)):
                 p = os.path.join(d, f)
-                if os.path.isdir(p) or (f in THOMPSON and not thompson):
+                if os.path.isdir(p) or (f in THOMPSON and not thompson) or \
+                        (a.refs_only and p not in ref_times and f not in ("namelist.input", "myoutfields.txt")):
                     continue
                 arc = os.path.join("wrf_runs", os.path.relpath(p, WR))
-                if p in ref_times:
+                if p in ref_times and a.whole:
+                    tf.add(p, arcname=arc, recursive=False)
+                elif p in ref_times:
                     with tempfile.TemporaryDirectory() as tmp:
                         q = os.path.join(tmp, f)
                         trimmed(p, ref_times[p], q, p in exact)
@@ -129,8 +142,9 @@ def main():
             if os.path.exists(p):
                 tf.add(p, arcname=os.path.join("wrf_ref", os.path.relpath(p, WREF)), recursive=False)
             else:
-                print(f"missing: {p}")
-    print(f"{a.out}: {os.path.getsize(a.out) / 2**20:.0f} MiB, {len(dirs)} directories")
+                log(f"missing: {p}")
+    if a.out != "-":
+        print(f"{a.out}: {os.path.getsize(a.out) / 2**20:.0f} MiB, {len(dirs)} directories")
 
 
 if __name__ == "__main__":
