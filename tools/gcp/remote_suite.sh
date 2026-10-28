@@ -8,16 +8,21 @@ md() { curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/com
 B=$(md bucket) SRC=$(md src) DATA=$(md data) RES=$(md result) JOBS=$(md jobs) THR=$(md threads) CASES=$(md cases)
 J=/opt/job; mkdir -p $J; exec > $J/job.log 2>&1
 put() { gcloud storage cp "$@" "gs://$B/$RES/" || true; }
-trap 'put $J/job.log; date > $J/done; put $J/done; poweroff' EXIT
+trap 'put $J/job.log $J/setup.out; date > $J/done; put $J/done; poweroff' EXIT
 set -x
 export DEBIAN_FRONTEND=noninteractive
 apt-get -qq update && apt-get -qq install -y build-essential cmake libnetcdf-dev python3-netcdf4 python3-numpy > /dev/null
 gcloud storage cp "gs://$B/$SRC" $J/src.tar.gz
 mkdir -p $J/src $J/data && tar xzf $J/src.tar.gz -C $J/src
-for d in ${DATA//,/ }; do gcloud storage cp "gs://$B/$d" $J/data.tar && tar xf $J/data.tar -C $J/data && rm $J/data.tar; done
+# a data tar that did not arrive or a failed build: setup.out (gcp_run.sh then exits with 1)
+touch $J/setup.out
+for d in ${DATA//,/ }; do
+  { gcloud storage cp "gs://$B/$d" $J/data.tar && tar xf $J/data.tar -C $J/data && rm $J/data.tar; } || echo "DATA_FAILED $d" >> $J/setup.out
+done
 cmake -S $J/src -B $J/build -DCMAKE_BUILD_TYPE=Release -DCPPWRF_DOUBLE=ON -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_NATIVE=OFF \
-  -DCMAKE_CXX_FLAGS="-march=skylake -mtune=skylake" > $J/cmake.log 2>&1 && cmake --build $J/build -j"$(nproc)" --target cppwrf >> $J/cmake.log 2>&1
-put $J/cmake.log
+  -DCMAKE_CXX_FLAGS="-march=skylake -mtune=skylake" > $J/cmake.log 2>&1 && cmake --build $J/build -j"$(nproc)" --target cppwrf >> $J/cmake.log 2>&1 \
+  || echo "BUILD_FAILED (cmake.log)" >> $J/setup.out
+put $J/cmake.log $J/setup.out
 cd $J/src
 # the translator's unit tests (tests/tools/test_wrf2cppwrf.py: namelists of the data's WRF runs, 2-step model runs)
 CPPWRF_WRF_RUNS=$J/data/wrf_runs CPPWRF_WRF_REF=$J/data/wrf_ref CPPWRF_BIN=$J/build/cppwrf OMP_NUM_THREADS=1 \

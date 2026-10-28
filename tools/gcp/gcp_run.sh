@@ -11,6 +11,8 @@
 # itself off at the end and is deleted here; --max-run-duration deletes it in any case. The zones are tried
 # in order until one has the machine (spot capacity varies). Use Intel machines (c3, n2, n1): glibc's
 # libmvec log differs on AMD, so AMD runs are not bit-identical to Intel-made WRF references.
+# Exit status 0 only for a complete suite without FAIL or SKIP (wrf_suite.py's SUITE line and exit 0), passing
+# translator tests and no data or build failure on the VM; a VM that ends early is INCOMPLETE (status 1).
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_GCP_PROJECT:?set CPPWRF_GCP_PROJECT}" "${CPPWRF_GCP_BUCKET:?set CPPWRF_GCP_BUCKET}"
@@ -45,14 +47,23 @@ for z in ${ZONES//,/ }; do
 done
 [ -n "$ZONE" ] || { echo "[gcp_run] no zone has $MACHINE now"; cat "$OUT/create.log"; exit 1; }
 echo "[gcp_run] $VM ($MACHINE spot, $ZONE): results to gs://$BK/$RES"
+gone=0
 while :; do
   sleep 60
   if gcloud storage ls "gs://$BK/$RES/done" --project "$P" > /dev/null 2>&1; then break; fi
   st=$(gcloud compute instances describe "$VM" --zone "$ZONE" --project "$P" --format='value(status)' 2>/dev/null || echo GONE)
-  case $st in RUNNING|STAGING|PROVISIONING) ;; *) echo "[gcp_run] VM $st (preempted?)"; break ;; esac
+  case $st in RUNNING|STAGING|PROVISIONING) gone=0 ;; *) gone=$((gone + 1)) ;; esac
+  # three checks in a row: one failed describe call (network) must not end a running job
+  [ $gone -lt 3 ] || { echo "[gcp_run] VM $st (preempted?)"; break; }
 done
 gcloud storage cp "gs://$BK/$RES/*" "$OUT/" --project "$P" -q || true
 rm -f "$OUT/src.tar.gz"; gcloud storage rm "gs://$BK/src/$STAMP.tar.gz" --project "$P" -q || true
 echo "[gcp_run] results in $OUT"
-for k in PASS FAIL SKIP; do echo "$k $(grep -c "^$k" "$OUT/suite.log" 2>/dev/null)"; done
-grep -E "^FAIL" "$OUT/suite.log" 2>/dev/null || true
+for k in PASS FAIL SKIP; do echo "$k $(grep -c "^$k " "$OUT/suite.log" 2>/dev/null || true)"; done
+grep -E "^(FAIL|SKIP|ERROR) " "$OUT/suite.log" 2>/dev/null || true
+bad=0
+cat "$OUT/setup.out" 2>/dev/null | grep . && bad=1
+grep -q "^exit 0$" "$OUT/unit.log" 2>/dev/null || { echo "[gcp_run] translator tests: $(tail -1 "$OUT/unit.log" 2>/dev/null || echo 'no unit.log')"; bad=1; }
+if ! grep -q "^SUITE " "$OUT/suite.log" 2>/dev/null; then echo "[gcp_run] INCOMPLETE: the suite did not end (no SUITE line)"; bad=1
+else grep "^SUITE " "$OUT/suite.log"; grep -q "^exit 0$" "$OUT/suite.log" || bad=1; fi
+exit $bad

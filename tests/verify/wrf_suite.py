@@ -4,12 +4,21 @@ reference run, with the tolerance that the current code meets. Run after every c
 dycore, boundaries, diffusion or physics coupling.
 
   wrf_suite.py --cpu-dp <build>/cppwrf --cuda <build>/cppwrf [--cuda-dp <build>/cppwrf] [--out DIR] [--only NAME[,NAME]]
-               [--exact] [--jobs N]   (N CPU cases at once, each with OMP_NUM_THREADS threads)
+               [--exact] [--jobs N]   (N CPU cases at once, each with OMP_NUM_THREADS threads) [--allow-skip]
 
-Exit status 0 = all PASS. Cases whose reference or binary is missing are SKIPped (reported).
+Cases with tolerance 0 (CPU FP64) run with WRF history output and their wrfout files are compared with WRF's at
+tolerance 0 (exact.py: NaN equals only NaN, -0 differs from +0): every variable of the reference file, every
+reference frame up to the case's time (the final one must be there), types and variable attributes, and the
+global attributes when the reference's namelist.input is there (CPPWRF's history then reads it). The other
+cases compare the model state with the reference's by relative L2 at the case's time (compare_real.py).
+Only the cases of the given binaries are selected; a given binary that does not exist is an error (exit 2).
+Exit status 0 = every selected case PASSed; a case whose reference is missing is a SKIP and fails the suite unless
+--allow-skip. The last line counts the results.
 """
 import argparse
+import glob
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -21,7 +30,8 @@ WR = os.environ.setdefault("CPPWRF_WRF_RUNS", os.path.expanduser("~/wrf_real480"
 os.environ.setdefault("CPPWRF_WRF_REF", os.path.expanduser("~/wrf_ref480"))
 WREF = os.environ["CPPWRF_WRF_REF"]
 
-# name, binary key, config, extra --set, WRF wrfout, time [s], {var: max rel L2 (whole domain)}
+# name, binary key, config, extra --set, WRF wrfout, time [s], {var: max rel L2 (whole domain)}; all 0.0: compared
+# exactly in every variable of the wrfout file (the list names the variables that matter most for the case)
 CASES = [
     # CPU FP64 real-data dycore: bit-identical to WRF (every field, every step; libmvec lanes, WRF's
     # summation orders and halo schedule reproduced)
@@ -438,7 +448,7 @@ CASES = [
     ("wdamp_w1_fp64", "cpu_dp", "configs/real_r3.ini",
      ["real.dir=" + f"{WR}/run_W1_r8", "time.dt=450", "run.run_time=4500", "output.out_interval=1",
       "output.diag_interval=1"], f"{WR}/run_W1_r8/wrfout_d01_2026-10-12_00:00:00", 4500,
-     {"U": 1e-11, "W": 1e-10, "THM": 1e-13}),
+     {"U": 0.0, "W": 0.0, "THM": 0.0}),
 ]
 
 
@@ -450,6 +460,29 @@ def run(binary, cfg, sets, out):
     env = dict(os.environ, OMP_NUM_THREADS=os.environ.get("OMP_NUM_THREADS", "3"))
     r = subprocess.run(cmd, cwd=REPO, env=env, capture_output=True, text=True)
     return r.returncode, r.stdout + r.stderr
+
+
+def exact_case(refs, out, t, sets):
+    """Tolerance-0 comparison of the wrfout files in `out` (out/<domain> for nests) with the references {domain:
+    wrfout}: (differences, summary)."""
+    import netCDF4
+    import exact
+    bad, frames, nvars = [], 0, 0
+    for dom, w in refs.items():
+        d = dom or re.search(r"wrfout_(d\d\d)_", os.path.basename(w)).group(1)
+        with netCDF4.Dataset(w) as ds:
+            xt = [float(x) * 60.0 for x in ds["XTIME"][:]]
+            final = [exact.text(ds["Times"], i).decode() for i, x in enumerate(xt) if abs(x - t) < 1e-6]
+            nvars += sum(1 for v in ds.variables.values() if v.dimensions[:1] == ("Time",) and v.dtype.kind != "S")
+        if not final:
+            bad.append(f"{d}: the reference has no frame at t={t:g}s")
+            continue
+        mine = glob.glob(os.path.join(out, f"wrfout_{d}_*")) + glob.glob(os.path.join(out, d, f"wrfout_{d}_*"))
+        dif, n = exact.compare_stream(mine, [w], subset=True, until=final[0],
+                                      global_atts=os.path.exists(os.path.join(os.path.dirname(w), "namelist.input")))
+        frames += n
+        bad += [f"{d}.{k}: {v}" for k, v in dif.items()]
+    return bad, f"{frames} frames, {nvars} variables"
 
 
 def compare(wrfout, out, t):
@@ -501,6 +534,7 @@ def main():
     ap.add_argument("--exact", action="store_true", help="--only names are exact case names")
     ap.add_argument("--jobs", type=int, default=1, help="CPU cases run at the same time (GPU cases: one at a time)")
     ap.add_argument("--keep", action="store_true", help="keep the outputs of passing cases (default: deleted)")
+    ap.add_argument("--allow-skip", action="store_true", help="cases without their reference do not fail the suite")
     a = ap.parse_args()
     only = a.only.split(",") if a.only else None
 
@@ -513,9 +547,18 @@ def main():
 
     def case(name, b, cfg, sets, refs, t, tol):
         out = os.path.join(a.out, name)
+        exact = all(x == 0.0 for x in tol.values())
+        if exact:  # WRF history output; with the reference's namelist.input CPPWRF writes WRF's global attributes
+            nl = os.path.join(os.path.dirname(next(iter(refs.values()))), "namelist.input")
+            sets = sets + ["output.format=wrfout"] + ([f"output.wrf_namelist={nl}"] if os.path.exists(nl) else [])
         rc, log = run(b, cfg, sets, out)
         if rc != 0:
             return False, f"FAIL  {name:22s} run failed: {log[-200:]}"
+        if exact:
+            bad, what = exact_case(refs, out, t, sets)
+            done(out, not bad)
+            return not bad, (f"{'PASS' if not bad else 'FAIL'}  {name:22s} t={t:g}s exact: {what}"
+                             + (f"  [{'; '.join(x[:300] for x in bad[:6])}{' ...' if len(bad) > 6 else ''}]" if bad else ""))
         res = {}
         for dom, w in refs.items():  # nested: out/<domain>, tolerance keys "<domain>.<var>"
             for v, x in compare(w, os.path.join(out, dom) if dom else out, t).items():
@@ -529,19 +572,26 @@ def main():
     def special(name, fn, path):
         good, msg = fn()
         if good is None:
-            return True, f"SKIP  {name:22s} ({msg})"
+            return None, f"SKIP  {name:22s} ({msg})"
         done(path, good)
         return good, f"{'PASS' if good else 'FAIL'}  {name:22s} {msg}"
 
     bins = {"cpu_dp": a.cpu_dp, "cuda": a.cuda, "cuda_dp": a.cuda_dp}
-    cpu, gpu, ok = [], [], True
+    for k, b in bins.items():  # a binary that was asked for and is not there (a failed build) is no SKIP
+        if b and not os.path.exists(b):
+            print(f"ERROR --{k.replace('_', '-')} {b}: no such file (build failed?)", flush=True)
+            sys.exit(2)
+    cpu, gpu = [], []
+    count = {"PASS": 0, "FAIL": 0, "SKIP": 0}
     for name, key, cfg, sets, wo, t, tol in CASES:
-        if not wanted(name):
+        if not wanted(name) or not bins.get(key):  # cases of binaries not given are not selected
             continue
-        b = bins.get(key)
+        b = bins[key]
         refs = wo if isinstance(wo, dict) else {"": wo}  # nested runs: {domain: wrfout}
-        if not b or not os.path.exists(b) or not all(os.path.exists(w) for w in refs.values()):
-            print(f"SKIP  {name:22s} (binary or reference missing)", flush=True)
+        missing = [w for w in refs.values() if not os.path.exists(w)]
+        if missing:
+            print(f"SKIP  {name:22s} (reference missing: {', '.join(missing)})", flush=True)
+            count["SKIP"] += 1
             continue
         (cpu if key == "cpu_dp" else gpu).append((t, lambda n=name, b=b, c=cfg, s=sets, r=refs, t=t, tl=tol: case(n, b, c, s, r, t, tl)))
     if a.cpu_dp and os.path.exists(a.cpu_dp):
@@ -574,8 +624,9 @@ def main():
         for f in as_completed(futs):
             good, line = f.result()
             print(line, flush=True)
-            ok &= good
-    sys.exit(0 if ok else 1)
+            count["SKIP" if good is None else "PASS" if good else "FAIL"] += 1
+    print(f"SUITE PASS {count['PASS']} FAIL {count['FAIL']} SKIP {count['SKIP']}", flush=True)
+    sys.exit(0 if not count["FAIL"] and (a.allow_skip or not count["SKIP"]) else 1)
 
 
 if __name__ == "__main__":
