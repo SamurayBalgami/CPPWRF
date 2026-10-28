@@ -113,17 +113,6 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
       cfg.get_string("output.wrf_schema", std::string(CPPWRF_DATA_DIR) + "/wrf_schema/wrf-4.8.0.tsv")));
   // the nest feedback (u= fields) does not depend on the I/O streams: the Registry masks before iofields_filename
   fb_schema_ = std::make_unique<wrf_io::WrfSchema>(*schema_);
-  {  // iofields_filename: runtime additions to / removals from the stream masks (relative to the run dir)
-    wrf_io::WrfConfig c0(*nl_, schema_->defaults(), domain_tag_.size() == 3 ? std::atoi(domain_tag_.c_str() + 1) : 1);
-    std::string io = c0.get("iofields_filename");
-    if (!io.empty() && io.front() == '"') io = io.substr(1, io.size() - 2);
-    if (!io.empty() && io != "NONE_SPECIFIED") {
-      const std::string nl_dir = std::filesystem::path(nl_path).parent_path().string();
-      if (io.front() != '/' && !nl_dir.empty()) io = nl_dir + "/" + io;
-      if (!schema_->apply_iofields(io) && !c0.logical("ignore_iofields_warning"))
-        throw std::runtime_error("wrfout: cannot read iofields_filename " + io);
-    }
-  }
   const int dom = domain_tag_.size() == 3 ? std::atoi(domain_tag_.c_str() + 1) : 1;
   wc_ = std::make_unique<wrf_io::WrfConfig>(*nl_, schema_->defaults(), dom, &schema_->entries());
   // the model's options (INI configuration) where namelist.input does not set them
@@ -199,6 +188,9 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
       c.set(p, "0");
   }
   wrf_io::derive_config(*wc_, std::max(1, wc_->integer("max_dom")), false);
+  // iofields_filename (input_wrf / output_wrf: modify_io_masks) for the variables in use in this run; the model
+  // reads wrfinput (i:0) and wrflowinp (i:4) whole
+  wrf_io::apply_iofields_option(*schema_, *wc_, std::filesystem::path(nl_path).parent_path().string(), {25, 29});
   frames_per_outfile_ = std::max(1, wc_->integer("frames_per_outfile"));
   if (cfg.get_int("phys.sst_update", 0) == 1)
     auxinput4_interval_s_ = cfg.get_double("phys.auxinput4_interval", 360.0) * 60.0;

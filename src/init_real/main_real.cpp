@@ -3,6 +3,7 @@
 //   cppwrf_real [--namelist namelist.input] [--met-dir dir] [--out-dir dir] [--precision double|float]
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <iostream>
 #include <stdexcept>
@@ -17,7 +18,7 @@ using namespace cppwrf::init_real;
 
 template <typename T>
 static int run(const RealOptions& o, const Namelist& nl, const WrfSchema& sc, const std::string& met_dir,
-               const std::string& out_dir) {
+               const std::string& out_dir, const std::string& nml_dir) {
   RealDomain<T> dom(o);
   WrfConfig cfg(nl, sc.defaults(), o.dom, &sc.entries());
   char dn[8];
@@ -26,6 +27,11 @@ static int run(const RealOptions& o, const Namelist& nl, const WrfSchema& sc, co
     if (cfg.integer(opt) != 0) throw std::runtime_error(std::string("real: ") + opt + " is not ported");
   cppwrf::wrf_io::derive_config(cfg, o.max_dom, true);
   cfg.set("num_soil_layers", std::to_string(o.num_soil_layers));  // set_physics_rconfigs
+  {  // iofields_filename (input_wrf / output_wrf: modify_io_masks): met_em (i:1), wrfinput (i:0) and wrflowinp
+     // (i:4) are read and written whole
+    WrfSchema io = sc;
+    cppwrf::wrf_io::apply_iofields_option(io, cfg, nml_dir, {25, 26, 29});
+  }
   const Dims& d = dom.d;
   // compute_si_start_and_end (real_em.F): the times start, start + interval, ... up to end
   if (o.end_date < o.start_date)
@@ -143,7 +149,9 @@ int main(int argc, char** argv) {
     for (int id = 1; id <= o1.max_dom; ++id) {
       const RealOptions o = RealOptions::from_namelist(nl, sc, id);
       if (id > 1 && !o.input_from_file) continue;  // real_em.F: only domains with input_from_file
-      const int rc = prec == "float" ? run<float>(o, nl, sc, met_dir, out_dir) : run<double>(o, nl, sc, met_dir, out_dir);
+      const std::string nml_dir = std::filesystem::path(nml).parent_path().string();
+      const int rc = prec == "float" ? run<float>(o, nl, sc, met_dir, out_dir, nml_dir)
+                                     : run<double>(o, nl, sc, met_dir, out_dir, nml_dir);
       if (rc != 0) return rc;
     }
     return 0;

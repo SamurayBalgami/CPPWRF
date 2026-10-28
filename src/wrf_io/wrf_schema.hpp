@@ -75,6 +75,13 @@ struct OutVar {
   const SchemaMember* member = nullptr;
 };
 
+// What iofields_filename did to the stream masks (WrfSchema::apply_iofields).
+struct IofieldsResult {
+  bool warning = false;  // modify_io_masks1's gavewarning: WRF stops unless ignore_iofields_warning
+  std::string message;   // its last W A R N I N G
+  std::vector<std::pair<int, std::string>> changed;  // (stream bit, DataName) of every mask the file changed
+};
+
 class WrfSchema {
  public:
   static WrfSchema load(const std::string& path);
@@ -100,9 +107,10 @@ class WrfSchema {
   std::vector<const SchemaMember*> boundary_members(const std::string& array, const WrfConfig& c) const;
   bool in_use(const std::vector<SchemaCond>& conds, const WrfConfig& c) const;
   // namelist iofields_filename (frame/module_domain.F modify_io_masks1): lines op:stream:id:fields with op
-  // + or -, stream h (history, auxhist id) or i (input, auxinput id); fields by DataName. Returns false
-  // when the file cannot be read.
-  bool apply_iofields(const std::string& path);
+  // + or -, stream h (history, auxhist id) or i (input, auxinput id); fields by DataName among the variables
+  // and 4-D array members in use for `c` (WRF's state variable list). Reading stops at the first blank line;
+  // a line with a '#' anywhere is skipped.
+  IofieldsResult apply_iofields(const std::string& path, const WrfConfig& c);
   const SchemaVar* find(const std::string& varname) const;
 
  private:
@@ -111,5 +119,11 @@ class WrfSchema {
   std::vector<SchemaVar> vars_;
   std::vector<SchemaMember> members_;
 };
+
+// The namelist's iofields_filename of domain c.domain() (a max_domains option: a domain without an entry
+// has none) applied to `s` as WRF's modify_io_masks; a relative name is looked up in `dir` (WRF's run
+// directory). Errors: a warning without ignore_iofields_warning (WRF stops), and a change of the masks of
+// the input streams `input_bits` (25 + n for auxinput n; CPPWRF reads those files whole).
+void apply_iofields_option(WrfSchema& s, const WrfConfig& c, const std::string& dir, const std::vector<int>& input_bits);
 
 }  // namespace cppwrf::wrf_io
