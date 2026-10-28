@@ -422,8 +422,6 @@ UNSUPPORTED_PHYSICS_SWITCHES = {
     "seaice_albedo_opt": "Sea-ice albedo option",
     "grav_settling": "Fog/droplet gravitational settling",
     "ra_call_offset": "Radiation call offset",
-    "isftcflx": "Alternative tropical cyclone surface flux formulation",
-    "iz0tlnd": "Alternative thermal roughness length over land",
     "shalwater_z0": "Shallow-water roughness formulation",
     "scm_force_flux": "Single-column model prescribed surface flux",
     "rdlai2d": "2D LAI read from input (Noah)",
@@ -1297,6 +1295,18 @@ class WrfTranslator:
                     tofd_factor = self.get_opt("physics", "tofd_factor", 0.003)
                     if tofd_factor != 0.003:
                         sections["phys"]["tofd_factor"] = tofd_factor
+                # sf_sfclayrev.F90: isftcflx (z0t / z0q and roughness over water) and iz0tlnd (z0t over land); WRF
+                # passes them to the surface layers only (MYJSFC ignores them, Noah-MP's IZ0TLND is "not used");
+                # iz0tlnd > 2 leaves czil undefined in WRF; the MYNN surface layer's forms are not ported
+                for key in ("isftcflx", "iz0tlnd"):
+                    val = self.get_opt("physics", key, 0)
+                    if val not in (0, 1, 2):
+                        self.error(f"WRF {key} = {val} is not supported; CPPWRF supports 0, 1 and 2.")
+                    elif val != 0:
+                        if 5 in self.get_opt_list("physics", "sf_sfclay_physics")[:max(1, self._max_dom)]:
+                            self.error(f"WRF {key} = {val} with sf_sfclay_physics = 5 (MYNN surface layer) is not "
+                                       "supported by CPPWRF.")
+                        sections["phys"][key] = val
 
                 if bl_pbl == 5 or sf_sfclay == 5:
                     # MYNN: only WRF's default options are ported (Registry.EM_COMMON)
