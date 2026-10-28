@@ -201,7 +201,8 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
   frames_per_outfile_ = std::max(1, wc_->integer("frames_per_outfile"));
   if (cfg.get_int("phys.sst_update", 0) == 1)
     auxinput4_interval_s_ = cfg.get_double("phys.auxinput4_interval", 360.0) * 60.0;
-  outname_ = "wrfout_" + domain_tag_ + "_";
+  hist_outname_ = wc_->get("history_outname");  // the file names of open_hist_w / med_restart_out
+  rst_outname_ = wc_->get("rst_outname");
   if (!real_dir.empty()) {
     wrfinput_ = real_dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_" + domain_tag_);
     if (domain_tag_ != "d01") wrfinput_ = real_dir + "/wrfinput_" + domain_tag_;
@@ -901,7 +902,7 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
   time_sec_ = time_sec;
   const std::string date = wrf_io::add_seconds(start_date_, std::lround(time_sec));
   std::filesystem::create_directories(out_dir_);
-  const std::string path = out_dir_ + "/wrfrst_" + domain_tag_ + "_" + date;
+  const std::string path = out_dir_ + "/" + wrf_io::stream_filename(rst_outname_, std::stoi(domain_tag_.substr(1)), date);
   const Grid& g = m_.g;
   wrf_io::DomainAtts d = domain_atts();
   // output_wrf restart_only: the alarms WRF created (all but 26 and 54) at this time; the history alarm has
@@ -952,7 +953,7 @@ void WrfHistory::write(long step, double time_sec) {
   if (!file_ || file_->records() >= std::size_t(frames_per_outfile_)) {
     file_.reset();
     std::filesystem::create_directories(out_dir_);
-    const std::string path = out_dir_ + "/" + outname_ + date;
+    const std::string path = out_dir_ + "/" + wrf_io::stream_filename(hist_outname_, std::stoi(domain_tag_.substr(1)), date);
     const Grid& g = m_.g;
     const wrf_io::DomainAtts d = domain_atts();
     std::vector<wrf_io::OutVar> vars = schema_->history_vars(*wc_, g.nx + 1, g.ny * jrep_ + 1, g.nz + 1, int(sizeof(real)));

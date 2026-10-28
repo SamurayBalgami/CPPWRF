@@ -20,6 +20,19 @@ void julgmt(const std::string& date, int& julyr, int& julday, double& gmt) {
   gmt = double(h) + double(mi) / 60. + double(sec) / 3600.;
 }
 
+std::string stream_filename(std::string r, int domain_id, const std::string& date) {
+  if (r.size() >= 2 && (r.front() == '\'' || r.front() == '"') && r.back() == r.front()) r = r.substr(1, r.size() - 2);
+  while (!r.empty() && r.back() == ' ') r.pop_back();
+  char id[16];
+  std::snprintf(id, sizeof id, "%02d", domain_id);  // zero_pad(t1, id, 2)
+  // each tag replaced everywhere in turn, as construct_filename2a's loops
+  for (const auto& [tag, val] : {std::pair<std::string, std::string>{"<domain>", id}, {"<date>", date},
+                                 {"<year>", date.substr(0, 4)}, {"<month>", date.substr(5, 2)},
+                                 {"<day>", date.substr(8, 2)}, {"<hour>", date.substr(11, 2)}})
+    for (std::size_t i = r.find(tag); i != std::string::npos; i = r.find(tag)) r.replace(i, tag.size(), val);
+  return r;
+}
+
 std::string add_seconds(const std::string& date, long seconds) {
   int y = std::atoi(date.substr(0, 4).c_str()), m = std::atoi(date.substr(5, 2).c_str()),
       d = std::atoi(date.substr(8, 2).c_str());

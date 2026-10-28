@@ -759,9 +759,7 @@ class WrfTranslator:
                     "history_end_s"):
             if any(x not in (0, None) for x in self.get_opt_list("time_control", key)[:max(1, self._max_dom)]):
                 self.error(f"WRF {key} is not supported (CPPWRF writes the history from the start to the end).")
-        outname = str(self.get_opt("time_control", "history_outname", "wrfout_d<domain>_<date>")).strip()
-        if outname != "wrfout_d<domain>_<date>":
-            self.error(f"WRF history_outname = '{outname}' is not supported; CPPWRF writes wrfout_d<domain>_<date>.")
+        self.check_outname("history_outname", "wrfout_d<domain>_<date>")
         io_form = self.get_opt("time_control", "io_form_history", 2)
         if io_form != 2:
             self.error(f"WRF io_form_history = {io_form} is not supported; CPPWRF writes NetCDF (2).")
@@ -771,6 +769,14 @@ class WrfTranslator:
                   for x in self.get_opt_list("time_control", f"auxhist{n}_interval{k}")[:max(1, self._max_dom)]]
             if any(x not in (0, None) for x in iv) and self.get_opt("time_control", f"io_form_auxhist{n}", 0) != 0:
                 self.error(f"WRF auxhist{n} output (auxhist{n}_interval, io_form_auxhist{n}) is not supported by CPPWRF.")
+
+    def check_outname(self, key, default):
+        """history_outname / rst_outname: the model names its files as WRF's construct_filename2a (<domain>, <date>,
+        <year>, <month>, <day>, <hour>) in output.dir; a directory part or an empty name is not supported."""
+        outname = str(self.get_opt("time_control", key, default)).strip()
+        if not outname or "/" in outname:
+            self.error(f"WRF {key} = '{outname}' is not supported (CPPWRF writes the files into output.dir: a name "
+                       "without a directory).")
 
     def check_iofields_input(self):
         """iofields_filename lines for the input streams i:0 (wrfinput) and i:4 (wrflowinp): WRF's input_wrf then reads
@@ -1922,13 +1928,11 @@ class WrfTranslator:
         if self.get_opt("time_control", "write_restart_at_0h", False):
             self.error("WRF write_restart_at_0h = .true. is not supported.")
         if restart_m and restart_m > 0:
-            # the restart file of every domain is wrfrst_d0N_<date> in NetCDF (med_restart_out, output_restart)
+            # the restart file of every domain (med_restart_out, output_restart) in NetCDF, named by rst_outname
             io_form_rst = self.get_opt("time_control", "io_form_restart", 2)
             if io_form_rst != 2:
                 self.error(f"WRF io_form_restart = {io_form_rst} is not supported; CPPWRF writes NetCDF (2).")
-            rst_outname = self.get_opt("time_control", "rst_outname", "wrfrst_d<domain>_<date>")
-            if rst_outname != "wrfrst_d<domain>_<date>":
-                self.error(f"WRF rst_outname = '{rst_outname}' is not supported; CPPWRF writes wrfrst_d<domain>_<date>.")
+            self.check_outname("rst_outname", "wrfrst_d<domain>_<date>")
             # nests: med_restart_out writes every domain when d01's restart alarm rings, each domain's own alarm
             # (DomainRunner) rings at the same times only when the interval is a multiple of d01's time step
             steps = restart_m * 60 / dt_val

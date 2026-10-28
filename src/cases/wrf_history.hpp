@@ -60,7 +60,7 @@ class WrfHistory {
   bool from_wrfinput(const std::string& name, std::size_t n, std::vector<double>& out);
 
   const Model& m_;
-  std::string out_dir_, domain_tag_, start_date_, wrfinput_, outname_;
+  std::string out_dir_, domain_tag_, start_date_, wrfinput_, hist_outname_, rst_outname_;
   std::vector<const Field2*> f2_;
   std::vector<const Field3*> f3_;
   std::unique_ptr<wrf_io::Namelist> nl_;

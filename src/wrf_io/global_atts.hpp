@@ -45,5 +45,9 @@ void write_global_atts(NcOut& nc, const WrfConfig& c, const DomainAtts& d, Strea
 void julgmt(const std::string& date, int& julyr, int& julday, double& gmt);
 // date + seconds (geth_newdate), yyyy-mm-dd_hh:mm:ss
 std::string add_seconds(const std::string& date, long seconds);
+// construct_filename2a (share/module_io_domain.F): a stream's file name from its namelist name (history_outname,
+// rst_outname; quotes and trailing blanks removed): <domain> -> the 2-digit domain id, <date>, <year>, <month>,
+// <day>, <hour> -> parts of date (nocolons is not ported)
+std::string stream_filename(std::string basename, int domain_id, const std::string& date);
 
 }  // namespace cppwrf::wrf_io

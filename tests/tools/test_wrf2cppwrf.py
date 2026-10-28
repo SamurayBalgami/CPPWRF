@@ -1000,7 +1000,7 @@ class TestWrfNamelistSemantics(unittest.TestCase):
                           (self.FULL + "&afwa afwa_diag_opt = 1 /\n", "afwa_diag_opt"),
                           (self.FULL.replace("&domains ", "&domains perturb_input = .true., "), "perturb_input"),
                           (self.FULL.replace("&time_control ", "&time_control io_form_history = 102, "), "io_form_history = 102"),
-                          (self.FULL.replace("&time_control ", "&time_control history_outname = 'out_d<domain>', "),
+                          (self.FULL.replace("&time_control ", "&time_control history_outname = 'out/x_d<domain>', "),
                            "history_outname")):
             self.assertTrue(any(err in e for e in self.errors(text)), (text, err))
         for text in (self.FULL.replace("&physics ", "&physics tempo_aerosolaware = 0, "),
@@ -1008,6 +1008,22 @@ class TestWrfNamelistSemantics(unittest.TestCase):
                      self.FULL.replace("&physics ", "&physics nssl_2moment_on = 1, "),
                      self.FULL.replace("&dynamics ", "&dynamics damp_opt = 0, zdamp = 3000., ")):
             self.assertEqual(self.errors(text), [], text)
+
+    def test_output_file_names(self):
+        # history_outname / rst_outname: the model names its files as construct_filename2a does; a directory part
+        # (CPPWRF writes into output.dir) or an empty name is an error
+        def errors(extra):
+            t = WrfTranslator(parse_namelist(self.FULL.replace("&time_control ", "&time_control history_interval = 1, " + extra)),
+                              output_format="wrfout")
+            t.translate()
+            return t.errors
+        for extra in ("history_outname = 'hist_d<domain>_<year><month><day>_<hour>', ",
+                      "restart_interval = 1, rst_outname = 'rst_d<domain>_<date>.nc', "):
+            self.assertEqual(errors(extra), [], extra)
+        for extra, err in (("history_outname = 'out/wrfout_d<domain>_<date>', ", "history_outname"),
+                           ("history_outname = '', ", "history_outname"),
+                           ("restart_interval = 1, rst_outname = '/x/wrfrst_d<domain>', ", "rst_outname")):
+            self.assertTrue(any(err in e for e in errors(extra)), (extra, errors(extra)))
 
     def test_input_file_checks(self):
         # input_wrf.F stops when e_we / e_sn / e_vert / num_land_cat differ from the input (r32ewe, r32nlc): the
