@@ -1015,6 +1015,7 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
     k.itimestep = int(itimestep);
     k.restart = restart_flag;  // module_surface_driver.F: restart=restart_flag
     k.isfflx = o_.isfflx;
+    k.sfcflux_land = o_.sf_mynn_sfcflux_land; k.sfcflux_water = o_.sf_mynn_sfcflux_water;
     k.xice_threshold = xice_threshold;
     column_for(cols, k);
   }

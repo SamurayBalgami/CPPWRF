@@ -796,14 +796,17 @@ class TestValidationAndWarnings(unittest.TestCase):
             self.assertEqual(any("gwd_opt must be equal for all domains" in e for e in t.errors), bad, gwd)
 
     def test_nest_mynn_options_checked_on_every_domain(self):
-        """sf_mynn_sfcflux_land / _water are max_domains options: a nest's non-default value is an error too."""
+        """sf_mynn_sfcflux_land / _water are max_domains options: CPPWRF needs one value on all domains; the GFS
+        forms (land 4, water 5) are not ported."""
         doms = ("&domains time_step = 60, max_dom = 2, e_we = 100, 61, e_sn = 100, 61, e_vert = 45, 45,"
                 " parent_id = 0, 1, i_parent_start = 1, 30, j_parent_start = 1, 30,"
                 " parent_grid_ratio = 1, 3, parent_time_step_ratio = 1, 3 /\n")
         phys = "mp_physics = 6, 6, sf_sfclay_physics = 5, 5, sf_surface_physics = 2, 2, bl_pbl_physics = 5, 5"
         for opt, bad in (("sf_mynn_sfcflux_water = 1, 0", True), ("sf_mynn_sfcflux_water = 1, 1", False),
                          ("sf_mynn_sfcflux_water = 1", False), ("sf_mynn_sfcflux_land = 0, 2", True),
-                         ("sf_mynn_sfcflux_land = 0", False)):
+                         ("sf_mynn_sfcflux_land = 0", False), ("sf_mynn_sfcflux_water = 0, 0", False),
+                         ("sf_mynn_sfcflux_land = 2, 2", False), ("sf_mynn_sfcflux_water = 2*5", True),
+                         ("sf_mynn_sfcflux_land = 2*4", True)):
             t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n{doms}&physics {phys}, {opt} /\n")))
             t.translate()
             self.assertEqual(any("sf_mynn_sfcflux" in e for e in t.errors), bad, (opt, t.errors))
@@ -1061,7 +1064,10 @@ class TestWrfNamelistSemantics(unittest.TestCase):
                                     ("tke_budget", "1", "tke_budget", 1),
                                     ("bl_mynn_tkeadvect", ".true.", "bl_mynn_tkeadvect", True),
                                     ("bl_mynn_closure", "2.5", "bl_mynn_closure", 2.5),
-                                    ("bl_mynn_closure", "3.0", "bl_mynn_closure", 3.0)):
+                                    ("bl_mynn_closure", "3.0", "bl_mynn_closure", 3.0),
+                                    ("sf_mynn_sfcflux_land", "2", "sf_mynn_sfcflux_land", 2),
+                                    ("sf_mynn_sfcflux_water", "0", "sf_mynn_sfcflux_water", 0),
+                                    ("isftcflx", "1", "isftcflx", 1), ("iz0tlnd", "2", "iz0tlnd", 2)):
             t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n&domains time_step = 60 /\n{base}{opt} = {val} /\n")))
             cfg = t.translate()
             self.assertEqual(t.errors, [], (opt, val))
@@ -1070,7 +1076,8 @@ class TestWrfNamelistSemantics(unittest.TestCase):
                               ("bl_mynn_mixlength", "3", "bl_mynn_mixlength = 3"),
                               ("bl_mynn_closure", "2.7", "bl_mynn_closure = 2.7"),
                               ("bl_mynn_mixnumcon", "1", "bl_mynn_mixnumcon = 1"),
-                              ("sf_mynn_sfcflux_water", "0", "sf_mynn_sfcflux_water = 0")):
+                              ("sf_mynn_sfcflux_water", "5", "sf_mynn_sfcflux_water = 5"),
+                              ("sf_mynn_sfcflux_land", "4", "sf_mynn_sfcflux_land = 4")):
             t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n&domains time_step = 60 /\n{base}{opt} = {val} /\n")))
             t.translate()
             self.assertIn(err, " ".join(t.errors), (opt, val))

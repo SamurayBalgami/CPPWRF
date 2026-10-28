@@ -1,8 +1,9 @@
 #pragma once
 // module_sf_mynnsfc_water.F90 (WRF v4.8.0 phys/MYNN-SFC), subroutine mynnsfc_water, for WRF's call from
 // mynnsfc_driver: flag_iter = .true., spp_sfc = 0, psi_opt = 0, sfc_z0_type = 0, compute_flux = compute_diag =
-// .true., sf_mynn_sfcflux_water = 1 (COARE 3.5: Edson et al. 2013 z0, Fairall et al. 2014 zt / zq),
-// shalwater_z0 = 0. Other options are rejected by the configuration.
+// .true., shalwater_z0 = 0, sf_mynn_sfcflux_water 0 (COARE 3.0), 1 (COARE 3.5: Edson et al. 2013 z0, Fairall et
+// al. 2014 zt / zq), 2 / 3 (Davis et al. 2008 z0; Fairall 2014 / Garratt 1992 zt) or 4 (Taylor and Yelland
+// 2001 z0); 5 (GFS) is rejected by the configuration.
 #include "phys/sf_mynn/mynnsfc_land.hpp"
 
 namespace cppwrf::phys::mynnsfc {
@@ -18,6 +19,56 @@ CPPWRF_HD inline void edson_etal_2013(real& z_0, real ustar, real wsp10, real vi
   z_0 = czc * ustar * ustar * g_inv + (real(0.11) * visc / c_max(ustar, real(0.05)));
   z_0 = c_max(z_0, real(1.27e-7));
   z_0 = c_min(z_0, real(2.85e-3));
+}
+
+CPPWRF_HD inline void coare30_znt(real& z_0, real ustar, real wsp10, real visc, real zu) {
+  constexpr real czo2 = real(0.011);
+  const real wsp10m = wsp10 * std::log(ten / real(1e-4)) / std::log(zu / real(1e-4));
+  const real czc = czo2 + real(0.007) * c_min(c_max((wsp10m - ten) / real(8.), zero), one);
+  z_0 = czc * ustar * ustar * g_inv + (real(0.11) * visc / c_max(ustar, real(0.05)));
+  z_0 = c_max(z_0, real(1.27e-7));
+  z_0 = c_min(z_0, real(2.85e-3));
+}
+
+CPPWRF_HD inline void davis_etal_2008(real& z_0, real ustar) {
+  constexpr real ozo = real(1.59e-5);
+  const real zw = c_min(std::pow(ustar / real(1.06), real(0.3)), one);
+  const real zn1 = real(0.011) * ustar * ustar * g_inv + ozo;
+  const real zn2 = ten * std::exp(-(real(9.5) * std::pow(ustar, -p333))) +
+                   real(0.11) * real(1.5e-5) / c_max(ustar, real(0.01));
+  z_0 = (one - zw) * zn1 + zw * zn2;
+  z_0 = c_max(z_0, real(1.27e-7));
+  z_0 = c_min(z_0, real(2.85e-3));
+}
+
+CPPWRF_HD inline void taylor_yelland_2001(real& z_0, real ustar, real wsp10) {
+  (void)ustar;
+  constexpr real pi = real(3.14159265);
+  const real hs = real(0.0248) * (wsp10 * wsp10);
+  const real tp = real(0.729) * c_max(wsp10, real(0.1));
+  const real lp = grav * (tp * tp) / (two * pi);
+  z_0 = real(1200.) * hs * std::pow(hs / lp, real(4.5));
+  z_0 = c_max(z_0, real(1.27e-7));
+  z_0 = c_min(z_0, real(2.85e-3));
+}
+
+// garratt_1992 of the water module with landsea = 2 (the water branch)
+CPPWRF_HD inline void garratt_1992_water(real& zt, real& zq, real z_0, real ren) {
+  zt = z_0 * std::exp(two - (real(2.48) * std::pow(ren, real(0.25))));
+  zq = z_0 * std::exp(two - (real(2.28) * std::pow(ren, real(0.25))));
+  zq = c_min(zq, real(5.5e-5));
+  zq = c_max(zq, real(2.0e-9));
+  zt = c_min(zt, real(5.5e-5));
+  zt = c_max(zt, real(2.0e-9));
+}
+
+CPPWRF_HD inline void fairall_etal_2003(real& zt, real& zq, real ren) {
+  zt = (real(5.5e-5)) * std::pow(ren, real(-0.60));  // both branches of WRF's ren <= 2 test are the same
+  zq = zt;
+  zt = c_min(zt, real(1.0e-4));
+  zt = c_max(zt, real(2.0e-9));
+  zq = c_min(zq, real(1.0e-4));
+  zq = c_max(zq, real(2.0e-9));
 }
 
 CPPWRF_HD inline void fairall_etal_2014(real& zt, real& zq, real ren) {
@@ -71,11 +122,17 @@ CPPWRF_HD inline void mynnsfc_water(const SfcIn& in, real lakemask, SfcPoint& o,
 
   const real visc = real(1.326e-5) * (one + real(6.542e-3) * tc_1 + real(8.301e-6) * tc_1 * tc_1 -
                                       real(4.84e-9) * tc_1 * tc_1 * tc_1);
-  edson_etal_2013(o.znt, o.ust, o.wspd, visc, za);  // sfc_z0_type >= 0
+  // sfc_z0_type >= 0
+  if (in.sfcflux_water == 0) coare30_znt(o.znt, o.ust, o.wspd, visc, za);
+  else if (in.sfcflux_water == 1) edson_etal_2013(o.znt, o.ust, o.wspd, visc, za);
+  else if (in.sfcflux_water == 2 || in.sfcflux_water == 3) davis_etal_2008(o.znt, o.ust);
+  else taylor_yelland_2001(o.znt, o.ust, o.wspd);  // 4
   const real zntstoch = o.znt;
   const real restar = c_max(o.ust * zntstoch / visc, p1);
   real zt, zq;
-  fairall_etal_2014(zt, zq, restar);
+  if (in.sfcflux_water == 0) fairall_etal_2003(zt, zq, restar);
+  else if (in.sfcflux_water == 3) garratt_1992_water(zt, zq, zntstoch, restar);
+  else fairall_etal_2014(zt, zq, restar);  // 1, 2, 4
 
   o.gz1oz0 = std::log((za + zntstoch) / zntstoch);
   const real gz1ozt = std::log((za + zntstoch) / zt);

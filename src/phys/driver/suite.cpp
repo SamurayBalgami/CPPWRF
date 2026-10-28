@@ -127,8 +127,11 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   // isftcflx / iz0tlnd: sfclayrev's forms (MYJSFC ignores them as WRF's); iz0tlnd > 2 leaves czil undefined in WRF
   if (o.isftcflx < 0 || o.isftcflx > 2 || o.iz0tlnd < 0 || o.iz0tlnd > 2)
     throw std::runtime_error("PhysicsSuite: isftcflx and iz0tlnd must be 0, 1 or 2");
-  if (o.sf_sfclay_physics == 5 && (o.isftcflx != 0 || o.iz0tlnd != 0))
-    throw std::runtime_error("PhysicsSuite: isftcflx / iz0tlnd with sf_sfclay_physics=5 (MYNN surface layer) are not ported");
+  // the MYNN surface layer reads sf_mynn_sfcflux_land / _water (isftcflx / iz0tlnd do not reach it in WRF 4.8);
+  // their GFS forms (4 / 5) are not ported
+  if (o.sf_sfclay_physics == 5 && (o.sf_mynn_sfcflux_land < 0 || o.sf_mynn_sfcflux_land > 3 ||
+                                   o.sf_mynn_sfcflux_water < 0 || o.sf_mynn_sfcflux_water > 4))
+    throw std::runtime_error("PhysicsSuite: sf_mynn_sfcflux_land 0..3 and sf_mynn_sfcflux_water 0..4 are ported");
   if (o.sf_sfclay_physics == 5 && o.fractional_seaice == 1)
     throw std::runtime_error("PhysicsSuite: sf_sfclay_physics=5 with fractional_seaice=1 (MYNN_SEAICE_WRAPPER) is not ported");
   if (o.cu_physics != 0 && o.cu_physics != 1 && o.cu_physics != 3 && o.cu_physics != 6 && o.cu_physics != 16)

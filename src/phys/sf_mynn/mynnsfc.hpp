@@ -20,6 +20,7 @@ struct MynnSfcKernel {
   int itimestep = 1;
   bool restart = false;
   int isfflx = 1;
+  int sfcflux_land = 0, sfcflux_water = 1;  // sf_mynn_sfcflux_land / _water
   real xice_threshold = real(0.5);
 
   CPPWRF_HD void operator()(int i, int j) const {
@@ -39,6 +40,8 @@ struct MynnSfcKernel {
     in.itimestep = itimestep;
     in.flag_restart = restart;
     in.isfflx = isfflx;
+    in.sfcflux_land = sfcflux_land;
+    in.sfcflux_water = sfcflux_water;
     in.dz8w_1 = dz8w(i, j, 0);
     in.qv_1 = c_max(real(1e-8), qvmr / (one + qvmr));
     in.p_1 = p3d(i, j, 0);

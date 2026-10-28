@@ -92,6 +92,7 @@ struct SuiteOptions {
   int use_theta_m = 1;
   int ysu_topdown_pblmix = 1;
   int isftcflx = 0, iz0tlnd = 0, shalwater_z0 = 0, scm_force_flux = 0;
+  int sf_mynn_sfcflux_land = 0, sf_mynn_sfcflux_water = 1;  // MYNN surface layer z0 / zt forms
   bool kim_tofd = false;         // sfclayrev turbulent orographic form drag (WRF 4.8)
   double tofd_factor = 0.003;
   bool rdlai2d = false, usemonalb = false;

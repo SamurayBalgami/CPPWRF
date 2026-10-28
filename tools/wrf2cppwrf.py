@@ -1532,17 +1532,29 @@ class WrfTranslator:
                     if tofd_factor != 0.003:
                         sections["phys"]["tofd_factor"] = tofd_factor
                 # sf_sfclayrev.F90: isftcflx (z0t / z0q and roughness over water) and iz0tlnd (z0t over land); WRF
-                # passes them to the surface layers only (MYJSFC ignores them, Noah-MP's IZ0TLND is "not used");
-                # iz0tlnd > 2 leaves czil undefined in WRF; the MYNN surface layer's forms are not ported
+                # passes them to the surface layers only (MYJSFC ignores them, Noah-MP's IZ0TLND is "not used", the
+                # MYNN surface layer of WRF 4.8 reads sf_mynn_sfcflux_* instead); iz0tlnd > 2 leaves czil undefined
                 for key in ("isftcflx", "iz0tlnd"):
                     val = self.get_opt("physics", key, 0)
                     if val not in (0, 1, 2):
                         self.error(f"WRF {key} = {val} is not supported; CPPWRF supports 0, 1 and 2.")
                     elif val != 0:
-                        if 5 in self.get_opt_list("physics", "sf_sfclay_physics")[:max(1, self._max_dom)]:
-                            self.error(f"WRF {key} = {val} with sf_sfclay_physics = 5 (MYNN surface layer) is not "
-                                       "supported by CPPWRF.")
                         sections["phys"][key] = val
+                # module_sf_mynnsfc_land / _water.F90: the z0 / zt forms of the MYNN surface layer (max_domains options
+                # passed by mynnsfc_driver only); the GFS forms (land 4, water 5) are not ported
+                if 5 in self.get_opt_list("physics", "sf_sfclay_physics")[:max(1, self._max_dom)] or sf_sfclay == 5:
+                    for mk, mdef, mok in (("sf_mynn_sfcflux_land", 0, (0, 1, 2, 3)),
+                                          ("sf_mynn_sfcflux_water", 1, (0, 1, 2, 3, 4))):
+                        vals = self.get_opt_list("physics", mk)[:max(1, self._max_dom)] or [mdef]
+                        if any(v not in mok for v in vals):
+                            bad = next(v for v in vals if v not in mok)
+                            self.error(f"WRF {mk} = {bad} is not supported; CPPWRF's MYNN surface layer supports "
+                                       f"{mk} = {', '.join(str(v) for v in mok)}.")
+                        elif any(v != vals[0] for v in vals):
+                            self.error(f"WRF {mk} with different values per domain ({vals}) is not supported by "
+                                       "CPPWRF.")
+                        elif vals[0] != mdef:
+                            sections["phys"][mk] = vals[0]
 
                 if bl_pbl == 5 or sf_sfclay == 5:
                     # MYNN options (Registry.EM_COMMON). Most are max_domains options that WRF passes per domain
@@ -1558,8 +1570,7 @@ class WrfTranslator:
                         "bl_mynn_cloudmix": (1, (0, 1)), "bl_mynn_mixqt": (0, (0, 1)), "bl_mynn_ess": (1, (0, 1)),
                         "tke_budget": (0, (0, 1))}
                     mynn_defaults = (("bl_mynn_edmf_dd", 0), ("bl_mynn_mixaerosols", 1), ("bl_mynn_mixnumcon", 0),
-                                     ("sf_mynn_sfcflux_land", 0), ("sf_mynn_sfcflux_water", 1), ("pert_mynn", False),
-                                     ("spp_pbl", 0), ("mynn_chem_vertmx", False))
+                                     ("pert_mynn", False), ("spp_pbl", 0), ("mynn_chem_vertmx", False))
                     if bl_pbl != 5:  # the PBL options matter only with the MYNN PBL
                         mynn_defaults = tuple((k, d) for k, (d, _) in mynn_ported.items()) + mynn_defaults
                         mynn_ported = {}

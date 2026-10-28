@@ -237,6 +237,8 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.kim_tofd = cfg.get_bool("phys.kim_tofd", false);
   o.isftcflx = int(cfg.get_int("phys.isftcflx", 0));  // sfclayrev: z0t / z0q and roughness over water
   o.iz0tlnd = int(cfg.get_int("phys.iz0tlnd", 0));    // sfclayrev: z0t over land (czil)
+  o.sf_mynn_sfcflux_land = int(cfg.get_int("phys.sf_mynn_sfcflux_land", 0));    // MYNN surface layer
+  o.sf_mynn_sfcflux_water = int(cfg.get_int("phys.sf_mynn_sfcflux_water", 1));
   o.fractional_seaice = int(cfg.get_int("phys.fractional_seaice", 0));
   o.tice2tsk_if2cold = cfg.get_bool("phys.tice2tsk_if2cold", false);
   o.sst_update = int(cfg.get_int("phys.sst_update", 0));

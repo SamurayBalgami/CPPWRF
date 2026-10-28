@@ -1,18 +1,44 @@
 #pragma once
 // module_sf_mynnsfc_land.F90 (WRF v4.8.0 phys/MYNN-SFC), subroutine mynnsfc_land, for WRF's call from
 // mynnsfc_driver: flag_iter = .true., spp_sfc = 0, psi_opt = 0, compute_flux = compute_diag = .true.,
-// sf_mynn_sfcflux_land = 0 (Zilitinkevich 1995, czil = 0.095), lsm /= ruclsm. Other options are rejected
-// by the configuration.
+// lsm /= ruclsm, sf_mynn_sfcflux_land 0 / 1 (Zilitinkevich 1995), 2 (Yang et al. 2008) or 3 (Garratt 1992);
+// 4 (GFS) is rejected by the configuration.
 #include "phys/sf_mynn/mynnsfc_common.hpp"
 
 namespace cppwrf::phys::mynnsfc {
 
-// zilitinkevich_1995 with zt_opt = 0
-CPPWRF_HD inline void zilitinkevich_1995(real z_0, real& zt, real& zq, real restar) {
-  const real czil = real(0.095);
-  const real znt = z_0;
+// zilitinkevich_1995 (zt_opt = sf_mynn_sfcflux_land 0 or 1; lsm /= lsm_ruc)
+CPPWRF_HD inline void zilitinkevich_1995(real z_0, real& zt, real& zq, real restar, int zt_opt = 0) {
+  real czil, znt;
+  if (zt_opt == 1) {
+    czil = std::pow(ten, real(-0.40) * (z_0 / real(0.07)));
+    znt = z_0;
+  } else {
+    czil = real(0.095);
+    znt = z_0;
+  }
   zt = znt * std::exp(-karman * czil * std::sqrt(restar));
   zt = c_min(zt, p75 * znt);
+  zt = c_max(zt, real(0.0001));
+  zq = zt;
+}
+
+// garratt_1992 of the land module (landsea = 1: the land branch)
+CPPWRF_HD inline void garratt_1992_land(real& zt, real& zq, real z_0) {
+  zq = z_0 / real(7.4);
+  zt = zq;
+}
+
+// yang_2008 (tstar = mol; qst is only bounded, not used)
+CPPWRF_HD inline void yang_2008(real z_0, real& zt, real& zq, real ustar, real tstar, real visc) {
+  constexpr real beta = real(1.5), m = real(170.), b = real(691.);
+  real z_02 = c_min(z_0, p5);
+  z_02 = c_max(z_02, real(0.04));
+  const real renc2 = b + m * std::log(z_02);
+  const real ht = renc2 * visc / c_max(ustar, real(0.01));
+  const real tstar2 = c_min(tstar, real(-0.01));
+  zt = ht * std::exp(-beta * std::sqrt(ustar) * std::fabs(tstar2));
+  zt = c_min(zt, p75 * z_0);
   zt = c_max(zt, real(0.0001));
   zq = zt;
 }
@@ -29,6 +55,7 @@ struct SfcIn {
   bool flag_restart;
   real dx, u_1, v_1, t_1, qv_1, p_1, dz8w_1, rho_1, u_2, v_2, dz8w_2, pblh, psfcpa, mavail, tskin, tsurf, snowh;
   int isfflx;
+  int sfcflux_land = 0, sfcflux_water = 1;  // sf_mynn_sfcflux_land / _water
 };
 
 CPPWRF_HD inline void mynnsfc_land(const SfcIn& in, SfcPoint& o, const PsiTables& tb) {
@@ -81,7 +108,9 @@ CPPWRF_HD inline void mynnsfc_land(const SfcIn& in, SfcPoint& o, const PsiTables
   zntstoch = c_min(zntstoch, in.dz8w_1 * real(0.0666));
   const real restar = c_max(o.ust * zntstoch / visc, p1);
   real zt, zq;
-  zilitinkevich_1995(zntstoch, zt, zq, restar);
+  if (in.sfcflux_land <= 1) zilitinkevich_1995(zntstoch, zt, zq, restar, in.sfcflux_land);
+  else if (in.sfcflux_land == 2) yang_2008(zntstoch, zt, zq, o.ust, o.mol, visc);
+  else garratt_1992_land(zt, zq, zntstoch);  // 3
 
   o.gz1oz0 = std::log((za + zntstoch) / zntstoch);
   const real gz1ozt = std::log((za + zntstoch) / zt);
