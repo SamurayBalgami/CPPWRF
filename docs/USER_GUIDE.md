@@ -45,7 +45,7 @@ CPPWRF is engineered to match WRF ARW (v4.8.0) numerics and equations discretely
 
 - **Single-Source Kernels:** Dynamics and physics kernels run identically on CPU (OpenMP parallel loops) and GPU (CUDA device kernels) without code duplication.
 
-- **Strict IEEE Floating-Point:** Built with `-ffp-contract=off` (no fused multiply-add contraction) to maintain bitwise determinism and exact verification against Fortran reference models.
+- **Strict IEEE Floating-Point:** Built with `-ffp-contract=off` (no fused multiply-add contraction) and without fast-math, so that the CPU FP64 results are bit-identical to WRF's and do not depend on the thread count ([Required Flags and Determinism](#required-flags-and-determinism)).
 
 ---
 
@@ -85,8 +85,41 @@ cmake --build build-cuda -j4
 | `CPPWRF_DOUBLE` | `OFF` | Use double-precision floats (`real = double`) across dycore and physics |
 | `CPPWRF_ENABLE_CUDA` | Auto | Enable CUDA compilation for NVIDIA GPUs |
 | `CMAKE_CUDA_ARCHITECTURES` | `native` | Target GPU architecture (e.g. `80;90` for Ampere/Hopper) |
-| `CPPWRF_NATIVE` | `ON` | Optimize for host CPU architecture (`-march=native -ffp-contract=off`) |
+| `CPPWRF_NATIVE` | `ON` | Release builds: optimize for the host CPU (`-march=native`); `OFF` for portable binaries |
 | `CPPWRF_DIFF_TESTS` | `OFF` | Register WRF Fortran differential test suites with `ctest` |
+
+### Required Flags and Determinism
+CPU FP64 builds give WRF v4.8.0 real*8's results bit for bit only with these flags; the CMake files set or
+enforce them:
+
+- **`-ffp-contract=off`** on every C++ source, in every build type and after `CMAKE_CXX_FLAGS` (and
+  `-Xcompiler=-ffp-contract=off` for nvcc's host code). g++'s default is `-ffp-contract=fast`: with an FMA
+  target (`-march=native`, `-march=skylake`) it fuses `a*b + c` into one rounding, which WRF's gfortran build
+  (x86-64 without `-march`, so no FMA instructions) never does.
+- **No fast-math:** `-Ofast`, `-ffast-math`, `-funsafe-math-optimizations`, `-fassociative-math`,
+  `-freciprocal-math`, `-ffinite-math-only` and `-ffp-contract=fast|on` in `CMAKE_CXX_FLAGS` are a configure
+  error. They reorder sums and products and let g++ call glibc's vector math functions in other loops than
+  WRF does. In CUDA builds `--use_fast_math`, `-ftz=true`, `-prec-div=false` and `-prec-sqrt=false` in
+  `CMAKE_CUDA_FLAGS` are an error too.
+- **Optimisation level and instruction set** do not change the values (without fast-math g++ keeps every
+  operation's order, and vectorised code rounds as scalar code): Release uses `-O3` and, with
+  `CPPWRF_NATIVE=ON`, `-march=native`. The verification VMs build with `-DCPPWRF_NATIVE=OFF
+  -DCMAKE_CXX_FLAGS="-march=skylake -mtune=skylake"`.
+- **The WRF reference** must be WRF's own GNU serial build: `configure` option for gfortran (serial),
+  `FCOPTIM = -O2 -ftree-vectorize -funroll-loops`, `-fdefault-real-8` (`-fdefault-real-8 -fdefault-double-8`
+  for Thompson and MYNN), no `-march`, no OpenMP, with gfortran 14.2 and glibc 2.41 (Debian 13). Another
+  gfortran version vectorises other loops (glibc libmvec), and `-march=native` lets gfortran contract FMAs.
+- **Machine:** Intel x86-64 (the suite runs on Google Cloud c3 and n2 machines and on the reference
+  workstation); on AMD EPYC glibc's vector `log` rounds differently, so WRF and CPPWRF differ from
+  Intel-made references there.
+- **Threads:** the CPU result does not depend on `OMP_NUM_THREADS`. Every kernel writes its own grid
+  points, the radiation columns are independent (McICA seeds from each column's pressures), and the solution
+  has no floating-point sums or maxima over the domain: the w_damping CFL maxima (WRF uses them only for
+  the adaptive time step, which is not ported) and the `diag.csv` sums use `Reducer`, which sums each level in a fixed order
+  and then the levels in order, whatever the thread count.
+- **CUDA:** nvcc's defaults (`-prec-div=true`, `-prec-sqrt=true`, `-ftz=false`); device code contracts
+  FMAs (`--fmad=true`) except RRTMG's batch kernels, Thompson and the physics drivers (`--fmad=false`). GPU
+  results agree with WRF to roundoff, not bit for bit (the CUDA math library rounds differently from glibc).
 
 ---
 
