@@ -834,7 +834,10 @@ void WrfHistory::feedback_from(WrfHistory& child, int ipos, int jpos, int ratio)
     model_only_ = false;
     if (model) continue;  // the model feeds back its own fields
     std::vector<double> c;
-    if (!value(v.name, v.var->varname, v.dimlens, c)) c.assign([&] { std::size_t n = 1; for (auto l : v.dimlens) n *= l; return n; }(), 0.0);
+    // med_feedback_domain: grid%nest_mask = 0. before each nest's feedback (mediation_feedback_domain.F:115), so
+    // NEST_MASK marks the last nest fed back only (NEST_POS keeps every sibling's)
+    if (v.name == "NEST_MASK" || !value(v.name, v.var->varname, v.dimlens, c))
+      c.assign([&] { std::size_t n = 1; for (auto l : v.dimlens) n *= l; return n; }(), 0.0);
     const bool xs = v.stagger == "X", ys = v.stagger == "Y";
     std::vector<std::size_t> cd = v.dimlens;
     cd[cd.size() - 1] = std::size_t(cg.nx + (xs ? 1 : 0));
