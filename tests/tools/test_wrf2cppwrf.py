@@ -893,6 +893,11 @@ class TestWrfNamelistSemantics(unittest.TestCase):
         self.assertEqual(nml["physics"]["radt"], [None, 10])
         self.assertEqual(nml["physics"]["bldt"], [2])
         self.assertEqual(nml["dynamics"]["km_opt"], [None, None, 4])
+        # gfortran's logical input: an optional '.', then T or F (true, F, .tru); a number is an error
+        nml = parse_namelist("&bdy_control specified = true, nested = F, periodic_x = .tru /\n")
+        self.assertEqual(nml["bdy_control"], {"specified": [True], "nested": [False], "periodic_x": [True]})
+        with self.assertRaises(NamelistParseError):
+            parse_namelist("&bdy_control specified = 1 /\n")
         # radt(1) unset: the Registry default 0
         t, sec = self.translate(self.NEST + "&physics cu_physics = 2*1, radt(2) = 3 /\n")
         self.assertEqual(t.errors, [])

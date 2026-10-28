@@ -271,10 +271,18 @@ def parse_namelist(text: str) -> Dict[str, Dict[str, List[Any]]]:
                     after_sep = False
                     idx += 1
 
+            reg = REGISTRY_DEFAULTS.get(key)
+            logical = reg is not None and reg[0] == current_group and isinstance(reg[1], bool)
             cur = data[current_group].setdefault(key, [])
             for n, v in enumerate(values):
                 while len(cur) <= start + n:
                     cur.append(None)
+                if logical and v is not _NULL and v is not None and not isinstance(v, bool):
+                    # gfortran's logical input: an optional '.', then T or F; the rest of the word is skipped
+                    lm = re.match(r'\.?([tf])', v.lower()) if isinstance(v, str) else None
+                    if not lm:
+                        raise NamelistParseError(f"Line {line_num}: bad logical value '{v}' for {key}")
+                    v = lm.group(1) == 't'
                 if v is not _NULL:
                     cur[start + n] = v
             while cur and cur[-1] is None:
