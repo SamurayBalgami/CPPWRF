@@ -72,7 +72,8 @@ CASES = [
      f"{WR}/run_P1T2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
     # A01 = P1 with usemonalb = .true. (landuse_init keeps the wrfinput ALBBCK, SFLX too) and rdlai2d = .true. (Noah's
     # LAI from wrfinput); A01V = V2 with both (722 snow-covered land points: ALBEDO = SNOALB in landuse_init).
-    # The cuda_dp tolerances are provisional (P1-like, to be measured on a GPU).
+    # The A01 references leave out RQCBLTEN / RQIBLTEN (WRF's uninitialised arrays without qc / qi). The cuda_dp
+    # tolerances are provisional (P1-like, to be measured on a GPU).
     ("real_a01_r8_fp64_cpu", "cpu_dp", "configs/real_a01_r8.ini", [],
      f"{WR}/run_A01_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
      {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
