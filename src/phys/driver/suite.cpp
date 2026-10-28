@@ -97,9 +97,6 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       (o.sf_surface_physics != 2 && o.sf_surface_physics != 4) ||
       (o.bl_pbl_physics != 0 && o.bl_pbl_physics != 1 && o.bl_pbl_physics != 2 && o.bl_pbl_physics != 5))
     throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1|2|5, sf_surface_physics=2|4, bl_pbl_physics=0|1|2|5");
-  // module_physics_init: YSUSCHEME is fatal without sfclay (isfc = 1)
-  if (o.bl_pbl_physics == 1 && o.sf_sfclay_physics != 1)
-    throw std::runtime_error("PhysicsSuite: bl_pbl_physics=1 (YSU) needs sf_sfclay_physics=1, as WRF's module_physics_init");
   // module_physics_init: MYNNPBLSCHEME needs mynnsfc, sfclay or myjsfc; only mynnsfc is ported with it
   if (o.bl_pbl_physics == 5 && o.sf_sfclay_physics != 5)
     throw std::runtime_error("PhysicsSuite: bl_pbl_physics=5 is ported with sf_sfclay_physics=5 only");
