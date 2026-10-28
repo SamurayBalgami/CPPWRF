@@ -112,6 +112,11 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   if (o.bl_pbl_physics == 2 && o.isfflx == 0)
     throw std::runtime_error("PhysicsSuite: bl_pbl_physics=2 (MYJ) with isfflx=0 is not supported (WRF reads an "
                              "uninitialised CHKLOWQ)");
+  // isftcflx / iz0tlnd: sfclayrev's forms (MYJSFC ignores them as WRF's); iz0tlnd > 2 leaves czil undefined in WRF
+  if (o.isftcflx < 0 || o.isftcflx > 2 || o.iz0tlnd < 0 || o.iz0tlnd > 2)
+    throw std::runtime_error("PhysicsSuite: isftcflx and iz0tlnd must be 0, 1 or 2");
+  if (o.sf_sfclay_physics == 5 && (o.isftcflx != 0 || o.iz0tlnd != 0))
+    throw std::runtime_error("PhysicsSuite: isftcflx / iz0tlnd with sf_sfclay_physics=5 (MYNN surface layer) are not ported");
   if (o.sf_sfclay_physics == 5 && o.fractional_seaice == 1)
     throw std::runtime_error("PhysicsSuite: sf_sfclay_physics=5 with fractional_seaice=1 (MYNN_SEAICE_WRAPPER) is not ported");
   if (o.cu_physics != 0 && o.cu_physics != 1 && o.cu_physics != 3 && o.cu_physics != 6 && o.cu_physics != 16)
