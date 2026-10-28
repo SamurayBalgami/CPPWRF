@@ -134,7 +134,7 @@ struct KRadOut {
   const double* o3lw = nullptr;  // o3input != 2: RRTMG_LWRAD's ozone into O3RAD
   View3<real> o3_out;
   const double* sws = nullptr;  // SwBatchOutput::sfc into RadiationOutputs::swsfc
-  View2<real> swsfc[9];
+  View2<real> swsfc[10];
   CPPWRF_HD void operator()(int i, int j, int k) const {
     const int col = i + nx * j;
     const std::size_t q = std::size_t(k) * ncol + col;
@@ -170,6 +170,8 @@ struct KRadOut {
         swsfc[6](i, j) = real(day ? sws[std::size_t(5) * ncol + col] : 0.0);
         swsfc[7](i, j) = dirc;
         swsfc[8](i, j) = real(day ? double(dirc) / cz[col] : 0.0);
+        const real dif = swsfc[6](i, j), sd = swdown_out(i, j);
+        swsfc[9](i, j) = double(sd) > 0.001 ? real(std::min(double(dif) / double(sd), 1.0)) : real(0);
       }
     }
   }
@@ -389,7 +391,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
     }
     if (out.swsfc[0]) {
       ko.sws = q.sws;
-      for (int d = 0; d < 9; ++d) ko.swsfc[d] = out.swsfc[d]->view();
+      for (int d = 0; d < 10; ++d) ko.swsfc[d] = out.swsfc[d]->view();
     }
     parallel_for(Range3D{0, nx, 0, ny, 0, nz}, ko);
     return true;
@@ -432,7 +434,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
       hrang2(diag ? Lo2.total : 0, real(0));
   std::vector<std::vector<real>> lwd(diag ? 9 : 0, std::vector<real>(Lo2.total, real(0))),
       swd(diag ? 8 : 0, std::vector<real>(Lo2.total, real(0))),
-      swsfc(out.swsfc[0] ? 9 : 0, std::vector<real>(Lo2.total, real(0)));
+      swsfc(out.swsfc[0] ? 10 : 0, std::vector<real>(Lo2.total, real(0)));
 
 #pragma omp parallel
   {
@@ -520,6 +522,10 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, const Rad
       gsw[o2i] = real(g_sw);
       // SWDOWN = GSW/(1-ALBEDO) (all columns)
       swdown[o2i] = real(double(gsw[o2i]) / (1. - double(alb[q2])));
+      if (!swsfc.empty()) {  // DIFFUSE_FRAC (radiation_driver, after the schemes)
+        const real dif = swsfc[6][o2i], sd = swdown[o2i];
+        swsfc[9][o2i] = double(sd) > 0.001 ? real(std::min(double(dif) / double(sd), 1.0)) : real(0);
+      }
       for (int k = 0; k < nz; ++k) {
         double r = rlw[k];  // RTHRATEN = LW, then RTHRATEN = RTHRATEN + RTHRATENSW (daytime)
         if (cz > 0.0) r = r + rsw[k];

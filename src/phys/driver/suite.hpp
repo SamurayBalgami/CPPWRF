@@ -195,8 +195,8 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   Field2 uratx, vratx, tratx, ra, rs, shall;
   Field2 lwupt, lwuptc, lwdnt, lwdntc, lwupb, lwupbc, lwdnb, lwdnbc, olr, swupt, swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc;
   // RRTMG_SWRAD's surface components (restart fields): visible / near-IR direct and diffuse, direct, direct normal,
-  // diffuse, clear-sky direct and direct normal irradiance
-  Field2 swvisdir, swvisdif, swnirdir, swnirdif, swddir, swddni, swddif, swddirc, swddnic;
+  // diffuse, clear-sky direct and direct normal irradiance; the diffuse fraction (radiation_driver)
+  Field2 swvisdir, swvisdif, swnirdir, swnirdif, swddir, swddni, swddif, swddirc, swddnic, diffuse_frac;
   Field2 aclwupt, aclwuptc, aclwdnt, aclwdntc, aclwupb, aclwupbc, aclwdnb, aclwdnbc, acswupt, acswuptc, acswdnt, acswdntc, acswupb, acswupbc, acswdnb, acswdnbc;
   std::unique_ptr<RadiationDriver> rad_;
   Field3 *re_cloud_ = nullptr, *re_ice_ = nullptr, *re_snow_ = nullptr;
