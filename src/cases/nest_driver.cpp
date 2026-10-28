@@ -325,7 +325,8 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
         return;
       }
       if (sub == "spec_bdy_width") ov.push_back("real.spec_bdy_width=" + val);
-      else if (sub == "wrfinput" || sub == "wrfbdy" || sub == "dir" || sub == "bdy_interval" || sub == "nested")
+      else if (sub == "wrfinput" || sub == "wrfbdy" || sub == "dir" || sub == "bdy_interval" || sub == "nested" ||
+               sub == "e_we" || sub == "e_sn" || sub == "e_vert" || sub == "wrflowinp")
         ov.push_back("real." + sub + "=" + val);
       else if (sub == "dt" && id >= 2 && std::abs(std::stod(val) - child_dt) > 1e-9 * child_dt)
         // WRF: a nest's time step is its parent's divided by parent_time_step_ratio (the namelist value is ignored)
@@ -360,7 +361,9 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
       for (const std::string& k : root_cfg.keys()) {
         if (k.rfind("domains.", 0) == 0) continue;
         if (k.size() >= 4 && k[0] == 'd' && std::isdigit(k[1]) && std::isdigit(k[2]) && k[3] == '.') continue;
-        if (id >= 2 && (k == "real.wrfbdy" || k == "real.bdy_interval" || k == "real.dx" || k == "real.dy")) continue;
+        if (id >= 2 && (k == "real.wrfbdy" || k == "real.bdy_interval" || k == "real.dx" || k == "real.dy" ||
+                        k == "real.e_we" || k == "real.e_sn" || k == "real.e_vert" || k == "real.wrflowinp"))
+          continue;  // domain 1's (a nest's come from its [d0N] section)
         auto dot = k.find('.');
         if (dot != std::string::npos) {
           base_ini << "[" << k.substr(0, dot) << "]\n" << k.substr(dot + 1) << " = " << root_cfg.get_string(k) << "\n";

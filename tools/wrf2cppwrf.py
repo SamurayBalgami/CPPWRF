@@ -1508,7 +1508,7 @@ class WrfTranslator:
                         if iv_d != iv:
                             sections.setdefault(tag, {})["phys_auxinput4_interval"] = iv_d
                         if inname != "wrflowinp_d<domain>":
-                            sections.setdefault(tag, {})["real.wrflowinp"] = inname.replace("<domain>", f"{d + 1:02d}")
+                            sections.setdefault(tag, {})["wrflowinp"] = inname.replace("<domain>", f"{d + 1:02d}")
                 # sea-ice parameters: CPPWRF runs with WRF's defaults only (no reference run with others)
                 for si_key, si_def in (("seaice_albedo_default", 0.65), ("seaice_thickness_default", 3.0),
                                        ("seaice_snowdepth_max", 1.e10), ("seaice_snowdepth_min", 0.001)):
@@ -2055,8 +2055,8 @@ class WrfTranslator:
 
                 sections[tag]["wrfinput"] = f"wrfinput_{tag}"
                 for k in ("e_we", "e_sn", "e_vert"):  # checked against wrfinput_d0N as input_wrf.F does
-                    sections[tag]["real." + k] = self.get_dom_opt("domains", k, d, REGISTRY_DEFAULTS[k][1],
-                                                                  fallback_d0=False)
+                    sections[tag][k] = self.get_dom_opt("domains", k, d, REGISTRY_DEFAULTS[k][1],
+                                                        fallback_d0=False)  # the nest driver's real.<k>
                 for pk, v in phys_over.items():
                     sections[tag]["phys_" + pk] = v
                 child_dt = dom_dt[p_idx] / float(ts_ratio)  # the model derives it the same way (no [d0N] dt)

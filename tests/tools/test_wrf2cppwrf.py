@@ -960,7 +960,7 @@ class TestWrfNamelistSemantics(unittest.TestCase):
         t, sec = self.translate(self.NEST + "&physics num_land_cat = 20 /\n")
         self.assertEqual(t.errors, [])
         self.assertEqual([sec["real"][k] for k in ("e_we", "e_sn", "e_vert", "num_land_cat")], [120, 90, 45, 20])
-        self.assertEqual([sec["d02"]["real." + k] for k in ("e_we", "e_sn", "e_vert")], [121, 91, 45])
+        self.assertEqual([sec["d02"][k] for k in ("e_we", "e_sn", "e_vert")], [121, 91, 45])
         t, sec = self.translate("&time_control /\n&domains time_step = 60 /\n&bdy_control specified = .true. /\n")
         self.assertEqual([sec["real"][k] for k in ("e_we", "e_sn", "e_vert", "num_land_cat")], [32, 32, 31, 21])
 
@@ -975,7 +975,7 @@ class TestWrfNamelistSemantics(unittest.TestCase):
         self.assertEqual(t.errors, [])
         self.assertEqual(sec["phys"]["auxinput4_interval"], 360)
         self.assertEqual(sec["d02"]["phys_auxinput4_interval"], 0)
-        self.assertEqual(sec["d02"]["real.wrflowinp"], "lowinp_d02")
+        self.assertEqual(sec["d02"]["wrflowinp"], "lowinp_d02")
 
     def test_mynn_options_of_every_domain(self):
         text = self.NEST + ("&physics mp_physics = 2*8, sf_sfclay_physics = 2*5, bl_pbl_physics = 2*5,"
