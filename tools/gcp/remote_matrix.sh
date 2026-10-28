@@ -27,6 +27,6 @@ grep -v '^\s*#' $J/variants.txt | grep -v '^\s*$' | while read -r name base exe 
     *) echo "python3 $J/src/tools/gcp/matrix_variant.py $J/data/runs $J/work $J/data/wrf/$exe $J/build/cppwrf $name $base $sets" ;;
   esac
 done > $J/cmds.txt
-{ cat $J/setup.out 2>/dev/null; xargs -P "$(nproc)" -I{} sh -c '{}' < $J/cmds.txt; } > $J/matrix.out 2>&1
+{ cat $J/setup.out 2>/dev/null; xargs -P "$(nproc)" -I{} sh -c '{}' < $J/cmds.txt 2>&1; } > $J/matrix.out
 [ -d $J/work/keep ] && tar cf $J/keep.tar -C $J/work/keep . && put $J/keep.tar  # run.keep=1 references
 echo "MATRIX_DONE" >> $J/matrix.out
