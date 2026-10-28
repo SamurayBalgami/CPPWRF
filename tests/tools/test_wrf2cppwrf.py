@@ -772,6 +772,19 @@ class TestValidationAndWarnings(unittest.TestCase):
             t.translate()
             self.assertEqual(any("gwd_opt must be equal for all domains" in e for e in t.errors), bad, gwd)
 
+    def test_nest_mynn_options_checked_on_every_domain(self):
+        """sf_mynn_sfcflux_land / _water are max_domains options: a nest's non-default value is an error too."""
+        doms = ("&domains time_step = 60, max_dom = 2, e_we = 100, 61, e_sn = 100, 61, e_vert = 45, 45,"
+                " parent_id = 0, 1, i_parent_start = 1, 30, j_parent_start = 1, 30,"
+                " parent_grid_ratio = 1, 3, parent_time_step_ratio = 1, 3 /\n")
+        phys = "mp_physics = 6, 6, sf_sfclay_physics = 5, 5, sf_surface_physics = 2, 2, bl_pbl_physics = 5, 5"
+        for opt, bad in (("sf_mynn_sfcflux_water = 1, 0", True), ("sf_mynn_sfcflux_water = 1, 1", False),
+                         ("sf_mynn_sfcflux_water = 1", False), ("sf_mynn_sfcflux_land = 0, 2", True),
+                         ("sf_mynn_sfcflux_land = 0", False)):
+            t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n{doms}&physics {phys}, {opt} /\n")))
+            t.translate()
+            self.assertEqual(any("sf_mynn_sfcflux" in e for e in t.errors), bad, (opt, t.errors))
+
     def test_unsupported_physics_and_dynamics_errors(self):
         cases = [
             # share/module_check_a_mundo.F: "bl_mynn_edmf > 0 requires both shcu_physics=0 & ishallow=0"
