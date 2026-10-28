@@ -503,8 +503,12 @@ def config_vs_namelist(cfg, sets, nml):
             return repr(float(v.replace("d", "e").replace("D", "e")))
         except ValueError:
             return {".true.": "true", ".false.": "false", "t": "true", "f": "false"}.get(v.lower(), v.lower())
+    # a reference directory without its own wrfinput (tools/gcp/gcp_wrfref.sh links the base run's) does not name the
+    # input directory
+    skip = {("run", "run_time")} | (set() if os.path.exists(os.path.join(os.path.dirname(nml), "wrfinput_d01"))
+                                    else {("real", "dir")})
     return [f"{s}.{k}: namelist {v} configuration {conf[s][k]}" for s, kv in gen.items() if s not in ("output", "restart")
-            for k, v in kv.items() if (s, k) != ("run", "run_time") and k in conf.get(s, {}) and norm(v) != norm(conf[s][k])]
+            for k, v in kv.items() if (s, k) not in skip and k in conf.get(s, {}) and norm(v) != norm(conf[s][k])]
 
 
 def exact_case(refs, out, t, sets):
