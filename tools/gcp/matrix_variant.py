@@ -8,7 +8,7 @@ of every common frame (by Times) of each domain's wrfout is compared at toleranc
 NAME d0N frames N differing: none | {VAR: 'time npoints/maxdiff', ...}  (or NAME WRF-FAILED / CPPWRF-FAILED);
 variables only WRF writes are listed as wrf-only-vars.
 run.keep=1 copies WRF's namelist.input, inputs and wrfout files to WORK/keep/run_NAME (a suite reference);
-SECTION.key=__delete__ leaves the option out of the namelist."""
+run.delete=section.key,... deletes namelist lines (the option then takes its Registry default), as real_variant.py."""
 import glob, os, re, subprocess, sys
 import netCDF4
 import numpy as np
@@ -33,8 +33,6 @@ def setkey(nl, sec, key, val):
         return nl.rstrip("\n") + f"\n\n&{sec}\n {key} = {val},\n/\n"
     body = m.group(1)
     pat = re.compile(rf"^\s*{key}\s*=.*$", re.M | re.I)
-    if val == "__delete__":  # section.key=__delete__: the option left out (WRF takes its Registry default)
-        return nl[:m.start(1)] + re.sub(rf"^\s*{key}\s*=.*\n?", "", body, flags=re.M | re.I) + nl[m.end(1):]
     line = f" {key} = {val},"
     body = pat.sub(line, body) if pat.search(body) else body + "\n" + line
     return nl[:m.start(1)] + body + nl[m.end(1):]
@@ -54,6 +52,14 @@ for sk, v in sets:
         for f in v.split(","):
             if os.path.lexists(os.path.join(R, f)):
                 os.remove(os.path.join(R, f))
+        continue
+    if (sec, k) == ("run", "delete"):  # run.delete=section.key,...: namelist lines left out (Registry default)
+        for sk2 in v.split(","):
+            s2, k2 = sk2.split(".", 1)
+            m = re.search(rf"&{s2}\b(.*?)\n\s*/", nl, re.S | re.I)
+            if m:
+                body = re.sub(rf"^\s*{k2}\s*=.*\n?", "", m.group(1), flags=re.M | re.I)
+                nl = nl[:m.start(1)] + body + nl[m.end(1):]
         continue
     nl = setkey(nl, sec, k, v)
 open(os.path.join(R, "namelist.input"), "w").write(nl)
