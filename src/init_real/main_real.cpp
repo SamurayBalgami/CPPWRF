@@ -72,6 +72,11 @@ static int run(const RealOptions& o, const Namelist& nl, const WrfSchema& sc, co
   std::unique_ptr<WrfLowinpWriter<T>> lowinp;  // real_em.F: output_auxinput4 at every time with sst_update = 1
   std::string date = o.start_date, prev = o.start_date;
   for (int loop = 1; loop <= time_loop_max; ++loop) {
+    {  // real_em.F: geth_julgmt at every time (the GMT / JULDAY of the files; its February persists)
+      int jy, jd;
+      double gm;
+      cppwrf::wrf_io::julgmt(date, jy, jd, gm);
+    }
     const MetEm m = MetEm::read(met_dir + "/met_em." + dn + "." + date + ".nc");
     dom.read_input(m);
     if (loop == 1) cfg.set("num_land_cat", std::to_string(m.att_int("NUM_LAND_CAT", 21)));

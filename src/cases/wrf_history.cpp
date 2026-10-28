@@ -836,7 +836,7 @@ wrf_io::DomainAtts WrfHistory::domain_atts() {
   d.title = " OUTPUT FROM CPPWRF V4.8.0 MODEL";
   d.start_date = restart_sec_ > 0 ? wrf_io::add_seconds(start_date_, std::lround(restart_sec_)) : start_date_;
   d.gmt_date = start_date_;
-  d.simulation_start_date = wc_->get("simulation_start_date").empty() ? start_date_ : start_date_;
+  d.simulation_start_date = start_date_;
   d.ide = g.nx + 1; d.jde = g.ny * jrep_ + 1; d.kde = g.nz + 1;
   d.grid_id = wc_->domain();
   d.parent_id = wc_->integer("parent_id"); d.i_parent_start = wc_->integer("i_parent_start");
@@ -868,9 +868,19 @@ wrf_io::DomainAtts WrfHistory::domain_atts() {
     d.num_land_cat = gatt_i("NUM_LAND_CAT", 21); d.iswater = gatt_i("ISWATER", 17); d.islake = gatt_i("ISLAKE", -1);
     d.isice = gatt_i("ISICE", 15); d.isurban = gatt_i("ISURBAN", 13); d.isoilwater = gatt_i("ISOILWATER", 14);
     wc_->set("num_land_cat", std::to_string(d.num_land_cat));
+    // input_wrf: config_flags%gmt/julyr/julday from the input file (real.exe's geth_julgmt), else the namelist's
+    d.have_julgmt = true;
+    d.gmt = gatt_d("GMT", wc_->num("gmt"));
+    d.julyr = gatt_i("JULYR", wc_->integer("julyr"));
+    d.julday = gatt_i("JULDAY", wc_->integer("julday"));
   } else {  // ideal: no land-use attributes (the namelist defaults)
     d.mminlu = "";
     d.iswater = d.islake = d.isice = d.isurban = d.isoilwater = 0;
+    // ideal.exe writes the namelist's gmt / julyr / julday (Registry defaults 0, 0, 1)
+    d.have_julgmt = true;
+    d.gmt = wc_->num("gmt");
+    d.julyr = wc_->integer("julyr");
+    d.julday = wc_->integer("julday");
   }
   return d;
 }

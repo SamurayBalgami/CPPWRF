@@ -20,6 +20,11 @@ struct DomainAtts {
   std::string simulation_start_date;  // SIMULATION_START_DATE of history/restart files
   std::string gmt_date;               // GMT/JULYR/JULDAY: the domain's start (empty: start_date); a
                                       // resumed run keeps it while START_DATE is the restart time
+  // config_flags%gmt/julyr/julday as WRF has them (wrf.exe: read from wrfinput; ideal: the namelist);
+  // without them (real.exe) geth_julgmt of gmt_date
+  bool have_julgmt = false;
+  double gmt = 0;
+  int julyr = 0, julday = 1;
   int ide = 0, jde = 0, kde = 0;      // staggered grid dimensions
   int grid_id = 1, parent_id = 0, i_parent_start = 1, j_parent_start = 1, parent_grid_ratio = 1;
   double dt = 0;                      // grid%dt
@@ -35,7 +40,8 @@ struct DomainAtts {
 
 void write_global_atts(NcOut& nc, const WrfConfig& c, const DomainAtts& d, Stream s);
 
-// geth_julgmt for a date yyyy-mm-dd_hh:mm:ss
+// geth_julgmt (share/module_date_time.F) for a date yyyy-mm-dd_hh:mm:ss; as WRF's, February keeps 29 days
+// once a leap-year date was seen
 void julgmt(const std::string& date, int& julyr, int& julday, double& gmt);
 // date + seconds (geth_newdate), yyyy-mm-dd_hh:mm:ss
 std::string add_seconds(const std::string& date, long seconds);

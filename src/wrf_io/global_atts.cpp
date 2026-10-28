@@ -9,13 +9,15 @@ namespace cppwrf::wrf_io {
 void julgmt(const std::string& date, int& julyr, int& julday, double& gmt) {
   const int y = std::atoi(date.substr(0, 4).c_str()), m = std::atoi(date.substr(5, 2).c_str()),
             dd = std::atoi(date.substr(8, 2).c_str()), h = std::atoi(date.substr(11, 2).c_str()),
-            mi = std::atoi(date.substr(14, 2).c_str());
+            mi = std::atoi(date.substr(14, 2).c_str()), sec = std::atoi(date.substr(17, 2).c_str());
   static const int mdays[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-  const bool leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+  // DATA MMD (implicitly SAVE): MMD(2) = 29 from the first leap-year date of the program on
+  static bool feb29 = false;
+  if ((y % 4 == 0 && y % 100 != 0) || y % 400 == 0) feb29 = true;
   julday = dd;
-  for (int k = 1; k < m; ++k) julday += mdays[k - 1] + (k == 2 && leap ? 1 : 0);
+  for (int k = 1; k < m; ++k) julday += mdays[k - 1] + (k == 2 && feb29 ? 1 : 0);
   julyr = y;
-  gmt = double(h) + double(mi) / 60.;
+  gmt = double(h) + double(mi) / 60. + double(sec) / 3600.;
 }
 
 std::string add_seconds(const std::string& date, long seconds) {
@@ -135,10 +137,9 @@ void write_global_atts(NcOut& nc, const WrfConfig& c, const DomainAtts& d, Strea
     r(a, it == d.proj.end() ? 0.0 : it->second);
   }
   if (s != Stream::boundary) {
-    int jy, jd;
-    double gm;
-    julgmt(d.gmt_date.empty() ? d.start_date : d.gmt_date, jy, jd, gm);  // config_flags%gmt/julyr/julday: this domain's start
-    if (d.ideal) jy = 0;  // output_wrf: nl_get_julyr, which only real.exe's input sets
+    int jy = d.julyr, jd = d.julday;
+    double gm = d.gmt;
+    if (!d.have_julgmt) julgmt(d.gmt_date.empty() ? d.start_date : d.gmt_date, jy, jd, gm);  // real.exe: this domain's start
     r("GMT", gm); i("JULYR", jy); i("JULDAY", jd);
   }
   const int mp = d.map_proj;
