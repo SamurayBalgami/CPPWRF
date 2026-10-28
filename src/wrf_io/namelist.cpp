@@ -169,11 +169,6 @@ Namelist Namelist::parse(const std::string& text) {
   return nl;
 }
 
-bool Namelist::has(const std::string& group, const std::string& key) const {
-  auto g = g_.find(to_lower(group));
-  return g != g_.end() && g->second.count(to_lower(key));
-}
-
 std::vector<std::string> Namelist::values(const std::string& group, const std::string& key) const {
   auto g = g_.find(to_lower(group));
   if (g == g_.end()) return {};
@@ -189,11 +184,6 @@ std::optional<std::string> Namelist::raw(const std::string& group, const std::st
   return r;
 }
 
-int Namelist::get_int(const std::string& group, const std::string& key, int def, int dom) const {
-  auto r = raw(group, key, dom);
-  return r ? std::atoi(r->c_str()) : def;
-}
-
 static std::string fortran_real(std::string s) {
   for (char& c : s)
     if (c == 'd' || c == 'D') c = 'e';
@@ -203,27 +193,6 @@ static std::string fortran_real(std::string s) {
 double Namelist::get_real(const std::string& group, const std::string& key, double def, int dom) const {
   auto r = raw(group, key, dom);
   return r ? std::strtod(fortran_real(*r).c_str(), nullptr) : def;
-}
-
-float Namelist::get_real_f(const std::string& group, const std::string& key, float def, int dom) const {
-  auto r = raw(group, key, dom);
-  return r ? std::strtof(fortran_real(*r).c_str(), nullptr) : def;
-}
-
-bool Namelist::get_bool(const std::string& group, const std::string& key, bool def, int dom) const {
-  auto r = raw(group, key, dom);
-  if (!r) return def;
-  std::string v = to_lower(*r);
-  if (!v.empty() && v[0] == '.') v = v.substr(1);
-  return !v.empty() && v[0] == 't';
-}
-
-std::string Namelist::get_str(const std::string& group, const std::string& key, const std::string& def, int dom) const {
-  auto r = raw(group, key, dom);
-  if (!r) return def;
-  std::string v = *r;
-  if (v.size() >= 2 && (v.front() == '\'' || v.front() == '"')) v = v.substr(1, v.size() - 2);
-  return v;
 }
 
 }  // namespace cppwrf::wrf_io

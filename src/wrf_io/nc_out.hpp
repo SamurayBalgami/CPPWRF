@@ -21,7 +21,6 @@ class NcOut {
   void att(const std::string& name, int v);
   void att_f(const std::string& name, float v);
   void att_d(const std::string& name, double v);
-  void att_f(const std::string& name, const std::vector<float>& v);
   // define a variable; dims slowest first, e.g. {"Time","bottom_top","south_north","west_east"}
   void var(const std::string& name, char type /* 'f','d','i','c' */, const std::vector<std::string>& dims,
            const std::map<std::string, std::string>& satts, int field_type);
