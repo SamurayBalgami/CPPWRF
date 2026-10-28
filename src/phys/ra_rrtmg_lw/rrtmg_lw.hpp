@@ -18,62 +18,13 @@ namespace cppwrf::phys {
 
 constexpr int RRTMG_LW_MAX_LAYERS = 128;
 
-// Per-thread column workspace to avoid dynamic allocations or stack overflow
+// Per-thread column workspace: the stride-1 storage of the stage views (rrtmg_lw_stages.hpp) of the
+// column driver, and the McICA cloud flags / optical depths that rrtmg_lw_core takes as input
 struct RrtmgLwWorkspace {
   double cldfmc[140][RRTMG_LW_MAX_LAYERS];
-  double ciwpmc[140][RRTMG_LW_MAX_LAYERS];
-  double clwpmc[140][RRTMG_LW_MAX_LAYERS];
-  double cswpmc[140][RRTMG_LW_MAX_LAYERS];
   double taucmc[140][RRTMG_LW_MAX_LAYERS];
-  double fracs[RRTMG_LW_MAX_LAYERS][140];
-  double taug[RRTMG_LW_MAX_LAYERS][140];
-  double taut[RRTMG_LW_MAX_LAYERS][140];
-  double planklay[RRTMG_LW_MAX_LAYERS][16];
-  double planklev[RRTMG_LW_MAX_LAYERS + 1][16];
-  double wkl[7][RRTMG_LW_MAX_LAYERS];
-  double wx[4][RRTMG_LW_MAX_LAYERS];
-
-  // Pointer arrays for calling module kernels
-  double* cldfmc_ptrs[140];
-  double* ciwpmc_ptrs[140];
-  double* clwpmc_ptrs[140];
-  double* cswpmc_ptrs[140];
-  double* taucmc_ptrs[140];
-  double* fracs_ptrs[RRTMG_LW_MAX_LAYERS];
-  double* taug_ptrs[RRTMG_LW_MAX_LAYERS];
-  double* taut_ptrs[RRTMG_LW_MAX_LAYERS];
-  double* planklay_ptrs[RRTMG_LW_MAX_LAYERS];
-  double* planklev_ptrs[RRTMG_LW_MAX_LAYERS + 1];
-  double* wkl_ptrs[7];
-  double* wx_ptrs[4];
-
-  // stride-1 storage of the stage views (rrtmg_lw_stages.hpp) of the column driver
   std::vector<double> d;
   std::vector<int> i;
-
-  void init_pointers() {
-    for (int i = 0; i < 140; ++i) {
-      cldfmc_ptrs[i] = cldfmc[i];
-      ciwpmc_ptrs[i] = ciwpmc[i];
-      clwpmc_ptrs[i] = clwpmc[i];
-      cswpmc_ptrs[i] = cswpmc[i];
-      taucmc_ptrs[i] = taucmc[i];
-    }
-    for (int l = 0; l < RRTMG_LW_MAX_LAYERS; ++l) {
-      fracs_ptrs[l] = fracs[l];
-      taug_ptrs[l] = taug[l];
-      taut_ptrs[l] = taut[l];
-      planklay_ptrs[l] = planklay[l];
-      planklev_ptrs[l] = planklev[l];
-    }
-    planklev_ptrs[RRTMG_LW_MAX_LAYERS] = planklev[RRTMG_LW_MAX_LAYERS];
-    for (int m = 0; m < 7; ++m) {
-      wkl_ptrs[m] = wkl[m];
-    }
-    for (int x = 0; x < 4; ++x) {
-      wx_ptrs[x] = wx[x];
-    }
-  }
 };
 
 struct RrtmgLwConfig {
@@ -99,10 +50,8 @@ const RrtmgLwConsts& rrtmg_lw_consts();
 // RRTMG_LWRAD trace gases without ghg_input (WRF's fixed values, CO2 from the year)
 void rrtmg_default_gases(RrtmgLwConfig& c);
 
-
-
 // WRF rrtmg_lw (inatm, cldprmc, setcoef, taumol, rtrnmc) for one column whose McICA subcolumn
-// cloud arrays are already in ws (cldfmc, ciwpmc, clwpmc, cswpmc). Layer arrays have nlayers
+// cloud arrays are already in ws (cldfmc, taucmc). Layer arrays have nlayers
 // entries, level arrays nlayers + 1 (index 0 = surface); pressures in mb, emis per band.
 void rrtmg_lw_core(int nlayers, double cp, const double* play, const double* plev, const double* tlay,
                    const double* tlev, double tsk, const double* h2ovmr, const double* o3vmr, const double* co2vmr,
@@ -164,47 +113,6 @@ void rrtmg_lw_column(
     const double* re_snow = nullptr,
     // [nz] o3input != 2: the climatology ozone vmr on the model levels, WRF's O33D output (nullptr: not wanted)
     double* o3_out = nullptr
-);
-
-// Multi-column driver (OpenMP CPU or sequential)
-void rrtmg_lwrad(
-    int num_cols,
-    int nz,
-    const RrtmgLwConfig& config,
-    const RrtmgLwTables& tables,
-    const double* tsk,
-    const double* emiss,
-    const double* xland,
-    const double* xice,
-    const double* snow,
-    const double* xlat,
-    const double* p8w,
-    const double* t8w,
-    const double* p3d,
-    const double* pi3d,
-    const double* dz8w,
-    const double* t3d,
-    const double* rho3d,
-    const double* qv3d,
-    const double* qc3d,
-    const double* qr3d,
-    const double* qi3d,
-    const double* qs3d,
-    const double* qg3d,
-    const double* cldfra3d,
-    double* glw,
-    double* olr,
-    double* lwcf,
-    double* lwupt,
-    double* lwuptc,
-    double* lwdnt,
-    double* lwdntc,
-    double* lwupb,
-    double* lwupbc,
-    double* lwdnb,
-    double* lwdnbc,
-    double* rthratenlw,
-    double* rthratenlwc
 );
 
 } // namespace cppwrf::phys

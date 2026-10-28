@@ -467,7 +467,7 @@ void PhysicsSuite::part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies
   if (rad_) {  // radiation_driver: xtime (minutes) and julian of the step start
     const double xtime = double(itimestep - 1) * g_.dt / 60.;
     const double julian = wrf_julian(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt);
-    // first_rk_step_part1: YR of the current time (WRFU_TimeGet YY), not the start year
+    // YR: first_rk_step_part1's WRFU_TimeGet(currentTime, YY=yr), a new year after 31 December
     const int yr = wrf_year(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt);
     auto q = [&](int n) -> const Field3* { return n >= 0 ? &s.q_2[n] : nullptr; };
     RadiationInputs ri{&prep.t_phy, &prep.p_hyd, &prep.p_hyd_w, &prep.pi_phy, &prep.rho, &prep.dz8w,

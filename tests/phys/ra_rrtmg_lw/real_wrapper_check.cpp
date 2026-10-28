@@ -56,7 +56,6 @@ int main(int argc, char** argv) {
   auto tables = std::make_unique<RrtmgLwTables>();
   if (!load_rrtmg_lw_tables(argv[3], *tables)) return 1;
   auto ws = std::make_unique<RrtmgLwWorkspace>();
-  ws->init_pointers();
   RrtmgLwConfig c;
   c.icloud = icloud; c.cldovrlp = cldovrlp; c.idcor = idcor; c.p_top = p_top; c.yr = yr; c.julian = julian;
   c.g = 9.81; c.r_d = 287.; c.cp = 1004.5; c.o3input = o3input;
@@ -85,7 +84,8 @@ int main(int argc, char** argv) {
         cqc[k] = qc[q]; cqi[k] = qi[q]; cqs[k] = qs[q]; crec[k] = rec[q]; crei[k] = rei[q]; cres[k] = res[q];
       }
       if (clouds) {  // C++ cal_cldfra1 vs WRF's CLDFRA (t = t_phy, p = p_hyd)
-        driver::cal_cldfra1(nz, cqv.data(), cqc.data(), cqi.data(), cqs.data(), ct.data(), cp.data(), cfc.data());
+        driver::cal_cldfra1(nz, sd_const(cqv.data()), sd_const(cqc.data()), sd_const(cqi.data()), sd_const(cqs.data()),
+                            sd_const(ct.data()), sd_const(cp.data()), sd_const(cfc.data()));
         bool cl = false;
         for (int k = 0; k < nz; ++k) {
           cf_mx = std::max(cf_mx, std::abs(cfc[k] - ccld[k]));
