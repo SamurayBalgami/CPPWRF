@@ -58,7 +58,7 @@ CPPWRF_HD inline T psih_unstable_full(T zolf) {
   using std::log;
   using std::pow;
   using std::sqrt;
-  T y = sqrt(static_cast<T>(1.0) - static_cast<T>(16.0) * zolf);
+  T y = pow(static_cast<T>(1.0) - static_cast<T>(16.0) * zolf, static_cast<T>(0.5));  // WRF's **.5: a pow call
   T psihk = static_cast<T>(2.0) * log((static_cast<T>(1.0) + y) * static_cast<T>(0.5));
 
   T yh = pow(static_cast<T>(1.0) - static_cast<T>(34.0) * zolf, static_cast<T>(0.33));
@@ -148,6 +148,7 @@ CPPWRF_HD inline T zolri(T ri, T z, T z0, const SFClayRevTables<T>& tbl) {
 
   T fx1 = zolri2(x1, ri, z, z0, tbl);
   T fx2 = zolri2(x2, ri, z, z0, tbl);
+  // WRF's zolri is undefined if it returns before its first update (fx1 == fx2): the bound of the smaller |f|
   T zolri_val = (abs(fx2) < abs(fx1)) ? x1 : x2;
   int iter = 0;
   while (abs(x1 - x2) > static_cast<T>(0.01)) {
@@ -416,35 +417,8 @@ struct SFClayRevKernel {
 
     real psim10, psih10, psih2, pq, pq2, pq10;  // WRF's psim2 is never read
 
-    // WRF lines 418-500: Regimes
-    if (br(i, j) > real(0.0)) {
-      // Class 1: Stable
-      regime(i, j) = real(1.0);
-      psim(i, j) = psim_stable(zolzz, tbl) - psim_stable(zol0, tbl);
-      psih(i, j) = psih_stable(zolzz, tbl) - psih_stable(zol0, tbl);
-      psim10 = psim_stable(zol10, tbl) - psim_stable(zol0, tbl);
-      psih10 = psih_stable(zol10, tbl) - psih_stable(zol0, tbl);
-      psih2 = psih_stable(zol2, tbl) - psih_stable(zol0, tbl);
-
-      pq = psih_stable(zol(i, j), tbl) - psih_stable(zl, tbl);
-      pq2 = psih_stable(zl2, tbl) - psih_stable(zl, tbl);
-      pq10 = psih_stable(zl10, tbl) - psih_stable(zl, tbl);
-      rmol(i, j) = zol(i, j) / za;
-    } else if (br(i, j) == real(0.0)) {
-      // Class 3: Forced convection
-      regime(i, j) = real(3.0);
-      psim(i, j) = real(0.0);
-      psih(i, j) = real(0.0);
-      psim10 = real(0.0);
-      psih10 = real(0.0);
-      psih2 = real(0.0);
-
-      pq = real(0.0);
-      pq2 = real(0.0);
-      pq10 = real(0.0);
-      zol(i, j) = real(0.0);
-      rmol(i, j) = real(0.0);
-    } else {
+    // WRF lines 425-506: Regimes (br < 0 -> class 4, br == 0 -> class 3, otherwise class 1, also for a NaN br)
+    if (br(i, j) < real(0.0)) {
       // Class 4: Free convection
       regime(i, j) = real(4.0);
       psim(i, j) = psim_unstable(zolzz, tbl) - psim_unstable(zol0, tbl);
@@ -462,6 +436,33 @@ struct SFClayRevKernel {
       psih2 = min(psih2, real(0.9) * gz2oz0);
       psim10 = min(psim10, real(0.9) * gz10oz0);
       psih10 = min(psih10, real(0.9) * gz10oz0);
+      rmol(i, j) = zol(i, j) / za;
+    } else if (br(i, j) == real(0.0)) {
+      // Class 3: Forced convection
+      regime(i, j) = real(3.0);
+      psim(i, j) = real(0.0);
+      psih(i, j) = real(0.0);
+      psim10 = real(0.0);
+      psih10 = real(0.0);
+      psih2 = real(0.0);
+
+      pq = real(0.0);
+      pq2 = real(0.0);
+      pq10 = real(0.0);
+      zol(i, j) = real(0.0);
+      rmol(i, j) = real(0.0);
+    } else {
+      // Class 1: Stable
+      regime(i, j) = real(1.0);
+      psim(i, j) = psim_stable(zolzz, tbl) - psim_stable(zol0, tbl);
+      psih(i, j) = psih_stable(zolzz, tbl) - psih_stable(zol0, tbl);
+      psim10 = psim_stable(zol10, tbl) - psim_stable(zol0, tbl);
+      psih10 = psih_stable(zol10, tbl) - psih_stable(zol0, tbl);
+      psih2 = psih_stable(zol2, tbl) - psih_stable(zol0, tbl);
+
+      pq = psih_stable(zol(i, j), tbl) - psih_stable(zl, tbl);
+      pq2 = psih_stable(zl2, tbl) - psih_stable(zl, tbl);
+      pq10 = psih_stable(zl10, tbl) - psih_stable(zl, tbl);
       rmol(i, j) = zol(i, j) / za;
     }
 
@@ -752,7 +753,8 @@ struct SFClayRevKernel {
       if (!scm_force_flux) {
         qfx(i, j) = flqc(i, j) * (qsfc(i, j) - qx);
         lh(i, j) = xlv * qfx(i, j);
-        hfx(i, j) = flhc(i, j) * (thgb - thx);
+        if ((xland(i, j) - real(1.5)) > real(0.0) || (xland(i, j) - real(1.5)) < real(0.0))  // WRF loop 400
+          hfx(i, j) = flhc(i, j) * (thgb - thx);
       }
 
       chs(i, j) = ust(i, j) * karman / denomq;
