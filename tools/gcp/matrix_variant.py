@@ -19,8 +19,15 @@ the input as WRF does); run.both=1 is accepted for older variant files.
 run.atts=1 is accepted for older variant files (the attributes are always compared).
 run.file=NAME:TEXT writes the file NAME (e.g. an iofields_filename list) into the run directory.
 run.threads=N runs CPPWRF with OMP_NUM_THREADS=N (default 1; WRF always runs serially). Values are
-percent-decoded keys and values (%20 blank, %0A new line, %27 quote, %23 #, %7C |), as the variant line passes through sh -c."""
-import glob, os, re, subprocess, sys
+percent-decoded keys and values (%20 blank, %0A new line, %27 quote, %23 #, %7C |), as the variant line passes through sh -c.
+The names of the files of a stream (frames_per_outfile, history_outname) are compared too ('(files)').
+run.resume=S (seconds from the start; the variant's restart_interval must write wrfrst files then): WRF runs again
+with restart = .true. from its wrfrst_d0N files of time S (WORK/NAME_rsm) and CPPWRF resumes from the same files
+(run.restart_file); then 'NAME d0N resumed' and 'NAME d0N wrfrst resumed' compare the two resumed runs, 'NAME d0N
+resumed-vs-straight' CPPWRF's resumed history with WRF's uninterrupted one (common frames; global attributes aside:
+a restart run writes its own START_DATE) and 'NAME d0N wrf-resumed-vs-straight' WRF's own two runs. Or NAME
+RESUME-FAILED / WRF-RESUME-FAILED / CPPWRF-RESUME-FAILED."""
+import datetime, glob, os, re, subprocess, sys
 import urllib.parse
 import numpy as np
 
@@ -65,6 +72,7 @@ for k, v in [("run_days", "0"), ("run_hours", "0"), ("run_minutes", "0"), ("run_
 nl = re.sub(r"^\s*history_interval\s*=.*\n", "", nl, flags=re.M)
 keep = False
 threads = "1"
+resume = None
 for sk, v in sets:
     sec, k = sk.split(".", 1)
     if (sec, k) == ("run", "keep"):  # run.keep=1: WRF's run (namelist, inputs, wrfout) kept as a reference
@@ -72,6 +80,9 @@ for sk, v in sets:
         continue
     if (sec, k) == ("run", "threads"):  # run.threads=N: CPPWRF's OpenMP threads (the result must not change)
         threads = str(int(v))
+        continue
+    if (sec, k) == ("run", "resume"):  # run.resume=S: both models restarted from WRF's wrfrst files at S
+        resume = int(v)
         continue
     if (sec, k) == ("run", "both"):  # always on (see above)
         continue
@@ -172,18 +183,109 @@ if unread:  # a translated option the model never read
     print(f"{name} UNREAD-KEYS {unread}", flush=True)
 
 
-doms = sorted({m for f in glob.glob(os.path.join(R, "wrf*_d*_*")) + glob.glob(os.path.join(out, "wrf*_d*_*")) +
-               glob.glob(os.path.join(out, "d*", "wrf*_d*_*"))
-               for m in re.findall(r"^wrf(?:out|rst)_(d\d\d)_", os.path.basename(f))})
-if not doms:
+def getkey(nl, sec, key, default=None):
+    """The first value of &sec key in the namelist text (quotes stripped), or default."""
+    m = re.search(rf"&{sec}\b(.*?)\n\s*/", nl, re.S | re.I)
+    v = m and re.search(rf"^\s*{key}\s*=\s*([^,\n]*)", m.group(1), re.M | re.I)
+    return v.group(1).strip().strip("'\"") if v else default
+
+
+doms = [f"d{i:02d}" for i in range(1, int(getkey(nl, "domains", "max_dom", "1")) + 1)]
+
+
+def stream_files(d, kind, dom):
+    """The files of a stream (wrfout: by history_outname, wrfrst) of domain dom in directory d."""
+    pat = f"wrfrst_{dom}_*" if kind == "wrfrst" else \
+        getkey(nl, "time_control", "history_outname", "wrfout_d<domain>_<date>").replace("<domain>", dom[1:]).replace("<date>", "*")
+    return glob.glob(os.path.join(d, pat))
+
+
+def cdir_of(cout, d):
+    return os.path.join(cout, d) if os.path.isdir(os.path.join(cout, d)) else cout
+
+
+def compare_runs(wdir, cout, label=""):
+    """One line per domain and stream: CPPWRF's files in cout (cout/d0N for nests) against WRF's in wdir."""
+    seen = False
+    for kind in ("wrfout", "wrfrst"):  # history frames, then restart files
+        for d in doms:
+            cf, wf = stream_files(cdir_of(cout, d), kind, d), stream_files(wdir, kind, d)
+            if not cf + wf:
+                continue
+            seen = True
+            bad, n = exact.compare_stream(cf, wf)
+            nc_, nw = {os.path.basename(f) for f in cf}, {os.path.basename(f) for f in wf}
+            if nc_ != nw:  # the frames' split into files (frames_per_outfile) or the file names
+                bad["(files)"] = f"only-cppwrf {sorted(nc_ - nw)} only-wrf {sorted(nw - nc_)}"
+            tag = d if kind == "wrfout" else f"{d} {kind}"
+            print(f"{name} {tag}{label} frames {n} differing: {bad if bad else 'none'}", flush=True)
+    return seen
+
+
+if not compare_runs(R, out):
     print(f"{name} NO-OUTPUT neither model wrote a wrfout or wrfrst file", flush=True)
-for kind in ("wrfout", "wrfrst"):  # history frames, then restart files
-    for d in doms:
-        cdir = os.path.join(out, d) if os.path.isdir(os.path.join(out, d)) else out
-        if not glob.glob(os.path.join(R, f"{kind}_{d}_*")) + glob.glob(os.path.join(cdir, f"{kind}_{d}_*")):
-            continue
-        bad, n = exact.compare_stream(glob.glob(os.path.join(cdir, f"{kind}_{d}_*")),
-                                      glob.glob(os.path.join(R, f"{kind}_{d}_*")))
-        tag = d if kind == "wrfout" else f"{d} {kind}"
-        print(f"{name} {tag} frames {n} differing: {bad if bad else 'none'}", flush=True)
-subprocess.run(["rm", "-rf", out] + glob.glob(os.path.join(R, "wrfout_*")) + glob.glob(os.path.join(R, "wrfrst_*")))
+
+
+def resume_run(S):
+    """WRF restarted from its wrfrst files at S seconds in R + '_rsm', CPPWRF resumed from the same files; the
+    comparisons of the docstring."""
+    tc = lambda k, dflt="0": int(getkey(nl, "time_control", k, dflt))  # noqa: E731
+    t = datetime.datetime(tc("start_year"), tc("start_month"), tc("start_day"), tc("start_hour"), tc("start_minute"),
+                          tc("start_second")) + datetime.timedelta(seconds=S)
+    total = 86400 * tc("run_days") + 3600 * tc("run_hours") + 60 * tc("run_minutes") + tc("run_seconds")
+    date = f"{t.year:04d}-{t.month:02d}-{t.day:02d}_{t.hour:02d}:{t.minute:02d}:{t.second:02d}"
+    rst = [f"wrfrst_{d}_{date}" for d in doms]
+    if not all(os.path.exists(os.path.join(R, f)) for f in rst) or not 0 < S < total:
+        print(f"{name} RESUME-FAILED WRF wrote no {rst} (restart_interval?) or S not inside the run", flush=True)
+        return
+    R2 = R + "_rsm"
+    subprocess.run(["rm", "-rf", R2])
+    os.makedirs(R2)
+    outputs = {os.path.basename(f) for d in doms for k in ("wrfout", "wrfrst") for f in stream_files(R, k, d)}
+    for f in os.listdir(R):
+        if f not in outputs and not re.match(r"(rsl\..*|namelist\.(output|input)|.*\.log|cppwrf|case\.ini)$", f):
+            os.symlink(os.path.realpath(os.path.join(R, f)), os.path.join(R2, f))
+    for f in rst:
+        os.symlink(os.path.join(R, f), os.path.join(R2, f))
+    nl2 = nl
+    nd = len(doms)
+    for k, v in [("restart", ".true."), ("run_days", "0"), ("run_hours", "0"), ("run_minutes", "0"),
+                 ("run_seconds", str(total - S))] + \
+            [(f"start_{u}", ", ".join([f"{x:02d}"] * nd)) for u, x in (("year", t.year), ("month", t.month),
+             ("day", t.day), ("hour", t.hour), ("minute", t.minute), ("second", t.second))]:
+        nl2 = setkey(nl2, "time_control", k, v)
+    open(os.path.join(R2, "namelist.input"), "w").write(nl2)
+    try:
+        subprocess.run("./wrf.exe > wrf.log 2>&1", shell=True, cwd=R2, env=env, timeout=3600)
+    except subprocess.TimeoutExpired:
+        open(os.path.join(R2, "wrf.log"), "a").write("\nTIMEOUT after 3600 s\n")
+    log = open(os.path.join(R2, "rsl.out.0000") if os.path.exists(os.path.join(R2, "rsl.out.0000"))
+               else os.path.join(R2, "wrf.log"), errors="replace").read()
+    if "SUCCESS COMPLETE WRF" not in log:
+        lines = open(os.path.join(R2, "wrf.log"), errors="replace").read().strip().splitlines()
+        print(f"{name} WRF-RESUME-FAILED {[x.strip() for x in lines if 'ERROR' in x or 'FATAL' in x][:4] or lines[-1:]}",
+              flush=True)
+        return
+    out2 = os.path.join(R2, "cppwrf")
+    try:
+        c2 = subprocess.run([cppwrf, os.path.join(R, "case.ini"), "--set", f"output.dir={out2}", "--set",
+                             f"run.restart_file={os.path.join(R2, rst[0])}", "--set", "run.stop_on_nonfinite=false"],
+                            capture_output=True, text=True, cwd=repo, env=env, timeout=3600)
+    except subprocess.TimeoutExpired:
+        c2 = subprocess.CompletedProcess([], 124, "", "TIMEOUT after 3600 s")
+    if c2.returncode != 0:
+        print(f"{name} CPPWRF-RESUME-FAILED {(c2.stderr or c2.stdout).strip().splitlines()[-1:]}", flush=True)
+        return
+    compare_runs(R2, out2, " resumed")
+    for d in doms:  # the resumed histories against WRF's uninterrupted one (its earlier frames are no difference)
+        straight = stream_files(R, "wrfout", d)
+        for who, files in (("resumed-vs-straight", stream_files(cdir_of(out2, d), "wrfout", d)),
+                           ("wrf-resumed-vs-straight", stream_files(R2, "wrfout", d))):
+            bad, n = exact.compare_stream(straight, files, subset=True, global_atts=False)
+            print(f"{name} {d} {who} frames {n} differing: {bad if bad else 'none'}", flush=True)
+    subprocess.run(["rm", "-rf", R2])
+
+
+if resume is not None:
+    resume_run(resume)
+subprocess.run(["rm", "-rf", out] + [f for d in doms for k in ("wrfout", "wrfrst") for f in stream_files(R, k, d)])
