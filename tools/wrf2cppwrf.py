@@ -1307,10 +1307,14 @@ class WrfTranslator:
                                      ("bl_mynn_mixqt", 0), ("bl_mynn_ess", 1), ("tke_budget", 0),
                                      ("sf_mynn_sfcflux_land", 0), ("sf_mynn_sfcflux_water", 1), ("pert_mynn", False),
                                      ("spp_pbl", 0), ("mynn_chem_vertmx", False))
+                    # most are max_domains options (sf_mynn_sfcflux_land / _water, bl_mynn_edmf, ...): every
+                    # domain's entry (pad_max_domains filled the missing ones with the Registry default)
                     for mk, mdef in mynn_defaults:
-                        if self.has_opt("physics", mk) and self.get_opt("physics", mk, mdef) != mdef:
-                            self.error(f"WRF {mk} = {self.get_opt('physics', mk, mdef)} is not supported; "
-                                       f"CPPWRF's MYNN uses WRF's default {mk} = {mdef}.")
+                        for mv in self.get_opt_list("physics", mk)[:max(1, self._max_dom)]:
+                            if mv != mdef:
+                                self.error(f"WRF {mk} = {mv} is not supported; "
+                                           f"CPPWRF's MYNN uses WRF's default {mk} = {mdef}.")
+                                break
                     closure = self.get_opt("physics", "bl_mynn_closure", 2.6)
                     if abs(float(closure) - 2.6) > 1e-9:
                         self.error(f"WRF bl_mynn_closure = {closure} is not supported; CPPWRF's MYNN uses 2.6.")
