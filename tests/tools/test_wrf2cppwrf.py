@@ -42,13 +42,37 @@ sys.path.insert(0, REPO_ROOT)
 from tools.wrf2cppwrf import parse_namelist, WrfTranslator, NamelistParseError
 
 
+CORE_PHYSICS = ("mp_physics", "cu_physics", "ra_lw_physics", "ra_sw_physics", "bl_pbl_physics", "sf_sfclay_physics",
+                "sf_surface_physics")
+
+
+def complete(text: str) -> str:
+    """The options a test namelist leaves out and wrf.exe needs: without a physics_suite the seven physics options
+    (Registry default -1: wrf.exe stops), diff_opt and km_opt (check_a_mundo stops without them), dx / dy (Registry
+    default 200 m: the real case's time-step check and input_wrf's DX check stop wrf.exe). They get WRF's no-physics,
+    no-diffusion values, every domain's entry, and 15 km."""
+    m = re.search(r"\bmax_dom\s*=\s*(\d+)", text)
+    n = int(m.group(1)) if m else 1
+    adds = {"physics": [] if "physics_suite" in text else [f"{k} = {n}*0" for k in CORE_PHYSICS
+                                                            if not re.search(rf"\b{k}\s*=", text)],
+            "dynamics": [f"{k} = {v}" for k, v in (("diff_opt", 0), ("km_opt", 1)) if not re.search(rf"\b{k}\s*=", text)],
+            "domains": [f"{k} = 15000" for k in ("dx", "dy") if not re.search(rf"\b{k}\s*=", text)]}
+    for grp, items in adds.items():
+        if not items:
+            continue
+        g = re.search(rf"&{grp}\b", text, re.I)
+        if g:
+            text = text[:g.end()] + " " + ", ".join(items) + "," + text[g.end():]
+        else:
+            text += f"\n&{grp} " + ", ".join(items) + " /\n"
+    return text
+
+
 def real_case(text: str) -> str:
     """A real-case namelist: domain 1 needs specified = .true. (Registry default .false.; with no condition on a
-    side wrf.exe stops in share/module_bc.F boundary_condition_check, and the translator asks for --case). Without
-    dx / dy it takes 30 km (with the Registry default 200 m, start_em stops a real-data run: 'Time step too large')."""
-    if not re.search(r"\bdx\s*=", text):
-        text += "\n&domains dx = 30000, dy = 30000 /\n"
-    return text + "\n&bdy_control specified = .true. /\n"
+    side wrf.exe stops in share/module_bc.F boundary_condition_check, and the translator asks for --case); the
+    options complete() adds."""
+    return complete(text) + "\n&bdy_control specified = .true. /\n"
 
 
 # real-case keys of the translation that wrf.exe checks against the input file: (namelist group, key, Registry
@@ -59,6 +83,10 @@ REAL_INPUT_CHECKS = {
     ("real", "dx"): ("domains", "dx", 200.0),
     ("real", "dy"): ("domains", "dy", 200.0),
     ("dyn", "hybrid_opt"): ("dynamics", "hybrid_opt", 2),
+    ("real", "e_we"): ("domains", "e_we", 32),
+    ("real", "e_sn"): ("domains", "e_sn", 32),
+    ("real", "e_vert"): ("domains", "e_vert", 31),
+    ("real", "num_land_cat"): ("physics", "num_land_cat", 21),
 }
 
 
@@ -218,7 +246,7 @@ class TestNamelistParser(unittest.TestCase):
          nested = .false., .true., .true.
         /
         """
-        nml = parse_namelist(text)
+        nml = parse_namelist(complete(text))
         translator = WrfTranslator(nml)
         gen = translator.translate()
         self.assertEqual(translator.errors, [])
@@ -432,7 +460,7 @@ class TestIdealCases(unittest.TestCase):
             &bdy_control periodic_x = .false., open_xs = .true., open_xe = .true., periodic_y = .true. /
             &ideal ideal_case = {ideal_case} /
             """
-            t = WrfTranslator(parse_namelist(text), namelist_path=nml_path)
+            t = WrfTranslator(parse_namelist(complete(text)), namelist_path=nml_path)
             gen = t.translate()
             self.assertEqual(t.errors, [], msg=f"ideal_case = {ideal_case}")
             self.assertEqual(gen["run"]["case"], name)
@@ -775,7 +803,7 @@ class TestValidationAndWarnings(unittest.TestCase):
     def test_real_case_needs_specified(self):
         # specified defaults to .false. (Registry); a real case without it has no lateral boundary condition on
         # domain 1 and wrf.exe stops in share/module_bc.F boundary_condition_check
-        text = "&time_control /\n&domains time_step = 60, dx = 30000, dy = 30000 /\n"
+        text = complete("&time_control /\n&domains time_step = 60 /\n")
         t = WrfTranslator(parse_namelist(text))
         t.translate()
         self.assertEqual(len(t.errors), 1, t.errors)
@@ -809,7 +837,7 @@ class TestValidationAndWarnings(unittest.TestCase):
         """
 
         def errors(e_we=121, e_vert=45, i_start=40, extra=""):
-            t = WrfTranslator(parse_namelist(base.format(e_we=e_we, e_vert=e_vert, i_start=i_start, extra=extra)))
+            t = WrfTranslator(parse_namelist(complete(base.format(e_we=e_we, e_vert=e_vert, i_start=i_start, extra=extra))))
             t.translate()
             return t.errors
 
@@ -831,6 +859,129 @@ class TestValidationAndWarnings(unittest.TestCase):
         e = errors(e_vert=60, extra=",\n         smooth_option = 5")
         self.assertTrue(any("e_vert" in x for x in e), e)
         self.assertTrue(any("smooth_option = 5" in x for x in e), e)
+
+
+class TestWrfNamelistSemantics(unittest.TestCase):
+    """WRF's namelist read, check_a_mundo, start_em and input_wrf rules (variants_pm_R32_*.txt on the VM)."""
+
+    NEST = ("&time_control input_from_file = .true., .true. /\n"
+            "&domains time_step = 60, max_dom = 2, e_we = 120, 121, e_sn = 90, 91, e_vert = 45, 45, dx = 15000,"
+            " dy = 15000, parent_id = 0, 1, i_parent_start = 1, 40, j_parent_start = 1, 30, parent_grid_ratio = 1, 3,"
+            " parent_time_step_ratio = 1, 3 /\n&bdy_control specified = .true., .false. /\n")
+    FULL = ("&time_control /\n&domains time_step = 60, dx = 15000, dy = 15000 /\n"
+            "&physics mp_physics = 0, cu_physics = 0, ra_lw_physics = 0, ra_sw_physics = 0, bl_pbl_physics = 0,"
+            " sf_sfclay_physics = 0, sf_surface_physics = 0 /\n&dynamics diff_opt = 0, km_opt = 1 /\n"
+            "&bdy_control specified = .true. /\n")
+
+    @staticmethod
+    def translate(text):
+        t = WrfTranslator(parse_namelist(complete(text)))
+        return t, t.translate()
+
+    @staticmethod
+    def errors(text):
+        t = WrfTranslator(parse_namelist(text))
+        t.translate()
+        return t.errors
+
+    def test_parser_fortran_semantics(self):
+        # config_reads.inc: REWIND and one READ per group (a repeated group is not read); key(i) assigns from
+        # element i, a repeated key again from its first element, null values keep the element
+        nml = parse_namelist("&physics cudt = 5, 5, cudt(2) = 0, radt = , 10, bldt = 1, bldt = 2 /\n"
+                             "&dynamics km_opt = 2*, 4 /\n&physics cudt = 9 /\n")
+        self.assertEqual(nml["physics"]["cudt"], [5, 0])
+        self.assertEqual(nml["physics"]["radt"], [None, 10])
+        self.assertEqual(nml["physics"]["bldt"], [2])
+        self.assertEqual(nml["dynamics"]["km_opt"], [None, None, 4])
+        # gfortran's logical input: an optional '.', then T or F (true, F, .tru); a number is an error
+        nml = parse_namelist("&bdy_control specified = true, nested = F, periodic_x = .tru /\n")
+        self.assertEqual(nml["bdy_control"], {"specified": [True], "nested": [False], "periodic_x": [True]})
+        with self.assertRaises(NamelistParseError):
+            parse_namelist("&bdy_control specified = 1 /\n")
+        # radt(1) unset: the Registry default 0
+        t, sec = self.translate(self.NEST + "&physics cu_physics = 2*1, radt(2) = 3 /\n")
+        self.assertEqual(t.errors, [])
+        self.assertNotIn("radt", sec["phys"])
+        self.assertEqual(sec["d02"]["phys_radt"], 3)
+
+    def test_nest_entries_take_registry_defaults(self):
+        # r32cudt1 / r32bldt1: a nest without a cudt / bldt entry calls the scheme every step (Registry default 0,
+        # rconfig CUDT / BLDT in upper case)
+        t, sec = self.translate(self.NEST + "&physics cu_physics = 1, 1, cudt = 5, bldt = 1 /\n")
+        self.assertEqual(t.errors, [])
+        self.assertEqual(sec["phys"]["cudt"], 5)
+        self.assertEqual(sec["d02"]["phys_cudt"], 0)
+        self.assertEqual(sec["d02"]["phys_bldt"], 0)
+
+    def test_mp_physics_of_the_highest_domain(self):
+        # frame/module_configure.F: every domain runs mp_physics(max_dom)
+        t, sec = self.translate(self.NEST + "&physics mp_physics = 8, 6 /\n")
+        self.assertEqual(t.errors, [])
+        self.assertEqual(sec["phys"]["mp_physics"], 6)
+        t, _ = self.translate(self.NEST + "&physics mp_physics = 6 /\n")  # domain 2 has the default -1
+        self.assertTrue(any("mp_physics = -1" in e for e in t.errors), t.errors)
+
+    def test_cu_physics_on_a_nest(self):
+        # check_a_mundo: a nest's cu_physics is domain 1's or 0
+        t, _ = self.translate(self.NEST + "&physics cu_physics = 1, 0 /\n")
+        self.assertEqual(t.errors, [])
+        t, _ = self.translate(self.NEST + "&physics cu_physics = 0, 1 /\n")
+        self.assertTrue(any("cu_physics must be equal" in e for e in t.errors), t.errors)
+
+    def test_options_wrf_needs(self):
+        self.assertEqual(self.errors(self.FULL), [])
+        for text, err in ((self.FULL.replace("time_step = 60, ", ""), "time_step is not set"),
+                          (self.FULL.replace("diff_opt = 0, ", ""), "diff_opt and km_opt must both be set"),
+                          (self.FULL.replace("mp_physics = 0, ", ""), "mp_physics = -1"),
+                          (self.FULL.replace("time_step = 60", "time_step = 100"), "reasonable_time_step_ratio"),
+                          (self.FULL.replace("dx = 15000, dy = 15000", ""), "reasonable_time_step_ratio")):
+            self.assertTrue(any(err in e for e in self.errors(text)), (text, err))
+        self.assertEqual(self.errors(self.FULL.replace("time_step = 60", "time_step = 100, reasonable_time_step_ratio = 7")), [])
+
+    def test_unported_options(self):
+        # r32tempo: WRF writes QNCLOUD, QNWFA, QNIFA; r32cor / r32curv: do_coriolis, do_curvature are not used by
+        # wrf.exe; r32nssl: check_a_mundo turns the NSSL options off without NSSL microphysics
+        for text, err in ((self.FULL.replace("&physics ", "&physics tempo_aerosolaware = 1, "), "tempo_aerosolaware"),
+                          (self.FULL + "&afwa afwa_diag_opt = 1 /\n", "afwa_diag_opt"),
+                          (self.FULL.replace("&domains ", "&domains perturb_input = .true., "), "perturb_input"),
+                          (self.FULL.replace("&time_control ", "&time_control io_form_history = 102, "), "io_form_history = 102"),
+                          (self.FULL.replace("&time_control ", "&time_control history_outname = 'out_d<domain>', "),
+                           "history_outname")):
+            self.assertTrue(any(err in e for e in self.errors(text)), (text, err))
+        for text in (self.FULL.replace("&physics ", "&physics tempo_aerosolaware = 0, "),
+                     self.FULL.replace("&dynamics ", "&dynamics do_coriolis = .false., do_curvature = .false., "),
+                     self.FULL.replace("&physics ", "&physics nssl_2moment_on = 1, "),
+                     self.FULL.replace("&dynamics ", "&dynamics damp_opt = 0, zdamp = 3000., ")):
+            self.assertEqual(self.errors(text), [], text)
+
+    def test_input_file_checks(self):
+        # input_wrf.F stops when e_we / e_sn / e_vert / num_land_cat differ from the input (r32ewe, r32nlc): the
+        # model compares the values the translator passes, a missing entry being the Registry default
+        t, sec = self.translate(self.NEST + "&physics num_land_cat = 20 /\n")
+        self.assertEqual(t.errors, [])
+        self.assertEqual([sec["real"][k] for k in ("e_we", "e_sn", "e_vert", "num_land_cat")], [120, 90, 45, 20])
+        self.assertEqual([sec["d02"][k] for k in ("e_we", "e_sn", "e_vert")], [121, 91, 45])
+        t, sec = self.translate("&time_control /\n&domains time_step = 60 /\n&bdy_control specified = .true. /\n")
+        self.assertEqual([sec["real"][k] for k in ("e_we", "e_sn", "e_vert", "num_land_cat")], [32, 32, 31, 21])
+
+    def test_sst_update_on_nests(self):
+        # set_timekeeping_alarms: each domain reads its wrflowinp_d0N every auxinput4_interval(id); a missing
+        # entry is 0 and that domain's alarm never rings
+        text = self.NEST.replace("input_from_file", "auxinput4_inname = 'lowinp_d<domain>', auxinput4_interval = 360,"
+                                 " io_form_auxinput4 = 2, input_from_file") + \
+            "&physics sst_update = 1, mp_physics = 2*6, sf_sfclay_physics = 2*1, sf_surface_physics = 2*2," \
+            " bl_pbl_physics = 2*1 /\n"
+        t, sec = self.translate(text)
+        self.assertEqual(t.errors, [])
+        self.assertEqual(sec["phys"]["auxinput4_interval"], 360)
+        self.assertEqual(sec["d02"]["phys_auxinput4_interval"], 0)
+        self.assertEqual(sec["d02"]["wrflowinp"], "lowinp_d02")
+
+    def test_mynn_options_of_every_domain(self):
+        text = self.NEST + ("&physics mp_physics = 2*8, sf_sfclay_physics = 2*5, bl_pbl_physics = 2*5,"
+                            " bl_mynn_edmf = 1, 0 /\n")
+        t, _ = self.translate(text)
+        self.assertTrue(any("bl_mynn_edmf = 0" in e for e in t.errors), t.errors)
 
 
 class TestExecution2Steps(unittest.TestCase):

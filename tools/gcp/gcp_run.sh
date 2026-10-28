@@ -6,6 +6,7 @@
 #
 # The bucket holds the reference data once (tools/colab/stage_data.py's tar, uploaded with
 # `gcloud storage cp`; --data names them, comma-separated, default suite_data.tar,ideal_data.tar); the source is the committed HEAD.
+# Before the suite the VM runs tests/tools/test_wrf2cppwrf.py (the translator; OUT/unit.log).
 # The VM is a spot VM (Debian 13: the same gcc and glibc as the reference workstation) that powers
 # itself off at the end and is deleted here; --max-run-duration deletes it in any case. The zones are tried
 # in order until one has the machine (spot capacity varies). Use Intel machines (c3, n2, n1): glibc's

@@ -21,6 +21,33 @@ from wrf_max_domains import MAX_DOMAINS_DEFAULTS  # noqa: E402
 from wrf_namelist_options import WRF_NAMELIST_OPTIONS  # noqa: E402
 
 
+def _registry_defaults() -> Dict[str, Tuple[str, Any, str]]:
+    """option -> (namelist group, Registry default, entries) of the EM Registry (data/wrf_schema, the RCONFIG rows
+    of tools/wrf_schema/gen_wrf_schema.py); entries 1 or max_domains."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "wrf_schema", "wrf-4.8.0.tsv")
+    out = {}
+    with open(path) as f:
+        for line in f:
+            t = line.rstrip("\n").split("\t")
+            if t[0] != "RCONFIG" or len(t) < 6 or t[3] == "derived":
+                continue
+            typ, dv = t[2], t[4]
+            if typ == "logical":
+                v: Any = dv.lower() in (".true.", "t", ".t.")
+            elif typ == "character":
+                v = dv.strip('"')
+            else:
+                try:
+                    v = int(dv) if typ == "integer" else float(re.sub("[dD]", "e", dv))
+                except ValueError:  # array defaults such as (/173.15,.../)
+                    v = dv
+            out[t[1]] = (t[3], v, t[5])
+    return out
+
+
+REGISTRY_DEFAULTS = _registry_defaults()
+
+
 # -----------------------------------------------------------------------------
 # Fortran Namelist Tokenizer and Parser (f90nml-free)
 # -----------------------------------------------------------------------------
@@ -153,64 +180,82 @@ def _parse_scalar_value(s: str) -> Any:
     return s.strip()
 
 
+_NULL = object()  # a null value of list-directed input (",," or "3*"): the element keeps its value
+
+
 def parse_namelist(text: str) -> Dict[str, Dict[str, List[Any]]]:
     """Parse namelist text into a dictionary of groups and key -> list of values.
-    
+
     Structure: { 'group_name': { 'key_name': [val1, val2, ...] } }
     Keys and group names are normalized to lowercase.
-    Handles Fortran repetition syntax (e.g. 3*0 -> [0, 0, 0]).
+    As gfortran's namelist read in WRF (config_reads.inc: REWIND, then one READ per group): only the first
+    occurrence of a group is read; key(i) = ... assigns from element i; a repeated key assigns again from its
+    first element; null values (",," and "n*") and elements before key(i) that nothing assigns are None (the
+    translator gives a max_domains option its Registry default there). Handles 3*0 -> [0, 0, 0].
     """
     tokens = _tokenize(text)
     data: Dict[str, Dict[str, List[Any]]] = {}
     current_group: Optional[str] = None
-    
+    seen_groups: Set[str] = set()
+
     idx = 0
     num_tokens = len(tokens)
-    
+
     while idx < num_tokens:
         tok_type, tok_val, line_num = tokens[idx]
-        
+
         if tok_type == 'GROUP_START':
-            current_group = tok_val
-            if current_group not in data:
+            # a group that appears again is not read (WRF rewinds and reads the first one)
+            current_group = None if tok_val in seen_groups else tok_val
+            seen_groups.add(tok_val)
+            if current_group is not None:
                 data[current_group] = {}
             idx += 1
             continue
-            
+
         elif tok_type == 'GROUP_END':
             current_group = None
             idx += 1
             continue
-            
+
         elif tok_type == 'VALUE':
             if current_group is None:
                 idx += 1
                 continue
-                
+
             key = tok_val.lower()
-            if '(' in key and key.endswith(')'):
-                key = key[:key.find('(')]
-                
+            start = 0
+            m = re.fullmatch(r'(\w+)\(\s*(\d+)\s*\)', key)
+            if m:
+                key, start = m.group(1), int(m.group(2)) - 1
+            elif '(' in key:
+                raise NamelistParseError(f"Line {line_num}: unsupported array section '{tok_val}'")
+
             idx += 1
             if idx >= num_tokens:
                 break
-                
+
             next_type, next_val, _ = tokens[idx]
             if next_type != 'EQUALS':
                 continue
             idx += 1  # Skip '='
-            
+
             values: List[Any] = []
+            after_sep = True  # after '=' or a comma: another comma is a null value
+            last_value_idx = None
             while idx < num_tokens:
                 t_type, t_val, _ = tokens[idx]
                 if t_type == 'GROUP_END' or t_type == 'GROUP_START':
                     break
                 if t_type == 'EQUALS':
-                    if values:
-                        last_val = values.pop()
-                        idx -= 1
+                    if last_value_idx is not None:  # that value was the name of the next option
+                        values.pop()
+                        idx = last_value_idx
                     break
                 if t_type == 'COMMA':
+                    if after_sep:
+                        values.append(_NULL)
+                    after_sep = True
                     idx += 1
                     continue
                 if t_type == 'VALUE':
@@ -218,21 +263,36 @@ def parse_namelist(text: str) -> Dict[str, Dict[str, List[Any]]]:
                     if repeat_match:
                         count = int(repeat_match.group(1))
                         val_str = repeat_match.group(2)
-                        parsed_val = _parse_scalar_value(val_str)
+                        parsed_val = _NULL if val_str == '' else _parse_scalar_value(val_str)
                         values.extend([parsed_val] * count)
                     else:
                         values.append(_parse_scalar_value(t_val))
+                    last_value_idx = idx
+                    after_sep = False
                     idx += 1
-                    
-            if current_group in data:
-                if key in data[current_group]:
-                    data[current_group][key].extend(values)
-                else:
-                    data[current_group][key] = values
-                    
+
+            reg = REGISTRY_DEFAULTS.get(key)
+            logical = reg is not None and reg[0] == current_group and isinstance(reg[1], bool)
+            cur = data[current_group].setdefault(key, [])
+            for n, v in enumerate(values):
+                while len(cur) <= start + n:
+                    cur.append(None)
+                if logical and v is not _NULL and v is not None and not isinstance(v, bool):
+                    # gfortran's logical input: an optional '.', then T or F; the rest of the word is skipped
+                    lm = re.match(r'\.?([tf])', v.lower()) if isinstance(v, str) else None
+                    if not lm:
+                        raise NamelistParseError(f"Line {line_num}: bad logical value '{v}' for {key}")
+                    v = lm.group(1) == 't'
+                if v is not _NULL:
+                    cur[start + n] = v
+            while cur and cur[-1] is None:
+                cur.pop()
+            if not cur:
+                del data[current_group][key]
+
         else:
             idx += 1
-            
+
     return data
 
 
@@ -442,10 +502,7 @@ IGNORED_WRF_OPTIONS = {
     "debug_level": "WRF internal logging verbosity",
     "input_from_file": "Real case initialization always reads wrfinput",
     "iofields_filename": "Custom NetCDF field selection (handled by WrfHistory via output.wrf_namelist)",
-    "io_form_history": "History output format specified in [output] format",
     "io_form_restart": "No restart files (restart_interval = 0)",
-    "io_form_input": "Input format handled via NetCDF",
-    "io_form_boundary": "Boundary format handled via NetCDF",
     "start_year": "Start date component",
     "start_month": "Start date component",
     "start_day": "Start date component",
@@ -472,9 +529,9 @@ IGNORED_WRF_OPTIONS = {
     "smooth_option": "Nesting boundary smoothing",
     "num_metgrid_levels": "Metgrid vertical levels used by real.exe",
     "num_metgrid_soil_levels": "Metgrid soil levels used by real.exe",
-    "e_we": "Real case grid dimension read directly from wrfinput",
-    "e_sn": "Real case grid dimension read directly from wrfinput",
-    "e_vert": "Real case grid dimension read directly from wrfinput",
+    "e_we": "Grid dimension (real case: checked against wrfinput as input_wrf does)",
+    "e_sn": "Grid dimension (real case: checked against wrfinput as input_wrf does)",
+    "e_vert": "Grid dimension (real case: checked against wrfinput as input_wrf does)",
     "s_we": "Domain starting index in X (always 1)",
     "s_sn": "Domain starting index in Y (always 1)",
     "s_vert": "Domain starting index in Z (always 1)",
@@ -482,7 +539,7 @@ IGNORED_WRF_OPTIONS = {
     "dzbot": "real.exe vertical level generation (eta levels read from wrfinput_d01)",
     "dzstretch_s": "real.exe vertical level generation (eta levels read from wrfinput_d01)",
     "dzstretch_u": "real.exe vertical level generation (eta levels read from wrfinput_d01)",
-    "num_land_cat": "Land-use category count (land use read from wrfinput_d01)",
+    "num_land_cat": "Land-use category count (real case: checked against wrfinput as input_wrf does)",
     "io_form_auxinput4": "wrflowinp format (NetCDF); used with sst_update = 1",
     "auxinput4_inname": "wrflowinp file name; used with sst_update = 1",
     "auxinput4_interval": "wrflowinp interval; used with sst_update = 1",
@@ -507,6 +564,56 @@ IGNORED_WRF_OPTIONS = {
     "nio_tasks_per_group": "WRF quilt I/O server",
     "nio_groups": "WRF quilt I/O server",
 }
+
+
+# WRF options that are not translated and need not be: wrf.exe does not use them, or only in configurations
+# CPPWRF rejects anyway (any other WRF option away from its Registry default is an error)
+NO_EFFECT_OPTIONS = {
+    # not used by wrf.exe 4.8.0 (Registry entries only; variants r32cor / r32curv identical to WRF)
+    "do_coriolis": "not used by wrf.exe", "do_curvature": "not used by wrf.exe", "do_gradp": "not used by wrf.exe",
+    "coriolis2d": "not used by wrf.exe", "top_radiation": "not used by wrf.exe",
+    # adaptive time step only (use_adaptive_time_step is rejected); max_time_step also by nwp_diagnostics
+    "target_cfl": "adaptive time step only", "target_hcfl": "adaptive time step only",
+    "max_step_increase_pct": "adaptive time step only", "starting_time_step": "adaptive time step only",
+    "starting_time_step_den": "adaptive time step only", "max_time_step": "adaptive time step only",
+    "max_time_step_den": "adaptive time step only", "min_time_step": "adaptive time step only",
+    "min_time_step_den": "adaptive time step only", "adaptation_domain": "adaptive time step only",
+    "step_to_output_time": "adaptive time step only",
+    # real.exe only (wrf.exe reads its wrfinput / wrfbdy)
+    **{k: "real.exe only" for k in (
+        "use_surface", "force_sfc_in_vinterp", "lowest_lev_from_sfc", "use_levels_below_ground", "zap_close_levels",
+        "interp_type", "extrap_type", "t_extrap_type", "linear_interp", "lagrange_order", "interp_theta",
+        "adjust_heights", "sfcp_to_sfcp", "smooth_cg_topo", "rh2qv_method", "rh2qv_wrt_liquid", "qv_max_p_safe",
+        "qv_max_flag", "qv_max_value", "qv_min_p_safe", "qv_min_flag", "qv_min_value", "use_sh_qv", "aggregate_lu",
+        "use_tavg_for_tsk", "use_maxw_level", "maxw_above_this_level", "maxw_horiz_pres_diff", "use_trop_level",
+        "trop_horiz_pres_diff", "max_dz", "auto_levels_opt", "eta_levels")},
+    # restart runs only (restart = .true. is rejected)
+    "override_restart_timers": "restart runs only", "write_hist_at_0h_rst": "restart runs only",
+    # time series files (written only with a tslist file), the history read of iofields_filename
+    "max_ts_locs": "time series (tslist) only", "ts_buf_size": "time series (tslist) only",
+    "max_ts_level": "time series (tslist) only", "tslist_unstagger_winds": "time series (tslist) only",
+    "ignore_iofields_warning": "read by the history output from namelist.input",
+    # damping layer parameters without damp_opt, tracers' PBL mixing without tracers (tracer_opt is rejected)
+    "zdamp": "damp_opt = 0", "dampcoef": "damp_opt = 0", "tracer_pblmix": "tracer_opt = 0",
+    # Noah-MP SNICAR snow albedo (opt_alb = 3 is rejected)
+    **{k: "SNICAR (opt_alb = 3) only" for k in (
+        "snicar_aerosol_readtable", "snicar_bandnumber_opt", "snicar_dustoptics_opt", "snicar_rtsolver_opt",
+        "snicar_snowbc_intmix", "snicar_snowdust_intmix", "snicar_snowoptics_opt", "snicar_snowshape_opt",
+        "snicar_solarspec_opt", "snicar_use_aerosol", "snicar_use_oc")},
+    # check_a_mundo turns the NSSL options off without NSSL microphysics (mp_physics 18 is rejected)
+    **{k: "NSSL microphysics only (check_a_mundo resets it)" for k in (
+        "nssl_2moment_on", "nssl_hail_on", "nssl_density_on", "nssl_3moment", "nssl_ccn_on")},
+    "tc": "tc.exe (bogus vortex) only",
+}
+
+
+def _same_value(v: Any, default: Any) -> bool:
+    """A namelist value equal to the Registry default (numbers by value, text without surrounding blanks)."""
+    if isinstance(v, bool) or isinstance(default, bool):
+        return v is default or (isinstance(v, bool) and isinstance(default, bool) and v == default)
+    if isinstance(v, (int, float)) and isinstance(default, (int, float)):
+        return float(v) == float(default)
+    return str(v).strip() == str(default).strip()
 
 
 def _format_num(val: Any) -> str:
@@ -600,8 +707,15 @@ class WrfTranslator:
         """A max_domains option with fewer entries than max_dom: WRF's namelist read leaves the missing domains at the
         Registry default (not domain 1's value); check_a_mundo copies domain 1's km_opt and diff_opt into -1 entries.
         Only the groups whose options change results (the output and file options are handled where they are read)."""
+        # elements no assignment reached (key(i) = ..., null values): the Registry default
+        for group, opts in self.nml.items():
+            for key, vals in opts.items():
+                if key in REGISTRY_DEFAULTS and REGISTRY_DEFAULTS[key][0] == group:
+                    vals[:] = [REGISTRY_DEFAULTS[key][1] if v is None else v for v in vals]
         for group in ("physics", "dynamics", "fdda", "stoch", "fire", "noah_mp"):
             for key, vals in self.nml.get(group, {}).items():
+                if key in ("km_opt", "diff_opt") and vals and vals[0] != -1:  # check_a_mundo: -1 entries take d01's
+                    vals[1:] = [vals[0] if v == -1 else v for v in vals[1:]]
                 if (group, key) not in MAX_DOMAINS_DEFAULTS or not 0 < len(vals) < self._max_dom:
                     continue
                 default = MAX_DOMAINS_DEFAULTS[(group, key)]
@@ -693,11 +807,16 @@ class WrfTranslator:
     def apply_physics_suite(self):
         """WRF setup_physics_suite: the -1 physics options take the values of physics_suite (CONUS, tropical)."""
         suite = str(self.get_opt("physics", "physics_suite", "none")).strip().lower()
-        phys = self.nml.get("physics", {})
+        phys = self.nml.setdefault("physics", {})
+        # frame/module_configure.F: every domain runs the microphysics of the highest domain, mp_physics(max_dom)
+        if self._max_dom > 1 and len(phys.get("mp_physics", [])) >= self._max_dom:
+            phys["mp_physics"] = [phys["mp_physics"][self._max_dom - 1]] * self._max_dom
         if suite == "none":
             for key in PHYSICS_SUITES["conus"]:
-                if -1 in phys.get(key, []):
-                    self.error(f"WRF {key} = -1 needs a physics_suite (CONUS or tropical).")
+                vals = phys.get(key, [])[:self._max_dom]
+                if not vals or -1 in vals:  # missing: the Registry default -1 (wrf.exe stops)
+                    self.error(f"WRF {key} = -1 (also the Registry default of a missing entry) needs a physics_suite "
+                               "(CONUS or tropical); without one wrf.exe stops.")
             return
         if suite not in PHYSICS_SUITES:
             self.error(f"WRF physics_suite = '{suite}' is not recognized (CONUS, tropical or none).")
@@ -899,6 +1018,11 @@ class WrfTranslator:
             sections["real"]["iso_temp"] = self.get_opt("dynamics", "iso_temp", 200.0)
             for k in ("dx", "dy"):
                 sections["real"][k] = self.get_opt("domains", k, 200.0)
+            # input_wrf.F: the grid dimensions (Registry defaults 32, 32, 31) and num_land_cat (21) must equal the
+            # input's (fatal otherwise); nests get their own entries below
+            for k in ("e_we", "e_sn", "e_vert"):
+                sections["real"][k] = self.get_dom_opt("domains", k, 0, REGISTRY_DEFAULTS[k][1], fallback_d0=False)
+            sections["real"]["num_land_cat"] = self.get_opt("physics", "num_land_cat", 21)
 
             # In configs/real_p1..p4 and nested configs, wrfinput/wrfbdy are written explicitly
             if self.explicit_files or has_physics_suite or max_dom > 1:
@@ -1003,7 +1127,11 @@ class WrfTranslator:
 
         # 8. Time Section [time]
         sections["time"] = {}
-        dt = float(self.get_opt("domains", "time_step", 60.0))
+        time_step = self.get_opt("domains", "time_step", -1)
+        if time_step == -1:  # check_a_mundo: "time_step must be set to a positive integer" (Registry default -1)
+            self.error("WRF time_step is not set (Registry default -1): wrf.exe stops.")
+            time_step = 60
+        dt = float(time_step)
         num = self.get_opt("domains", "time_step_fract_num", 0)
         den = self.get_opt("domains", "time_step_fract_den", 1)
         if den and den > 0 and num:
@@ -1016,7 +1144,7 @@ class WrfTranslator:
         if case_name == "real":
             dx_km = min(float(self.get_opt("domains", "dx", 200.0)), float(self.get_opt("domains", "dy", 200.0))) / 1000.
             ratio = float(self.get_opt("domains", "reasonable_time_step_ratio", 6.0))
-            if dt / dx_km > ratio:
+            if dx_km > 0 and dt / dx_km > ratio:
                 self.error(f"WRF stops with 'Time step too large': time_step / dx = {dt / dx_km:g} s/km is above "
                            f"reasonable_time_step_ratio = {ratio:g}.")
 
@@ -1072,10 +1200,9 @@ class WrfTranslator:
 
         # WRF Registry default diff_opt = km_opt = -1: wrf.exe stops ("Both km_opt and diff_opt need to
         # be set in the namelist.input file", share/module_check_a_mundo.F)
-        for opt_key in ("diff_opt", "km_opt"):
-            if not self.has_opt("dynamics", opt_key):
-                self.notice(f"WRF {opt_key} is not set: wrf.exe v4.8.0 refuses this namelist (both km_opt and "
-                            "diff_opt must be set); CPPWRF assumes diff_opt = 0, km_opt = 1.")
+        if self.get_opt("dynamics", "diff_opt", -1) == -1 or self.get_opt("dynamics", "km_opt", -1) == -1:
+            self.error("WRF diff_opt and km_opt must both be set for domain 1: wrf.exe stops (\"Both km_opt and "
+                       "diff_opt need to be set in the namelist.input file\", share/module_check_a_mundo.F).")
         diff_opt = self.get_opt("dynamics", "diff_opt", 0)
         if diff_opt == 0 and (float(khdif) != 0.0 or float(kvdif) != 0.0):
             sections["dyn"]["diff_opt"] = 0  # WRF: no diffusion; CPPWRF's default with khdif/kvdif is 1
@@ -1224,9 +1351,9 @@ class WrfTranslator:
                 sections["dyn"]["hypsometric_opt"] = hypso
 
         # WRF 4.8 options without a CPPWRF implementation
-        if self.get_opt("time_control", "iau", 0):
+        if any(self.get_opt_list("time_control", "iau")[:max(1, self._max_dom)]):  # max_domains options
             self.error("WRF iau (incremental analysis update) is not supported.")
-        if self.get_opt("physics", "dyn_lightning_option", 0):
+        if any(self.get_opt_list("physics", "dyn_lightning_option")[:max(1, self._max_dom)]):
             self.error("WRF dyn_lightning_option is not supported.")
 
         # Validate core numerical assumptions
@@ -1363,7 +1490,7 @@ class WrfTranslator:
                     for k in ("auxinput4_interval_s", "auxinput4_interval_h", "auxinput4_interval_d", "auxinput4_interval_y",
                               "auxinput4_begin_s", "auxinput4_begin_m", "auxinput4_begin_h", "auxinput4_begin_d",
                               "auxinput4_begin_y", "auxinput4_interval_m"):
-                        if self.get_opt("time_control", k, 0) not in (0, None):  # only the minutes interval
+                        if any(v not in (0, None) for v in self.get_opt_list("time_control", k)[:max(1, max_dom)]):
                             self.error(f"WRF {k} is not supported; CPPWRF reads auxinput4_interval (minutes).")
                     iv = self.get_opt("time_control", "auxinput4_interval", 0)
                     if not iv:
@@ -1373,6 +1500,15 @@ class WrfTranslator:
                     inname = str(self.get_opt("time_control", "auxinput4_inname", "wrflowinp_d<domain>")).strip("'\"")
                     if inname != "wrflowinp_d<domain>":
                         sections["real"]["wrflowinp"] = inname.replace("<domain>", "01")
+                    # each nest reads its wrflowinp_d0N every auxinput4_interval(id) (set_timekeeping_alarms: a
+                    # missing entry is 0 and its alarm never rings)
+                    for d in range(1, max_dom):
+                        tag = f"d{d + 1:02d}"
+                        iv_d = self.get_dom_opt("time_control", "auxinput4_interval", d, 0, fallback_d0=False)
+                        if iv_d != iv:
+                            sections.setdefault(tag, {})["phys_auxinput4_interval"] = iv_d
+                        if inname != "wrflowinp_d<domain>":
+                            sections.setdefault(tag, {})["wrflowinp"] = inname.replace("<domain>", f"{d + 1:02d}")
                 # sea-ice parameters: CPPWRF runs with WRF's defaults only (no reference run with others)
                 for si_key, si_def in (("seaice_albedo_default", 0.65), ("seaice_thickness_default", 3.0),
                                        ("seaice_snowdepth_max", 1.e10), ("seaice_snowdepth_min", 0.001)):
@@ -1419,10 +1555,13 @@ class WrfTranslator:
                                      ("bl_mynn_mixqt", 0), ("bl_mynn_ess", 1), ("tke_budget", 0),
                                      ("sf_mynn_sfcflux_land", 0), ("sf_mynn_sfcflux_water", 1), ("pert_mynn", False),
                                      ("spp_pbl", 0), ("mynn_chem_vertmx", False))
-                    for mk, mdef in mynn_defaults:
-                        if self.has_opt("physics", mk) and self.get_opt("physics", mk, mdef) != mdef:
-                            self.error(f"WRF {mk} = {self.get_opt('physics', mk, mdef)} is not supported; "
-                                       f"CPPWRF's MYNN uses WRF's default {mk} = {mdef}.")
+                    for mk, mdef in mynn_defaults:  # every domain's entry (most are max_domains options)
+                        grp = REGISTRY_DEFAULTS.get(mk, ("physics",))[0]
+                        for v in self.get_opt_list(grp, mk)[:max(1, self._max_dom)]:
+                            if v != mdef:
+                                self.error(f"WRF {mk} = {v} is not supported; CPPWRF's MYNN uses WRF's default "
+                                           f"{mk} = {mdef}.")
+                                break
                     closure = self.get_opt("physics", "bl_mynn_closure", 2.6)
                     if abs(float(closure) - 2.6) > 1e-9:
                         self.error(f"WRF bl_mynn_closure = {closure} is not supported; CPPWRF's MYNN uses 2.6.")
@@ -1682,6 +1821,11 @@ class WrfTranslator:
         # maybe_remove_colons (share/module_io_domain.F:468): ':' -> '_' in the wrfout / wrfrst file names
         if self.get_opt("time_control", "nocolons", False):
             self.error("WRF nocolons = .true. is not supported (CPPWRF's file names keep the colons).")
+        # the history, input and boundary files are NetCDF (io_form 2); other forms write or read other files
+        for k in ("io_form_history", "io_form_input", "io_form_boundary"):
+            if self.get_opt("time_control", k, 2) != 2:
+                self.error(f"WRF {k} = {self.get_opt('time_control', k, 2)} is not supported; CPPWRF reads and "
+                           "writes NetCDF (2).")
         if case_name.startswith("em_") and self.namelist_path:
             # ideal cases: the history / restart files take WRF's namelist values (radt, cudt, iofields, ...)
             sections["output"]["wrf_namelist"] = os.path.abspath(self.namelist_path)
@@ -1885,6 +2029,9 @@ class WrfTranslator:
                             self.error(f"Domain {tag}: WRF sf_urban_physics = {v_d} is not supported by CPPWRF.")
                         elif pk in SUPPORTED_OPTIONS and v_d is not None and v_d not in SUPPORTED_OPTIONS[pk]:
                             self.error(f"Domain {tag}: WRF {pk} = {v_d} is not supported by CPPWRF.")
+                        elif pk == "cu_physics" and v_d != v_0 and v_d != 0:
+                            self.error(f"Domain {tag}: WRF cu_physics = {v_d} differs from domain 1's {v_0}: wrf.exe "
+                                       "stops (\"cu_physics must be equal for all domains (or = zero)\", check_a_mundo).")
                         elif v_d != v_0 and pk in PER_DOMAIN_PHYS:
                             phys_over[pk] = v_d  # [d0N] phys_<key>
                         elif v_d != v_0:
@@ -1898,7 +2045,7 @@ class WrfTranslator:
                     sections["domains"]["parent_grid_ratio"] = grid_ratio
                     sections["domains"]["parent_time_step_ratio"] = ts_ratio
 
-                sections[tag] = {}
+                sections.setdefault(tag, {})
                 if dom_id >= 3 or parent_id != dom_id - 1:
                     sections[tag]["parent_id"] = parent_id
                     sections[tag]["i_parent_start"] = i_start
@@ -1907,6 +2054,9 @@ class WrfTranslator:
                     sections[tag]["parent_time_step_ratio"] = ts_ratio
 
                 sections[tag]["wrfinput"] = f"wrfinput_{tag}"
+                for k in ("e_we", "e_sn", "e_vert"):  # checked against wrfinput_d0N as input_wrf.F does
+                    sections[tag][k] = self.get_dom_opt("domains", k, d, REGISTRY_DEFAULTS[k][1],
+                                                        fallback_d0=False)  # the nest driver's real.<k>
                 for pk, v in phys_over.items():
                     sections[tag]["phys_" + pk] = v
                 child_dt = dom_dt[p_idx] / float(ts_ratio)  # the model derives it the same way (no [d0N] dt)
@@ -1998,10 +2148,20 @@ class WrfTranslator:
                     self.error(f"&{grp_name}.{key_name} is not a WRF 4.8.0 namelist option (wrf.exe stops reading "
                                f"the namelist).")
                 elif (grp_name, key_name) not in self.used_keys:
+                    reg = REGISTRY_DEFAULTS.get(key_name)
+                    n = max(1, self._max_dom) if reg and reg[2] == "max_domains" else 1
                     if key_name in IGNORED_WRF_OPTIONS:
                         self.notice(f"Option &{grp_name}.{key_name} = {vals[0] if vals else None}: {IGNORED_WRF_OPTIONS[key_name]}")
-                    else:
-                        self.warn(f"Option &{grp_name}.{key_name} = {vals} is not recognized or supported by CPPWRF.")
+                    elif grp_name not in wrf_groups:
+                        self.warn(f"Option &{grp_name}.{key_name} = {vals}: wrf.exe does not read &{grp_name}.")
+                    elif reg and all(_same_value(v, reg[1]) for v in vals[:n]):
+                        self.notice(f"Option &{grp_name}.{key_name} = {vals[:n]}: WRF's default.")
+                    elif key_name in NO_EFFECT_OPTIONS or grp_name in NO_EFFECT_OPTIONS:
+                        reason = NO_EFFECT_OPTIONS.get(key_name) or NO_EFFECT_OPTIONS[grp_name]
+                        self.notice(f"Option &{grp_name}.{key_name} = {vals[:n]}: {reason}")
+                    else:  # a WRF option that changes wrf.exe's run or output and has no port
+                        self.error(f"WRF &{grp_name}.{key_name} = {vals[:n]} is not supported by CPPWRF (WRF's default "
+                                   f"{reg[1] if reg else '?'}; CPPWRF has no port of it).")
 
         return sections
 

@@ -19,6 +19,10 @@ cmake -S $J/src -B $J/build -DCMAKE_BUILD_TYPE=Release -DCPPWRF_DOUBLE=ON -DCPPW
   -DCMAKE_CXX_FLAGS="-march=skylake -mtune=skylake" > $J/cmake.log 2>&1 && cmake --build $J/build -j"$(nproc)" --target cppwrf >> $J/cmake.log 2>&1
 put $J/cmake.log
 cd $J/src
+# the translator's unit tests (tests/tools/test_wrf2cppwrf.py: namelists of the data's WRF runs, 2-step model runs)
+CPPWRF_WRF_RUNS=$J/data/wrf_runs CPPWRF_WRF_REF=$J/data/wrf_ref CPPWRF_BIN=$J/build/cppwrf OMP_NUM_THREADS=1 \
+  python3 tests/tools/test_wrf2cppwrf.py -v > $J/unit.log 2>&1; echo "exit $?" >> $J/unit.log
+put $J/unit.log
 only=(); [ -n "$CASES" ] && only=(--only "$CASES" --exact)
 (while sleep 60; do put $J/suite.log; done) &  # progress: the lines of the cases that ended
 CPPWRF_WRF_RUNS=$J/data/wrf_runs CPPWRF_WRF_REF=$J/data/wrf_ref OMP_NUM_THREADS=$THR \
