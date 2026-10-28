@@ -11,6 +11,8 @@ tolerance 0 (exact.py: NaN equals only NaN, -0 differs from +0): every variable 
 reference frame up to the case's time (the final one must be there), types and variable attributes, and the
 global attributes when the reference's namelist.input is there (CPPWRF's history then reads it). The other
 cases compare the model state with the reference's by relative L2 at the case's time (compare_real.py).
+With the reference's namelist.input a tolerance-0 case FAILs when its configuration (config file and --set) sets
+an option otherwise than tools/wrf2cppwrf.py's translation of that namelist.
 Only the cases of the given binaries are selected; a given binary that does not exist is an error (exit 2).
 Exit status 0 = every selected case PASSed; a case whose reference is missing is a SKIP and fails the suite unless
 --allow-skip. The last line counts the results.
@@ -38,14 +40,15 @@ CASES = [
     ("real_r1_fp64_cpu", "cpu_dp", "configs/real_r1.ini", [], f"{WR}/run_R1_r8/wrfout_d01_2026-10-12_00:00:00", 300,
      {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
     # R1D6 = R1 + diff_opt = 1, km_opt = 4, damp_opt = 1 (cal_dampkm), diff_6th_opt = 2 (u, v, w, theta, qv)
-    ("real_r1d6_fp64_cpu", "cpu_dp", "configs/real_r1_d6.ini", [],
+    ("real_r1d6_fp64_cpu", "cpu_dp", "configs/real_r1_d6.ini", ["real.dir=" + f"{WR}/run_R1D6_r8"],
      f"{WR}/run_R1D6_r8/wrfout_d01_2026-10-12_00:00:00", 600,
      {"U": 0.0, "V": 0.0, "W": 0.0, "PH": 0.0, "MU": 0.0, "P": 0.0, "QV": 0.0, "THM": 0.0}),
     ("real_r1_fp64_cuda", "cuda_dp", "configs/real_r1.ini", [], f"{WR}/run_R1_r8/wrfout_d01_2026-10-12_00:00:00", 300,
      {"U": 1e-12, "W": 1e-10, "PH": 1e-13, "THM": 1e-13, "QV": 1e-13, "MU": 1e-13}),
     # T1 = R1 + diff_opt = 2, km_opt = 2 (1.5-order TKE, full metric stress tensor diffusion):
     # bit-identical on CPU FP64 across all fields including TKE
-    ("real_t1_fp64_cpu", "cpu_dp", "configs/real_t1.ini", [], f"{WR}/run_T1_r8/wrfout_d01_2026-10-12_00:00:00", 300,
+    ("real_t1_fp64_cpu", "cpu_dp", "configs/real_t1.ini", ["real.dir=" + f"{WR}/run_T1_r8"],
+     f"{WR}/run_T1_r8/wrfout_d01_2026-10-12_00:00:00", 300,
      {"U": 0.0, "V": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0, "TKE": 0.0}),
     ("real_t1_fp64_cuda", "cuda_dp", "configs/real_t1.ini", [], f"{WR}/run_T1_r8/wrfout_d01_2026-10-12_00:00:00", 300,
      {"U": 1e-12, "V": 1e-12, "W": 1e-10, "PH": 1e-13, "THM": 1e-13, "QV": 1e-13, "MU": 1e-13, "TKE": 1e-10}),
@@ -339,7 +342,7 @@ CASES = [
     ("real_n1_r8_fp64_cpu", "cpu_dp", "configs/real_n1_steps.ini", ["real.dir=" + f"{WR}/run_N1_r8/steps"],
      {d: f"{WR}/run_N1_r8/steps/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 180,
      {"d01.U": 0.0, "d01.THM": 0.0, "d01.QV": 0.0, "d02.U": 0.0, "d02.THM": 0.0, "d02.QV": 0.0}),
-    ("real_n2_r8_fp64_cpu", "cpu_dp", "configs/real_n2_steps.ini", [],
+    ("real_n2_r8_fp64_cpu", "cpu_dp", "configs/real_n2_steps.ini", ["real.dir=" + f"{WR}/run_N2_r8/steps"],
      {d: f"{WR}/run_N2_r8/steps/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 180,
      {"d01.U": 0.0, "d01.THM": 0.0, "d01.QV": 0.0, "d02.U": 0.0, "d02.THM": 0.0, "d02.QV": 0.0}),
     ("real_n2_r8_fp64_cpu_1h", "cpu_dp", "configs/real_n2.ini", ["real.dir=" + f"{WR}/run_N2_r8"],
@@ -462,6 +465,39 @@ def run(binary, cfg, sets, out):
     return r.returncode, r.stdout + r.stderr
 
 
+def config_vs_namelist(cfg, sets, nml):
+    """Options of the case's configuration (cfg and its --set) that differ from tools/wrf2cppwrf.py's translation of
+    the namelist.input of the WRF run that made the reference (options both set; paths by their real path; the run
+    length, output and restart settings aside), or the translation's errors."""
+    sys.path.insert(0, REPO)
+    from tools.wrf2cppwrf import parse_namelist, WrfTranslator
+    tr = WrfTranslator(parse_namelist(open(nml).read()), namelist_path=nml)
+    gen = tr.translate()
+    if tr.errors:
+        return [f"{nml} does not translate: {tr.errors}"]
+    conf, sec = {}, None
+    for line in open(os.path.join(REPO, cfg)):
+        line = line.split("#")[0].strip()
+        if re.fullmatch(r"\[.+\]", line):
+            sec = line[1:-1]
+        elif sec and "=" in line:
+            conf.setdefault(sec, {})[line.split("=", 1)[0].strip()] = line.split("=", 1)[1].strip()
+    for x in sets:
+        k, v = x.split("=", 1)
+        conf.setdefault(k.split(".", 1)[0], {})[k.split(".", 1)[1]] = v
+
+    def norm(v):
+        v = os.path.expandvars(str(v)).strip().strip("'\"").replace(" ", "")
+        if v.startswith("/"):
+            return os.path.realpath(v)
+        try:
+            return repr(float(v.replace("d", "e").replace("D", "e")))
+        except ValueError:
+            return {".true.": "true", ".false.": "false", "t": "true", "f": "false"}.get(v.lower(), v.lower())
+    return [f"{s}.{k}: namelist {v} configuration {conf[s][k]}" for s, kv in gen.items() if s not in ("output", "restart")
+            for k, v in kv.items() if (s, k) != ("run", "run_time") and k in conf.get(s, {}) and norm(v) != norm(conf[s][k])]
+
+
 def exact_case(refs, out, t, sets):
     """Tolerance-0 comparison of the wrfout files in `out` (out/<domain> for nests) with the references {domain:
     wrfout}: (differences, summary)."""
@@ -550,6 +586,10 @@ def main():
         exact = all(x == 0.0 for x in tol.values())
         if exact:  # WRF history output; with the reference's namelist.input CPPWRF writes WRF's global attributes
             nl = os.path.join(os.path.dirname(next(iter(refs.values()))), "namelist.input")
+            if os.path.exists(nl):  # the configuration is the WRF run's that made the reference
+                dif = config_vs_namelist(cfg, sets, nl)
+                if dif:
+                    return False, f"FAIL  {name:22s} configuration differs from {nl}: {'; '.join(dif)}"
             sets = sets + ["output.format=wrfout"] + ([f"output.wrf_namelist={nl}"] if os.path.exists(nl) else [])
         rc, log = run(b, cfg, sets, out)
         if rc != 0:
