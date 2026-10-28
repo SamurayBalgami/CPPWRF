@@ -49,11 +49,11 @@ def text(v, t=None):
 def metadata(a, b, ignore=("TITLE",), only=None):
     """Differences of two netCDF datasets other than values: variable list and order, dimensions, each variable's
     dimensions, type and attributes, the global attributes (names in `ignore` aside) and their order.
-    only=[variables of b]: b holds these variables of a full file (their order in a, the dimensions they use)."""
+    only=[variables of b]: b holds these variables of a full file (in any order; the dimensions they use)."""
     out = []
     va, vb = list(a.variables), list(b.variables)
-    if only is not None:
-        va = [x for x in va if x in only]
+    if only is not None:  # b's variable order is its writer's (stage_data.py), not WRF's
+        va, vb = sorted(x for x in va if x in only), sorted(vb)
     if va != vb:
         out.append(f"variables: missing {[x for x in vb if x not in va]} extra {[x for x in va if x not in vb]}"
                    + ("" if set(va) != set(vb) else " (order)"))

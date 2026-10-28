@@ -397,8 +397,8 @@ CASES = [
       "QRAIN": 0.0, "RAINNC": 0.0}),
     # em_quarter_ss with WRF's default open_xs/xe/ys/ye (3-D open lateral boundaries, corners included)
     ("ideal_quarter_ss_open_fp64_cpu", "cpu_dp", "configs/wrf_quarter_ss.ini",
-     ["domain.bc_x=open", "domain.bc_y=open", "run.run_time=7200", "output.out_interval=50",
-      "output.diag_interval=50"],
+     ["domain.bc_x=open", "domain.bc_y=open", "run.run_time=7200", "output.out_interval=10",
+      "output.diag_interval=10"],
      f"{WREF}/r8/run_qss_open/wrfout_d01_0001-01-01_00:00:00", 7200,
      {"U": 0.0, "V": 0.0, "W": 0.0, "PH": 0.0, "MU": 0.0, "P": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0,
       "QRAIN": 0.0, "RAINNC": 0.0}),
