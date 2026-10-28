@@ -13,6 +13,7 @@ The tests of WRF reference runs read ${CPPWRF_WRF_RUNS} and ${CPPWRF_WRF_REF} (d
 """
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -43,7 +44,10 @@ from tools.wrf2cppwrf import parse_namelist, WrfTranslator, NamelistParseError
 
 def real_case(text: str) -> str:
     """A real-case namelist: domain 1 needs specified = .true. (Registry default .false.; with no condition on a
-    side wrf.exe stops in share/module_bc.F boundary_condition_check, and the translator asks for --case)."""
+    side wrf.exe stops in share/module_bc.F boundary_condition_check, and the translator asks for --case). Without
+    dx / dy it takes 30 km (with the Registry default 200 m, start_em stops a real-data run: 'Time step too large')."""
+    if not re.search(r"\bdx\s*=", text):
+        text += "\n&domains dx = 30000, dy = 30000 /\n"
     return text + "\n&bdy_control specified = .true. /\n"
 
 
@@ -771,7 +775,7 @@ class TestValidationAndWarnings(unittest.TestCase):
     def test_real_case_needs_specified(self):
         # specified defaults to .false. (Registry); a real case without it has no lateral boundary condition on
         # domain 1 and wrf.exe stops in share/module_bc.F boundary_condition_check
-        text = "&time_control /\n&domains time_step = 60 /\n"
+        text = "&time_control /\n&domains time_step = 60, dx = 30000, dy = 30000 /\n"
         t = WrfTranslator(parse_namelist(text))
         t.translate()
         self.assertEqual(len(t.errors), 1, t.errors)
@@ -796,7 +800,7 @@ class TestValidationAndWarnings(unittest.TestCase):
         base = """
         &time_control input_from_file = .true., .true. /
         &domains
-         time_step = 60, max_dom = 2,
+         time_step = 60, max_dom = 2, dx = 30000, 10000, dy = 30000, 10000,
          e_we = 120, {e_we}, e_sn = 90, 91, e_vert = 45, {e_vert},
          parent_id = 0, 1, i_parent_start = 1, {i_start}, j_parent_start = 1, 30,
          parent_grid_ratio = 1, 3, parent_time_step_ratio = 1, 3{extra}
