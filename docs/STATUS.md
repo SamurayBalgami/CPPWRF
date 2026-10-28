@@ -2,7 +2,7 @@
 
 CPPWRF reproduces WRF-ARW v4.8.0 statement by statement. This page lists what is implemented, how it
 is verified against WRF, and the current results. All numbers come from `tests/verify/wrf_suite.py`
-(105 cases, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
+(109 cases, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
 
 ## Implemented
 
@@ -12,7 +12,7 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 | Diffusion | diff_opt 1 with km_opt 1 (constant K), 3 (3-D Smagorinsky) and 4 (2-D Smagorinsky); diff_opt 2 with km_opt 2 (1.5-order TKE, advected TKE); 6th-order diffusion (diff_6th_opt 1, 2) |
 | Microphysics | Kessler (1), WSM6 (6, with effective radii), Thompson (8) |
 | Cumulus | Kain-Fritsch (1), Grell-Freitas-Li (3, deep and shallow), Tiedtke (6), New Tiedtke (16) |
-| PBL, surface layer, land surface | YSU (1), MYJ (2), MYNN-EDMF (5, WRF's default bl_mynn_* options, icloud_bl 0 / 1; with the surface layers 1, 2 and 5), revised MM5 surface layer (1), Eta surface layer (2), MYNN surface layer (5), Noah LSM (2, including glacial and sea-ice points), Noah-MP v5.1.2 (4, default options), fractional sea ice (fractional_seaice = 1), SST update (sst_update = 1, wrflowinp), gravity wave drag (gwd_opt = 1, GWDO) |
+| PBL, surface layer, land surface | YSU (1), MYJ (2), MYNN-EDMF (5, WRF's default bl_mynn_* options, icloud_bl 0 / 1; with the surface layers 1, 2 and 5), revised MM5 surface layer (1), Eta surface layer (2), MYNN surface layer (5), Noah LSM (2, including glacial and sea-ice points; usemonalb and rdlai2d: background albedo and LAI from wrfinput), Noah-MP v5.1.2 (4, default options), fractional sea ice (fractional_seaice = 1), SST update (sst_update = 1, wrflowinp), gravity wave drag (gwd_opt = 1, GWDO) |
 | Radiation | RRTMG LW and SW (4), CAM ozone and greenhouse gases, cal_cldfra1, McICA |
 | Nesting | static one-way and two-way nests (interp_fcn_sint, bdy_interp1, copy_fcn feedback, sm121/smdsm smoothers, blend_terrain, adjust_tempqv) |
 | Namelist | physics_suite CONUS and tropical (the -1 options), in tools/wrf2cppwrf.py and in the WRF I/O schema |
@@ -63,6 +63,7 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | R1 | dynamics only | 5 steps |
 | W1 | active w_damping (dt 450 s) | 10 steps |
 | P1 | sfclayrev + Noah + YSU | 1 h |
+| A01 / A01V | P1 / V2 with usemonalb and rdlai2d (wrfinput ALBBCK and LAI; V2: snow-covered points start with ALBEDO = SNOALB) | 1 h |
 | P2 | P1 + Kain-Fritsch | 1 h |
 | P3 | P1 + RRTMG LW/SW (radt 1 min) | 3 steps |
 | P4 | P2 + WSM6 + RRTMG (cloudy, effective radii) + diff_opt 1 / km_opt 4 | 1 h |
@@ -103,7 +104,7 @@ different last bits on AMD EPYC (all scalar libm functions and the other libmvec
 WRF itself therefore differs between the two; on AMD, CPPWRF differs from Intel-made references by
 about 1e-14 after one step. The suite runs on Intel machines (`tools/gcp/gcp_run.sh`).
 
-Restarts reproduce an uninterrupted run bit for bit (P1, P7, P8, P9, NMP1, MYNN, MYNNSF1, MYNNSF2, T1; P1 also in FP32 on the GPU), and a run
+Restarts reproduce an uninterrupted run bit for bit (P1, A01, P7, P8, P9, NMP1, MYNN, MYNNSF1, MYNNSF2, T1; P1 also in FP32 on the GPU), and a run
 resumed from WRF's own wrfrst files continues as WRF does (also the two-way physics nest N3, both domains).
 
 Output files: the `wrfout_d0N` files of P1-P9, NMP1, MYNN, mp8, V1-V3, T6, G2, F1, F2, D0, D0V, SU1, HY1, R1, T1, N1, N2 and N3 (both
@@ -160,7 +161,7 @@ radt / bldt / cudt > dt, Grell-Freitas clos_choice 1, 4, 10 and ishallow 0, hybr
 diff_6th_opt 1 and 2, moist/scalar_adv_opt 0, w_damping 0 and w_crit_cfl, damp_opt 0, dampcoef / zdamp,
 epssm, time_step_sound, smdiv / emdiv, c_s, km_opt 1 / 3 / 4 with diff_opt 1 (km_opt 3 also on em_quarter_ss with
 diff_opt 2), diff_opt 2 / km_opt 4 (also mix_full_fields), mix_isotropic 1, PD advection with h_adv_order 6,
-moist_mix2_off, MYNN (P6 inputs) with RRTMG, icloud_bl 0, bldt 2, WSM6, Kain-Fritsch and restart_interval 1 (the restart alarm in the first step), the MYNN PBL on the revised MM5 and Eta surface layers (P6 inputs, 3 min: without radiation, RRTMG with icloud_bl 0, bldt 2, WSM6, Kain-Fritsch, Noah-MP, isfflx 0, iz0tlnd 1, isftcflx 1, wrfrst with restart_interval 1; 1 h with RRTMG and wrfrst at 30 min; two-way nest N3s on d01 and d02), open-boundary 6th-order diffusion (em_squall2d_x, em_quarter_ss open), v_adv_order 4, and surface layer + LSM without a PBL scheme (bl_pbl_physics 0, with
+moist_mix2_off, MYNN (P6 inputs) with RRTMG, icloud_bl 0, bldt 2, WSM6, Kain-Fritsch and restart_interval 1 (the restart alarm in the first step), the MYNN PBL on the revised MM5 and Eta surface layers (P6 inputs, 3 min: without radiation, RRTMG with icloud_bl 0, bldt 2, WSM6, Kain-Fritsch, Noah-MP, isfflx 0, iz0tlnd 1, isftcflx 1, wrfrst with restart_interval 1; 1 h with RRTMG and wrfrst at 30 min; two-way nest N3s on d01 and d02), usemonalb and rdlai2d (together and alone, also false) on P1, P4, P9, P1 with Noah-MP, V2 (snow, sea ice, glacier) and the N3s nest (both domains), 3 min and 1 h, with wrfrst files at 30 min (P1) and 15 min (V2), and on SU1 over 6 h 20 min across the 6 h wrflowinp update of LAI and ALBBCK, open-boundary 6th-order diffusion (em_squall2d_x, em_quarter_ss open), v_adv_order 4, and surface layer + LSM without a PBL scheme (bl_pbl_physics 0, with
 diff_opt 1 or diff_opt 2 / km_opt 2) are bit-identical to WRF. Two-way nest N3 variants: smooth_option 0 / 1,
 feedback 0, parent_time_step_ratio 2, per-domain cu_physics (cumulus off on d02), cudt, radt and bldt. New Tiedtke
 (cu_physics 16, 30-minute runs) on the P1, P4 (also cudt 5), P6 and P9 inputs and on the N3s (also off on d02), N3sib
