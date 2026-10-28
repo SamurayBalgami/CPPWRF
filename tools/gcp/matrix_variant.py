@@ -5,7 +5,8 @@ One WRF-vs-CPPWRF comparison of a namelist variant: the WRF run RUNS/BASE (input
 3 minutes with history every minute and the given namelist changes (key replaced or added in &SECTION), in
 WORK/NAME; CPPWRF runs the configuration tools/wrf2cppwrf.py makes from that namelist; every common variable
 of every common frame (by Times) of each domain's wrfout is compared at tolerance 0. Prints one line:
-NAME d0N frames N differing: none | {VAR: 'time npoints/maxdiff', ...}  (or NAME WRF-FAILED / CPPWRF-FAILED);
+NAME d0N frames N differing: none | {VAR: 'time npoints/maxdiff', ...}  (or NAME WRF-FAILED with CPPWRF's
+status on the same namelist, TRANSLATE-FAILED / CPPWRF-FAILED);
 variables only WRF writes are listed as wrf-only-vars.
 run.keep=1 copies WRF's namelist.input, inputs and wrfout files to WORK/keep/run_NAME (a suite reference).
 run.atts=1 also lists the global attributes (TITLE aside) that differ in the first common history frame's files.
@@ -83,10 +84,31 @@ try:  # a hanging run must not keep the VM
     subprocess.run("./wrf.exe > wrf.log 2>&1", shell=True, cwd=R, env=env, timeout=3600)
 except subprocess.TimeoutExpired:
     open(os.path.join(R, "wrf.log"), "a").write("\nTIMEOUT after 3600 s\n")
+out = os.path.join(R, "cppwrf")
+
+
+def run_cppwrf():
+    """Translate the variant's namelist and run CPPWRF: (None, CompletedProcess) or (failure text, None)."""
+    t = subprocess.run([sys.executable, os.path.join(repo, "tools/wrf2cppwrf.py"), os.path.join(R, "namelist.input"),
+                        "--real-dir", R, "--format", "wrfout", "-o", os.path.join(R, "case.ini")], capture_output=True, text=True)
+    if t.returncode != 0:
+        return f"TRANSLATE-FAILED {t.stderr.strip().splitlines()[-1:]}", None
+    try:
+        c = subprocess.run([cppwrf, os.path.join(R, "case.ini"), "--set", f"output.dir={out}", "--set", "run.stop_on_nonfinite=false"], capture_output=True, text=True,
+                           cwd=repo, env=env, timeout=3600)
+    except subprocess.TimeoutExpired:
+        c = subprocess.CompletedProcess([], 124, "", "TIMEOUT after 3600 s")
+    if c.returncode != 0:
+        return f"CPPWRF-FAILED {(c.stderr or c.stdout).strip().splitlines()[-1:]}", None
+    return None, c
+
+
 if "SUCCESS COMPLETE WRF" not in open(os.path.join(R, "rsl.out.0000") if os.path.exists(os.path.join(R, "rsl.out.0000")) else os.path.join(R, "wrf.log"), errors="replace").read():
     log = open(os.path.join(R, 'wrf.log'), errors='replace').read().strip().splitlines()
     why = [l.strip() for l in log if "ERROR" in l or "FATAL" in l or "Fix " in l][:4] or log[-1:]
-    print(f"{name} WRF-FAILED {why}")
+    fail, _ = run_cppwrf()  # CPPWRF must reject what WRF rejects
+    print(f"{name} WRF-FAILED {why}; cppwrf: {fail if fail else 'RUNS'}")
+    subprocess.run(["rm", "-rf", out])
     sys.exit(0)
 if keep:  # WORK/keep/run_NAME: what the suite needs of the reference (remote_matrix.sh uploads keep.tar)
     K = os.path.join(work, "keep", f"run_{name}")
@@ -95,19 +117,9 @@ if keep:  # WORK/keep/run_NAME: what the suite needs of the reference (remote_ma
         f = os.path.join(R, f)
         if os.path.exists(f):
             subprocess.run(["cp", "-L", f, K])
-out = os.path.join(R, "cppwrf")
-t = subprocess.run([sys.executable, os.path.join(repo, "tools/wrf2cppwrf.py"), os.path.join(R, "namelist.input"),
-                    "--real-dir", R, "--format", "wrfout", "-o", os.path.join(R, "case.ini")], capture_output=True, text=True)
-if t.returncode != 0:
-    print(f"{name} TRANSLATE-FAILED {t.stderr.strip().splitlines()[-1:]}")
-    sys.exit(0)
-try:
-    c = subprocess.run([cppwrf, os.path.join(R, "case.ini"), "--set", f"output.dir={out}", "--set", "run.stop_on_nonfinite=false"], capture_output=True, text=True,
-                       cwd=repo, env=env, timeout=3600)
-except subprocess.TimeoutExpired:
-    c = subprocess.CompletedProcess([], 124, "", "TIMEOUT after 3600 s")
-if c.returncode != 0:
-    print(f"{name} CPPWRF-FAILED {(c.stderr or c.stdout).strip().splitlines()[-1:]}")
+fail, c = run_cppwrf()
+if fail:
+    print(f"{name} {fail}")
     sys.exit(0)
 unread = re.findall(r"unaccessed config key '([^']*)'", c.stderr)
 if unread:  # a translated option the model never read
