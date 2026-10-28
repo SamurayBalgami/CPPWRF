@@ -8,6 +8,7 @@ of every common frame (by Times) of each domain's wrfout is compared at toleranc
 NAME d0N frames N differing: none | {VAR: 'time npoints/maxdiff', ...}  (or NAME WRF-FAILED / CPPWRF-FAILED);
 variables only WRF writes are listed as wrf-only-vars.
 run.keep=1 copies WRF's namelist.input, inputs and wrfout files to WORK/keep/run_NAME (a suite reference).
+run.atts=1 also lists the global attributes (TITLE aside) that differ in the first common history frame's files.
 run.file=NAME:TEXT writes the file NAME (e.g. an iofields_filename list) into the run directory. Values are
 percent-decoded (%20 blank, %0A new line, %27 quote, %23 #, %7C |), as the variant line passes through sh -c."""
 import glob, os, re, subprocess, sys
@@ -44,11 +45,14 @@ for k, v in [("run_days", "0"), ("run_hours", "0"), ("run_minutes", "0"), ("run_
              ("history_interval_s", "60, 60, 60"), ("frames_per_outfile", "10000"), ("restart", ".false.")]:
     nl = setkey(nl, "time_control", k, v)
 nl = re.sub(r"^\s*history_interval\s*=.*\n", "", nl, flags=re.M)
-keep = False
+keep = atts = False
 for sk, v in sets:
     sec, k = sk.split(".", 1)
     if (sec, k) == ("run", "keep"):  # run.keep=1: WRF's run (namelist, inputs, wrfout) kept as a reference
         keep = v not in ("0", "false", ".false.")
+        continue
+    if (sec, k) == ("run", "atts"):  # run.atts=1: compare the global attributes too
+        atts = v not in ("0", "false", ".false.")
         continue
     if (sec, k) == ("run", "file"):  # run.file=NAME:TEXT: a file of the run directory (both models)
         fn, text = v.split(":", 1)
@@ -161,6 +165,15 @@ for kind in ("wrfout", "wrfrst"):  # history frames, then restart files (both st
         for v in bad:
             if nframes.get(v, 0) > 1:
                 bad[v] += f" [{nframes[v]} frames]"
+        common = sorted(set(A) & set(B))
+        if atts and common:  # global attributes of the files holding the first common frame
+            a, b = A[common[0]][0], B[common[0]][0]
+            ga = {x: repr(a.getncattr(x)) for x in a.ncattrs() if x != "TITLE"}
+            gb = {x: repr(b.getncattr(x)) for x in b.ncattrs() if x != "TITLE"}
+            dif = {x: f"cppwrf {ga.get(x)} wrf {gb.get(x)}" for x in sorted(set(ga) | set(gb)) if ga.get(x) != gb.get(x)}
+            if list(ga) != list(gb) and not dif:
+                dif = {"(order)": "global attribute order differs"}
+            only += f" global-atts {dif if dif else 'same'}"
         tag = d if kind == "wrfout" else f"{d} {kind}"
         print(f"{name} {tag} frames {len(set(A) & set(B))}{only} differing: {bad if bad else 'none'}", flush=True)
 subprocess.run(["rm", "-rf", out] + glob.glob(os.path.join(R, "wrfout_*")) + glob.glob(os.path.join(R, "wrfrst_*")))
