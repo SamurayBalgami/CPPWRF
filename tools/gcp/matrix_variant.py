@@ -7,7 +7,8 @@ WORK/NAME; CPPWRF runs the configuration tools/wrf2cppwrf.py makes from that nam
 of every common frame (by Times) of each domain's wrfout is compared at tolerance 0. Prints one line:
 NAME d0N frames N differing: none | {VAR: 'time npoints/maxdiff', ...}  (or NAME WRF-FAILED / CPPWRF-FAILED);
 variables only WRF writes are listed as wrf-only-vars.
-run.keep=1 copies WRF's namelist.input, inputs and wrfout files to WORK/keep/run_NAME (a suite reference)."""
+run.keep=1 copies WRF's namelist.input, inputs and wrfout files to WORK/keep/run_NAME (a suite reference);
+SECTION.key=__delete__ leaves the option out of the namelist."""
 import glob, os, re, subprocess, sys
 import netCDF4
 import numpy as np
@@ -32,6 +33,8 @@ def setkey(nl, sec, key, val):
         return nl.rstrip("\n") + f"\n\n&{sec}\n {key} = {val},\n/\n"
     body = m.group(1)
     pat = re.compile(rf"^\s*{key}\s*=.*$", re.M | re.I)
+    if val == "__delete__":  # section.key=__delete__: the option left out (WRF takes its Registry default)
+        return nl[:m.start(1)] + re.sub(rf"^\s*{key}\s*=.*\n?", "", body, flags=re.M | re.I) + nl[m.end(1):]
     line = f" {key} = {val},"
     body = pat.sub(line, body) if pat.search(body) else body + "\n" + line
     return nl[:m.start(1)] + body + nl[m.end(1):]
