@@ -785,6 +785,22 @@ class TestValidationAndWarnings(unittest.TestCase):
             t.translate()
             self.assertEqual(any("sf_mynn_sfcflux" in e for e in t.errors), bad, (opt, t.errors))
 
+    def test_mynn_pbl_surface_layers(self):
+        """module_physics_init.F pbl_init: the MYNN PBL runs with sf_sfclay_physics 5, 1 or 2 and stops otherwise;
+        CPPWRF rejects it with fractional_seaice = 1 (sfclayrev / MYJSFC sea-ice wrappers not verified with MYNN)."""
+        for sf, extra, err in (("1", "", None), ("2", "", None), ("5", "", None),
+                               ("0", "", "needs sf_sfclay_physics = 1, 2 or 5"),
+                               ("1", ", fractional_seaice = 1", "fractional_seaice = 1 is not supported"),
+                               ("2", ", fractional_seaice = 1", "fractional_seaice = 1 is not supported")):
+            phys = f"&physics mp_physics = 8, sf_sfclay_physics = {sf}, sf_surface_physics = 2, bl_pbl_physics = 5{extra} /"
+            t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n&domains time_step = 60 /\n{phys}\n")))
+            cfg = t.translate()
+            if err is None:
+                self.assertEqual(t.errors, [], (sf, extra))
+                self.assertEqual((cfg["phys"]["bl_pbl_physics"], cfg["phys"]["sf_sfclay_physics"]), (5, int(sf)))
+            else:
+                self.assertIn(err, " ".join(t.errors), (sf, extra))
+
     def test_unsupported_physics_and_dynamics_errors(self):
         cases = [
             # share/module_check_a_mundo.F: "bl_mynn_edmf > 0 requires both shcu_physics=0 & ishallow=0"

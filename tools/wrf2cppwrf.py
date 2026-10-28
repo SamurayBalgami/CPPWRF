@@ -1568,8 +1568,13 @@ class WrfTranslator:
                     closure = self.get_opt("physics", "bl_mynn_closure", 2.6)
                     if abs(float(closure) - 2.6) > 1e-9:
                         self.error(f"WRF bl_mynn_closure = {closure} is not supported; CPPWRF's MYNN uses 2.6.")
-                    if bl_pbl == 5 and sf_sfclay != 5:
-                        self.error("WRF bl_pbl_physics = 5 is supported with sf_sfclay_physics = 5 only.")
+                    # module_physics_init.F pbl_init: MYNNPBLSCHEME stops unless isfc is 5, 1 or 2
+                    if bl_pbl == 5 and sf_sfclay not in (1, 2, 5):
+                        self.error("WRF bl_pbl_physics = 5 (MYNN) needs sf_sfclay_physics = 1, 2 or 5 (module_physics_init: "
+                                   "use mynnsfc or sfclay or myjsfc scheme for this pbl option).")
+                    # the sfclayrev / MYJSFC sea-ice wrappers are verified with YSU / MYJ only
+                    if bl_pbl == 5 and fsi == 1:
+                        self.error("WRF bl_pbl_physics = 5 (MYNN) with fractional_seaice = 1 is not supported by CPPWRF.")
                     if bl_pbl == 5 and mp_physics not in (6, 8):
                         self.error("WRF bl_pbl_physics = 5 needs a microphysics with qc, qi and qs (mp_physics 6 or 8): "
                                    "WRF passes the MYNN-EDMF an uninitialised snow content otherwise.")

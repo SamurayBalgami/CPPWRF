@@ -97,9 +97,10 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       (o.sf_surface_physics != 2 && o.sf_surface_physics != 4) ||
       (o.bl_pbl_physics != 0 && o.bl_pbl_physics != 1 && o.bl_pbl_physics != 2 && o.bl_pbl_physics != 5))
     throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1|2|5, sf_surface_physics=2|4, bl_pbl_physics=0|1|2|5");
-  // module_physics_init: MYNNPBLSCHEME needs mynnsfc, sfclay or myjsfc; only mynnsfc is ported with it
-  if (o.bl_pbl_physics == 5 && o.sf_sfclay_physics != 5)
-    throw std::runtime_error("PhysicsSuite: bl_pbl_physics=5 is ported with sf_sfclay_physics=5 only");
+  // module_physics_init: MYNNPBLSCHEME needs mynnsfc, sfclay or myjsfc (isfc 5, 1 or 2: all of the above).
+  // The sea-ice wrappers of sfclayrev / MYJSFC are verified with YSU / MYJ only (no MYNN reference with sea ice)
+  if (o.bl_pbl_physics == 5 && o.fractional_seaice == 1)
+    throw std::runtime_error("PhysicsSuite: bl_pbl_physics=5 (MYNN) with fractional_seaice=1 is not supported");
   // module_physics_init.F pbl_select: YSU stops unless isfc = 1 (sfclay), MYJ unless isfc = 2 (myjsfc)
   if (o.bl_pbl_physics == 1 && o.sf_sfclay_physics != 1)
     throw std::runtime_error("PhysicsSuite: bl_pbl_physics=1 (YSU) needs sf_sfclay_physics=1, as WRF");
@@ -431,7 +432,7 @@ std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
   if (o_.bl_pbl_physics == 5) {
     for (Field3* f : {&qke, &tsq, &qsq, &cov, &sh3d, &sm3d, &qc_bl, &qi_bl, &cldfra_bl})
       v.emplace_back("sfc_" + f->name(), f);
-    v.emplace_back("sfc_el_pbl", &el_pbl);
+    if (o_.sf_sfclay_physics != 2) v.emplace_back("sfc_el_pbl", &el_pbl);  // with MYJSFC: carried above
   }
   if (o_.sf_surface_physics == 4) {
     for (Field3* f : {&tsnoxy, &snicexy, &snliqxy, &zsnsoxy, &albsoildirxy, &albsoildifxy, &smoiseq, &acc_etranixy})
