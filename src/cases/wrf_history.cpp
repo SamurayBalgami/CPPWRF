@@ -134,7 +134,13 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
   const Grid& g = m_.g;
   if (real_dir.empty() && g.two_d()) jrep_ = 2;
   c.set("e_we", std::to_string(g.nx + 1)); c.set("e_sn", std::to_string(g.ny * jrep_ + 1));
-  c.set("e_vert", std::to_string(g.nz + 1)); c.set("dx", str(g.dx)); c.set("dy", str(g.dy));
+  c.set("e_vert", std::to_string(g.nz + 1));
+  if (dom > 1) {  // check_nml_consistency overwrites a nest's namelist dx / dy with dx(1) / dy(1) over the parent
+                  // grid ratios (module_check_a_mundo.F:263-278), the model's spacing (nest_driver.cpp)
+    wc_->set("dx", str(g.dx)); wc_->set("dy", str(g.dy));
+  } else {
+    c.set("dx", str(g.dx)); c.set("dy", str(g.dy));
+  }
   c.set("diff_opt", std::to_string(m_.diff_opt)); c.set("km_opt", std::to_string(m_.km_opt));
   c.set("hybrid_opt", std::to_string(m_.hybrid_opt));
   c.set("damp_opt", std::to_string(m_.ap.damp_opt)); c.set("dampcoef", str(double(m_.ap.dampcoef)));

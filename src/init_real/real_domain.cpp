@@ -30,8 +30,13 @@ RealOptions RealOptions::from_namelist(const Namelist& nl, const WrfSchema& sc, 
   o.e_vert = c.integer("e_vert");
   o.num_metgrid_levels = c.integer("num_metgrid_levels");
   o.num_metgrid_soil_levels = c.integer("num_metgrid_soil_levels");
-  o.dx = c.num("dx");
-  o.dy = c.num("dy");
+  // check_nml_consistency (module_check_a_mundo.F:263-278): a nest's dx / dy are dx(1) / dy(1) over the product of
+  // the parent grid ratios up to domain 1 (get_moad_factor), whatever the namelist gives for the nest
+  int factor = 1;
+  for (int id = dom, n = 0; id > 1 && n < o.max_dom; id = c.integer("parent_id", id), ++n)
+    factor *= c.integer("parent_grid_ratio", id);
+  o.dx = c.num("dx", 1) / double(factor);
+  o.dy = c.num("dy", 1) / double(factor);
   o.p_top_requested = c.num("p_top_requested");
   for (const std::string& v : nl.values("domains", "eta_levels")) o.eta_levels.push_back(std::strtod(v.c_str(), nullptr));
   o.auto_levels_opt = c.integer("auto_levels_opt");

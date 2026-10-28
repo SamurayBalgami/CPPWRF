@@ -27,6 +27,11 @@ static int run(const RealOptions& o, const Namelist& nl, const WrfSchema& sc, co
     if (cfg.integer(opt) != 0) throw std::runtime_error(std::string("real: ") + opt + " is not ported");
   cppwrf::wrf_io::derive_config(cfg, o.max_dom, true);
   cfg.set("num_soil_layers", std::to_string(o.num_soil_layers));  // set_physics_rconfigs
+  for (auto [k, v] : {std::pair<const char*, double>{"dx", o.dx}, {"dy", o.dy}}) {  // check_nml_consistency's nest dx / dy
+    char b[32];
+    std::snprintf(b, sizeof b, "%.17g", v);
+    cfg.set(k, b);
+  }
   {  // iofields_filename (input_wrf / output_wrf: modify_io_masks): met_em (i:1), wrfinput (i:0) and wrflowinp
      // (i:4) are read and written whole
     WrfSchema io = sc;
