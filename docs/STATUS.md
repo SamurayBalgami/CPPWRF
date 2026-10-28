@@ -2,7 +2,7 @@
 
 CPPWRF reproduces WRF-ARW v4.8.0 statement by statement. This page lists what is implemented, how it
 is verified against WRF, and the current results. All numbers come from `tests/verify/wrf_suite.py`
-(97 cases, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
+(99 cases, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
 
 ## Implemented
 
@@ -62,6 +62,7 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | P2 | P1 + Kain-Fritsch | 1 h |
 | P3 | P1 + RRTMG LW/SW (radt 1 min) | 3 steps |
 | P4 | P2 + WSM6 + RRTMG (cloudy, effective radii) + diff_opt 1 / km_opt 4 | 1 h |
+| KESSKF | P4 with Kessler instead of WSM6 (Kain-Fritsch rain in Kessler's split sedimentation steps) | 1 h |
 | P5 | P1 + WSM6 + diff_opt 1 / km_opt 4 | 1 h |
 | P6 | P5 with Thompson | 1 h |
 | P7 | P2 with New Tiedtke | 1 h |
@@ -148,7 +149,8 @@ within WRF's own single/double difference in FP32 (U 6.8e-5; WRF real*8 vs. WRF 
 
 Namelist variants (tools/gcp/gcp_matrix.sh, 3-minute runs from the P1, P4, P6, P8 and P9 inputs, every wrfout
 variable at tolerance 0): kfeta_trigger 3, ysu_topdown_pblmix 0, icloud 0, cldovrlp 1-5 with idcor 0 and 1,
-o3input 0, ghg_input 0, use_mp_re 0, rdmaxalb false, ifsnow 0, kim_tofd, isfflx 0, Kessler on real data,
+o3input 0, ghg_input 0, use_mp_re 0, rdmaxalb false, ifsnow 0, kim_tofd, isfflx 0, Kessler on real data (also with
+Kain-Fritsch: cudt, kfeta_trigger 3, dt 30 s and 90 s, radiation off, 4.5 h with restart files),
 radt / bldt / cudt > dt, Grell-Freitas clos_choice 1, 4, 10 and ishallow 0, hybrid_opt (input-file check),
 diff_6th_opt 1 and 2, moist/scalar_adv_opt 0, w_damping 0 and w_crit_cfl, damp_opt 0, dampcoef / zdamp,
 epssm, time_step_sound, smdiv / emdiv, c_s, km_opt 1 / 3 / 4 with diff_opt 1 (km_opt 3 also on em_quarter_ss with
