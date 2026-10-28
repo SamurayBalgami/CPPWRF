@@ -1,7 +1,7 @@
 #pragma once
 // MYNN-EDMF PBL (WRF v4.8.0 phys/MYNN-EDMF, bl_pbl_physics = 5): module_bl_mynnedmf_common's constants and
-// the helper functions of module_bl_mynnedmf (esat_blend, qsat_blend, xl_blend, tridiag2, get_pblh,
-// scale_aware). REAL(kind_phys) is REAL*8 in WRF's -r8 build; its DOUBLE PRECISION locals are REAL*8 only in
+// the helper functions of module_bl_mynnedmf (qsat_blend, xl_blend, tridiag2, get_pblh, scale_aware).
+// REAL(kind_phys) is REAL*8 in WRF's -r8 build; its DOUBLE PRECISION locals are REAL*8 only in
 // the -r8 -fdefault-double-8 build (the reference of this port, as for Thompson). x**2 is x*x, x**real pow.
 #include <cmath>
 
@@ -62,7 +62,8 @@ inline constexpr real p01 = real(0.01), p1 = real(0.1), p2 = real(0.2), p25 = re
                       p333 = real(1.0) / real(3.0), p4 = real(0.4), p5 = real(0.5), p666 = real(2.0) / real(3.0),
                       p95 = real(0.95);
 
-// esat_blend / qsat_blend: Flatau polynomials, blended between liquid and ice
+// qsat_blend: Flatau polynomials, blended between liquid and ice (WRF's esat_blend feeds only unused or
+// unported code: qsl in DMP_mf, bl_mynn_cloudpdf 0 / 1)
 inline constexpr real J0 = real(.611583699E03), J1 = real(.444606896E02), J2 = real(.143177157E01),
                       J3 = real(.264224321E-1), J4 = real(.299291081E-3), J5 = real(.203154182E-5),
                       J6 = real(.702620698E-8), J7 = real(.379534310E-11), J8 = real(-.321582393E-13);
@@ -75,15 +76,6 @@ CPPWRF_HD inline real esl_poly(real XC) {
 }
 CPPWRF_HD inline real esi_poly(real XC) {
   return K0 + XC * (K1 + XC * (K2 + XC * (K3 + XC * (K4 + XC * (K5 + XC * (K6 + XC * (K7 + XC * K8)))))));
-}
-
-CPPWRF_HD inline real esat_blend(real t) {
-  const real XC = c_max(real(-80.), t - t0c);
-  if (t >= (t0c - real(6.))) return esl_poly(XC);
-  if (t <= tice) return esi_poly(XC);
-  const real ESL = esl_poly(XC), ESI = esi_poly(XC);
-  const real chi = ((t0c - real(6.)) - t) / ((t0c - real(6.)) - tice);
-  return (one - chi) * ESL + chi * ESI;
 }
 
 CPPWRF_HD inline real qsat_blend(real t, real P) {

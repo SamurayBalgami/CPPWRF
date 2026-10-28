@@ -1547,7 +1547,10 @@ class WrfTranslator:
                         sections["phys"][key] = val
 
                 if bl_pbl == 5 or sf_sfclay == 5:
-                    # MYNN: only WRF's default options are ported (Registry.EM_COMMON)
+                    # MYNN: only WRF's default options are ported (Registry.EM_COMMON). Most are max_domains options
+                    # that WRF passes per domain (config_flags in module_pbl_driver / module_surface_driver), so
+                    # every domain's value is checked (a missing entry is the Registry default, pad_max_domains),
+                    # each in its own namelist group (pert_mynn, spp_pbl: &stoch)
                     mynn_defaults = (("bl_mynn_tkeadvect", False), ("bl_mynn_cloudpdf", 2), ("bl_mynn_mixlength", 1),
                                      ("bl_mynn_edmf", 1), ("bl_mynn_edmf_dd", 0), ("bl_mynn_edmf_mom", 1),
                                      ("bl_mynn_edmf_tke", 0), ("bl_mynn_mixscalars", 0), ("bl_mynn_mixaerosols", 1),

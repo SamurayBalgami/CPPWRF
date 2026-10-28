@@ -15,7 +15,6 @@ inline constexpr int kMaxLevels = 128;  // Column<kMaxLevels> in the model
 inline constexpr real closure_default = real(2.6);
 inline constexpr real ckmod = real(1.0);
 inline constexpr real taue = real(80.);
-inline constexpr real upwind = real(1.0);
 
 // moisture_check (1-based columns of kte levels)
 CPPWRF_HD inline void moisture_check(int kte, real delt, const real* dp, const real* exner, real* qv, real* qc,
