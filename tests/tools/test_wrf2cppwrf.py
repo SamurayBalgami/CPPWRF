@@ -1018,7 +1018,8 @@ class TestWrfNamelistSemantics(unittest.TestCase):
             t.translate()
             return t.errors
         for extra in ("history_outname = 'hist_d<domain>_<year><month><day>_<hour>', ",
-                      "restart_interval = 1, rst_outname = 'rst_d<domain>_<date>.nc', "):
+                      "restart_interval = 1, rst_outname = 'rst_d<domain>_<date>.nc', ",
+                      "use_netcdf_classic = .true., "):  # the model writes NetCDF classic files
             self.assertEqual(errors(extra), [], extra)
         for extra, err in (("history_outname = 'out/wrfout_d<domain>_<date>', ", "history_outname"),
                            ("history_outname = '', ", "history_outname"),

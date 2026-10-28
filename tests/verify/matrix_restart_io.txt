@@ -1,0 +1,58 @@
+# Restart, nest and output-option variants for tools/gcp/gcp_matrix.sh (WRF and CPPWRF at tolerance 0):
+#   tools/gcp/gcp_matrix.sh tests/verify/matrix_restart_io.txt --data matrix_data.tar,matrix_nest.tar,matrix_n3x.tar,matrix_a01su.tar,matrix_ideal.tar
+# rs_*: restart files in the middle of the run, then both models resumed from WRF's wrfrst (run.resume): the
+#       history and restart files of the straight and the resumed runs are compared with WRF's, and each resumed run
+#       with its straight run. n_*: the two-way nests N3s, N3sib (siblings) and N3gc (d03 inside d02) with each scheme,
+#       restart files and resumed runs. io_*: frames_per_outfile, history_outname / rst_outname, use_netcdf_classic,
+#       and options CPPWRF rejects as it does not port them (io_form 11 / 102, auxhist2, auxinput2).
+# n_gwd: WRF stops (gwd_opt does not match the input file), CPPWRF rejects it too.
+rs_p1    run_P1_r8  wrf_r8.exe   time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_p4    run_P4_r8  wrf_r8.exe   physics.radt=10 time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_kess  run_P4_r8  wrf_r8.exe   physics.mp_physics=1 physics.radt=10 time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_p6    run_P6_r8  wrf_r8d8.exe time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_nt    run_P4_r8  wrf_r8.exe   physics.cu_physics=16 physics.radt=10 time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_t6    run_P4_r8  wrf_r8.exe   physics.cu_physics=6 physics.radt=10 time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_p8    run_P8_r8  wrf_r8.exe   time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_p9    run_P9_r8  wrf_r8.exe   time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_mynn  run_P6_r8  wrf_r8d8.exe physics.bl_pbl_physics=5 physics.sf_sfclay_physics=5 physics.icloud_bl=1 physics.ra_lw_physics=4 physics.ra_sw_physics=4 physics.radt=10 time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_g2    run_G2_r8  wrf_r8.exe   time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_v2    run_V2_r8  wrf_r8.exe   time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_k2    run_P1_r8  wrf_r8.exe   dynamics.diff_opt=2 dynamics.km_opt=2 time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_d6    run_P4_r8  wrf_r8.exe   dynamics.diff_6th_opt=2 physics.radt=10 time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_a01   run_P1_r8  wrf_r8.exe   physics.usemonalb=.true. physics.rdlai2d=.true. time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_qssk2 run_qss_k2 wrf_qss.exe  time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_h10    run_P1_r8  wrf_r8.exe   time_control.run_seconds=1800 time_control.history_interval_s=600 time_control.restart_interval=15 run.resume=900
+rs_h7     run_P4_r8  wrf_r8.exe   time_control.run_seconds=2400 time_control.history_interval_s=420 time_control.restart_interval=10 run.resume=600
+rs_qss    run_qss    wrf_qss.exe  time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_nmp    run_P1_r8  wrf_r8.exe   physics.sf_surface_physics=4 time_control.run_seconds=1800 time_control.history_interval_s=300 time_control.restart_interval=15 run.resume=900
+rs_su1    run_SU1_r8 wrf_r8d8.exe time_control.run_seconds=3600 time_control.history_interval_s=600 time_control.restart_interval=30 run.resume=1800
+rs_su1_5h run_SU1_r8 wrf_r8d8.exe time_control.run_seconds=22800 time_control.history_interval_s=1200 time_control.restart_interval=300 run.resume=18000
+rs_su1_6h run_SU1_r8 wrf_r8d8.exe time_control.run_seconds=22800 time_control.history_interval_s=1200 time_control.restart_interval=360 run.resume=21600
+n_p4    run_N3s_r8   wrf_r8.exe   physics.radt=4,4 time_control.run_seconds=1200 time_control.history_interval_s=600,600,600 time_control.restart_interval=10 run.resume=600
+n_kess  run_N3s_r8   wrf_r8.exe   physics.mp_physics=1,1 physics.radt=4,4 time_control.run_seconds=1200 time_control.history_interval_s=600,600,600 time_control.restart_interval=10 run.resume=600
+n_thom  run_N3s_r8   wrf_r8d8.exe physics.mp_physics=8,8 physics.radt=4,4 time_control.run_seconds=1200 time_control.history_interval_s=600,600,600 time_control.restart_interval=10 run.resume=600
+n_nt    run_N3s_r8   wrf_r8.exe   physics.cu_physics=16,16 physics.radt=4,4 time_control.run_seconds=1200 time_control.history_interval_s=600,600,600 time_control.restart_interval=10 run.resume=600
+n_t6    run_N3s_r8   wrf_r8.exe   physics.cu_physics=6,6 physics.radt=4,4 time_control.run_seconds=1200 time_control.history_interval_s=600,600,600 time_control.restart_interval=10 run.resume=600
+n_gf    run_N3s_r8   wrf_r8.exe   physics.cu_physics=3,3 physics.ishallow=1 physics.radt=4,4 time_control.run_seconds=1200 time_control.history_interval_s=600,600,600 time_control.restart_interval=10 run.resume=600
+n_myj   run_N3s_r8   wrf_r8.exe   physics.bl_pbl_physics=2,2 physics.sf_sfclay_physics=2,2 physics.radt=4,4 time_control.run_seconds=1200 time_control.history_interval_s=600,600,600 time_control.restart_interval=10 run.resume=600
+n_mynn  run_N3s_r8   wrf_r8d8.exe physics.mp_physics=8,8 physics.bl_pbl_physics=5,5 physics.sf_sfclay_physics=5,5 physics.icloud_bl=1 physics.radt=4,4 time_control.run_seconds=1200 time_control.history_interval_s=600,600,600 time_control.restart_interval=10 run.resume=600
+n_k2    run_N3s_r8   wrf_r8.exe   dynamics.diff_opt=2,2 dynamics.km_opt=2,2 physics.radt=4,4 time_control.run_seconds=1200 time_control.history_interval_s=600,600,600 time_control.restart_interval=10 run.resume=600
+n_a01   run_N3s_r8   wrf_r8.exe   physics.usemonalb=.true. physics.rdlai2d=.true. physics.radt=4,4 time_control.run_seconds=1200 time_control.history_interval_s=600,600,600 time_control.restart_interval=10 run.resume=600
+n_gwd   run_N3s_r8   wrf_r8.exe   dynamics.gwd_opt=1,1 physics.radt=4,4 time_control.run_seconds=1200 time_control.history_interval_s=600,600,600 time_control.restart_interval=10 run.resume=600
+n_fb0   run_N3s_r8   wrf_r8.exe   domains.feedback=0 physics.radt=4,4 time_control.run_seconds=1200 time_control.history_interval_s=600,600,600 time_control.restart_interval=10 run.resume=600
+n_sib   run_N3sib_r8 wrf_r8.exe   time_control.run_seconds=1200 time_control.history_interval_s=600,600,600 time_control.restart_interval=10 run.resume=600
+n_gc    run_N3gc_r8  wrf_r8.exe   time_control.run_seconds=1200 time_control.history_interval_s=600,600,600 time_control.restart_interval=10 run.resume=600
+n_h10   run_N3s_r8   wrf_r8.exe   time_control.run_seconds=1800 time_control.history_interval_s=600,600 time_control.restart_interval=15 run.resume=900
+io_fpo1   run_P1_r8  wrf_r8.exe time_control.frames_per_outfile=1
+io_fpo2   run_P1_r8  wrf_r8.exe time_control.frames_per_outfile=2
+io_fpo_n  run_N3s_r8 wrf_r8.exe time_control.frames_per_outfile=2,3
+io_fpo_rs run_P1_r8  wrf_r8.exe time_control.frames_per_outfile=2 time_control.restart_interval=1 run.resume=60
+io_name   run_P1_r8  wrf_r8.exe time_control.frames_per_outfile=1 time_control.history_outname=%27hist_d%3Cdomain%3E_%3Cyear%3E%3Cmonth%3E%3Cday%3E_%3Chour%3E%27
+io_name2  run_P1_r8  wrf_r8.exe time_control.history_outname=%27myout_d%3Cdomain%3E_%3Cdate%3E.nc%27 time_control.rst_outname=%27myrst_d%3Cdomain%3E_%3Cdate%3E%27 time_control.restart_interval=1
+io_name_n run_N3s_r8 wrf_r8.exe time_control.history_outname=%27o%3Cdomain%3E_%3Cdate%3E%27 time_control.rst_outname=%27r%3Cdomain%3E_%3Cdate%3E%27 time_control.restart_interval=2
+io_classic run_P1_r8 wrf_r8.exe time_control.use_netcdf_classic=.true. time_control.restart_interval=2
+io_pnc    run_P1_r8  wrf_r8.exe time_control.io_form_history=11
+io_pncr   run_P1_r8  wrf_r8.exe time_control.io_form_restart=11 time_control.restart_interval=1
+io_102    run_P1_r8  wrf_r8.exe time_control.io_form_history=102
+io_aux2   run_P1_r8  wrf_r8.exe time_control.io_form_auxhist2=2 time_control.io_form_auxinput2=2
+io_aux2i  run_P1_r8  wrf_r8.exe time_control.io_form_auxhist2=2 time_control.auxhist2_interval=1

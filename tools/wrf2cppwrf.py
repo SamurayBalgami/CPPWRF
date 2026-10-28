@@ -499,6 +499,7 @@ IGNORED_WRF_OPTIONS = {
     "debug_level": "WRF internal logging verbosity",
     "input_from_file": "Real case initialization always reads wrfinput",
     "iofields_filename": "Custom NetCDF field selection (handled by WrfHistory via output.wrf_namelist)",
+    "use_netcdf_classic": "NetCDF classic format of the wrfout / wrfrst files (read by the model from the WRF namelist)",
     "io_form_restart": "No restart files (restart_interval = 0)",
     "start_year": "Start date component",
     "start_month": "Start date component",
