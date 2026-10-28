@@ -7,8 +7,12 @@ WORK/NAME; CPPWRF runs the configuration tools/wrf2cppwrf.py makes from that nam
 of every common frame (by Times) of each domain's wrfout is compared at tolerance 0. Prints one line:
 NAME d0N frames N differing: none | {VAR: 'time npoints/maxdiff', ...}  (or NAME WRF-FAILED / CPPWRF-FAILED);
 variables only WRF writes are listed as wrf-only-vars.
-run.keep=1 copies WRF's namelist.input, inputs and wrfout files to WORK/keep/run_NAME (a suite reference)."""
-import glob, os, re, subprocess, sys
+run.keep=1 copies WRF's namelist.input, inputs and wrfout files to WORK/keep/run_NAME (a suite reference).
+Input files of the base run read by both models can be edited: run.sub=FILE:OLD:NEW replaces every OLD by NEW
+(percent-encoded: %20 a blank, %0A a newline), run.head=FILE:N keeps the first N lines, run.copy=FILE:OTHER
+takes the base run's file OTHER. run.both=1 runs CPPWRF also when WRF fails (NAME WRF-FAILED [...] CPPWRF-RAN
+or CPPWRF-FAILED [...]: does CPPWRF reject the input as WRF does)."""
+import glob, os, re, subprocess, sys, urllib.parse
 import netCDF4
 import numpy as np
 
@@ -41,11 +45,30 @@ for k, v in [("run_days", "0"), ("run_hours", "0"), ("run_minutes", "0"), ("run_
              ("history_interval_s", "60, 60, 60"), ("frames_per_outfile", "10000"), ("restart", ".false.")]:
     nl = setkey(nl, "time_control", k, v)
 nl = re.sub(r"^\s*history_interval\s*=.*\n", "", nl, flags=re.M)
-keep = False
+keep = both = False
 for sk, v in sets:
     sec, k = sk.split(".", 1)
     if (sec, k) == ("run", "keep"):  # run.keep=1: WRF's run (namelist, inputs, wrfout) kept as a reference
         keep = v not in ("0", "false", ".false.")
+        continue
+    if (sec, k) == ("run", "both"):
+        both = v not in ("0", "false", ".false.")
+        continue
+    if (sec, k) in (("run", "sub"), ("run", "head"), ("run", "copy")):  # an edited copy of an input file
+        f, arg = v.split(":", 1)
+        p = os.path.join(R, f)
+        text = open(os.path.join(src, arg) if k == "copy" else p, encoding="latin-1", newline="").read()
+        if k == "head":
+            text = "".join(text.splitlines(True)[:int(arg)])
+        elif k == "sub":
+            old, new = (urllib.parse.unquote(x) for x in arg.split(":", 1))
+            if old not in text:
+                print(f"{name} BAD-VARIANT {old!r} not in {f}")
+                sys.exit(0)
+            text = text.replace(old, new)
+        if os.path.lexists(p):
+            os.remove(p)
+        open(p, "w", encoding="latin-1", newline="").write(text)
         continue
     if (sec, k) == ("run", "remove"):  # run.remove=f1,f2: files of the base run left out (both models)
         for f in v.split(","):
@@ -73,9 +96,13 @@ except subprocess.TimeoutExpired:
 if "SUCCESS COMPLETE WRF" not in open(os.path.join(R, "rsl.out.0000") if os.path.exists(os.path.join(R, "rsl.out.0000")) else os.path.join(R, "wrf.log"), errors="replace").read():
     log = open(os.path.join(R, 'wrf.log'), errors='replace').read().strip().splitlines()
     why = [l.strip() for l in log if "ERROR" in l or "FATAL" in l or "Fix " in l][:4] or log[-1:]
-    print(f"{name} WRF-FAILED {why}")
-    sys.exit(0)
-if keep:  # WORK/keep/run_NAME: what the suite needs of the reference (remote_matrix.sh uploads keep.tar)
+    if not both:
+        print(f"{name} WRF-FAILED {why}")
+        sys.exit(0)
+    wrf_failed = f"{name} WRF-FAILED {why}"
+else:
+    wrf_failed = None
+if keep and not wrf_failed:  # WORK/keep/run_NAME: what the suite needs of the reference (remote_matrix.sh uploads keep.tar)
     K = os.path.join(work, "keep", f"run_{name}")
     os.makedirs(K, exist_ok=True)
     for f in ["namelist.input", "wrfinput_d01", "input_sounding"] + sorted(glob.glob(os.path.join(R, "wrfout_d0*"))):
@@ -86,7 +113,7 @@ out = os.path.join(R, "cppwrf")
 t = subprocess.run([sys.executable, os.path.join(repo, "tools/wrf2cppwrf.py"), os.path.join(R, "namelist.input"),
                     "--real-dir", R, "--format", "wrfout", "-o", os.path.join(R, "case.ini")], capture_output=True, text=True)
 if t.returncode != 0:
-    print(f"{name} TRANSLATE-FAILED {t.stderr.strip().splitlines()[-1:]}")
+    print(f"{wrf_failed + ' ' if wrf_failed else name + ' '}TRANSLATE-FAILED {t.stderr.strip().splitlines()[-1:]}")
     sys.exit(0)
 try:
     c = subprocess.run([cppwrf, os.path.join(R, "case.ini"), "--set", f"output.dir={out}", "--set", "run.stop_on_nonfinite=false"], capture_output=True, text=True,
@@ -94,7 +121,12 @@ try:
 except subprocess.TimeoutExpired:
     c = subprocess.CompletedProcess([], 124, "", "TIMEOUT after 3600 s")
 if c.returncode != 0:
-    print(f"{name} CPPWRF-FAILED {(c.stderr or c.stdout).strip().splitlines()[-1:]}")
+    print(f"{wrf_failed + ' ' if wrf_failed else name + ' '}CPPWRF-FAILED (exit {c.returncode}) "
+          f"{(c.stderr or c.stdout).strip().splitlines()[-1:]}")
+    sys.exit(0)
+if wrf_failed:
+    print(f"{wrf_failed} CPPWRF-RAN")
+    subprocess.run(["rm", "-rf", out])
     sys.exit(0)
 unread = re.findall(r"unaccessed config key '([^']*)'", c.stderr)
 if unread:  # a translated option the model never read

@@ -14,13 +14,6 @@ struct KissRng {
   uint32_t seed3{0};
   uint32_t seed4{0};
 
-  CPPWRF_HD void init(uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4) {
-    seed1 = s1;
-    seed2 = s2;
-    seed3 = s3;
-    seed4 = s4;
-  }
-
   // WRF McICA seed derivation from bottom 4 layer mid-pressures (in Pa)
   // Fortran: seed1 = (pmid(1) - int(pmid(1))) * 1000000000_im
   CPPWRF_HD void init_from_pressure(double pmid0, double pmid1, double pmid2, double pmid3) {

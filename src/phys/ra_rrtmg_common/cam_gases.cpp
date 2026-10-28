@@ -1,20 +1,15 @@
 #include "phys/ra_rrtmg_common/cam_gases.hpp"
 
 #include <algorithm>
-#include <cstdlib>
 #include <fstream>
 #include <stdexcept>
+
+#include "phys/ra_rrtmg_common/fortran_read.hpp"
 
 namespace cppwrf::phys {
 
 namespace {
-// Fortran F/I edit descriptor read of columns [a, a+w) (blanks ignored, empty = 0)
-double field(const std::string& line, std::size_t a, std::size_t w) {
-  if (a >= line.size()) return 0.0;
-  std::string s = line.substr(a, w);
-  s.erase(std::remove(s.begin(), s.end(), ' '), s.end());
-  return s.empty() ? 0.0 : std::strtod(s.c_str(), nullptr);
-}
+constexpr int cyr = 1800;  // maximum number of records (module_ra_clWRF_support.F)
 bool leap(int y) { return (y % 4 == 0 && y % 100 != 0) || y % 400 == 0; }
 
 // valid_years (1-based indices as in WRF)
@@ -75,24 +70,25 @@ void CamGases::load(const std::string& path) {
   std::ifstream f(path);
   if (!f) throw std::runtime_error("CLWRF: '" + path + "' does not exist");
   std::string line;
-  std::getline(f, line);
-  std::getline(f, line);
-  // FORMAT (I4, 1x, F8.3, 1x, 4(F10.3, 1x)); WRF stops at the first unreadable record
+  // two READ (FMT='(1X)') of the header: a missing header record ends WRF with a Fortran read error
+  for (int h = 0; h < 2; ++h)
+    if (!std::getline(f, line)) throw std::runtime_error("CLWRF: end of file in the header of '" + path + "'");
+  // FORMAT (I4, 1x, F8.3, 1x, 4(F10.3, 1x)) up to the end of the file; a record the read rejects is fatal
+  // ("Not normal ending of CAMtr_volume_mixing_ratio file")
+  static constexpr std::size_t at[5] = {5, 14, 25, 36, 47}, width[5] = {8, 10, 10, 10, 10};
+  std::vector<double>* gas[5] = {&co2, &n2o, &ch4, &cfc11, &cfc12};
   while (std::getline(f, line)) {
-    // a blank record reads as zeros in Fortran (no error)
-    const std::string ys = line.substr(0, std::min<std::size_t>(4, line.size()));
-    long y = 0;
-    if (ys.find_first_not_of(" \t\r") != std::string::npos) {
-      char* end = nullptr;
-      y = std::strtol(ys.c_str(), &end, 10);
-      if (end == ys.c_str()) break;
-    }
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    // yrdata etc. hold cyr = 1800 records, mondata(idata) is set after the end-of-file read too
+    if (yr.size() + 1 >= std::size_t(cyr))
+      throw std::runtime_error("CLWRF: '" + path + "' has more records than WRF's arrays hold (1799)");
+    long y;
+    double v[5];
+    bool ok = fortran_i_field(line, 0, 4, y);
+    for (int n = 0; n < 5 && ok; ++n) ok = fortran_f_field(line, at[n], width[n], 3, v[n]);
+    if (!ok) throw std::runtime_error("CLWRF: Not normal ending of '" + path + "' (record '" + line + "')");
     yr.push_back(int(y));
-    co2.push_back(field(line, 5, 8));
-    n2o.push_back(field(line, 14, 10));
-    ch4.push_back(field(line, 25, 10));
-    cfc11.push_back(field(line, 36, 10));
-    cfc12.push_back(field(line, 47, 10));
+    for (int n = 0; n < 5; ++n) gas[n]->push_back(v[n]);
     // juldata = sum(mondayi(1:6)) + mondayi(7)/2 - 0.5 (mid-year, mondata = 6)
     const double s = 151.0 + (leap(int(y)) ? 1.0 : 0.0);
     jul.push_back(s + 30.0 / 2. - 0.5);
@@ -102,9 +98,10 @@ void CamGases::load(const std::string& path) {
 void CamGases::interpolate(int year, double julian, double& co2v, double& n2ov, double& ch4v, double& cfc11v,
                            double& cfc12v) const {
   const int max_years = int(yr.size());
-  constexpr int cyr = 1800;
-  auto yrd = [&](int i) { return i <= max_years ? yr[std::size_t(i - 1)] : 0; };
-  auto jld = [&](int i) { return i <= max_years ? jul[std::size_t(i - 1)] : 0.0; };
+  // records past the table are 0 (WRF's SAVE arrays); fewer than 2 records give yearIN < 1, whose values WRF
+  // reads before its arrays but does not use (tot_valid < 2: orig_val)
+  auto yrd = [&](int i) { return i >= 1 && i <= max_years ? yr[std::size_t(i - 1)] : 0; };
+  auto jld = [&](int i) { return i >= 1 && i <= max_years ? jul[std::size_t(i - 1)] : 0.0; };
   int found = 0, yearIN = 0, iyear = 1;
   while (found == 0 && iyear <= cyr) {
     if (yrd(iyear) > year) { yearIN = iyear; found = 1; }

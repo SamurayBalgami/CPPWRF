@@ -149,9 +149,11 @@ class RadiationDriver {
                   const std::vector<double>& xlong);
   ~RadiationDriver();
   int stepra() const { return stepra_; }
-  // radiation_driver for time step itimestep (1-based) at xtime minutes after the start and
-  // julian (day of year - 1 + fraction); returns false when the radiation is not called
-  bool run(long itimestep, double xtime, double julian, const RadiationInputs& in, const RadiationOutputs& out);
+  // radiation_driver for time step itimestep (1-based) at xtime minutes after the start, julian (day of
+  // year - 1 + fraction) and yr (the year of that time, the trace gases' YR); returns false when the
+  // radiation is not called
+  bool run(long itimestep, double xtime, double julian, int yr, const RadiationInputs& in,
+           const RadiationOutputs& out);
   double declin() const { return declin_; }  // radconst of the last call (DECLINX, SOLCONX)
   double solcon() const { return solcon_; }
 

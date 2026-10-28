@@ -1,20 +1,26 @@
 #include "phys/ra_rrtmg_common/cam_ozone.hpp"
 
-#include <cstdlib>
 #include <fstream>
 #include <stdexcept>
+
+#include "phys/ra_rrtmg_common/fortran_read.hpp"
 
 namespace cppwrf::phys {
 
 namespace {
+// oznini's READ (unit,*) x per value: the first value of the next non-blank record, the rest of the record
+// skipped; a value the read rejects and the end of the file are Fortran read errors in WRF
 std::vector<double> read_list(const std::string& path, std::size_t n) {
   std::ifstream f(path);
   if (!f) throw std::runtime_error("CAM ozone: cannot open " + path);
   std::vector<double> v(n);
-  std::string tok;
+  std::string line;
   for (std::size_t i = 0; i < n; ++i) {
-    if (!(f >> tok)) throw std::runtime_error("CAM ozone: short file " + path);
-    v[i] = std::strtod(tok.c_str(), nullptr);  // list-directed read (correctly rounded)
+    int st = 0;
+    while (st == 0 && std::getline(f, line))
+      if ((st = fortran_list_real(line, v[i])) < 0)
+        throw std::runtime_error("CAM ozone: bad value in " + path + ": '" + line + "'");
+    if (st == 0) throw std::runtime_error("CAM ozone: short file " + path);
   }
   return v;
 }
@@ -23,6 +29,10 @@ std::vector<double> read_list(const std::string& path, std::size_t n) {
 void CamOzone::load(const std::string& dir) {
   pin = read_list(dir + "/ozone_plev.formatted", levsiz);
   for (double& p : pin) p = p * 100.;
+  // ozn_p_int brackets each model pressure between increasing ozone levels (non-monotonic levels: WRF's
+  // row search may differ or end with "Bad ozone data: non-monotonicity suspected")
+  for (int k = 1; k < levsiz; ++k)
+    if (!(pin[k - 1] < pin[k])) throw std::runtime_error("CAM ozone: ozone_plev.formatted is not increasing");
   lat = read_list(dir + "/ozone_lat.formatted", latsiz);
   // READ order: do m = 2, 13; do j = 1, latsiz; do k = 1, levsiz (lonsiz = 1)
   ozmixin = read_list(dir + "/ozone.formatted", std::size_t(nmon) * latsiz * levsiz);
