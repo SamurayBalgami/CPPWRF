@@ -133,6 +133,8 @@ struct KRadOut {
   View2<real> lw[9], sw[8], lwcf_out, swcf_out;
   const double* o3lw = nullptr;  // o3input != 2: RRTMG_LWRAD's ozone into O3RAD
   View3<real> o3_out;
+  const double* sws = nullptr;  // SwBatchOutput::sfc into RadiationOutputs::swsfc
+  View2<real> swsfc[10];
   CPPWRF_HD void operator()(int i, int j, int k) const {
     const int col = i + nx * j;
     const std::size_t q = std::size_t(k) * ncol + col;
@@ -158,6 +160,18 @@ struct KRadOut {
         for (int d = 0; d < 8; ++d) sw[d](i, j) = real(day ? swd[std::size_t(d) * ncol + col] : 0.0);
         lwcf_out(i, j) = real(lwcf[col]);
         swcf_out(i, j) = real(day ? swcf[col] : 0.0);
+      }
+      if (sws) {  // RRTMG_SWRAD (0 at night): SWDDNI = SWDDIR / coszen, SWDDNIC = SWDDIRC / coszen
+        for (int d = 0; d < 4; ++d) swsfc[d](i, j) = real(day ? sws[std::size_t(d) * ncol + col] : 0.0);
+        const real dir = real(day ? sws[std::size_t(4) * ncol + col] : 0.0);
+        const real dirc = real(day ? sws[std::size_t(6) * ncol + col] : 0.0);
+        swsfc[4](i, j) = dir;
+        swsfc[5](i, j) = real(day ? double(dir) / cz[col] : 0.0);
+        swsfc[6](i, j) = real(day ? sws[std::size_t(5) * ncol + col] : 0.0);
+        swsfc[7](i, j) = dirc;
+        swsfc[8](i, j) = real(day ? double(dirc) / cz[col] : 0.0);
+        const real dif = swsfc[6](i, j), sd = swdown_out(i, j);
+        swsfc[9](i, j) = double(sd) > 0.001 ? real(std::min(double(dif) / double(sd), 1.0)) : real(0);
       }
     }
   }
@@ -186,7 +200,7 @@ struct RadiationDriver::Impl {
   double *dz = nullptr;
   double *p8w, *t8w, *p3d, *pi3d, *t3d, *qv, *qc, *qi, *qs, *rec, *rei, *res, *cf, *o3;
   double *tsk, *emiss, *xland, *xice, *snow, *albedo, *cz;
-  double *rlw, *rsw, *glw, *gsw, *olr, *lwd, *swd, *rlwc, *rswc, *lwcf, *swcf;
+  double *rlw, *rsw, *glw, *gsw, *olr, *lwd, *swd, *rlwc, *rswc, *lwcf, *swcf, *sws;
   ~Impl() {
     for (void* q : bufs) dev_free(q);
   }
@@ -226,6 +240,10 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
     throw std::runtime_error("radiation: cannot read rrtmg_lw_tables.bin");
   if (!load_rrtmg_sw_tables(table_file("rrtmg_sw_tables.bin"), *p_->sw))
     throw std::runtime_error("radiation: cannot read rrtmg_sw_tables.bin");
+  // the SW column arrays (CPU and GPU) hold RRTMG_SW_COL_MAX layers: the model's and the one above the top (WRF:
+  // mxlay = 203)
+  if (g.nz + 1 > RRTMG_SW_COL_MAX)
+    throw std::runtime_error("radiation: RRTMG SW layers (nz + 1) exceed " + std::to_string(RRTMG_SW_COL_MAX));
   if (o.ghg_input == 1) p_->gases.load(o.table_dir + "/CAMtr_volume_mixing_ratio");
   p_->xlat = xlat;
   p_->xlong = xlong;
@@ -259,6 +277,7 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
     for (double** a : {&q.tsk, &q.emiss, &q.xland, &q.xice, &q.snow, &q.albedo, &q.cz, &q.glw, &q.gsw, &q.olr, &q.lwcf, &q.swcf}) *a = q.dev(nc);
     q.lwd = q.dev(8 * nc);
     q.swd = q.dev(8 * nc);
+    q.sws = q.dev(7 * nc);
     RrtmgLwConfig lc;
     lc.p_top = o.p_top;
     q.lwb = std::make_unique<RrtmgLwBatch>(*q.lw, rrtmg_lw_call_config(g.nz, lc, false, false, false).nlayers, 2048);
@@ -360,7 +379,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
     si.p8w = q.p8w; si.t8w = q.t8w; si.p3d = q.p3d; si.pi3d = q.pi3d; si.t3d = q.t3d; si.qv = q.qv; si.cldfra = q.cf;
     si.o3 = q.o3; si.xlat = q.xlat_d; si.dz8w = q.dz; si.qc = li.qc; si.qi = li.qi; si.qs = li.qs;
     si.re_cloud = li.re_cloud; si.re_ice = li.re_ice; si.re_snow = li.re_snow;
-    q.swb->run(rrtmg_sw_call_config(nz, sc), si, SwBatchOutput{q.rsw, q.gsw, q.swd, q.rswc, q.swcf});
+    q.swb->run(rrtmg_sw_call_config(nz, sc), si,
+               SwBatchOutput{q.rsw, q.gsw, q.swd, q.rswc, q.swcf, out.swsfc[0] ? q.sws : nullptr});
     KRadOut ko{nx, ncol, q.rlw, q.rsw, q.glw, q.gsw, q.cz, q.olr, q.lwd, q.swd, q.rlwc, q.rswc, q.lwcf, q.swcf,
                out.rthraten->view(), out.glw->view(), out.gsw->view(), out.swdown->view(), in.albedo->cview(),
                out.rthratlw != nullptr};
@@ -377,6 +397,10 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
       ko.rthsw = out.rthratsw->view();
       for (int d = 0; d < 9; ++d) ko.lw[d] = out.lw[d]->view();
       for (int d = 0; d < 8; ++d) ko.sw[d] = out.sw[d]->view();
+    }
+    if (out.swsfc[0]) {
+      ko.sws = q.sws;
+      for (int d = 0; d < 10; ++d) ko.swsfc[d] = out.swsfc[d]->view();
     }
     parallel_for(Range3D{0, nx, 0, ny, 0, nz}, ko);
     return true;
@@ -418,7 +442,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
   std::vector<real> lwcf2(diag ? Lo2.total : 0, real(0)), swcf2(diag ? Lo2.total : 0, real(0)),
       hrang2(diag ? Lo2.total : 0, real(0));
   std::vector<std::vector<real>> lwd(diag ? 9 : 0, std::vector<real>(Lo2.total, real(0))),
-      swd(diag ? 8 : 0, std::vector<real>(Lo2.total, real(0)));
+      swd(diag ? 8 : 0, std::vector<real>(Lo2.total, real(0))),
+      swsfc(out.swsfc[0] ? 10 : 0, std::vector<real>(Lo2.total, real(0)));
 
 #pragma omp parallel
   {
@@ -484,20 +509,31 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
       double g_sw = 0;
       std::fill(rsw.begin(), rsw.end(), 0.0);
       if (cz > 0.0) {
-        double s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13;
+        SwColumnOut so{};
         rrtmg_sw_column(nz, sc, *p_->sw, cz, alb[q2], xland[q2], xice[q2], snow[q2], p_->xlat[c], cp8w.data(),
                         ct8w.data(), cp.data(), cpi.data(), cdz.data(), ct.data(), crho.data(), cqv.data(), cqc.data(),
-                        zero.data(), cqi.data(), cqs.data(), zero.data(), ccf.data(), co3.data(), g_sw, s1, s2, s3, s4,
-                        s5, s6, s7, s8, s9, s10, s11, s12, s13, rsw.data(), rswc.data(), *sws, prc, pri, prs);
-        if (diag) {  // swupt, swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc follow gsw, swcf
-          const double d[8] = {s2, s3, s4, s5, s6, s7, s8, s9};
+                        zero.data(), cqi.data(), cqs.data(), zero.data(), ccf.data(), co3.data(), so, rsw.data(),
+                        rswc.data(), *sws, prc, pri, prs);
+        g_sw = so.gsw;
+        if (diag) {
+          const double d[8] = {so.swupt, so.swuptc, so.swdnt, so.swdntc, so.swupb, so.swupbc, so.swdnb, so.swdnbc};
           for (int q = 0; q < 8; ++q) swd[std::size_t(q)][o2i] = real(d[q]);
-          swcf2[o2i] = real(s1);
+          swcf2[o2i] = real(so.swcf);
+        }
+        if (!swsfc.empty()) {  // RRTMG_SWRAD: SWDDNI = SWDDIR / coszen, SWDDNIC = SWDDIRC / coszen
+          const real dir = real(so.swddir), dirc = real(so.swddirc);
+          const real v[9] = {real(so.swvisdir), real(so.swvisdif), real(so.swnirdir), real(so.swnirdif), dir,
+                             real(double(dir) / cz), real(so.swddif), dirc, real(double(dirc) / cz)};
+          for (int q = 0; q < 9; ++q) swsfc[std::size_t(q)][o2i] = v[q];
         }
       }
       gsw[o2i] = real(g_sw);
       // SWDOWN = GSW/(1-ALBEDO) (all columns)
       swdown[o2i] = real(double(gsw[o2i]) / (1. - double(alb[q2])));
+      if (!swsfc.empty()) {  // DIFFUSE_FRAC (radiation_driver, after the schemes)
+        const real dif = swsfc[6][o2i], sd = swdown[o2i];
+        swsfc[9][o2i] = double(sd) > 0.001 ? real(std::min(double(dif) / double(sd), 1.0)) : real(0);
+      }
       for (int k = 0; k < nz; ++k) {
         double r = rlw[k];  // RTHRATEN = LW, then RTHRATEN = RTHRATEN + RTHRATENSW (daytime)
         if (cz > 0.0) r = r + rsw[k];
@@ -530,6 +566,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
     copy_to_dev(out.swcf->data() - Lo2.offset, swcf2.data(), Lo2.total * sizeof(real));
     copy_to_dev(out.hrang->data() - Lo2.offset, hrang2.data(), Lo2.total * sizeof(real));
   }
+  for (std::size_t q = 0; q < swsfc.size(); ++q)
+    copy_to_dev(out.swsfc[q]->data() - Lo2.offset, swsfc[q].data(), Lo2.total * sizeof(real));
   return true;
 #endif
 }

@@ -20,8 +20,8 @@ struct BE { std::vector<char> b; size_t o = 0;
 int main(int, char** argv) {
   BE in(argv[1]);
   auto t = std::make_unique<RrtmgSwTables>(); if (!load_rrtmg_sw_tables(argv[2], *t)) return 1;
-  auto ws = std::make_unique<RrtmgSwWorkspace>(); ws->init_pointers();
-  const int M = RRTMG_SW_MAX_LAYERS + 1;
+  auto ws = std::make_unique<RrtmgSwWorkspace>();
+  const int M = RRTMG_SW_COL_MAX + 1;
   std::vector<double> play(M), plev(M), tlay(M), tlev(M), h2o(M), o3(M), co2(M), ch4(M), n2o(M), o2(M), rei(M, 10.), rel(M, 5.), res(M, 10.);
   std::vector<double> wu(M), wd(M), whr(M), wuc(M), wdc(M), whrc(M), wdir(M), wdif(M);
   std::vector<double> u(M), d(M), hr(M), uc(M), dc(M), hrc(M), dir(M), dif(M), a1(M), a2(M), a3(M), a4(M);
@@ -35,7 +35,7 @@ int main(int, char** argv) {
     in.arr(wu.data(), nlay + 1); in.arr(wd.data(), nlay + 1); in.arr(whr.data(), nlay);
     in.arr(wuc.data(), nlay + 1); in.arr(wdc.data(), nlay + 1); in.arr(whrc.data(), nlay);
     in.arr(wdir.data(), nlay + 1); in.arr(wdif.data(), nlay + 1);
-    for (int i = 0; i < nlay * 112; ++i) { ws->cldfmc[i] = ws->ciwpmc[i] = ws->clwpmc[i] = ws->cswpmc[i] = ws->taucmc[i] = 0; ws->ssacmc[i] = 1; ws->asmcmc[i] = ws->fsfcmc[i] = ws->taormc[i] = 0; }
+    for (int i = 0; i < nlay * 112; ++i) ws->cldfmc[i] = 0;
     rrtmg_sw_core(nlay, 8.4349451468392243, play.data(), plev.data(), tlay.data(), tlev.data(), h2o.data(), o3.data(), co2.data(),
                   ch4.data(), n2o.data(), o2.data(), asdir, asdif, aldir, aldif, cz, adjes, scon, rei.data(), rel.data(), res.data(),
                   u.data(), d.data(), hr.data(), uc.data(), dc.data(), hrc.data(), dir.data(), dif.data(), a1.data(), a2.data(), a3.data(), a4.data(), *ws, *t);

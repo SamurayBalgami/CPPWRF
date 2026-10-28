@@ -48,7 +48,7 @@ struct SwViews {
   SD2 taug, taur;      // [nl][112]
   SD sfluxzen;         // [112]
   SD2 cfu, cfd, ccu, ccd, cfdd, ccdd;  // [nl + 1][112] g-point contributions (bottom-to-top levels)
-  SD fu, fd, cu, cd, fddir, uvfd, uvfddir, nifd, nifddir;  // [nl + 1] fluxes
+  SD fu, fd, cu, cd, fddir, cddir, uvfd, uvfddir, nifd, nifddir;  // [nl + 1] fluxes
   SD swhr, swhrc;      // [nl]
   SI iscal;  // [0] day (coszen > 0), [1] laytrop, [2] inflag, [3] iceflag, [4] liqflag
   SD dscal;  // [0] prmu0, [1..4] asdir, asdif, aldir, aldif
@@ -85,8 +85,8 @@ struct SwLayout {
     v.cldfmc = v2(L, 112); v.taug = v2(L, 112); v.taur = v2(L, 112); v.sfluxzen = v1(112);
     v.cfu = v2(L1, 112); v.cfd = v2(L1, 112); v.ccu = v2(L1, 112); v.ccd = v2(L1, 112);
     v.cfdd = v2(L1, 112); v.ccdd = v2(L1, 112);
-    v.fu = v1(L1); v.fd = v1(L1); v.cu = v1(L1); v.cd = v1(L1); v.fddir = v1(L1); v.uvfd = v1(L1);
-    v.uvfddir = v1(L1); v.nifd = v1(L1); v.nifddir = v1(L1);
+    v.fu = v1(L1); v.fd = v1(L1); v.cu = v1(L1); v.cd = v1(L1); v.fddir = v1(L1); v.cddir = v1(L1);
+    v.uvfd = v1(L1); v.uvfddir = v1(L1); v.nifd = v1(L1); v.nifddir = v1(L1);
     v.swhr = v1(L1); v.swhrc = v1(L1);
     v.dscal = v1(5);
     v.jp = i1(L); v.jt = i1(L); v.jt1 = i1(L); v.indself = i1(L); v.indfor = i1(L); v.iscal = i1(6);
@@ -516,7 +516,8 @@ CPPWRF_FORCEINLINE void rrtmg_sw_gpoint(const RrtmgSwCallConfig& c, int iw, cons
 // ---- stage 3: per level: spcvmc_sw's sums, g-points in order ------------------------------------
 CPPWRF_FORCEINLINE void rrtmg_sw_level(int lev, const SwViews& v, const RrtmgSwTables& CPPWRF_RESTRICT tables) {
   if (CSI(v.iscal)[0] == 0) return;
-  double fu = 0.0, fd = 0.0, cu = 0.0, cd = 0.0, fddir = 0.0, uvfd = 0.0, uvfddir = 0.0, nifd = 0.0, nifddir = 0.0;
+  double fu = 0.0, fd = 0.0, cu = 0.0, cd = 0.0, fddir = 0.0, cddir = 0.0, uvfd = 0.0, uvfddir = 0.0, nifd = 0.0,
+         nifddir = 0.0;
   int iw = 0;
   for (int ibm = 0; ibm < 14; ++ibm) {
     const int igt = tables.ngc[ibm];
@@ -529,6 +530,7 @@ CPPWRF_FORCEINLINE void rrtmg_sw_level(int lev, const SwViews& v, const RrtmgSwT
       cu += ccu;
       cd += ccd;
       fddir += cfdd;
+      cddir += CSD2(v.ccdd)[lev][iw];
       if (ibm >= 9 && ibm <= 12) {
         uvfd += cfd;
         uvfddir += cfdd;
@@ -538,14 +540,15 @@ CPPWRF_FORCEINLINE void rrtmg_sw_level(int lev, const SwViews& v, const RrtmgSwT
       }
     }
   }
-  v.fu[lev] = fu; v.fd[lev] = fd; v.cu[lev] = cu; v.cd[lev] = cd; v.fddir[lev] = fddir;
+  v.fu[lev] = fu; v.fd[lev] = fd; v.cu[lev] = cu; v.cd[lev] = cd; v.fddir[lev] = fddir; v.cddir[lev] = cddir;
   v.uvfd[lev] = uvfd; v.uvfddir[lev] = uvfddir; v.nifd[lev] = nifd; v.nifddir[lev] = nifddir;
 }
 
 // ---- stage 4: per column ------------------------------------------------------------------------
+// surface direct / diffuse fluxes: rrtmg_sw's swdkdir, swdkdif, swdkdirc at level 1 (SWDDIR, SWDDIF, SWDDIRC)
 struct SwColumnOut {
   double gsw, swcf, swupt, swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc, swvisdir, swvisdif, swnirdir,
-      swnirdif;
+      swnirdif, swddir, swddif, swddirc;
 };
 CPPWRF_FORCEINLINE SwColumnOut rrtmg_sw_finish(const RrtmgSwCallConfig& c, const SwViews& v, CSD pi3d,
                                                SD rthratensw, SD rthratenswc) {
@@ -579,6 +582,9 @@ CPPWRF_FORCEINLINE SwColumnOut rrtmg_sw_finish(const RrtmgSwCallConfig& c, const
   o.swvisdif = v.uvfd[0] - v.uvfddir[0];
   o.swnirdir = v.nifddir[0];
   o.swnirdif = v.nifd[0] - v.nifddir[0];
+  o.swddir = v.fddir[0];
+  o.swddif = v.fd[0] - v.fddir[0];
+  o.swddirc = v.cddir[0];
   for (int k = 0; k < c.num_levels; ++k) {
     rthratensw[k] = (v.swhr[k] / 86400.) / pi3d[k];
     if (rthratenswc.p) rthratenswc[k] = (v.swhrc[k] / 86400.) / pi3d[k];

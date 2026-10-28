@@ -144,22 +144,4 @@ CPPWRF_FORCEINLINE void reftra_sw_elem(
   }
 }
 
-CPPWRF_HD inline void reftra_sw(
-    int nlayers,
-    const bool* lrtchk,       // (nlayers)
-    const double* pgg,        // (nlayers)
-    double prmuz,
-    const double* ptau,       // (nlayers)
-    const double* pw,         // (nlayers)
-    double* pref,             // (nlayers+1)
-    double* prefd,            // (nlayers+1)
-    double* ptra,             // (nlayers+1)
-    double* ptrad,            // (nlayers+1)
-    const RrtmgSwTables& tables
-) {
-  for (int jk = 0; jk < nlayers; ++jk) {
-    reftra_sw_elem(lrtchk[jk], pgg[jk], prmuz, ptau[jk], pw[jk], pref[jk], prefd[jk], ptra[jk], ptrad[jk], tables);
-  }
-}
-
 }  // namespace cppwrf::phys

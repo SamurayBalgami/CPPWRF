@@ -215,10 +215,9 @@ struct RrtmgSwTables {
 
 #pragma pack(pop)
 
-// Loads precomputed tables from binary dump file
-bool load_rrtmg_sw_tables(const std::string& filepath, RrtmgSwTables& tables);
+static_assert(sizeof(RrtmgSwTables) == 841044, "RrtmgSwTables size must be exactly 841044 bytes");
 
-// Global default tables instance (host)
-RrtmgSwTables& get_default_rrtmg_sw_tables();
+// Loads the tables dump (tests/phys/ra_rrtmg_sw/dump_sw_tables.f90, data/rrtmg/rrtmg_sw_tables.bin)
+bool load_rrtmg_sw_tables(const std::string& filepath, RrtmgSwTables& tables);
 
 }  // namespace cppwrf::phys
