@@ -283,6 +283,9 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
 
       ov.push_back("real.wrfinput=wrfinput_" + sp.tag);
       ov.push_back("real.nested=true");
+      // input_wrf.F compares them with the nest's wrfinput (I_PARENT_START, J_PARENT_START)
+      ov.push_back("real.i_parent_start=" + std::to_string(sp.i_parent_start));
+      ov.push_back("real.j_parent_start=" + std::to_string(sp.j_parent_start));
       ov.push_back("real.spec_bdy_width=" + std::to_string(sp.spec_bdy_width));
       {
         std::ostringstream oss;

@@ -195,6 +195,36 @@ void init_real_case(const io::Config& cfg, Model& m) {
   if (d.attrs_int.count("USE_THETA_M") && d.attrs_int.at("USE_THETA_M") != 1)
     throw std::runtime_error("use_theta_m values must be consistent: input file use_theta_m = " +
                              std::to_string(d.attrs_int.at("USE_THETA_M")) + ", CPPWRF use_theta_m = 1");
+  {  // input_wrf.F (input stream): the namelist values the translator passes must agree with the file's attributes
+    auto att = [&](const char* n, long def) {
+      const auto it = d.attrs_int.find(n);
+      return it == d.attrs_int.end() ? def : long(it->second);
+    };
+    auto mismatch = [](const std::string& what, long nl, long file) {
+      throw std::runtime_error("input_wrf: mismatch between namelist and input file: namelist " + what + " = " +
+                               std::to_string(nl) + ", input file " + std::to_string(file));
+    };
+    for (const auto& [k, a] : {std::pair<const char*, const char*>{"real.e_we", "WEST-EAST_GRID_DIMENSION"},
+                               {"real.e_sn", "SOUTH-NORTH_GRID_DIMENSION"}, {"real.e_vert", "BOTTOM-TOP_GRID_DIMENSION"}})
+      if (cfg.has(k) && cfg.get_int(k) != att(a, -1)) mismatch(std::string(k).substr(5), cfg.get_int(k), att(a, -1));
+    if (cfg.has("real.num_land_cat")) {  // a missing or invalid NUM_LAND_CAT: 20 for MODIFIED_IGBP_MODIS_NOAH, else 24
+      long n = att("NUM_LAND_CAT", 0);
+      if (n < 1 || n > 1000) {
+        const auto m = d.attrs_str.find("MMINLU");
+        n = m != d.attrs_str.end() && m->second.rfind("MODIFIED_IGBP_MODIS_NOAH", 0) == 0 ? 20 : 24;
+      }
+      if (cfg.get_int("real.num_land_cat") != n) mismatch("num_land_cat", cfg.get_int("real.num_land_cat"), n);
+    }
+    const long lsm = cfg.get_int("phys.sf_surface_physics", 0), lsm_file = att("SF_SURFACE_PHYSICS", lsm);
+    if (lsm != 0 && lsm_file != lsm && !(lsm == 2 && lsm_file == 4) && !(lsm == 4 && lsm_file == 2))
+      mismatch("sf_surface_physics", lsm, lsm_file);  // Noah and Noah-MP inputs are interchangeable
+    const long gwd = cfg.get_int("dyn.gwd_opt", 0);
+    if (gwd != 0 && att("GWD_OPT", gwd) != gwd) mismatch("gwd_opt", gwd, att("GWD_OPT", gwd));
+    if (cfg.get_bool("real.nested", false))  // a nest's start in its parent (the nest driver passes the namelist's)
+      for (const auto& [k, a] : {std::pair<const char*, const char*>{"real.i_parent_start", "I_PARENT_START"},
+                                 {"real.j_parent_start", "J_PARENT_START"}})
+        if (cfg.has(k) && cfg.get_int(k) != att(a, -1)) mismatch(std::string(k).substr(5), cfg.get_int(k), att(a, -1));
+  }
   std::vector<double> pb(std::size_t(nx) * ny * nz), alb(pb.size()), t_init(pb.size());
   std::vector<double> mub(std::size_t(nx) * ny), phb(std::size_t(nx) * ny * (nz + 1));
   {
