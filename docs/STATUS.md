@@ -33,8 +33,12 @@ is verified against WRF, and the current results. All numbers come from `tests/v
    with `WRF_DIR` (a WRF -r8 build), `WRF_R8D8_DIR` (-r8 -double-8), `NETCDF` and
    `CPPWRF_WRF_RUNS` set.
 2. **Model runs against WRF** (`tests/verify/wrf_suite.py`): WRF v4.8.0 and CPPWRF are run from the same
-   wrfinput/wrfbdy files (119 x 89 x 44, 15 km, dt 60 s; nests 120 x 90 x 44 at 5 km) and the wrfout
-   files are compared field by field (relative L2 over the domain).
+   wrfinput/wrfbdy files (119 x 89 x 44, 15 km, dt 60 s; nests 120 x 90 x 44 at 5 km). The CPU FP64 cases
+   compare CPPWRF's wrfout files with WRF's at tolerance 0 (tests/verify/exact.py: NaN equals only NaN, -0
+   differs from +0) in every variable the reference holds, every reference frame up to the case's time, types and
+   attributes, and check that the configuration sets the options of the reference run's namelist.input; the GPU
+   and FP32 cases compare fields by relative L2 over the domain. The comparators' own test
+   (tests/verify/selftest.py: one ulp, NaN, -0, a missing variable or frame must fail) runs before the VM suite.
 3. **WRF output files** (`tests/verify/run_wrf_files_test.sh`, ctest `wrf_files_vs_wrf`): the
    wrfout and wrfrst files of the CPU FP64 runs, and the runs resumed from WRF's restart files,
    compared with WRF's files at tolerance 0 (values, variables, attributes, global attributes).
