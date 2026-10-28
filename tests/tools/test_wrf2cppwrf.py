@@ -52,8 +52,8 @@ def real_case(text: str) -> str:
 REAL_INPUT_CHECKS = {
     ("real", "p_top_requested"): ("domains", "p_top_requested", 5000.0),
     ("real", "iso_temp"): ("dynamics", "iso_temp", 200.0),
-    ("real", "dx"): ("domains", "dx", None),
-    ("real", "dy"): ("domains", "dy", None),
+    ("real", "dx"): ("domains", "dx", 200.0),
+    ("real", "dy"): ("domains", "dy", 200.0),
     ("dyn", "hybrid_opt"): ("dynamics", "hybrid_opt", 2),
 }
 

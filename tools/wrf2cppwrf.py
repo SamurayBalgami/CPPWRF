@@ -480,8 +480,8 @@ IGNORED_WRF_OPTIONS = {
     "io_form_auxinput4": "wrflowinp format (NetCDF); used with sst_update = 1",
     "auxinput4_inname": "wrflowinp file name; used with sst_update = 1",
     "auxinput4_interval": "wrflowinp interval; used with sst_update = 1",
-    "dx": "Real case grid spacing read directly from wrfinput",
-    "dy": "Real case grid spacing read directly from wrfinput",
+    "dx": "Grid spacing (real case: the namelist value, checked against wrfinput as input_wrf does)",
+    "dy": "Grid spacing (real case: the namelist value, checked against wrfinput as input_wrf does)",
     # &physics
     "ifsnow": "Snow effects flag (used by the slab LSM only)",
     "num_soil_layers": "4 soil layers (Noah, Noah-MP)",
@@ -806,12 +806,12 @@ class WrfTranslator:
                 sections["real"]["dir"] = r_dir_abs
 
             # namelist values that wrf.exe checks against the input file (start_em.F, input_wrf.F: fatal
-            # when they differ); the model makes the same checks
+            # when they differ); the model makes the same checks. dx / dy (Registry default 200) are also the
+            # grid spacing wrf.exe integrates with (grid%dx), not the file's DX / DY
             sections["real"]["p_top_requested"] = self.get_opt("domains", "p_top_requested", 5000.0)
             sections["real"]["iso_temp"] = self.get_opt("dynamics", "iso_temp", 200.0)
             for k in ("dx", "dy"):
-                if self.has_opt("domains", k):
-                    sections["real"][k] = self.get_opt("domains", k, None)
+                sections["real"][k] = self.get_opt("domains", k, 200.0)
 
             # In configs/real_p1..p4 and nested configs, wrfinput/wrfbdy are written explicitly
             if self.explicit_files or has_physics_suite or max_dom > 1:

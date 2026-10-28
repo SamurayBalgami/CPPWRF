@@ -84,7 +84,9 @@ void init_real_case(const io::Config& cfg, Model& m) {
   const io_netcdf::WrfInputData d = io_netcdf::read_wrfinput(dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01"));
   Grid& g = m.g;
   g.nx = d.nx; g.ny = d.ny; g.nz = d.nz;
-  g.dx = d.dx; g.dy = d.dy;
+  // grid%dx / grid%dy are the namelist's (rconfig dx, dy; a nest's dx(1) / parent ratios from check_a_mundo):
+  // input_wrf only compares the file's DX / DY with them (checked below)
+  g.dx = cfg.get_double("real.dx", d.dx); g.dy = cfg.get_double("real.dy", d.dy);
   g.dt = cfg.get_double("time.dt", d.dt);
   g.p_top = d.p_top;
   g.bc_x = g.bc_y = BC::Specified;
@@ -117,6 +119,10 @@ void init_real_case(const io::Config& cfg, Model& m) {
     b.dn[k] = d.dn[k]; b.rdn[k] = d.rdn[k]; b.fnm[k] = d.fnm[k]; b.fnp[k] = d.fnp[k];
   }
   b.dn[nz] = 0; b.rdn[nz] = 0; b.fnm[nz] = 0; b.fnp[nz] = 0;
+  // start_em.F 580-594: c1f(1) /= 1 ("old non-HVC input") resets c1*/c2*/c3*/c4* to the terrain-following set
+  // (fatal with hybrid_opt /= 0); real.exe of WRF v4 writes c1f(1) = 1
+  if (d.c1f[0] != 1.0)
+    throw std::runtime_error("real: C1F(1) /= 1 in the input (old non-HVC input data) is not supported");
   b.cf1 = d.cf1; b.cf2 = d.cf2; b.cf3 = d.cf3; b.cfn = d.cfn; b.cfn1 = d.cfn1;
   b.p_top = d.p_top;
   {  // WRF uses RDX, RDY and 1D *_BASE profiles of the input (registry 'i')
