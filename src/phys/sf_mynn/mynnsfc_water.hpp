@@ -225,6 +225,7 @@ CPPWRF_HD inline void mynnsfc_water(const SfcIn& in, real lakemask, SfcPoint& o,
     o.qfx = c_max(o.qfx, real(-0.02));
     o.lh = xlv * o.qfx;
     o.hfx = rho_1 * o.cpm * karman * o.wspd / o.psix * karman / o.psit * (thsk - th_1);
+    if (in.sfcflux_water > 1) o.hfx = o.hfx + rho_1 * o.ustm * o.ustm * wspdi;  // ahw: dissipative heating
     o.chs = o.ust * karman / o.psit;
     o.cqs = o.ust * karman / psiq;
     o.cqs2 = o.ust * karman / psiq2;
