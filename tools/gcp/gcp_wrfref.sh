@@ -51,12 +51,15 @@ for z in ${ZONES//,/ }; do
 done
 [ -n "$ZONE" ] || { echo "[gcp_wrfref] no zone has $MACHINE now"; cat "$OUT/create.log"; exit 1; }
 echo "[gcp_wrfref] $VM ($MACHINE spot, $ZONE): results to gs://$BK/$RES"
+gone=0
 while :; do
   sleep 60
   gcloud storage cp "gs://$BK/$RES/refs.out" "$OUT/" --project "$P" -q 2>/dev/null || true
   gcloud storage ls "gs://$BK/$RES/done" --project "$P" > /dev/null 2>&1 && break
   st=$(gcloud compute instances describe "$VM" --zone "$ZONE" --project "$P" --format='value(status)' 2>/dev/null || echo GONE)
-  case $st in RUNNING|STAGING|PROVISIONING) ;; *) echo "[gcp_wrfref] VM $st (preempted?)"; break ;; esac
+  case $st in RUNNING|STAGING|PROVISIONING) gone=0 ;; *) gone=$((gone + 1)) ;; esac
+  # three checks in a row: one failed describe call (network) must not end a running job
+  [ $gone -lt 3 ] || { echo "[gcp_wrfref] VM $st (preempted?)"; break; }
 done
 for f in job.log refs.out cmake.log files.log suite.log; do
   gcloud storage cp "gs://$BK/$RES/$f" "$OUT/" --project "$P" -q 2>/dev/null || true
