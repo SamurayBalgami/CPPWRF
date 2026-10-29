@@ -58,17 +58,21 @@ cleanup() {
 trap cleanup EXIT
 timeout 900 colab new -s "$S" --gpu "$GPU"
 # uploads go through Jupyter's contents API, which refuses large files (and `colab upload` exits 0 anyway):
-# send 32 MiB parts, join them on the VM and check the md5
+# send 32 MiB parts, join them on the VM and check the md5 (each part is cut just before it is sent: the disk
+# never holds a second copy of the data)
 upload() {
-  local src=$1 dst=$2 parts n=0 sum got
+  local src=$1 dst=$2 parts p n=0 sum got
   parts=$(mktemp -d "$SCRATCH/colab/parts.XXXXXX")
-  split -b 32M -d -a 4 "$src" "$parts/p"
   local total t0=$SECONDS
-  total=$(ls "$parts" | wc -l)
-  for p in "$parts"/p*; do
+  total=$(( ($(stat -c %s "$src") + 33554431) / 33554432 ))
+  [ "$total" -gt 0 ] || total=1
+  while [ "$n" -lt "$total" ]; do
+    p=$parts/p$(printf %04d "$n")
+    dd if="$src" of="$p" bs=32M skip="$n" count=1 iflag=fullblock status=none
     if ! timeout 900 colab upload -s "$S" "$p" "$dst.part.$(basename "$p")" 2>&1 | grep -q "Uploaded"; then
       echo "[colab_run] upload of part $(basename "$p") of $src failed"; rm -rf "$parts"; return 1
     fi
+    rm -f "$p"
     n=$((n + 1))
     # the VM bills while it waits: give up when this region's upload would take too long
     local eta=$(( (SECONDS - t0) * (total - n) / n / 60 ))
