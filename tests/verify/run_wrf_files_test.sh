@@ -4,6 +4,8 @@
 #   usage: run_wrf_files_test.sh [BUILD_DIR] [case ...]
 # CPPWRF_FILES_TRANSLATED=1: the CPPWRF configuration is made from the WRF run's namelist.input by
 # tools/wrf2cppwrf.py instead of configs/ (the user's path from a WRF run directory).
+# CPPWRF_FILES_NO_VALUES=1 (a CUDA build): the files' variables, dimensions, attributes, global attributes and times
+# are compared, not the numbers (the GPU differs from WRF at roundoff; wrf_suite.py's cuda cases bound the values).
 # References: ${CPPWRF_WRF_RUNS}/run_<C>_r8[/steps] (history every step) and
 # ${CPPWRF_WRF_RUNS}/rst_<C>_r8 (tests/verify/make_restart_refs.sh: restart every minute) and
 # ${CPPWRF_WRF_RUNS}/rsm_<C>_r8 (make_resumed_refs.sh: WRF resumed from rst_<C>_r8 at minute 1; CPPWRF
@@ -23,7 +25,7 @@ if [ -z "${CPPWRF_WRF_RUNS:-}" ] || [ ! -d "${CPPWRF_WRF_RUNS}" ]; then
 fi
 BUILD_DIR=${1:-${REPO_ROOT}/build}; shift || true
 EXE=${BUILD_DIR}/cppwrf
-CMP="python3 ${REPO_ROOT}/tests/init_real/compare_real.py --ignore"
+CMP="python3 ${REPO_ROOT}/tests/init_real/compare_real.py$([ "${CPPWRF_FILES_NO_VALUES:-0}" = 1 ] && echo " --no-values") --ignore"
 # the variables not compared in WRF's file $1 (case $2): RQCBLTEN / RQIBLTEN without QCLOUD / QICE, f1's QZ0 / USTM
 ignored() {
   python3 -c 'import sys, netCDF4
