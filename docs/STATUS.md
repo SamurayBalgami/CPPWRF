@@ -16,7 +16,7 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 | Radiation | RRTMG LW and SW (4), CAM ozone and greenhouse gases, cal_cldfra1, McICA |
 | Nesting | static one-way and two-way nests (interp_fcn_sint, bdy_interp1, copy_fcn feedback, sm121/smdsm smoothers, blend_terrain, adjust_tempqv) |
 | Namelist | physics_suite CONUS and tropical (the -1 options), in tools/wrf2cppwrf.py and in the WRF I/O schema |
-| I/O | reads wrfinput_d0N / wrfbdy_d01; writes WRF v4.8.0 wrfout_d0N and wrfrst_d0N files (WRF I/O schema, iofields_filename) and its own restart files; native binary output; cppwrf_real (real.exe) |
+| I/O | reads wrfinput_d0N / wrfbdy_d01; writes WRF v4.8.0 wrfout_d0N and wrfrst_d0N files (WRF I/O schema, iofields_filename, history_outname / rst_outname, frames_per_outfile, use_netcdf_classic) and its own restart files; native binary output; cppwrf_real (real.exe) |
 | Ideal cases | WRF's ideal.exe for em_hill2d_x, em_quarter_ss, em_squall2d_x/y, em_grav2d_x; CPPWRF's own analytic tests (rest state, warm bubble, Straka, inertia-gravity wave, 2-D squall line) |
 
 ## Verification method
@@ -201,5 +201,8 @@ RRTMG runs on the GPU as a batched pipeline (docs/PHYSICS_SUITE.md section 10).
 ## Not yet implemented
 
 sf_sfclay_physics 91, km_opt 5, the MYNN PBL with fractional_seaice = 1, the MYNN options bl_mynn_edmf 2, bl_mynn_edmf_dd, bl_mynn_mixnumcon, bl_mynn_mixaerosols 0, bl_mynn_output 2, other bl_mynn_closure values and the GFS surface-layer forms (sf_mynn_sfcflux_land 4, sf_mynn_sfcflux_water 5), Noah-MP options other than the defaults (and crop/irrigation/
-tile drainage), moving nests, and parallel (MPI) runs. Options without a port are rejected by
-`tools/wrf2cppwrf.py` and by the model with an error.
+tile drainage), moving nests, ndown.exe (one-way nesting from a parent run's wrfout), I/O forms other than NetCDF
+(io_form 2) and auxiliary history / input streams other than sst_update's wrflowinp (WRF writes none by default),
+and parallel (MPI) runs. Options without a port are rejected by `tools/wrf2cppwrf.py` and by the model with an
+error. Noah-MP with nests is rejected because wrf.exe 4.8.0 aborts with it (heap corruption in the nest run's
+first history output).
