@@ -5,6 +5,7 @@
 // enters the theta tendency in every RK stage (rk_addtend_dry), and it is removed again in
 // the last small_step_finish, so the dynamics feel the heating but theta is not changed twice.
 // Interface for physics schemes (src/phys/): docs/PHYSICS_INTERFACE.md.
+#include <memory>
 #include <string>
 
 #include "core/field.hpp"
@@ -42,7 +43,8 @@ class PhysicsCoupling {
   // moist_physics_prep_em outputs (WRF names)
   Field3 th_phy, rho, pii, z, dz8w, qv_diabatic, qc_diabatic, p_phy;
   phys::wsm6::Wsm6Params<real> wp_{};  // WSM6 constants (wsm6init), computed once
-  phys::mp_thompson::ThompsonDeviceTables<real> tp_{};  // Thompson lookup tables (thompson_init), computed once, device-resident
+  // Thompson lookup tables (thompson_init), device-resident: one set shared by all domains, as WRF's
+  std::shared_ptr<const phys::mp_thompson::ThompsonDeviceTables<real>> tp_;
 };
 
 }  // namespace cppwrf::dyn
