@@ -2,7 +2,7 @@
 """Pack the references of tests/verify/run_wrf_files_test.sh and tests/verify/ideal_files_test.py whole (every frame
 and variable) for the VM suite (tools/gcp/remote_suite.sh runs both tests after wrf_suite.py).
 
-  stage_files_data.py [--list] OUT.tar|-      (-: the tar to stdout, e.g. | gcloud storage cp - gs://BUCKET/X.tar)
+  stage_files_data.py [--list] [--links-only] OUT.tar|-   (-: the tar to stdout, e.g. | gcloud storage cp - gs://BUCKET/X.tar)
 
 From ${CPPWRF_WRF_RUNS}: for each case of run_wrf_files_test.sh the input directory of its configuration (real.dir;
 inputs and tables as tools/colab/stage_data.py keeps them), its wrfout reference directory and its restart (rst_) and
@@ -10,6 +10,8 @@ resumed (rsm_) directories (their wrfout / wrfrst files, namelist.input and iofi
 the restart file it started from is left out); the steps/ references of wrf_suite.py's tolerance-0 cases whole
 (stage_data.py --no-steps leaves them out of its tar); from ${CPPWRF_WRF_REF}: the reference directories of the ideal
 cases (wrfout, namelist.input, input_sounding). Links are followed. --list prints the files and their size instead.
+--links-only packs only the files that are links (their content): v05_files_links.tar, after v05_files_data.tar in
+tests/verify/vm_data.txt, replaces the links that tar packed as links before the dereference fix.
 """
 import os
 import re
@@ -37,7 +39,8 @@ def files_test_cases():
 def main():
     args = sys.argv[1:]
     listing = "--list" in args
-    out = [a for a in args if a != "--list"][0]
+    links_only = "--links-only" in args
+    out = [a for a in args if a not in ("--list", "--links-only")][0]
     files = {}  # path in the tar -> file
 
     def add(path, root, arc):
@@ -77,6 +80,8 @@ def main():
                         add(os.path.join(d, f), WREF, "wrf_ref")
             elif "/steps/" in r and os.path.exists(r):
                 add_outputs(os.path.dirname(r))
+    if links_only:
+        files = {arc: p for arc, p in files.items() if os.path.islink(p)}
     if listing:
         tot = 0
         for arc, p in sorted(files.items()):
