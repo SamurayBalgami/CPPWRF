@@ -87,8 +87,9 @@ static void test_halo_symmetric() {
         CHECK(xv(4, 6 + t, k) == -xv(4, 6 - t, k));
         CHECK(xu(-t, -t, k) == -xu(t, t - 1, k));     // corner: x odd, y even
       }
-  for (int j = 0; j < 6; ++j) { CHECK(xu(0, j, 0) == 0); CHECK(xu(10, j, 1) == 0); }
-  for (int i = 0; i < 10; ++i) { CHECK(xv(i, 0, 0) == 0); CHECK(xv(i, 6, 1) == 0); }
+  // the wall face of the normal velocity keeps its value (WRF fills only the mirror rows)
+  for (int j = 0; j < 6; ++j) { CHECK(xu(0, j, 0) == real(val(0, j, 0))); CHECK(xu(10, j, 1) == real(val(10, j, 1))); }
+  for (int i = 0; i < 10; ++i) { CHECK(xv(i, 0, 0) == real(val(i, 0, 0))); CHECK(xv(i, 6, 1) == real(val(i, 6, 1))); }
   // even parity on a U-staggered 2D field (e.g. muu)
   Field2 mu(g, Stagger::U, "muu");
   mu.fill_host(val);
