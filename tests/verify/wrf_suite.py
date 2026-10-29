@@ -45,7 +45,7 @@ CASES = [
      f"{WR}/run_R1D6_r8/wrfout_d01_2026-10-12_00:00:00", 600,
      {"U": 0.0, "V": 0.0, "W": 0.0, "PH": 0.0, "MU": 0.0, "P": 0.0, "QV": 0.0, "THM": 0.0}),
     ("real_r1d6_fp64_cuda", "cuda_dp", "configs/real_r1_d6.ini", ["real.dir=" + f"{WR}/run_R1D6_r8"],
-     f"{WR}/run_R1D6_r8/wrfout_d01_2026-10-12_00:00:00", 600, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WR}/run_R1D6_r8/wrfout_d01_2026-10-12_00:00:00", 600, {"U": 1e-13, "W": 3e-11, "THM": 2e-15, "QV": 1e-14}),
     ("real_r1_fp64_cuda", "cuda_dp", "configs/real_r1.ini", [], f"{WR}/run_R1_r8/wrfout_d01_2026-10-12_00:00:00", 300,
      {"U": 1e-12, "W": 1e-10, "PH": 1e-13, "THM": 1e-13, "QV": 1e-13, "MU": 1e-13}),
     # T1 = R1 + diff_opt = 2, km_opt = 2 (1.5-order TKE, full metric stress tensor diffusion):
@@ -76,11 +76,10 @@ CASES = [
     ("real_p1t2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p1_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P1T2_r8", "phys.opt_thcnd=2", "output.out_interval=10",
       "output.diag_interval=10"],
-     f"{WR}/run_P1T2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WR}/run_P1T2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-9, "W": 8e-8, "THM": 7e-10, "QV": 2e-8}),
     # A01 = P1 with usemonalb = .true. (landuse_init keeps the wrfinput ALBBCK, SFLX too) and rdlai2d = .true. (Noah's
     # LAI from wrfinput); A01V = V2 with both (722 snow-covered land points: ALBEDO = SNOALB in landuse_init).
-    # The A01 references leave out RQCBLTEN / RQIBLTEN (WRF's uninitialised arrays without qc / qi). The cuda_dp
-    # tolerances are provisional (P1-like, to be measured on a GPU).
+    # The A01 references leave out RQCBLTEN / RQIBLTEN (WRF's uninitialised arrays without qc / qi).
     ("real_a01_r8_fp64_cpu", "cpu_dp", "configs/real_a01_r8.ini", [],
      f"{WR}/run_A01_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
      {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
@@ -89,7 +88,7 @@ CASES = [
      f"{WR}/run_A01_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
     ("real_a01_r8_fp64_cuda_1h", "cuda_dp", "configs/real_a01_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P1_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_A01_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-8, "W": 1e-7, "THM": 1e-9, "QV": 1e-7}),
+     f"{WR}/run_A01_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 5e-9, "W": 6e-8, "THM": 5e-10, "QV": 3e-8}),
     ("real_a01v_r8_fp64_cpu_1h", "cpu_dp", "configs/real_v2_r8.ini",
      ["run.run_time=3600", "output.out_interval=10", "output.diag_interval=10", "phys.usemonalb=true",
       "phys.rdlai2d=true"],
@@ -98,7 +97,7 @@ CASES = [
     ("real_a01v_r8_fp64_cuda_1h", "cuda_dp", "configs/real_v2_r8.ini",
      ["run.run_time=3600", "output.out_interval=10", "output.diag_interval=10", "phys.usemonalb=true",
       "phys.rdlai2d=true"],
-     f"{WR}/run_A01V_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WR}/run_A01V_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-4, "W": 1e-2, "THM": 8e-6, "QV": 6e-4}),
     ("real_p2_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p2_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P2_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
@@ -124,7 +123,7 @@ CASES = [
      {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0, "QSNOW": 0.0}),
     ("real_p5_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p5_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P5_r8_1h", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_P5_r8_1h/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WR}/run_P5_r8_1h/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-4, "W": 4e-3, "THM": 8e-6, "QV": 2e-3}),
     # P2 (+Kain-Fritsch cu_physics=1): bit-identical (3 steps here, 1 h above)
     ("real_p2_r8_fp64_cpu", "cpu_dp", "configs/real_p2_r8.ini", [], f"{WR}/run_P2_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
      {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
@@ -142,7 +141,7 @@ CASES = [
      f"{WR}/run_P3/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-4, "W": 1e-2, "THM": 2e-6, "QV": 1e-4}),
     ("real_p3_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p3_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P3_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_P3_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WR}/run_P3_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 4e-10, "W": 6e-8, "THM": 3e-11, "QV": 2e-10}),
     # P4 (KF + WSM6 + RRTMG with clouds, effective radii + diffusion): bit-identical for 3 steps and 1 h
     # (only the COSZEN diagnostic differs: radiation_driver's vector cos/sin)
     ("real_p4_r8_fp64_cpu", "cpu_dp", "configs/real_p4_r8.ini", [],
@@ -157,7 +156,7 @@ CASES = [
      f"{WR}/run_P4_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 6e-4, "W": 1e-2, "THM": 8e-6, "QV": 5e-4}),
     ("real_p4_fp32_1h", "cuda", "configs/real_p4_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_P4/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WR}/run_P4/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-3, "W": 7e-2, "THM": 3e-5, "QV": 2e-3}),
     # KESSKF = P4 with Kessler (mp_physics = 1): Kain-Fritsch rain into Kessler's sedimentation (nfall > 1),
     # bit-identical for 3 steps and 1 h
     ("real_kesskf_r8_fp64_cpu", "cpu_dp", "configs/real_kesskf_r8.ini", [],
@@ -167,9 +166,9 @@ CASES = [
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_KESSKF_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
      {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "RAINNC")}),
-    ("real_kesskf_r8_fp64_cuda_1h", "cuda_dp", "configs/real_kesskf_r8.ini",  # L4: U 6.9e-5 W 1.2e-3 THM 1.1e-6 QV 4.4e-5
+    ("real_kesskf_r8_fp64_cuda_1h", "cuda_dp", "configs/real_kesskf_r8.ini",  # G4: U 9.2e-5 W 1.2e-3 THM 1.2e-6 QV 6.2e-5
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_KESSKF_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 2e-4, "W": 4e-3, "THM": 4e-6, "QV": 1.5e-4}),
+     f"{WR}/run_KESSKF_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-4, "W": 4e-3, "THM": 4e-6, "QV": 2e-4}),
     # P6 = P5 with Thompson (mp_physics = 8; WRF r8 built with -fdefault-double-8, see PHYSICS_SUITE.md
     # section 11): bit-identical for 3 steps and 1 h
     ("real_p6_r8_fp64_cpu", "cpu_dp", "configs/real_p6_r8.ini", [], f"{WR}/run_P6_r8/steps/wrfout_d01_2026-10-12_00:00:00",
@@ -184,7 +183,7 @@ CASES = [
      f"{WR}/run_P6/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 5e-4, "W": 1e-2, "THM": 1e-5, "QV": 5e-4}),
     ("real_p6_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p6_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_P6_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WR}/run_P6_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-4, "W": 3e-3, "THM": 2e-6, "QV": 3e-5}),
     # P7 = P2 with New Tiedtke (cu_physics = 16) instead of KF; reference WRF-4.8.0-r8d8 (r8 + double-8).
     # The scheme has thresholds that roundoff flips (one column at step 4 jumps 1.3e-4 K under 1e-15 input noise).
     ("real_p7_r8_fp64_cpu", "cpu_dp", "configs/real_p7_r8.ini", [],
@@ -202,7 +201,8 @@ CASES = [
      f"{WR}/run_P8_r8/steps/wrfout_d01_2026-10-12_00:00:00", 600,
      {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
     # P8 CUDA: Grell-Freitas thresholds amplify the GPU's last-bit differences, which depend on the architecture
-    # (deterministic per GPU): QV 5.4e-9 on L4 / RTX 2060, 1.5e-7 on G4 (Blackwell)
+    # (deterministic per GPU): QV 5.4e-9 on L4 / RTX 2060, 1.5e-7 on G4 (Blackwell: nvcc's sm_120 code contracts
+    # other products of the surface layer and Noah into FMAs; its compute_89 PTX or --fmad=false gives the L4 result)
     ("real_p8_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p8_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P8_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P8_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-7, "W": 1e-6, "THM": 1e-9, "QV": 5e-7}),
@@ -239,7 +239,6 @@ CASES = [
      f"{WR}/run_MYNN_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 8e-4, "W": 2e-2, "THM": 2e-5, "QV": 4e-4}),
     # MYNNSF1 / MYNNSF2 = MYNN with the MYNN-EDMF PBL on the revised MM5 (sf_sfclay_physics = 1) / Eta (2) surface
     # layer instead of the MYNN one, from the P6 inputs; reference WRF-4.8.0-r8d8. Bit-identical for 3 steps and 1 h.
-    # The cuda_dp tolerances are provisional (P6-like, to be measured on a GPU).
     ("real_mynnsf1_r8_fp64_cpu", "cpu_dp", "configs/real_mynnsf1_r8.ini", [],
      f"{WR}/run_MYNNSF1_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
      {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
@@ -251,7 +250,7 @@ CASES = [
                        "QNICE", "QNRAIN", "RAINNC")}),
     ("real_mynnsf1_r8_fp64_cuda_1h", "cuda_dp", "configs/real_mynnsf1_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_MYNNSF1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 8e-4, "W": 2e-2, "THM": 2e-5, "QV": 9e-4}),  # L4: U 2.5e-4 W 5.3e-3 THM 5.3e-6 QV 2.9e-4
+     f"{WR}/run_MYNNSF1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 9e-4, "W": 2e-2, "THM": 2e-5, "QV": 9e-4}),  # L4: U 2.5e-4 W 5.3e-3 THM 5.3e-6 QV 2.9e-4, G4: U 2.7e-4
     ("real_mynnsf2_r8_fp64_cpu", "cpu_dp", "configs/real_mynnsf2_r8.ini", [],
      f"{WR}/run_MYNNSF2_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
      {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
@@ -268,7 +267,9 @@ CASES = [
     # MYNN options: X1 bl_mynn_tkeadvect, cloudpdf 1, mixlength 2, closure 3.0, edmf_tke 1, mixqt 1, output 1,
     # tke_budget 1, sf_mynn_sfcflux_land 2 / _water 3, grav_settling 2; X2 bl_mynn_edmf 0, cloudmix 0, cloudpdf 0,
     # mixlength 0, closure 2.5, ess 0, mixscalars 1, sf_mynn_sfcflux_land 3 / _water 4, grav_settling 1.
-    # Reference WRF-4.8.0-r8d8; bit-identical for 3 steps and 1 h. The cuda_dp tolerances are provisional.
+    # Reference WRF-4.8.0-r8d8; bit-identical for 3 steps and 1 h. CUDA FP64 L4 / G4: X1 U 3.2e-4 / 3.1e-4,
+    # W 8.6e-3 / 5.9e-3, THM 9.0e-6 / 5.4e-6, QV 1.4e-4 / 1.3e-4; X2 U 2.1e-4, W 6.3e-3 / 7.3e-3, THM 4.4e-6 / 4.8e-6,
+    # QV 6.4e-5 / 6.7e-5.
     ("real_mynnx1_r8_fp64_cpu", "cpu_dp", "configs/real_mynnx1_r8.ini", [],
      f"{WR}/run_MYNNX1_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
      {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
@@ -280,7 +281,7 @@ CASES = [
                        "QNICE", "QNRAIN", "RAINNC")}),
     ("real_mynnx1_r8_fp64_cuda_1h", "cuda_dp", "configs/real_mynnx1_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_MYNNX1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 8e-4, "W": 2e-2, "THM": 2e-5, "QV": 9e-4}),
+     f"{WR}/run_MYNNX1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-3, "W": 3e-2, "THM": 3e-5, "QV": 5e-4}),
     ("real_mynnx2_r8_fp64_cpu", "cpu_dp", "configs/real_mynnx2_r8.ini", [],
      f"{WR}/run_MYNNX2_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
      {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "P", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP",
@@ -292,7 +293,7 @@ CASES = [
                        "QNICE", "QNRAIN", "RAINNC")}),
     ("real_mynnx2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_mynnx2_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_MYNNX2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 8e-4, "W": 2e-2, "THM": 2e-5, "QV": 9e-4}),
+     f"{WR}/run_MYNNX2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 7e-4, "W": 2.5e-2, "THM": 1.5e-5, "QV": 2e-4}),
     # V1-V3: other regions and map projections from the global GFS of 2026-10-12 00 UTC (WPS on the low
     # resolution global geography): V1 tropics (Bay of Bengal, Mercator, 15 km, P4 physics), V2 Arctic
     # (Svalbard, polar stereographic, 15 km, P4 physics: sea ice, glacier land ice, polar night), V3 Alps
@@ -313,13 +314,13 @@ CASES = [
       "QSNOW": 0.0, "QGRAUP": 0.0, "QNICE": 0.0, "QNRAIN": 0.0}),
     ("real_v1_r8_fp64_cuda_2h", "cuda_dp", "configs/real_v1_r8.ini",
      ["run.run_time=7200", "output.out_interval=60", "output.diag_interval=60"],
-     f"{WR}/run_V1_r8/wrfout_d01_2026-10-12_00:00:00", 7200, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WR}/run_V1_r8/wrfout_d01_2026-10-12_00:00:00", 7200, {"U": 6e-3, "W": 3e-1, "THM": 5e-5, "QV": 1.5e-3}),
     ("real_v2_r8_fp64_cuda_2h", "cuda_dp", "configs/real_v2_r8.ini",
      ["run.run_time=7200", "output.out_interval=60", "output.diag_interval=60"],
-     f"{WR}/run_V2_r8/wrfout_d01_2026-10-12_00:00:00", 7200, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WR}/run_V2_r8/wrfout_d01_2026-10-12_00:00:00", 7200, {"U": 4e-4, "W": 1.2e-2, "THM": 1.1e-5, "QV": 1.1e-3}),
     ("real_v3_r8_fp64_cuda_30min", "cuda_dp", "configs/real_v3_r8.ini",
      ["run.run_time=1800", "output.out_interval=100", "output.diag_interval=100"],
-     f"{WR}/run_V3_r8/wrfout_d01_2026-10-12_00:00:00", 1800, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WR}/run_V3_r8/wrfout_d01_2026-10-12_00:00:00", 1800, {"U": 8e-7, "W": 2e-5, "THM": 3e-7, "QV": 6e-6}),
     # The options of WRF's default namelist (test/em_real, physics_suite CONUS): T6 = P2 with Tiedtke
     # (cu_physics = 6), G2 = P2 with GWDO (gwd_opt = 1; ELVMAX = HGT + 3 VAR in the wrfinput, WPS 4.6 writes
     # none), F1 / F2 = V2 with fractional sea ice (real.exe run again with fractional_seaice = 1) and
@@ -358,10 +359,10 @@ CASES = [
      {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QICE": 0.0, "QSNOW": 0.0}),
     ("real_f1_r8_fp64_cuda_1h", "cuda_dp", "configs/real_f1_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_F1_r8", "output.out_interval=60", "output.diag_interval=60"],
-     f"{WR}/run_F1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WR}/run_F1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 4e-4, "W": 1.1e-2, "THM": 1.5e-5, "QV": 7e-4}),
     ("real_f2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_f2_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_F2_r8", "output.out_interval=60", "output.diag_interval=60"],
-     f"{WR}/run_F2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WR}/run_F2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 7e-4, "W": 1.5e-2, "THM": 1.2e-5, "QV": 2.5e-3}),
     # D0 / D0V: WRF's default real-data namelist (physics_suite CONUS, fractional sea ice, gwd_opt 1, diff_opt 2 /
     # km_opt 4) on the P2 and V2 domains; Thompson references from WRF -r8 -double-8.
     ("real_d0_r8_fp64_cpu", "cpu_dp", "configs/real_d0_r8.ini", [],
@@ -399,7 +400,7 @@ CASES = [
      {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0,
       "QSNOW": 0.0, "QGRAUP": 0.0, "QNICE": 0.0, "QNRAIN": 0.0}),
     ("real_su2_r8_fp64_cuda", "cuda_dp", "configs/real_su1_r8.ini", ["real.dir=" + f"{WR}/run_SU2_r8/steps"],
-     f"{WR}/run_SU2_r8/steps/wrfout_d01_2026-10-12_00:00:00", 1200, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WR}/run_SU2_r8/steps/wrfout_d01_2026-10-12_00:00:00", 1200, {"U": 4e-5, "W": 2e-3, "THM": 2e-6, "QV": 2e-4}),
     ("real_su1_r8_fp64_cpu_7h", "cpu_dp", "configs/real_su1_r8.ini",
      ["run.run_time=25200", "real.dir=" + f"{WR}/run_SU1_r8", "output.out_interval=30", "output.diag_interval=30"],
      f"{WR}/run_SU1_r8/wrfout_d01_2026-10-12_00:00:00", 25200,
@@ -420,7 +421,7 @@ CASES = [
     ("real_hy1_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p1_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_HY1_r8", "dyn.hypsometric_opt=1", "output.out_interval=10",
       "output.diag_interval=10"],
-     f"{WR}/run_HY1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WR}/run_HY1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 5e-11, "W": 1e-9, "THM": 1e-11, "QV": 6e-10}),
     # NMP1 = P1 with Noah-MP v5.1.2 (sf_surface_physics = 4) against WRF v4.8.0 real*8 and single precision.
     ("real_nmp1_r8_fp64_cpu", "cpu_dp", "configs/real_nmp1_r8.ini", [],
      f"{WR}/run_NMP1_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
@@ -440,10 +441,12 @@ CASES = [
      {d: f"{WR}/run_N1_r8/steps/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 180,
      {"d01.U": 0.0, "d01.THM": 0.0, "d01.QV": 0.0, "d02.U": 0.0, "d02.THM": 0.0, "d02.QV": 0.0}),
     ("real_n1_r8_fp64_cuda", "cuda_dp", "configs/real_n1_steps.ini", ["real.dir=" + f"{WR}/run_N1_r8/steps"],
-     {d: f"{WR}/run_N1_r8/steps/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 180, {f"{d}.{x}": 1.0 for d in ("d01", "d02") for x in ("U", "W", "THM", "QV")}),
+     {d: f"{WR}/run_N1_r8/steps/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 180,
+     {f"{d}.{x}": t for d in ("d01", "d02") for x, t in (("U", 7e-13), ("W", 3e-11), ("THM", 1e-15), ("QV", 2e-14))}),
     # N1 for 1 h in FP32 against WRF's single-precision run
     ("real_n1_fp32_1h", "cuda", "configs/real_n1.ini", [],
-     {d: f"{WR}/run_N1/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600, {f"{d}.{x}": 1.0 for d in ("d01", "d02") for x in ("U", "W", "THM", "QV")}),
+     {d: f"{WR}/run_N1/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600,
+     {f"{d}.{x}": t for d in ("d01", "d02") for x, t in (("U", 9e-4), ("W", 1.5e-2), ("THM", 3e-6), ("QV", 1e-4))}),
     ("real_n2_r8_fp64_cpu", "cpu_dp", "configs/real_n2_steps.ini", ["real.dir=" + f"{WR}/run_N2_r8/steps"],
      {d: f"{WR}/run_N2_r8/steps/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 180,
      {"d01.U": 0.0, "d01.THM": 0.0, "d01.QV": 0.0, "d02.U": 0.0, "d02.THM": 0.0, "d02.QV": 0.0}),
@@ -461,7 +464,8 @@ CASES = [
      {"d01.U": 0.0, "d01.W": 0.0, "d01.THM": 0.0, "d02.U": 0.0, "d02.W": 0.0, "d02.THM": 0.0, "d02.QV": 0.0}),
     ("real_n2s1_r8_fp64_cuda_1h", "cuda_dp", "configs/real_n2.ini",
      ["real.dir=" + f"{WR}/run_N2S1_r8", "domains.smooth_option=1"],
-     {d: f"{WR}/run_N2S1_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600, {f"{d}.{x}": 1.0 for d in ("d01", "d02") for x in ("U", "W", "THM", "QV")}),
+     {d: f"{WR}/run_N2S1_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600,
+     {f"{d}.{x}": t for d in ("d01", "d02") for x, t in (("U", 1.5e-12), ("W", 3e-11), ("THM", 3e-15), ("QV", 2e-13))}),
     # N2S2 = N2 with smooth_option = 2 (smdsm, WRF default) of the fed-back parent fields
     ("real_n2s2_r8_fp64_cpu", "cpu_dp", "configs/real_n2_steps.ini",
      ["real.dir=" + f"{WR}/run_N2S2_r8/steps", "domains.smooth_option=2"],
@@ -473,7 +477,8 @@ CASES = [
      {"d01.U": 0.0, "d01.W": 0.0, "d01.THM": 0.0, "d02.U": 0.0, "d02.W": 0.0, "d02.THM": 0.0, "d02.QV": 0.0}),
     ("real_n2s2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_n2.ini",
      ["real.dir=" + f"{WR}/run_N2S2_r8", "domains.smooth_option=2"],
-     {d: f"{WR}/run_N2S2_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600, {f"{d}.{x}": 1.0 for d in ("d01", "d02") for x in ("U", "W", "THM", "QV")}),
+     {d: f"{WR}/run_N2S2_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600,
+     {f"{d}.{x}": t for d in ("d01", "d02") for x, t in (("U", 1.5e-12), ("W", 3e-11), ("THM", 3e-15), ("QV", 2e-13))}),
     # N3 = two-way nest with the P4 physics on both domains (physics feedback, nest ozone from the parent)
     ("real_n3_r8_fp64_cpu", "cpu_dp", "configs/real_n3_steps.ini", [],
      {d: f"{WR}/run_N3s_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 180,
@@ -558,38 +563,45 @@ CASES = [
      {"U": 1e-12, "W": 1e-11, "THM": 1e-14, "QV": 1e-12}),
     # the other ideal cases in CUDA FP64 (the CPU cases' configurations and references)
     ("ideal_hill2d_x_fp64_cuda", "cuda_dp", "configs/wrf_hill2d_x.ini", [],
-     f"{WREF}/r8/run_hill_p0/wrfout_d01_0001-01-01_00:00:00", 3600, {"U": 1.0, "W": 1.0, "THM": 1.0}),
+     f"{WREF}/r8/run_hill_p0/wrfout_d01_0001-01-01_00:00:00", 3600, {"U": 4e-14, "W": 3e-11, "THM": 5e-16}),
     ("ideal_grav2d_x_fp64_cuda", "cuda_dp", "configs/wrf_grav2d_x.ini", [],
-     f"{WREF}/r8/run_straka_d1/wrfout_d01_0001-01-01_00:00:00", 900, {"U": 1.0, "W": 1.0, "THM": 1.0}),
+     f"{WREF}/r8/run_straka_d1/wrfout_d01_0001-01-01_00:00:00", 900, {"U": 3e-14, "W": 7e-14, "THM": 1e-16}),
     ("ideal_quarter_ss_open_fp64_cuda", "cuda_dp", "configs/wrf_quarter_ss.ini",
      ["domain.bc_x=open", "domain.bc_y=open", "run.run_time=7200", "output.out_interval=10",
       "output.diag_interval=10"],
-     f"{WREF}/r8/run_qss_open/wrfout_d01_0001-01-01_00:00:00", 7200, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WREF}/r8/run_qss_open/wrfout_d01_0001-01-01_00:00:00", 7200,
+     {"U": 3e-13, "W": 2e-12, "THM": 4e-15, "QV": 2e-13}),
     ("ideal_quarter_ss_k2_fp64_cuda", "cuda_dp", "configs/wrf_quarter_ss.ini",
      ["dyn.diff_opt=2", "dyn.km_opt=2", "run.run_time=600", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WREF}/r8/run_qss_k2/wrfout_d01_0001-01-01_00:00:00", 600, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WREF}/r8/run_qss_k2/wrfout_d01_0001-01-01_00:00:00", 600,
+     {"U": 1e-14, "W": 1.5e-12, "THM": 8e-16, "QV": 1.5e-14}),
     ("ideal_quarter_ss_k2_isf0_fp64_cuda", "cuda_dp", "configs/wrf_quarter_ss.ini",
      ["dyn.diff_opt=2", "dyn.km_opt=2", "phys.isfflx=0", "dyn.tke_heat_flux=0.05", "dyn.tke_drag_coefficient=0.0015",
       "run.run_time=600", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WREF}/r8/run_qss_k2_isf0/wrfout_d01_0001-01-01_00:00:00", 600, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WREF}/r8/run_qss_k2_isf0/wrfout_d01_0001-01-01_00:00:00", 600,
+     {"U": 1e-14, "W": 1.5e-12, "THM": 8e-16, "QV": 1.5e-14}),
     ("ideal_squall2d_y_fp64_cuda", "cuda_dp", "configs/wrf_squall2d_y.ini", ["output.out_interval=20"],
-     f"{WREF}/r8/run_squall2d_ys_10min/wrfout_d01_0001-01-01_00:00:00", 600, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WREF}/r8/run_squall2d_ys_10min/wrfout_d01_0001-01-01_00:00:00", 600,
+     {"V": 1e-13, "W": 1.2e-12, "THM": 2e-15, "QV": 6e-14}),
     ("ideal_quarter_ss_sym_fp64_cuda", "cuda_dp", "configs/wrf_quarter_ss_sym.ini",
      ["run.run_time=3600", "output.out_interval=50", "output.diag_interval=50"],
-     f"{WREF}/r8/run_qss_sym/wrfout_d01_0001-01-01_00:00:00", 3600, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WREF}/r8/run_qss_sym/wrfout_d01_0001-01-01_00:00:00", 3600,
+     {"U": 1e-12, "W": 2e-12, "THM": 2e-15, "QV": 5e-14}),
     ("ideal_grav2d_x_sym_fp64_cuda", "cuda_dp", "configs/wrf_grav2d_x_sym.ini",
      ["run.run_time=2400", "output.out_interval=600"],
-     f"{WREF}/r8/run_grav2d_x_sym/wrfout_d01_0001-01-01_00:00:00", 2400, {"U": 1.0, "W": 1.0, "THM": 1.0}),
+     f"{WREF}/r8/run_grav2d_x_sym/wrfout_d01_0001-01-01_00:00:00", 2400, {"U": 7e-14, "W": 1e-13, "THM": 2e-16}),
     ("ideal_squall2d_x_sym_fp64_cuda", "cuda_dp", "configs/wrf_squall2d_x_sym.ini",
      ["run.run_time=2400", "output.out_interval=200"],
-     f"{WREF}/r8/run_squall2d_x_sym/wrfout_d01_0001-01-01_00:00:00", 2400, {"U": 1.0, "W": 1.0, "THM": 1.0, "QV": 1.0}),
+     f"{WREF}/r8/run_squall2d_x_sym/wrfout_d01_0001-01-01_00:00:00", 2400,
+     {"U": 8e-11, "W": 1.5e-10, "THM": 5e-13, "QV": 1e-11}),
     ("wdamp_w1_fp64", "cpu_dp", "configs/real_r3.ini",
      ["real.dir=" + f"{WR}/run_W1_r8", "time.dt=450", "run.run_time=4500", "output.out_interval=1",
       "output.diag_interval=1"], f"{WR}/run_W1_r8/wrfout_d01_2026-10-12_00:00:00", 4500,
      {"U": 0.0, "W": 0.0, "THM": 0.0}),
     ("wdamp_w1_fp64_cuda", "cuda_dp", "configs/real_r3.ini",
      ["real.dir=" + f"{WR}/run_W1_r8", "time.dt=450", "run.run_time=4500", "output.out_interval=1",
-      "output.diag_interval=1"], f"{WR}/run_W1_r8/wrfout_d01_2026-10-12_00:00:00", 4500, {"U": 1.0, "W": 1.0, "THM": 1.0}),
+      "output.diag_interval=1"], f"{WR}/run_W1_r8/wrfout_d01_2026-10-12_00:00:00", 4500,
+      {"U": 7e-12, "W": 4e-11, "THM": 3e-14}),
 ]
 
 
