@@ -374,7 +374,10 @@ YSU, Noah, sfclayrev, RRTMG, Kessler) have no DOUBLE PRECISION in their used cod
 **Tables.** WRF writes qr_acr_qg_V4.dat, qr_acr_qsV2.dat and freezeH2O.dat on its first run and reads
 them afterwards. CPPWRF reads them from `phys.table_dir` (default real.dir; either byte order) and
 then uses WRF's values bit for bit; without them it computes the tables (OpenMP, ~2.4 min on 3
-threads), which agree with WRF's to 1e-15 (a few ulp, 0 for the sacr1 tables).
+threads), which agree with WRF's to 1e-15 (a few ulp, 0 for the sacr1 tables). As in WRF (thompson_init makes
+the tables only while they are not allocated), all domains share one set (`thompson_tables` in
+`src/dyn/physics_coupling.cpp`): a nest neither computes nor uploads its own (~380 MB in FP64; an N3 run with
+Thompson peaks at 364 MB less GPU memory).
 
 **Acceptance** (P6 = P5 with mp_physics = 8: P1 column physics + Thompson + diff_opt 1 / km_opt 4 on
 the P4 inputs; reference run P6_r8, FP32: P6): CPU FP64 bit-identical to WRF for 1 h, including
@@ -466,7 +469,8 @@ shallow + deep).
 **Acceptance** (P8 = P2 with `cu_physics = 3`, `ishallow = 1`; reference run `P8_r8`, FP32: `P8`): CPU
 FP64 bit-identical to WRF for 10 min (`steps/`) and 1 h, and all `wrfout` and `wrfrst` files (`rst_P8_r8`,
 10 minutes) are identical to WRF v4.8.0's (`run_wrf_files_test.sh ... p8`). CUDA FP64 at 1 h: U 3.6e-10,
-W 2.0e-8, THM 1.2e-10, QV 5.4e-9; CUDA FP32 against single-precision WRF: U 4.3e-4, W 2.2e-2, THM 9.8e-6,
+W 2.0e-8, THM 1.2e-10, QV 5.4e-9 (L4; a G4 build gives QV 1.5e-7: its sm_120 code contracts other products of
+the surface layer and Noah into FMAs, STATUS.md); CUDA FP32 against single-precision WRF: U 4.3e-4, W 2.2e-2, THM 9.8e-6,
 QV 2.9e-4. `wrf_suite`: `real_p8_r8_fp64_cpu_10min`, `real_p8_r8_fp64_cpu_1h`,
 `real_p8_r8_fp64_cuda_1h`, `real_p8_fp32_1h`, `restart_p8_fp64`.
 

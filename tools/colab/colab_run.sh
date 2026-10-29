@@ -2,9 +2,11 @@
 # Run CPPWRF's GPU suite cases (and timings) on a Google Colab GPU VM with the `colab` CLI
 # (google-colab-cli, authorised once with `colab usage`). The VM is always released at the end.
 #
-#   tools/colab/colab_run.sh [--gpu T4|L4|G4|A100|H100] (default G4: RTX PRO 6000, the fastest per credit) [--cases NAME,...] [--bench NAME,...] [--keep] [--out DIR]
+#   tools/colab/colab_run.sh [--gpu T4|L4|G4|A100|H100] (default G4: RTX PRO 6000, the fastest per credit)
+#                            [--cases NAME,...] [--files NAME,...] [--bench NAME,...] [--keep] [--out DIR]
 #
 #   --cases  wrf_suite.py cases to run on the VM against the WRF references (default: the GPU core set below)
+#   --files  run_wrf_files_test.sh cases to run with the CUDA FP64 build (files' structure and times; default none)
 #   --bench  suite cases to run again without history output for the stepping time (default: P1 and D0)
 #   --keep   leave the VM running (stop it later with `colab stop -s <session>`)
 #   --out    local results directory (default: ${CPPWRF_SCRATCH:-~/cppwrf_scratch}/colab/<date>_<gpu>)
@@ -17,17 +19,18 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_WRF_RUNS:?set CPPWRF_WRF_RUNS}"
 SCRATCH=${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}
-GPU=G4 KEEP=0 OUT= MAX_UPLOAD_MIN=${MAX_UPLOAD_MIN:-20}
+GPU=G4 KEEP=0 OUT= FILES= MAX_UPLOAD_MIN=${MAX_UPLOAD_MIN:-20}
 CASES=real_r1_fp64_cuda,real_p1_r8_fp64_cuda_1h,real_p1_fp32_1h,real_p4_r8_fp64_cuda_1h,real_p8_r8_fp64_cuda_1h,real_t6_r8_fp64_cuda_1h,real_d0_r8_fp64_cuda_1h,real_nmp1_r8_fp64_cuda_1h
 BENCH=real_p1_r8_fp64_cuda_1h,real_p1_fp32_1h,real_d0_r8_fp64_cuda_1h
 while [ $# -gt 0 ]; do
   case $1 in
     --gpu) GPU=$2; shift 2 ;;
     --cases) CASES=$2; shift 2 ;;
+    --files) FILES=$2; shift 2 ;;
     --bench) BENCH=$2; shift 2 ;;
     --keep) KEEP=1; shift ;;
     --out) OUT=$2; shift 2 ;;
-    *) sed -n '2,15p' "$0"; exit 2 ;;
+    *) sed -n '2,17p' "$0"; exit 2 ;;
   esac
 done
 case $GPU in T4|L4|G4|A100|H100) ;; *) echo "unknown --gpu $GPU (the CLI would silently take an A100)"; exit 2 ;; esac
@@ -40,10 +43,10 @@ mkdir -p "$OUT" "$SCRATCH/colab/cache"
 [ -z "$(git -C "$REPO" status --porcelain --untracked-files=no)" ] || echo "note: uncommitted changes are not sent (HEAD only)"
 git -C "$REPO" archive --format=tar.gz -o "$OUT/src.tar.gz" HEAD
 git -C "$REPO" rev-parse --short HEAD > "$OUT/commit.txt"
-key=$(echo "$CASES,$BENCH" | tr ',' '\n' | sort -u | tr '\n' ',' | md5sum | cut -c1-12)
+key=$( (echo "$CASES,$BENCH" | tr ',' '\n' | sort -u; echo "files:$FILES") | tr '\n' ',' | md5sum | cut -c1-12)
 DATA=$SCRATCH/colab/cache/data_$key.tar
 # GPU runs only: CPPWRF computes the Thompson tables on the VM instead of uploading WRF's 370 MB
-[ -f "$DATA" ] || python3 "$REPO/tools/colab/stage_data.py" --only "$CASES,$BENCH" --no-thompson-tables "$DATA"
+[ -f "$DATA" ] || python3 "$REPO/tools/colab/stage_data.py" --only "$CASES,$BENCH" --files "$FILES" --no-thompson-tables "$DATA"
 
 # ---- remote
 timeout 120 colab usage | tail -3 || true
@@ -55,17 +58,21 @@ cleanup() {
 trap cleanup EXIT
 timeout 900 colab new -s "$S" --gpu "$GPU"
 # uploads go through Jupyter's contents API, which refuses large files (and `colab upload` exits 0 anyway):
-# send 32 MiB parts, join them on the VM and check the md5
+# send 32 MiB parts, join them on the VM and check the md5 (each part is cut just before it is sent: the disk
+# never holds a second copy of the data)
 upload() {
-  local src=$1 dst=$2 parts n=0 sum got
+  local src=$1 dst=$2 parts p n=0 sum got
   parts=$(mktemp -d "$SCRATCH/colab/parts.XXXXXX")
-  split -b 32M -d -a 4 "$src" "$parts/p"
   local total t0=$SECONDS
-  total=$(ls "$parts" | wc -l)
-  for p in "$parts"/p*; do
+  total=$(( ($(stat -c %s "$src") + 33554431) / 33554432 ))
+  [ "$total" -gt 0 ] || total=1
+  while [ "$n" -lt "$total" ]; do
+    p=$parts/p$(printf %04d "$n")
+    dd if="$src" of="$p" bs=32M skip="$n" count=1 iflag=fullblock status=none
     if ! timeout 900 colab upload -s "$S" "$p" "$dst.part.$(basename "$p")" 2>&1 | grep -q "Uploaded"; then
       echo "[colab_run] upload of part $(basename "$p") of $src failed"; rm -rf "$parts"; return 1
     fi
+    rm -f "$p"
     n=$((n + 1))
     # the VM bills while it waits: give up when this region's upload would take too long
     local eta=$(( (SECONDS - t0) * (total - n) / n / 60 ))
@@ -92,7 +99,8 @@ upload "$OUT/src.tar.gz" /content/src.tar.gz || exit 1
 upload "$DATA" /content/data.tar || exit 1
 upload "$OUT/commit.txt" /content/commit.txt || exit 1
 upload "$REPO/tools/colab/remote_job.py" /content/remote_job.py || exit 1
-timeout 300 colab exec -s "$S" --timeout 120 --env CPPWRF_JOB_CASES="$CASES" --env CPPWRF_JOB_BENCH="$BENCH" <<'EOF'
+fenv=(); [ -z "$FILES" ] || fenv=(--env CPPWRF_JOB_FILES="$FILES")
+timeout 300 colab exec -s "$S" --timeout 120 --env CPPWRF_JOB_CASES="$CASES" --env CPPWRF_JOB_BENCH="$BENCH" "${fenv[@]}" <<'EOF'
 import os, subprocess
 env = dict(os.environ)
 subprocess.Popen("nohup python3 /content/remote_job.py > /content/remote_job.log 2>&1 &", shell=True, env=env)
@@ -124,7 +132,8 @@ tar xzf "$OUT/results.tar.gz" -C "$OUT"
 rm -f "$OUT/src.tar.gz"
 echo "[colab_run] results in $OUT/job"
 cat "$OUT/job/summary.txt"
-if grep -qE "^suite (FAIL|SKIP|ERROR)|^job error" "$OUT/job/summary.txt" ||
+if grep -qE "^suite (FAIL|SKIP|ERROR)|^files (FAIL|SKIP)|^job error" "$OUT/job/summary.txt" ||
+   { [ -n "$FILES" ] && ! grep -q "^files compared " "$OUT/job/summary.txt"; } ||
    { [ -n "$CASES" ] && ! grep -q "^suite SUITE " "$OUT/job/summary.txt"; }; then
   echo "[colab_run] the suite did not pass"; exit 1
 fi

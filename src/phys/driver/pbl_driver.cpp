@@ -100,10 +100,12 @@ struct KMynnPbl {
   View2<int> kpbl;
   V3 qke_adv_1, qke_adv_2;  // the scalar qke_adv (State q_1 / q_2), when present
   bool has_qke_adv = false;
-  CPPWRF_HD void operator()(int i, int j) const {
+  // K: the column arrays' size (>= nz); the scheme's per-thread arrays take ~1.6 KB per level in FP64
+  template <int K>
+  CPPWRF_HD void column(int i, int j) const {
     using namespace mynnedmf;
-    Column<kMaxLevels> c;
-    real qv1[kMaxLevels + 2], qc1[kMaxLevels + 2], qi1[kMaxLevels + 2], qs1[kMaxLevels + 2];
+    Column<K> c;
+    real qv1[K + 2], qc1[K + 2], qi1[K + 2], qs1[K + 2];
     c.kte = nz;
     for (int k = 1; k <= nz; ++k) {
       const int kk = k - 1;
@@ -137,8 +139,8 @@ struct KMynnPbl {
       c.sqi[k] = qi1[k] / (one + qv1[k]);
       c.sqs[k] = qs1[k] / (one + qv1[k]);
     }
-    mynnedmf::mynnedmf<kMaxLevels>(c, op, tke_budget, initflag, delt, dx, xland(i, j), tsk(i, j), psfc(i, j),
-                                   ust(i, j), hfx1, qfx1, wspd(i, j), uoce(i, j), voce(i, j));
+    mynnedmf::mynnedmf<K>(c, op, tke_budget, initflag, delt, dx, xland(i, j), tsk(i, j), psfc(i, j), ust(i, j), hfx1,
+                          qfx1, wspd(i, j), uoce(i, j), voce(i, j));
     for (int k = 1; k <= nz; ++k) {  // mynnedmf_post_run
       const real sq = qv1[k] / (one + qv1[k]);
       const real sqv = sq + c.dqv[k] * delt;
@@ -179,6 +181,12 @@ struct KMynnPbl {
       excess_h(i, j) = c.excess_h; excess_q(i, j) = c.excess_q;
     }
   }
+};
+
+template <int K>
+struct KMynnPblRunner {
+  KMynnPbl k;
+  CPPWRF_HD void operator()(int i, int j) const { k.template column<K>(i, j); }
 };
 
 
@@ -271,7 +279,10 @@ void PhysicsSuite::pbl_driver(dyn::State& s, const dyn::BaseState& b) {
     if (o_.mynn.tkeadvect && !k.has_qke_adv)
       throw std::runtime_error("bl_mynn_tkeadvect: the scalar qke_adv is missing");
     if (k.has_qke_adv) { k.qke_adv_1 = s.q_1[s.P_QKE_ADV].view(); k.qke_adv_2 = s.q_2[s.P_QKE_ADV].view(); }
-    column_for(cols, k);
+    if (g_.nz <= 48)  // CUDA reserves the kernel's local memory for every resident thread: size it to the column
+      column_for(cols, KMynnPblRunner<48>{k});
+    else
+      column_for(cols, KMynnPblRunner<mynnedmf::kMaxLevels>{k});
   }
   if (o_.gwd_opt == 1) {
     using namespace wrfc;

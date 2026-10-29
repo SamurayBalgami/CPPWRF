@@ -425,6 +425,11 @@ domain 119 x 89 x 44 (15 km, dt = 60 s, 1 h):
 The 1 h dry run takes 1.26 s on the GPU in FP32 (WRF v4.6.1 with 4 OpenMP threads: 13.2 s) and 4.3 s
 in FP64 (serial WRF real*8: 37.9 s). The memory-traffic budget of the large step is in docs/PERF.md.
 
+GPU memory: the column physics keeps its per-column arrays in thread-local memory, which CUDA reserves for every
+thread the GPU can hold at once, so the footprint grows with the GPU's size. On an NVIDIA L4 (24 GB) the same domain
+in FP64 peaks at about 9.3 GB with Thompson + MYNN-EDMF + RRTMG and 11.3 GB for the two-way nest N3 with Thompson
+(the domains share one set of Thompson tables).
+
 `tools/heavy.sh` is a small helper that serialises heavy jobs (builds, runs, test suites) on a shared
 workstation: `tools/heavy.sh <command>` runs in one of four job slots, `--light` runs at once with two
 OpenMP threads, and `--exclusive` waits for an idle machine (use it for timings).

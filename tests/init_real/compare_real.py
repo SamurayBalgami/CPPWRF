@@ -4,9 +4,10 @@ tests/verify/exact.py: NaN equals only NaN, -0 differs from +0, values as stored
 the variable list and order, dimensions, types, variable attributes and global attributes.
 TITLE is ignored (it names the program). Exit status 1 on any difference.
 Also used for wrfout/wrfrst files (tests/verify/run_wrf_files_test.sh); --ignore VAR,... skips the
-values of the listed variables.
+values of the listed variables; --no-values compares the text variables (Times) and the shapes but not the numbers
+(a GPU run's files, whose values differ from WRF's at roundoff).
 
-  compare_real.py [--ignore VAR,...] cppwrf_file wrf_file"""
+  compare_real.py [--ignore VAR,...] [--no-values] cppwrf_file wrf_file"""
 import os
 import sys
 
@@ -17,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import exact  # noqa: E402
 
 
-def values(a, b, skip=()):
+def values(a, b, skip=(), numbers=True):
     bad = 0
     for n, v in a.variables.items():
         if n not in b.variables or n in skip:
@@ -35,6 +36,8 @@ def values(a, b, skip=()):
         if x.shape != y.shape:
             print('%-14s shape %s vs %s' % (n, x.shape, y.shape))
             bad += 1
+            continue
+        if not numbers:
             continue
         dif = exact.describe(x, y)
         if dif:
@@ -81,13 +84,15 @@ def metadata(a, b, ignore):
 def main():
     args = sys.argv[1:]
     skip = set()
+    numbers = '--no-values' not in args
+    args = [x for x in args if x != '--no-values']
     if len(args) == 4 and args[0] == '--ignore':
         skip = set(args[1].split(','))
         args = args[2:]
     if len(args) != 2:
-        sys.exit('usage: compare_real.py [--ignore VAR,...] cppwrf_file wrf_file')
+        sys.exit('usage: compare_real.py [--ignore VAR,...] [--no-values] cppwrf_file wrf_file')
     a, b = exact.raw(Dataset(args[0])), exact.raw(Dataset(args[1]))
-    nv = values(a, b, skip)
+    nv = values(a, b, skip, numbers)
     nm = metadata(a, b, {'TITLE'})
     print('%s: %d variables differ, %d metadata differences' % (args[1], nv, nm))
     sys.exit(1 if nv or nm else 0)

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Pack the WRF reference data that the selected wrf_suite.py cases read, for a run on another machine.
 
-  stage_data.py --only NAME[,NAME] [--no-thompson-tables] [--whole] [--refs-only] [--no-steps] OUT.tar|-
+  stage_data.py --only NAME[,NAME] [--files NAME[,NAME]] [--no-thompson-tables] [--whole] [--refs-only] [--no-steps]
+                OUT.tar|-
 
 Each case's run directory (real.dir of its configuration or of its --set overrides) is written under its own
 name, so the remote side sets CPPWRF_WRF_RUNS to the unpacked directory and runs the same suite. Links are
@@ -15,6 +16,10 @@ come with their namelist.input (wrf_suite.py checks the configuration and the gl
 time; it needs no work, so OUT can be - for a tar on stdout, e.g. | gcloud storage cp - gs://BUCKET/X.tar, which
 writes nothing locally); --refs-only: only the reference files (and the ideal namelists), not the run directories;
 --no-steps: no reference in a steps/ directory (tools/gcp/stage_files_data.py packs those whole).
+--files: the cases of tests/verify/run_wrf_files_test.sh run with CPPWRF_FILES_NO_VALUES=1 (a GPU build): their input
+directories, and their wrfout / wrfrst references (run, restart and resumed directories) as skeletons, with every
+variable, dimension, attribute and time but zero numbers; whole only the wrfrst files of minute 1, which the resumed
+runs start from.
 """
 import argparse
 import fnmatch
@@ -60,6 +65,28 @@ def trimmed(src, times, dst, every_variable):
             w[:] = v[frames] if v.dimensions and v.dimensions[0] == "Time" else v[:]
 
 
+def skeleton(src, dst):
+    """src with every dimension, variable, attribute and text value, its numbers zero (compressed to almost nothing)."""
+    with nc.Dataset(src) as a, nc.Dataset(dst, "w", format="NETCDF4") as b:
+        for n, d in a.dimensions.items():
+            b.createDimension(n, None if d.isunlimited() else len(d))
+        b.setncatts({k: a.getncattr(k) for k in a.ncattrs()})
+        for n, v in a.variables.items():
+            w = b.createVariable(n, v.dtype, v.dimensions, zlib=True, complevel=1)
+            w.setncatts({k: v.getncattr(k) for k in v.ncattrs()})
+            w[:] = v[:] if v.dtype.kind in "SU" else np.zeros(v.shape, v.dtype)
+
+
+def files_cases():
+    """{name: (config, wrfout reference dir, restart dir or None, extra --set)} of run_wrf_files_test.sh's CASES."""
+    text = open(os.path.join(REPO, "tests", "verify", "run_wrf_files_test.sh")).read()
+    out = {}
+    for line in text.split('CASES="', 1)[1].split('\n"', 1)[0].strip().splitlines():
+        name, cfg, ref, rst, extra = line.split("|")
+        out[name] = (cfg, ref.replace("$R", WR), None if rst == "-" else rst.replace("$R", WR), extra.replace("$R", WR))
+    return out
+
+
 def config_value(cfg, section, key):
     sec = None
     for line in open(os.path.join(REPO, cfg)):
@@ -75,6 +102,7 @@ def config_value(cfg, section, key):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", required=True)
+    ap.add_argument("--files", default="")
     ap.add_argument("--no-thompson-tables", action="store_true")
     ap.add_argument("--whole", action="store_true")
     ap.add_argument("--refs-only", action="store_true")
@@ -82,7 +110,7 @@ def main():
     ap.add_argument("out")
     a = ap.parse_args()
     log = (lambda *x: print(*x, file=sys.stderr)) if a.out == "-" else print  # stdout may be the tar
-    want = a.only.split(",")
+    want = [o for o in a.only.split(",") if o]
     dirs = {}  # run directory -> history files to keep, Thompson tables needed
     ref_times = {}  # reference wrfout -> compared times
     exact = set()  # reference wrfout files of tolerance-0 cases
@@ -119,8 +147,39 @@ def main():
         d = dirs.setdefault(rd, [set(), False]) if not a.refs_only else [set(), False]
         d[1] = d[1] or (mp.strip() == "8" and not a.no_thompson_tables)
         log(f"{name}: {os.path.relpath(rd, WR)}")
+    for tag, cfg, _ in wrf_suite.RESTARTS:  # restart_<tag>_*: the input directory of the configuration
+        if not a.refs_only and any(o in n for n in wrf_suite.SPECIAL if n.startswith(f"restart_{tag}_") for o in want):
+            rd = config_value(cfg, "real", "dir").replace("${CPPWRF_WRF_RUNS}", WR)
+            d = dirs.setdefault(rd, [set(), False])
+            d[1] = d[1] or ((config_value(cfg, "phys", "mp_physics") or "0").strip() == "8" and not a.no_thompson_tables)
+            log(f"restart_{tag}: {os.path.relpath(rd, WR)}")
+    skel, whole = {}, {}  # files test references: skeletons, whole files (path in the tar -> file)
+    fcases = files_cases()
+    for name in [f for f in a.files.split(",") if f]:
+        cfg, ref, rst, extra = fcases[name]
+        m = re.search(r"real\.dir=(\S+)", extra)
+        rd = m.group(1) if m else config_value(cfg, "real", "dir").replace("${CPPWRF_WRF_RUNS}", WR)
+        d = dirs.setdefault(rd, [set(), False])
+        d[1] = d[1] or ((config_value(cfg, "phys", "mp_physics") or "0").strip() == "8" and not a.no_thompson_tables)
+        rsm = rst.replace("/rst_", "/rsm_") if rst else None
+        for x in (ref, rst, rsm):
+            if not x or not os.path.isdir(x):
+                continue
+            for f in sorted(os.listdir(x)):
+                p, arc = os.path.join(x, f), os.path.join("wrf_runs", os.path.relpath(os.path.join(x, f), WR))
+                if re.fullmatch(r"wrfrst_d\d\d_.*_00:01:00", f) and x == rst:
+                    whole[arc] = p
+                elif re.fullmatch(r"(wrfout|wrfrst)_d\d\d_.*", f):
+                    if p in ref_times:
+                        sys.exit(f"{p}: a reference of the suite cases and of the files test {name}: stage them apart")
+                    skel.setdefault(arc, p)
+                elif f in ("namelist.input", "myoutfields.txt"):
+                    whole[arc] = p
+        log(f"files {name}: {os.path.relpath(rd, WR)}, {os.path.relpath(ref, WR)}"
+            + (f", {os.path.relpath(rst, WR)}, {os.path.relpath(rsm, WR)}" if rst else ""))
     tf = tarfile.open(fileobj=sys.stdout.buffer, mode="w|", dereference=True) if a.out == "-" else \
         tarfile.open(a.out, "w", dereference=True)
+    added = set()
     with tf:
         for d, (keep, thompson) in sorted(dirs.items()):
             for f in sorted(os.listdir(d)):
@@ -129,6 +188,7 @@ def main():
                         (a.refs_only and p not in ref_times and f not in ("namelist.input", "myoutfields.txt")):
                     continue
                 arc = os.path.join("wrf_runs", os.path.relpath(p, WR))
+                added.add(arc)
                 if p in ref_times and a.whole:
                     tf.add(p, arcname=arc, recursive=False)
                 elif p in ref_times:
@@ -138,6 +198,18 @@ def main():
                         tf.add(q, arcname=arc)
                 elif f in THOMPSON or not any(fnmatch.fnmatch(f, s) for s in SKIP):
                     tf.add(p, arcname=arc, recursive=False)
+                else:
+                    added.discard(arc)
+        for arc, p in sorted(whole.items()):
+            if arc not in added:
+                tf.add(p, arcname=arc, recursive=False)
+        for arc, p in sorted(skel.items()):
+            if arc in whole:
+                continue
+            with tempfile.TemporaryDirectory() as tmp:
+                q = os.path.join(tmp, os.path.basename(p))
+                skeleton(p, q)
+                tf.add(q, arcname=arc)
         for p in sorted(ideal):
             if os.path.exists(p):
                 tf.add(p, arcname=os.path.join("wrf_ref", os.path.relpath(p, WREF)), recursive=False)

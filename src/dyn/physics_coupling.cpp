@@ -1,6 +1,9 @@
 #include "dyn/physics_coupling.hpp"
 
+#include <map>
+#include <mutex>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include "core/backend.hpp"
@@ -68,6 +71,24 @@ struct KSaveQc {  // moist_physics_prep_em: qc_diabatic = qc
   CPPWRF_HD void operator()(int i, int j, int k) const { qcd(i, j, k) = qc(i, j, k); }
 };
 
+// module_mp_thompson.F thompson_init computes (or reads) the tables only while tcg_racg is not allocated: the
+// first domain's call makes them and every nest uses that one set (~380 MB in FP64)
+std::shared_ptr<const phys::mp_thompson::ThompsonDeviceTables<real>> thompson_tables(const std::string& dir,
+                                                                                     bool force_read) {
+  using Tables = phys::mp_thompson::ThompsonDeviceTables<real>;
+  static std::mutex m;
+  static std::map<std::pair<std::string, bool>, std::weak_ptr<const Tables>> made;
+  std::lock_guard<std::mutex> lock(m);
+  std::weak_ptr<const Tables>& w = made[{dir, force_read}];
+  if (auto t = w.lock()) return t;
+  phys::mp_thompson::ThompsonHostTables<real> h;
+  phys::mp_thompson::init_thompson_tables(h, dir, force_read);
+  auto t = std::make_shared<Tables>();
+  t->upload(h);
+  w = t;
+  return t;
+}
+
 }  // namespace
 
 PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
@@ -114,9 +135,7 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
     graupelnc = Field2(g, Stagger::M, "graupelnc");
     graupelncv = Field2(g, Stagger::M, "graupelncv");
     sr = Field2(g, Stagger::M, "sr");
-    phys::mp_thompson::ThompsonHostTables<real> h;
-    phys::mp_thompson::init_thompson_tables(h, p_.table_dir, p_.force_read_thompson);
-    tp_.upload(h);
+    tp_ = thompson_tables(p_.table_dir, p_.force_read_thompson);
 #if defined(CPPWRF_USE_CUDA)
     if (cudaDeviceSetLimit(cudaLimitStackSize, 64 * 1024) != cudaSuccess)
       throw std::runtime_error("Thompson: cudaDeviceSetLimit(cudaLimitStackSize, 64 KB) failed");
@@ -177,7 +196,7 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
         s.q_2[s.P_QNI].view(), s.q_2[s.P_QNR].view(), pii.cview(), p_phy.cview(),
         s.w_2.cview(), dz8w.cview(), rainnc.view(), rainncv.view(), snownc.view(),
         snowncv.view(), graupelnc.view(), graupelncv.view(), sr.view(),
-        dt, mp_cols, g.nz, tp_.view(), p_.microp_re ? re_cloud.view() : View3<real>{},
+        dt, mp_cols, g.nz, tp_->view(), p_.microp_re ? re_cloud.view() : View3<real>{},
         p_.microp_re ? re_ice.view() : View3<real>{}, p_.microp_re ? re_snow.view() : View3<real>{});
     vmdump::dump("vm_mp_out", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS],
                                   &s.q_2[s.P_QG], &s.q_2[s.P_QNI], &s.q_2[s.P_QNR]},
