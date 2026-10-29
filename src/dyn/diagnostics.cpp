@@ -37,13 +37,15 @@ struct FThetaMass {
   }
 };
 struct FEnergy {
-  C3 u, v, w, t, p, ph; C2 mu; B2 mub; B3 pb, phb; VCoef c;
+  C3 u, v, w, t, p, ph; C2 mu; B2 mub; B3 pb, phb; VCoef c; C3 qv; bool moist;
   CPPWRF_HD double operator()(int i, int j, int k) const {
     double m = double(c.c1h(k)) * (double(mu(i, j)) + double(mub(i, j))) + double(c.c2h(k));
     double uc = 0.5 * (double(u(i, j, k)) + double(u(i + 1, j, k)));
     double vc = 0.5 * (double(v(i, j, k)) + double(v(i, j + 1, k)));
     double wc = 0.5 * (double(w(i, j, k)) + double(w(i, j, k + 1)));
-    double T = (double(t(i, j, k)) + cst::t0) * pow((double(p(i, j, k)) + double(pb(i, j, k))) / cst::p1000mb, cst::rcp);
+    double th = double(t(i, j, k)) + cst::t0;  // dry theta (t holds theta_m - t0 when moist), as FThp
+    if (moist) th = th / (1.0 + cst::rvovrd * double(qv(i, j, k)));
+    double T = th * pow((double(p(i, j, k)) + double(pb(i, j, k))) / cst::p1000mb, cst::rcp);
     double phm = 0.5 * (double(ph(i, j, k)) + double(ph(i, j, k + 1)) + double(phb(i, j, k)) + double(phb(i, j, k + 1)));
     return -double(c.dnw(k)) * m * (0.5 * (uc * uc + vc * vc + wc * wc) + cst::cv * T + phm);
   }
@@ -75,7 +77,7 @@ DiagRow Diagnostics::compute(const State& s, const BaseState& b) {
   r.theta_mass = area * red_.sum(g.mass_cells(), FThetaMass{s.t_2.cview(), s.mu_2.cview(), b.mub.view(), c});
   r.total_energy = area * red_.sum(g.mass_cells(), FEnergy{s.u_2.cview(), s.v_2.cview(), s.w_2.cview(), s.t_2.cview(),
                                                            s.p.cview(), s.ph_2.cview(), s.mu_2.cview(), b.mub.view(),
-                                                           b.pb.view(), b.phb.view(), c});
+                                                           b.pb.view(), b.phb.view(), c, qv, moist});
   return r;
 }
 
