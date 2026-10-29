@@ -1962,6 +1962,10 @@ class WrfTranslator:
             if case_name != "real":
                 self.error(f"Nested domains (max_dom = {max_dom}) are only supported for real-data cases (got '{case_name}').")
 
+            if 4 in self.get_opt_list("physics", "sf_surface_physics")[:max_dom]:
+                # wrf.exe 4.8.0 aborts in the nest run's first history output (heap corruption in open_w_dataset)
+                self.error("WRF sf_surface_physics = 4 (Noah-MP) with nests is not supported: WRF 4.8.0 aborts.")
+
             feedback = self.get_dom_opt("domains", "feedback", 0, 1)
             if feedback not in (0, 1):
                 self.error(f"WRF feedback = {feedback} is not supported; CPPWRF supports 0 (one-way) and 1 (two-way).")

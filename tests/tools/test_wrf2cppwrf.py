@@ -915,6 +915,12 @@ class TestValidationAndWarnings(unittest.TestCase):
         self.assertTrue(any("e_vert" in x for x in e), e)
         self.assertTrue(any("smooth_option = 5" in x for x in e), e)
 
+        # 4. Noah-MP with nests: wrf.exe 4.8.0 aborts
+        t = WrfTranslator(parse_namelist(complete(base.format(e_we=121, e_vert=45, i_start=40, extra="") +
+                                                  "&physics sf_surface_physics = 4, 4, sf_sfclay_physics = 1, 1 /\n")))
+        t.translate()
+        self.assertTrue(any("Noah-MP" in x for x in t.errors), t.errors)
+
 
 class TestWrfNamelistSemantics(unittest.TestCase):
     """WRF's namelist read, check_a_mundo, start_em and input_wrf rules (variants_pm_R32_*.txt on the VM)."""

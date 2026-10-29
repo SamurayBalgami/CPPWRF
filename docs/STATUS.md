@@ -111,6 +111,16 @@ tools/gcp/gcp_matrix.sh). The required build flags are in [USER_GUIDE.md](USER_G
 
 Restarts reproduce an uninterrupted run bit for bit (P1, A01, P7, P8, P9, NMP1, MYNN, MYNNSF1, MYNNSF2, MYNNX1, MYNNX2, T1; P1 also in FP32 on the GPU), and a run
 resumed from WRF's own wrfrst files continues as WRF does (also the two-way physics nest N3, both domains).
+The restart variants of tests/verify/matrix_restart_io.txt (tools/gcp/gcp_matrix.sh) write restart files in the
+middle of a run and resume both models from WRF's: the wrfrst files of the straight and the resumed runs (data and
+alarm attributes) and the resumed history are identical to WRF's for P1, P4 (radt 10), Kessler, Thompson, New
+Tiedtke, Tiedtke, Grell-Freitas, MYJ, MYNN, Noah-MP, G2, V2, diff_opt 2 / km_opt 2, diff_6th_opt, A01, em_quarter_ss
+(also diff_opt 2), SU1 across the 6 h wrflowinp and boundary update, and history intervals that are not a divisor
+of the restart time (after a restart WRF's input_wrf takes the seconds to the next history time as the history
+interval, which the resumed runs reproduce); the same holds for the two-way nest N3s (P4 physics, also with
+Kessler, Thompson, New Tiedtke, Tiedtke, Grell-Freitas, MYJ, MYNN, diff_opt 2 / km_opt 2, A01, feedback 0), the
+sibling nests N3sib and the nest in a nest N3gc. Where WRF's resumed run differs from its straight
+run (sst_update, the history quirk), CPPWRF's differs in the same way.
 
 Output files: the `wrfout_d0N` files of P1-P9, NMP1, MYNN, mp8, V1-V3, T6, G2, F1, F2, D0, D0V, SU1, HY1, R1, T1, N1, N2 and N3 (both
 domains) and the `wrfrst_d0N` files of P1, P3, P4, P6, P7, P8, P9, NMP1, MYNN, mp8, N2, N3, T6, G2, F1, F2, D0, D0V and SU1 are
