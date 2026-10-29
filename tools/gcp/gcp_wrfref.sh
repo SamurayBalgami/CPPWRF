@@ -13,6 +13,8 @@
 # wrf.exe to $WRF_R8 / $WRF_R8D8 (default ~/wrf_real/WRF-4.8.0-r8[d8]/main/wrf.exe). --check-only: only the tests
 # on the VM (the references are neither uploaded nor unpacked). Machine: tools/gcp/gcp_pick.py's cheapest Intel
 # spot VM with a vCPU per reference line (at least 8) and its zone now (--machine fixes the type, --zones limits the zones).
+# Only references whose WRF runs succeeded are unpacked (run_NAME: both runs; rst_NAME / rsm_NAME: their run). Exit
+# status 1 when a run failed, an input did not arrive, the build or a test failed, or the VM ended without finishing.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$REPO/tools/gcp/pick_lib.sh"
@@ -31,7 +33,8 @@ while [ $# -gt 0 ]; do
 done
 names=$(grep -v '^\s*#' "$REFS" | awk 'NF {print $1}')
 N=$(wc -w <<< "$names") NEED=$(( N > 8 ? N : 8 ))  # the references run in parallel, one serial WRF each
-[ $FETCH = 0 ] || for n in $names; do [ ! -e "$RUNS/run_$n" ] || { echo "[gcp_wrfref] $RUNS/run_$n exists"; exit 1; }; done
+[ $FETCH = 0 ] || for n in $names; do for p in run rst rsm; do
+  [ ! -e "$RUNS/${p}_$n" ] || { echo "[gcp_wrfref] $RUNS/${p}_$n exists"; exit 1; }; done; done
 STAMP=$(date +%Y%m%d-%H%M%S)-$(printf %04x $RANDOM) VM=cppwrf-wrfref-$STAMP RES=results/wrfref-$STAMP
 OUT=${OUT:-${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}/gcp/wrfref-$STAMP}; mkdir -p "$OUT"
 [ -z "$(git -C "$REPO" status --porcelain --untracked-files=no)" ] || echo "note: uncommitted changes are not sent (HEAD only)"
@@ -39,7 +42,11 @@ git -C "$REPO" archive --format=tar.gz -o "$OUT/src.tar.gz" HEAD
 gcloud storage cp "$OUT/src.tar.gz" "gs://$BK/src/$STAMP.tar.gz" --project "$P" -q
 gcloud storage cp "$REFS" "gs://$BK/src/$STAMP.refs.txt" --project "$P" -q
 ZONE=
-cleanup() { [ -n "$ZONE" ] && gcloud compute instances delete "$VM" --zone "$ZONE" --project "$P" -q 2>/dev/null || true; }
+cleanup() {  # also on an early exit: the VM and this job's bucket objects
+  [ -n "$ZONE" ] && gcloud compute instances delete "$VM" --zone "$ZONE" --project "$P" -q 2>/dev/null
+  gcloud storage rm -r "gs://$BK/$RES" "gs://$BK/src/$STAMP.tar.gz" "gs://$BK/src/$STAMP.refs.txt" --project "$P" -q 2>/dev/null
+  rm -f "$OUT/src.tar.gz"; true
+}
 trap cleanup EXIT
 while read -r -u 3 M z DISK; do
   if gcloud compute instances create "$VM" --project "$P" --zone "$z" --machine-type "$M" \
@@ -54,7 +61,7 @@ while read -r -u 3 M z DISK; do
 done 3< <(vm_candidates "$MACHINE" $NEED 1 "$DATA" "$ZONES")
 [ -n "$ZONE" ] || { echo "[gcp_wrfref] no machine and zone available now"; cat "$OUT/create.log"; exit 1; }
 echo "[gcp_wrfref] $VM ($MACHINE spot, $ZONE): results to gs://$BK/$RES"
-gone=0
+gone=0 bad=0
 while :; do
   sleep 60
   gcloud storage cp "gs://$BK/$RES/refs.out" "$OUT/" --project "$P" -q 2>/dev/null || true
@@ -62,21 +69,36 @@ while :; do
   st=$(gcloud compute instances describe "$VM" --zone "$ZONE" --project "$P" --format='value(status)' 2>/dev/null || echo GONE)
   case $st in RUNNING|STAGING|PROVISIONING) gone=0 ;; *) gone=$((gone + 1)) ;; esac
   # three checks in a row: one failed describe call (network) must not end a running job
-  [ $gone -lt 3 ] || { echo "[gcp_wrfref] VM $st (preempted?)"; break; }
+  [ $gone -lt 3 ] || { echo "[gcp_wrfref] VM $st (preempted?): the job did not finish"; bad=1; break; }
 done
-for f in job.log refs.out cmake.log files.log suite.log; do
+for f in job.log setup.out refs.out cmake.log files.log suite.log; do
   gcloud storage cp "gs://$BK/$RES/$f" "$OUT/" --project "$P" -q 2>/dev/null || true
 done
-if [ $FETCH = 1 ] && gcloud storage ls "gs://$BK/$RES/refs.tar" --project "$P" > /dev/null 2>&1; then
-  gcloud storage cat "gs://$BK/$RES/refs.tar" --project "$P" | tar xf - -C "$RUNS"
+grep . "$OUT/setup.out" 2>/dev/null && bad=1
+# the references whose WRF runs succeeded (wrf_ref_run.py's SUCCESS lines; make_restart_refs.sh /
+# make_resumed_refs.sh: "NAME: <count of SUCCESS COMPLETE WRF> ... restart / history files")
+good=
+for n in $names; do
+  if grep -qx "$n SUCCESS" "$OUT/refs.out" 2>/dev/null && grep -qx "$n/steps SUCCESS" "$OUT/refs.out"; then good="$good run_$n"
+  else echo "[gcp_wrfref] run_$n: $(grep -E "^$n(/steps)? WRF-FAILED" "$OUT/refs.out" 2>/dev/null | cut -c1-300 || echo "no result")"; bad=1; fi
+  for p in rst:restart rsm:history; do
+    if grep -qE "^$n: (wrf\.log:)?[1-9][0-9]* .* ${p#*:} files$" "$OUT/refs.out" 2>/dev/null; then good="$good ${p%:*}_$n"
+    else echo "[gcp_wrfref] ${p%:*}_$n: WRF failed or did not run"; bad=1; fi
+  done
+done
+if [ $FETCH = 1 ] && [ -n "$good" ] && gcloud storage ls "gs://$BK/$RES/refs.tar" --project "$P" > /dev/null 2>&1; then
+  stage="$RUNS/.wrfref-$STAMP"; mkdir "$stage"
+  gcloud storage cat "gs://$BK/$RES/refs.tar" --project "$P" | tar xf - -C "$stage" || bad=1
+  for d in $good; do [ -d "$stage/$d" ] && mv "$stage/$d" "$RUNS/"; done
+  rm -rf "${stage:?}"
   # the VM's links -> the same local files (base run inputs, the other reference directories, wrf.exe)
   for n in $names; do
     for d in "$RUNS/run_$n" "$RUNS/rst_$n" "$RUNS/rsm_$n"; do
-      [ -d "$d" ] || continue
+      case " $good " in *" $(basename "$d") "*) [ -d "$d" ] || continue ;; *) continue ;; esac
       find "$d" -type l | while read -r l; do
         t=$(readlink "$l")
         case $t in
-          /opt/job/data/runs/*) nt=$(readlink -f "$RUNS/${t#/opt/job/data/runs/}") ;;
+          /opt/job/data/runs/*) nt=$(readlink -f "$RUNS/${t#/opt/job/data/runs/}" || echo "$RUNS/${t#/opt/job/data/runs/}") ;;
           /opt/job/wrf_runs/*) nt=$RUNS/${t#/opt/job/wrf_runs/} ;;
           */wrf_r8d8.exe) nt=$WRF_R8D8 ;;
           */wrf_r8.exe) nt=$WRF_R8 ;;
@@ -88,9 +110,15 @@ if [ $FETCH = 1 ] && gcloud storage ls "gs://$BK/$RES/refs.tar" --project "$P" >
     done
   done
   echo "[gcp_wrfref] references in $RUNS: $(for n in $names; do ls -d "$RUNS"/{run,rst,rsm}_"$n" 2>/dev/null; done | tr '\n' ' ')"
+elif [ $FETCH = 1 ] && [ -n "$good" ]; then
+  echo "[gcp_wrfref] no refs.tar: nothing unpacked"; bad=1
 fi
-gcloud storage rm -r "gs://$BK/$RES" "gs://$BK/src/$STAMP.tar.gz" "gs://$BK/src/$STAMP.refs.txt" --project "$P" -q 2>/dev/null || true
-rm -f "$OUT/src.tar.gz"
 echo "[gcp_wrfref] results in $OUT"; cat "$OUT/refs.out" 2>/dev/null || true
-for f in files.log suite.log; do [ -f "$OUT/$f" ] && { echo "== $f"; grep -E "^(PASS|FAIL|SKIP)|compared" "$OUT/$f" || tail -5 "$OUT/$f"; }; done
-exit 0
+for f in files.log suite.log; do
+  [ -f "$OUT/$f" ] || continue
+  echo "== $f"; grep -E "^(PASS|FAIL|SKIP)|compared" "$OUT/$f" || tail -5 "$OUT/$f"
+  grep -qx "exit 0" "$OUT/$f" || { echo "[gcp_wrfref] $f: $(tail -1 "$OUT/$f")"; bad=1; }
+done
+[ -z "$FILES" ] || [ -f "$OUT/files.log" ] || { echo "[gcp_wrfref] no files.log"; bad=1; }
+[ -z "$CASES" ] || [ -f "$OUT/suite.log" ] || { echo "[gcp_wrfref] no suite.log"; bad=1; }
+exit $bad
