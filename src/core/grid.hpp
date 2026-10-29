@@ -12,7 +12,7 @@ namespace cppwrf {
 
 enum class Stagger : char { M = 'M', U = 'U', V = 'V', W = 'W' };
 // Specified: real-data lateral boundaries (WRF specified = .true.); halos are filled by copying
-// the outermost row outward (set_physical_bc*), boundary rows are set by src/bdy.
+// the outermost row outward (set_physical_bc*), boundary rows are set by src/dyn/lateral_bc.
 // Open: WRF open_xs/xe (open_ys/ye) on both sides of the direction: the same outward halo copy as
 // specified, radiative normal velocity and flow-dependent (inflow zero-gradient) scalars at the edges.
 enum class BC { Periodic, Symmetric, Specified, Open };
