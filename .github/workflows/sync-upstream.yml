@@ -1,0 +1,36 @@
+# Keeps this fork's main up to date with Xassemblianist/CPPWRF: merges upstream main into main every
+# 3 hours (and on demand from the Actions tab), so the fork is upstream's latest plus its own fixes.
+# A merge conflict fails the run and leaves main as it was; resolve it locally and push.
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Merge upstream main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch https://github.com/Xassemblianist/CPPWRF.git main
+          if git merge-base --is-ancestor FETCH_HEAD HEAD; then
+            echo "Already up to date with upstream."
+            exit 0
+          fi
+          git merge --no-edit -m "Merge Xassemblianist/CPPWRF main" FETCH_HEAD
+          git push origin HEAD:main
