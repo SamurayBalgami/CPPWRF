@@ -6,7 +6,7 @@ name: Sync upstream
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7,22,37,52 * * * *"  # off the busy :00 / :15 marks, where GitHub delays or drops scheduled runs
   workflow_dispatch:
 
 permissions:
