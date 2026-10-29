@@ -74,7 +74,7 @@ if [ -z "$CASES" ]; then  # the full suite: the output files tests too (remote_s
   for f in files idealfiles; do
     if [ ! -f "$OUT/$f.log" ]; then echo "[gcp_run] INCOMPLETE: no $f.log"; bad=1; continue; fi
     echo "$f: PASS $(grep -c '^PASS ' "$OUT/$f.log") FAIL $(grep -c '^FAIL ' "$OUT/$f.log") SKIP $(grep -c '^SKIP ' "$OUT/$f.log")"
-    grep -E "^(FAIL|SKIP) " "$OUT/$f.log" | cut -c1-200
+    grep -E "^(FAIL|SKIP) " "$OUT/$f.log" | cut -c1-200 || true  # none: grep fails (set -e, pipefail)
     grep -E "^exit [1-9]" "$OUT/$f.log" && bad=1
   done
 fi
