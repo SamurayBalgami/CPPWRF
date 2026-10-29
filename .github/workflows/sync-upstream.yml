@@ -1,6 +1,7 @@
 # Keeps this fork's main up to date with Xassemblianist/CPPWRF: merges upstream main into main every
 # 15 minutes (and on demand from the Actions tab), so the fork is upstream's latest plus its own fixes.
-# A merge conflict leaves main as it was and opens an issue (one at a time); resolve it locally and push.
+# A merge conflict fails the run (GitHub e-mails the failure) and leaves main as it was; resolve it
+# locally and push.
 name: Sync upstream
 
 on:
@@ -10,7 +11,6 @@ on:
 
 permissions:
   contents: write
-  issues: write
 
 concurrency:
   group: sync-upstream
@@ -35,13 +35,3 @@ jobs:
           fi
           git merge --no-edit -m "Merge Xassemblianist/CPPWRF main" FETCH_HEAD
           git push origin HEAD:main
-      - name: Report a failed sync
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          title="Sync upstream failed (merge conflict?)"
-          if [ -z "$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')" ]; then
-            gh issue create --title "$title" \
-              --body "Merging Xassemblianist/CPPWRF main into main failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. main was left as it was."
-          fi
