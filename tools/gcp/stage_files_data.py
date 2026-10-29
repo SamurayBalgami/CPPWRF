@@ -85,10 +85,11 @@ def main():
             print(f"{s:12d} {arc}")
         print(f"{len(files)} files, {tot / 2**30:.2f} GiB")
         return
-    tf = tarfile.open(fileobj=sys.stdout.buffer, mode="w|") if out == "-" else tarfile.open(out, "w")
+    tf = tarfile.open(fileobj=sys.stdout.buffer, mode="w|", dereference=True) if out == "-" else \
+        tarfile.open(out, "w", dereference=True)  # a link's file content, not the link
     with tf:
         for arc, p in sorted(files.items()):
-            tf.add(p, arcname=arc, recursive=False)  # tarfile follows the link: the file's content
+            tf.add(p, arcname=arc, recursive=False)
     print(f"{out}: {len(files)} files", file=sys.stderr)
 
 
