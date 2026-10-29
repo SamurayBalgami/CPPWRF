@@ -2,7 +2,7 @@
 # Run wrf_suite.py's CPU FP64 cases on a Google Compute Engine spot VM and fetch the results.
 #
 #   CPPWRF_GCP_PROJECT=... CPPWRF_GCP_BUCKET=... tools/gcp/gcp_run.sh [--machine TYPE] [--zones Z1,Z2,...]
-#       [--jobs N] [--threads N] [--cases NAME,...] [--data OBJECT] [--out DIR]
+#       [--jobs N] [--threads N] [--cases NAME,...] [--data OBJECT] [--out DIR] [--slow]
 #
 # The bucket holds the reference data once (tools/colab/stage_data.py's tar, uploaded with
 # `gcloud storage cp`; --data names them, comma-separated, default suite_data.tar,ideal_data.tar); the source is the committed HEAD.
@@ -15,7 +15,8 @@
 # tools/gcp/gcp_pick.py's cheapest now (spot price for 176 vCPUs over 2 hours plus the data transfer; Intel only:
 # glibc's libmvec log differs on AMD, so AMD runs are not bit-identical to Intel-made WRF references), the next
 # one tried while one has no capacity or quota; --machine fixes the type, --zones limits the zones. Without
-# --threads each of the --jobs suite jobs gets the machine's vCPUs / jobs threads.
+# --threads each of the --jobs suite jobs gets the machine's vCPUs / jobs threads. --slow: also wrf_suite.py's slow
+# cases (the 72 h runs; their data, e.g. long72_data.tar, in --data), with a 16 h limit instead of 8 h.
 # Exit status 0 only for a complete suite without FAIL or SKIP (wrf_suite.py's SUITE line and exit 0), passing
 # translator tests and comparator self-test (tests/verify/selftest.py), files, differential and ctest tests without
 # FAIL or SKIP (full suite), and no data or build failure on the VM; a
@@ -25,12 +26,12 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$REPO/tools/gcp/pick_lib.sh"
 : "${CPPWRF_GCP_PROJECT:?set CPPWRF_GCP_PROJECT}" "${CPPWRF_GCP_BUCKET:?set CPPWRF_GCP_BUCKET}"
 P=$CPPWRF_GCP_PROJECT BK=$CPPWRF_GCP_BUCKET
-MACHINE= ZONES= JOBS=11 THREADS=16 THREADS_SET= CASES= DATA=suite_data.tar,ideal_data.tar OUT= MAXH=8
+MACHINE= ZONES= JOBS=11 THREADS=16 THREADS_SET= CASES= DATA=suite_data.tar,ideal_data.tar OUT= MAXH=8 SLOW=
 while [ $# -gt 0 ]; do
   case $1 in
     --machine) MACHINE=$2; shift 2 ;; --zones) ZONES=$2; shift 2 ;; --jobs) JOBS=$2; shift 2 ;;
     --threads) THREADS=$2 THREADS_SET=1; shift 2 ;; --cases) CASES=$2; shift 2 ;; --data) DATA=$2; shift 2 ;;
-    --out) OUT=$2; shift 2 ;; *) sed -n '2,17p' "$0"; exit 2 ;;
+    --out) OUT=$2; shift 2 ;; --slow) SLOW=1 MAXH=16; shift ;; *) sed -n '2,19p' "$0"; exit 2 ;;
   esac
 done
 STAMP=$(date +%Y%m%d-%H%M%S)-$(printf %04x $RANDOM) VM=cppwrf-suite-$STAMP RES=results/$STAMP
@@ -48,7 +49,7 @@ while read -r -u 3 M z DISK; do
        --provisioning-model=SPOT --instance-termination-action=DELETE --max-run-duration="${MAXH}h" \
        --image-family=debian-13 --image-project=debian-cloud --boot-disk-size=200GB --boot-disk-type=$DISK \
        --scopes=storage-rw --metadata-from-file=startup-script="$REPO/tools/gcp/remote_suite.sh" \
-       --metadata="^@^bucket=$BK@src=src/$STAMP.tar.gz@data=$DATA@result=$RES@jobs=$JOBS@threads=$THREADS@cases=$CASES" \
+       --metadata="^@^bucket=$BK@src=src/$STAMP.tar.gz@data=$DATA@result=$RES@jobs=$JOBS@threads=$THREADS@cases=$CASES@slow=$SLOW" \
        > "$OUT/create.log" 2>&1; then ZONE=$z MACHINE=$M; break; fi
   why=$(grep -oE "stockout|ZONE_RESOURCE_POOL_EXHAUSTED|Quota '[A-Z0-9_]*'|does not exist|not available|not supported" "$OUT/create.log" | head -1)
   echo "[gcp_run] $M $z: ${why:-error}"

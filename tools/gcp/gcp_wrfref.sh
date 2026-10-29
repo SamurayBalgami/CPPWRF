@@ -2,7 +2,8 @@
 # WRF reference runs for the suite on a Google Compute Engine spot VM (Intel; see gcp_run.sh).
 #
 #   CPPWRF_GCP_PROJECT=... CPPWRF_GCP_BUCKET=... tools/gcp/gcp_wrfref.sh REFS.txt [--machine TYPE] [--zones Z,...] [--data OBJ,...]
-#       [--files NAME,...] [--cases NAME,...] [--runs DIR] [--out DIR] [--check-only]
+#       [--files NAME,...] [--cases NAME,...] [--runs DIR] [--out DIR] [--check-only] [--stage OBJ:CASE,...] [--hours H]
+#       [--cache]
 #
 # REFS.txt: one reference per line "NAME BASE_RUN WRF_EXE section.key=value ..." as gcp_matrix.sh's variants
 # (time_control.run_seconds / history_interval_s set the run). The VM makes run_NAME and run_NAME/steps (3 steps,
@@ -13,6 +14,11 @@
 # wrf.exe to $WRF_R8 / $WRF_R8D8 (default ~/wrf_real/WRF-4.8.0-r8[d8]/main/wrf.exe). --check-only: only the tests
 # on the VM (the references are neither uploaded nor unpacked). Machine: tools/gcp/gcp_pick.py's cheapest Intel
 # spot VM with a vCPU per reference line (at least 8) and its zone now (--machine fixes the type, --zones limits the zones).
+# --stage OBJ:CASE,...: the VM packs the references of these wrf_suite.py cases (tools/colab/stage_data.py) and
+# uploads the tar as the bucket object OBJ, for references too large to fetch (nothing is unpacked here). --hours: the
+# VM's longest run (default 4). --cache: a reference already in gs://BUCKET/wrfref_cache/ (the same line of REFS.txt)
+# is taken from there, and every finished one is put there, so that a run after a spot preemption makes only the
+# missing ones. A line with run.steps=0 has no 3-step run and no restart references.
 # Only references whose WRF runs succeeded are unpacked (run_NAME: both runs; rst_NAME / rsm_NAME: their run). Exit
 # status 1 when a run failed, an input did not arrive, the build or a test failed, or the VM ended without finishing.
 set -euo pipefail
@@ -21,14 +27,15 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_GCP_PROJECT:?set CPPWRF_GCP_PROJECT}" "${CPPWRF_GCP_BUCKET:?set CPPWRF_GCP_BUCKET}"
 P=$CPPWRF_GCP_PROJECT BK=$CPPWRF_GCP_BUCKET
 REFS=$1; shift
-MACHINE= DATA=matrix_data.tar OUT= FILES= CASES= FETCH=1 RUNS=${CPPWRF_WRF_RUNS:-$HOME/wrf_real480}
+MACHINE= DATA=matrix_data.tar OUT= FILES= CASES= FETCH=1 RUNS=${CPPWRF_WRF_RUNS:-$HOME/wrf_real480} STAGE= HOURS=4 CACHE=0
 WRF_R8=${WRF_R8:-$HOME/wrf_real/WRF-4.8.0-r8/main/wrf.exe} WRF_R8D8=${WRF_R8D8:-$HOME/wrf_real/WRF-4.8.0-r8d8/main/wrf.exe}
 ZONES=
 while [ $# -gt 0 ]; do
   case $1 in
     --machine) MACHINE=$2; shift 2 ;; --zones) ZONES=$2; shift 2 ;; --data) DATA=$2; shift 2 ;; --out) OUT=$2; shift 2 ;;
     --files) FILES=$2; shift 2 ;; --cases) CASES=$2; shift 2 ;; --runs) RUNS=$2; shift 2 ;;
-    --check-only) FETCH=0; shift ;; *) sed -n '2,17p' "$0"; exit 2 ;;
+    --check-only) FETCH=0; shift ;; --stage) STAGE=$2; FETCH=0; shift 2 ;; --hours) HOURS=$2; shift 2 ;;
+    --cache) CACHE=1; shift ;; *) sed -n '2,24p' "$0"; exit 2 ;;
   esac
 done
 names=$(grep -v '^\s*#' "$REFS" | awk 'NF {print $1}')
@@ -50,10 +57,10 @@ cleanup() {  # also on an early exit: the VM and this job's bucket objects
 trap cleanup EXIT
 while read -r -u 3 M z DISK; do
   if gcloud compute instances create "$VM" --project "$P" --zone "$z" --machine-type "$M" \
-       --provisioning-model=SPOT --instance-termination-action=DELETE --max-run-duration=4h \
+       --provisioning-model=SPOT --instance-termination-action=DELETE --max-run-duration="${HOURS}h" \
        --image-family=debian-13 --image-project=debian-cloud --boot-disk-size=60GB --boot-disk-type=$DISK \
        --scopes=storage-rw --metadata-from-file=startup-script="$REPO/tools/gcp/remote_wrfref.sh" \
-       --metadata="^@^bucket=$BK@src=src/$STAMP.tar.gz@data=$DATA@result=$RES@refs=src/$STAMP.refs.txt@files=$FILES@cases=$CASES@fetch=$FETCH" \
+       --metadata="^@^bucket=$BK@src=src/$STAMP.tar.gz@data=$DATA@result=$RES@refs=src/$STAMP.refs.txt@files=$FILES@cases=$CASES@fetch=$FETCH@stage=$STAGE@cache=$CACHE" \
        > "$OUT/create.log" 2>&1; then ZONE=$z MACHINE=$M; break; fi
   why=$(grep -oE "stockout|ZONE_RESOURCE_POOL_EXHAUSTED|Quota '[A-Z0-9_]*'|does not exist|not available|not supported" "$OUT/create.log" | head -1)
   echo "[gcp_wrfref] $M $z: ${why:-error}"
@@ -71,7 +78,7 @@ while :; do
   # three checks in a row: one failed describe call (network) must not end a running job
   [ $gone -lt 3 ] || { echo "[gcp_wrfref] VM $st (preempted?): the job did not finish"; bad=1; break; }
 done
-for f in job.log setup.out refs.out cmake.log files.log suite.log; do
+for f in job.log setup.out refs.out stage.log cmake.log files.log suite.log; do
   gcloud storage cp "gs://$BK/$RES/$f" "$OUT/" --project "$P" -q 2>/dev/null || true
 done
 grep . "$OUT/setup.out" 2>/dev/null && bad=1
@@ -79,8 +86,11 @@ grep . "$OUT/setup.out" 2>/dev/null && bad=1
 # make_resumed_refs.sh: "NAME: <count of SUCCESS COMPLETE WRF> ... restart / history files")
 good=
 for n in $names; do
-  if grep -qx "$n SUCCESS" "$OUT/refs.out" 2>/dev/null && grep -qx "$n/steps SUCCESS" "$OUT/refs.out"; then good="$good run_$n"
-  else echo "[gcp_wrfref] run_$n: $(grep -E "^$n(/steps)? WRF-FAILED" "$OUT/refs.out" 2>/dev/null | cut -c1-300 || echo "no result")"; bad=1; fi
+  steps=1; grep -E "^\s*$n\s.*\srun\.steps=0(\s|$)" "$REFS" > /dev/null && steps=0  # no 3-step and restart runs
+  if grep -qE "^$n SUCCESS( \(from .*\))?$" "$OUT/refs.out" 2>/dev/null && { [ $steps = 0 ] || grep -qx "$n/steps SUCCESS" "$OUT/refs.out"; }
+  then good="$good run_$n"
+  else echo "[gcp_wrfref] run_$n: $(grep -E "^$n(/steps)? (WRF|REAL)-FAILED" "$OUT/refs.out" 2>/dev/null | cut -c1-300 || echo "no result")"; bad=1; fi
+  [ $steps = 1 ] || continue
   for p in rst:restart rsm:history; do
     if grep -qE "^$n: (wrf\.log:)?[1-9][0-9]* .* ${p#*:} files$" "$OUT/refs.out" 2>/dev/null; then good="$good ${p%:*}_$n"
     else echo "[gcp_wrfref] ${p%:*}_$n: WRF failed or did not run"; bad=1; fi
@@ -114,6 +124,10 @@ elif [ $FETCH = 1 ] && [ -n "$good" ]; then
   echo "[gcp_wrfref] no refs.tar: nothing unpacked"; bad=1
 fi
 echo "[gcp_wrfref] results in $OUT"; cat "$OUT/refs.out" 2>/dev/null || true
+if [ -n "$STAGE" ]; then
+  echo "== stage"; tail -3 "$OUT/stage.log" 2>/dev/null || echo "no stage.log"
+  grep -q "^STAGED " "$OUT/stage.log" 2>/dev/null || { echo "[gcp_wrfref] $STAGE: not staged"; bad=1; }
+fi
 for f in files.log suite.log; do
   [ -f "$OUT/$f" ] || continue
   echo "== $f"; grep -E "^(PASS|FAIL|SKIP)|compared" "$OUT/$f" || tail -5 "$OUT/$f"

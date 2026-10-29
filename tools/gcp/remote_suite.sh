@@ -6,7 +6,7 @@
 # Metadata: bucket, src (object of the git archive), data (objects of tools/colab/stage_data.py's tars, comma-separated),
 #           result (prefix for the results), jobs, threads, cases (empty: all CPU cases).
 md() { curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1"; }
-B=$(md bucket) SRC=$(md src) DATA=$(md data) RES=$(md result) JOBS=$(md jobs) THR=$(md threads) CASES=$(md cases)
+B=$(md bucket) SRC=$(md src) DATA=$(md data) RES=$(md result) JOBS=$(md jobs) THR=$(md threads) CASES=$(md cases) SLOW=$(md slow)
 J=/opt/job; mkdir -p $J; exec > $J/job.log 2>&1
 put() { gcloud storage cp "$@" "gs://$B/$RES/" || true; }
 trap 'put $J/job.log $J/setup.out; date > $J/done; put $J/done; poweroff' EXIT
@@ -40,6 +40,7 @@ put $J/unit.log
 CPPWRF_SCRATCH=$J python3 tests/verify/selftest.py > $J/selftest.log 2>&1; echo "exit $?" >> $J/selftest.log
 put $J/selftest.log
 only=(); [ -n "$CASES" ] && only=(--only "$CASES" --exact)
+[ "$SLOW" = 1 ] && only+=(--slow)  # the slow cases too (gcp_run.sh --slow)
 (while sleep 60; do put $J/suite.log; done) &  # progress: the lines of the cases that ended
 CPPWRF_WRF_RUNS=$J/data/wrf_runs CPPWRF_WRF_REF=$J/data/wrf_ref OMP_NUM_THREADS=$THR \
   python3 tests/verify/wrf_suite.py --cpu-dp $J/build/cppwrf --jobs "$JOBS" --out $J/suite "${only[@]}" > $J/suite.log 2>&1

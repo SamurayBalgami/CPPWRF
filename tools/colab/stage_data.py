@@ -15,7 +15,8 @@ come with their namelist.input (wrf_suite.py checks the configuration and the gl
 --whole: the reference files whole (every frame and variable: wrf_suite.py then compares every frame up to the case's
 time; it needs no work, so OUT can be - for a tar on stdout, e.g. | gcloud storage cp - gs://BUCKET/X.tar, which
 writes nothing locally); --refs-only: only the reference files (and the ideal namelists), not the run directories;
---no-steps: no reference in a steps/ directory (tools/gcp/stage_files_data.py packs those whole).
+--no-steps: no reference in a steps/ directory (tools/gcp/stage_files_data.py packs those whole). A case restarted in
+the middle (suite.restart_at) also takes WRF's wrfrst files at the restart.
 --files: the cases of tests/verify/run_wrf_files_test.sh run with CPPWRF_FILES_NO_VALUES=1 (a GPU build): their input
 directories, and their wrfout / wrfrst references (run, restart and resumed directories) as skeletons, with every
 variable, dimension, attribute and time but zero numbers; whole only the wrfrst files of minute 1, which the resumed
@@ -34,6 +35,7 @@ import numpy as np
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, os.path.join(REPO, "tests", "verify"))
+from exact import text  # noqa: E402
 import wrf_suite  # noqa: E402
 
 WR = os.environ["CPPWRF_WRF_RUNS"]
@@ -114,6 +116,7 @@ def main():
     dirs = {}  # run directory -> history files to keep, Thompson tables needed
     ref_times = {}  # reference wrfout -> compared times
     exact = set()  # reference wrfout files of tolerance-0 cases
+    restarts = set()  # WRF's wrfrst files at the restart of restarted cases
     ideal = set()  # files under CPPWRF_WRF_REF: ideal-case soundings and reference wrfout files
     if any("straka" in o for o in want):
         ideal.add(os.path.join(WREF, "run_straka_d1", "wrfout_d01_0001-01-01_00:00:00"))
@@ -144,6 +147,13 @@ def main():
             ref_times.setdefault(r, set()).add(float(t))
             if all(x == 0.0 for x in tol.values()):
                 exact.add(r)
+            mid = wrf_suite.restart_at(sets)
+            if mid:
+                with nc.Dataset(r) as ds:
+                    xt = np.array(ds["XTIME"][:], dtype=float) * 60.0
+                    at = [text(ds["Times"], i).decode() for i, x in enumerate(xt) if abs(x - mid) < 1e-6]
+                dom = re.search(r"wrfout_(d\d\d)_", os.path.basename(r)).group(1)
+                restarts.update(os.path.join(os.path.dirname(r), f"wrfrst_{dom}_{x}") for x in at)
         d = dirs.setdefault(rd, [set(), False]) if not a.refs_only else [set(), False]
         d[1] = d[1] or (mp.strip() == "8" and not a.no_thompson_tables)
         log(f"{name}: {os.path.relpath(rd, WR)}")
@@ -185,7 +195,8 @@ def main():
             for f in sorted(os.listdir(d)):
                 p = os.path.join(d, f)
                 if os.path.isdir(p) or (f in THOMPSON and not thompson) or \
-                        (a.refs_only and p not in ref_times and f not in ("namelist.input", "myoutfields.txt")):
+                        (a.refs_only and p not in ref_times and p not in restarts
+                         and f not in ("namelist.input", "myoutfields.txt")):
                     continue
                 arc = os.path.join("wrf_runs", os.path.relpath(p, WR))
                 added.add(arc)
@@ -196,7 +207,7 @@ def main():
                         q = os.path.join(tmp, f)
                         trimmed(p, ref_times[p], q, p in exact)
                         tf.add(q, arcname=arc)
-                elif f in THOMPSON or not any(fnmatch.fnmatch(f, s) for s in SKIP):
+                elif p in restarts or f in THOMPSON or not any(fnmatch.fnmatch(f, s) for s in SKIP):
                     tf.add(p, arcname=arc, recursive=False)
                 else:
                     added.discard(arc)

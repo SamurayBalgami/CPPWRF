@@ -4,7 +4,7 @@ reference run, with the tolerance that the current code meets. Run after every c
 dycore, boundaries, diffusion or physics coupling.
 
   wrf_suite.py --cpu-dp <build>/cppwrf --cuda <build>/cppwrf [--cuda-dp <build>/cppwrf] [--out DIR] [--only NAME[,NAME]]
-               [--exact] [--jobs N]   (N CPU cases at once, each with OMP_NUM_THREADS threads) [--allow-skip]
+               [--exact] [--jobs N]   (N CPU cases at once, each with OMP_NUM_THREADS threads) [--allow-skip] [--slow]
 
 Cases with tolerance 0 (CPU FP64) run with WRF history output and their wrfout files are compared with WRF's at
 tolerance 0 (exact.py: NaN equals only NaN, -0 differs from +0): every variable of the reference file, every
@@ -16,6 +16,8 @@ an option otherwise than tools/wrf2cppwrf.py's translation of that namelist.
 Only the cases of the given binaries are selected; a given binary that does not exist is an error (exit 2).
 Exit status 0 = every selected case PASSed; a case whose reference is missing is a SKIP and fails the suite unless
 --allow-skip. The last line counts the results.
+Slow cases (suite.slow in their --set list: the 72 h runs) are left out unless --slow is given or --only --exact
+names them.
 """
 import argparse
 import filecmp
@@ -498,6 +500,27 @@ CASES = [
     ("real_n3_r8_fp64_cpu_1h", "cpu_dp", "configs/real_n3.ini", [],
      {d: f"{WR}/run_N3h_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600,
      {f"{d}.{x}": 0.0 for d in ("d01", "d02") for x in ("U", "W", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW", "QGRAUP")}),
+    # Long runs (24 h and 72 h): P4, P6, P9 and N3 from real.exe inputs (wrfbdy every 6 h; 24-72 h: GFS through
+    # tools/gcp/gcp_wps.sh), history every 3 h, restarted in the middle from CPPWRF's own wrfrst files
+    # (suite.restart_at); every 3-hourly frame and the wrfrst files at the restart equal WRF's uninterrupted run
+    # (tools/gcp/gcp_wrfref.sh; references: long_data.tar, 72 h long72_data.tar). The 72 h cases are slow (suite.slow:
+    # wrf_suite.py --slow, gcp_run.sh --slow)
+    *[(f"real_{c.lower()}_r8_fp64_cpu_{h}h", "cpu_dp", f"configs/real_{c.lower()}_r8.ini",
+       [f"run.run_time={h * 3600}", "real.dir=" + f"{WR}/run_{c}_{h}h_r8", "output.out_interval=180",
+        "output.diag_interval=180", f"suite.restart_at={h * 1800}"] + (["suite.slow"] if h == 72 else []),
+       f"{WR}/run_{c}_{h}h_r8/wrfout_d01_2026-10-12_00:00:00", h * 3600, {v: 0.0 for v in vs})
+      for h in (24, 72)
+      for c, vs in (("P4", ("U", "W", "THM", "QV", "QCLOUD", "QRAIN", "QICE")),
+                    ("P6", ("U", "W", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QNICE", "QNRAIN")),
+                    ("P9", ("U", "W", "THM", "QV")))],
+    *[(f"real_n3_r8_fp64_cpu_{h}h", "cpu_dp", "configs/real_n3.ini",
+       [f"run.run_time={h * 3600}", "real.dir=" + f"{WR}/run_N3_{h}h_r8", "phys.table_dir=" + f"{WR}/run_N3_{h}h_r8",
+        "output.out_interval=180", "output.diag_interval=180", "d02.out_interval=540", "d02.diag_interval=540",
+        f"suite.restart_at={h * 1800}"] + (["suite.slow"] if h == 72 else []),
+       {d: f"{WR}/run_N3_{h}h_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, h * 3600,
+       {f"{d}.{x}": 0.0 for d in ("d01", "d02") for x in ("U", "W", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW",
+                                                         "QGRAUP")})
+      for h in (24, 72)],
     # N3 CUDA (needs > 6 GB; measured on L4 and G4): the P4 physics' roundoff growth, so P4's tolerances
     ("real_n3_r8_fp64_cuda_1h", "cuda_dp", "configs/real_n3.ini", [],
      {d: f"{WR}/run_N3h_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600,
@@ -680,9 +703,21 @@ def config_vs_namelist(cfg, sets, nml):
             for k, v in kv.items() if (s, k) not in skip and k in conf.get(s, {}) and not same(v, conf[s][k])]
 
 
+def restart_at(sets):
+    """The time [s] of a case's restart (suite.restart_at=S in its --set list: the run stops there, writes wrfrst
+    files and resumes from them), or None."""
+    return next((float(x.split("=", 1)[1]) for x in sets if x.startswith("suite.restart_at=")), None)
+
+
+def slow(sets):
+    """A slow case (suite.slow in its --set list): run only with --slow or when --only --exact names it."""
+    return "suite.slow" in sets
+
+
 def exact_case(refs, out, t, sets):
-    """Tolerance-0 comparison of the wrfout files in `out` (out/<domain> for nests) with the references {domain:
-    wrfout}: (differences, summary)."""
+    """Tolerance-0 comparison of the wrfout files in `out` (out/<domain> for nests; a list of directories: their
+    files together, a later directory's frame replacing an earlier one's) with the references {domain: wrfout}:
+    (differences, summary)."""
     import netCDF4
     import exact
     bad, frames, nvars = [], 0, 0
@@ -695,7 +730,8 @@ def exact_case(refs, out, t, sets):
         if not final:
             bad.append(f"{d}: the reference has no frame at t={t:g}s")
             continue
-        mine = glob.glob(os.path.join(out, f"wrfout_{d}_*")) + glob.glob(os.path.join(out, d, f"wrfout_{d}_*"))
+        mine = [f for o in (out if isinstance(out, list) else [out])
+                for f in glob.glob(os.path.join(o, f"wrfout_{d}_*")) + glob.glob(os.path.join(o, d, f"wrfout_{d}_*"))]
         dif, n = exact.compare_stream(mine, [w], subset=True, until=final[0],
                                       global_atts=os.path.exists(os.path.join(os.path.dirname(w), "namelist.input")))
         with netCDF4.Dataset(w) as ds:  # WRF leaves RQCBLTEN / RQIBLTEN uninitialised without qc / qi
@@ -705,6 +741,41 @@ def exact_case(refs, out, t, sets):
         frames += n
         bad += [f"{d}.{k}: {v}" for k, v in dif.items()]
     return bad, f"{frames} frames, {nvars} variables"
+
+
+def restarted_case(b, cfg, sets, refs, t, mid, out):
+    """A run to `t` s restarted at `mid` s from its own wrfrst files: the first run (0 to mid, wrfrst files at mid)
+    and the resumed one (mid to t) together against WRF's uninterrupted run at tolerance 0 (every reference frame),
+    and the wrfrst files at mid against WRF's (the reference run's restart_interval writes them there):
+    (differences, summary). As run_wrf_files_test.sh, RQCBLTEN / RQIBLTEN are not compared when WRF's restart file
+    has no QCLOUD / QICE (WRF leaves them uninitialised)."""
+    import netCDF4
+    import exact
+    first, resumed = os.path.join(out, "a_first"), os.path.join(out, "b_resumed")  # sorted: resumed frames win
+    w0 = next(iter(refs.values()))
+    with netCDF4.Dataset(w0) as ds:
+        at = [exact.text(ds["Times"], i).decode() for i, x in enumerate(ds["XTIME"][:]) if abs(float(x) * 60.0 - mid) < 1e-6]
+    if not at:
+        return [f"{w0} has no frame at the restart time {mid:g}s"], ""
+    rc, log = run(b, cfg, sets + [f"run.run_time={mid:g}", f"restart.interval={mid:g}"], first)
+    if rc != 0:
+        return [f"run to the restart failed: {log[-200:]}"], ""
+    rc, log = run(b, cfg, sets + [f"run.restart_file={first}/wrfrst_d01_{at[0]}"], resumed)
+    if rc != 0:
+        return [f"resumed run failed: {log[-200:]}"], ""
+    bad, what = exact_case(refs, [first, resumed], t, sets)
+    for dom, w in refs.items():
+        d = dom or re.search(r"wrfout_(d\d\d)_", os.path.basename(w)).group(1)
+        wr = os.path.join(os.path.dirname(w), f"wrfrst_{d}_{at[0]}")
+        mine = glob.glob(os.path.join(first, f"wrfrst_{d}_{at[0]}")) + glob.glob(os.path.join(first, d, f"wrfrst_{d}_{at[0]}"))
+        if not os.path.exists(wr) or not mine:
+            bad.append(f"{d}: no wrfrst_{d}_{at[0]} from {'WRF' if not os.path.exists(wr) else 'CPPWRF'}")
+            continue
+        with netCDF4.Dataset(wr) as ds:
+            noise = [x for x, q in (("RQCBLTEN", "QCLOUD"), ("RQIBLTEN", "QICE")) if q not in ds.variables]
+        dif, _ = exact.compare_stream(mine, [wr])
+        bad += [f"{d}.wrfrst.{k}: {v}" for k, v in dif.items() if k not in noise]
+    return bad, f"{what}, restarted at {mid:g}s (wrfrst identical)" if not bad else what
 
 
 def compare(wrfout, out, t):
@@ -757,6 +828,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=1, help="CPU cases run at the same time (GPU cases: one at a time)")
     ap.add_argument("--keep", action="store_true", help="keep the outputs of passing cases (default: deleted)")
     ap.add_argument("--allow-skip", action="store_true", help="cases without their reference do not fail the suite")
+    ap.add_argument("--slow", action="store_true", help="also the slow cases (suite.slow: the 72 h runs)")
     a = ap.parse_args()
     only = a.only.split(",") if a.only else None
 
@@ -774,6 +846,8 @@ def main():
 
     def case(name, b, cfg, sets, refs, t, tol):
         out = os.path.join(a.out, name)
+        mid = restart_at(sets)
+        sets = [x for x in sets if not x.startswith("suite.")]
         exact = all(x == 0.0 for x in tol.values())
         if exact:  # WRF history output; with the reference's namelist.input CPPWRF writes WRF's global attributes
             nl = os.path.join(os.path.dirname(next(iter(refs.values()))), "namelist.input")
@@ -782,6 +856,11 @@ def main():
                 if dif:
                     return False, f"FAIL  {name:22s} configuration differs from {nl}: {'; '.join(dif)}"
             sets = sets + ["output.format=wrfout"] + ([f"output.wrf_namelist={nl}"] if os.path.exists(nl) else [])
+        if exact and mid:
+            bad, what = restarted_case(b, cfg, sets, refs, t, mid, out)
+            done(out, not bad)
+            return not bad, (f"{'PASS' if not bad else 'FAIL'}  {name:22s} t={t:g}s exact: {what}"
+                             + (f"  [{'; '.join(x[:300] for x in bad[:6])}{' ...' if len(bad) > 6 else ''}]" if bad else ""))
         rc, log = run(b, cfg, sets, out)
         if rc != 0:
             return False, f"FAIL  {name:22s} run failed: {log[-200:]}"
@@ -816,6 +895,8 @@ def main():
     count = {"PASS": 0, "FAIL": 0, "SKIP": 0}
     for name, key, cfg, sets, wo, t, tol in CASES:
         if not wanted(name) or not bins.get(key):  # cases of binaries not given are not selected
+            continue
+        if slow(sets) and not a.slow and not (a.exact and name in only):  # slow cases only on request
             continue
         b = bins[key]
         refs = wo if isinstance(wo, dict) else {"": wo}  # nested runs: {domain: wrfout}
