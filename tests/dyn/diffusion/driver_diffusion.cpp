@@ -86,6 +86,20 @@ static void write_field(std::ofstream& out, const std::string& name, DevField<T>
   write_chunk(out, name, f.host_data(), static_cast<int>(f.size()));
 }
 
+// Writes the (0..ni-1, 0..nk-1, 0..nj-1) block of a field stored with x stride sx and z extent sz,
+// as the Fortran driver writes a slice of its memory-dimensioned array.
+template <typename T>
+static void write_field_sub(std::ofstream& out, const std::string& name, DevField<T>& f,
+                            int sx, int sz, int ni, int nk, int nj) {
+  f.download();
+  std::vector<double> sub(std::size_t(ni) * nk * nj);
+  for (int j = 0; j < nj; ++j)
+    for (int k = 0; k < nk; ++k)
+      for (int i = 0; i < ni; ++i)
+        sub[i + std::size_t(k) * ni + std::size_t(j) * ni * nk] = f[i + std::size_t(k) * sx + std::size_t(j) * sx * sz];
+  write_chunk(out, name, sub.data(), static_cast<int>(sub.size()));
+}
+
 template <typename T>
 static void read_field(std::ifstream& in, DevField<T>& f) {
   in.read(reinterpret_cast<char*>(f.host_data()), f.size() * sizeof(T));
@@ -232,8 +246,10 @@ int main(int argc, char* argv[]) {
   DevField<double> zx((nx + 1) * (nz + 1) * ny), zy(nx * (nz + 1) * (ny + 1));
   DevField<double> defor11(nx * nz * ny), defor22(nx * nz * ny), defor33(nx * nz * ny);
   DevField<double> defor12((nx + 1) * nz * (ny + 1));
-  DevField<double> defor13((nx + 1) * (nz + 1) * ny);
-  DevField<double> defor23(nx * (nz + 1) * (ny + 1));
+  // defor13 / defor23 as WRF's memory-dimensioned arrays: cal_deform_and_div's boundary update writes
+  // defor13(.., ny) and defor23(nx, ..) (WRF: j = jts..jte, i = its..ite, up to the staggered ends)
+  DevField<double> defor13((nx + 1) * (nz + 1) * (ny + 1));
+  DevField<double> defor23((nx + 1) * (nz + 1) * (ny + 1));
   DevField<double> div(nx * nz * ny), bn2(nx * nz * ny);
   DevField<double> xkmh(nx * nz * ny), xkmv(nx * nz * ny);
   DevField<double> xkhh(nx * nz * ny), xkhv(nx * nz * ny);
@@ -378,7 +394,7 @@ int main(int argc, char* argv[]) {
                        make_view3(defor33.data(), nx, nz),
                        make_view3(defor12.data(), nx + 1, nz),
                        make_view3(defor13.data(), nx + 1, nz + 1),
-                       make_view3(defor23.data(), nx, nz + 1),
+                       make_view3(defor23.data(), nx + 1, nz + 1),
                        make_view3(div.data(), nx, nz),
                        nx, ny, nz);
 
@@ -386,8 +402,8 @@ int main(int argc, char* argv[]) {
     write_field(out, "defor22_periodic", defor22);
     write_field(out, "defor33_periodic", defor33);
     write_field(out, "defor12_periodic", defor12);
-    write_field(out, "defor13_periodic", defor13);
-    write_field(out, "defor23_periodic", defor23);
+    write_field_sub(out, "defor13_periodic", defor13, nx + 1, nz + 1, nx + 1, nz + 1, ny);
+    write_field_sub(out, "defor23_periodic", defor23, nx + 1, nz + 1, nx, nz + 1, ny + 1);
     write_field(out, "div_periodic", div);
   }
 
@@ -432,7 +448,7 @@ int main(int argc, char* argv[]) {
                        make_view3(defor33.data(), nx, nz),
                        make_view3(defor12.data(), nx + 1, nz),
                        make_view3(defor13.data(), nx + 1, nz + 1),
-                       make_view3(defor23.data(), nx, nz + 1),
+                       make_view3(defor23.data(), nx + 1, nz + 1),
                        make_view3(div.data(), nx, nz),
                        nx, ny, nz);
 
@@ -440,8 +456,8 @@ int main(int argc, char* argv[]) {
     write_field(out, "defor22_specified", defor22);
     write_field(out, "defor33_specified", defor33);
     write_field(out, "defor12_specified", defor12);
-    write_field(out, "defor13_specified", defor13);
-    write_field(out, "defor23_specified", defor23);
+    write_field_sub(out, "defor13_specified", defor13, nx + 1, nz + 1, nx + 1, nz + 1, ny);
+    write_field_sub(out, "defor23_specified", defor23, nx + 1, nz + 1, nx, nz + 1, ny + 1);
     write_field(out, "div_specified", div);
   }
 
@@ -697,7 +713,7 @@ int main(int argc, char* argv[]) {
                            make_const_view3(defor33.data(), nx, nz),
                            make_const_view3(defor12.data(), nx + 1, nz),
                            make_const_view3(defor13.data(), nx + 1, nz + 1),
-                           make_const_view3(defor23.data(), nx, nz + 1),
+                           make_const_view3(defor23.data(), nx + 1, nz + 1),
                            make_const_view3(rho.data(), nx, nz),
                            make_const_view3(xkmh.data(), nx, nz),
                            make_const_view3(xkmv.data(), nx, nz),
@@ -780,7 +796,7 @@ int main(int argc, char* argv[]) {
                    make_const_view3(xkmh_k1.data(), nx, nz),
                    make_const_view3(xkmv_k1.data(), nx, nz),
                    make_const_view3(defor13.data(), nx + 1, nz + 1),
-                   make_const_view3(defor23.data(), nx, nz + 1),
+                   make_const_view3(defor23.data(), nx + 1, nz + 1),
                    make_const_view3(defor33.data(), nx, nz),
                    make_view1(fnm.data()), make_view1(fnp.data()),
                    make_view3(titau13.data(), nx + 1, nz + 1),
@@ -1126,7 +1142,7 @@ int main(int argc, char* argv[]) {
                     make_const_view3(defor33.data(), nx, nz),
                     make_const_view3(defor12.data(), nx + 1, nz),
                     make_const_view3(defor13.data(), nx + 1, nz + 1),
-                    make_const_view3(defor23.data(), nx, nz + 1),
+                    make_const_view3(defor23.data(), nx + 1, nz + 1),
                     make_const_view3(tke.data(), nx, nz),
                     make_const_view3(p8w.data(), nx, nz + 1),
                     make_const_view3(t8w.data(), nx, nz + 1),
@@ -1172,7 +1188,7 @@ int main(int argc, char* argv[]) {
                     make_const_view3(defor33.data(), nx, nz),
                     make_const_view3(defor12.data(), nx + 1, nz),
                     make_const_view3(defor13.data(), nx + 1, nz + 1),
-                    make_const_view3(defor23.data(), nx, nz + 1),
+                    make_const_view3(defor23.data(), nx + 1, nz + 1),
                     make_const_view3(tke.data(), nx, nz),
                     make_const_view3(p8w.data(), nx, nz + 1),
                     make_const_view3(t8w.data(), nx, nz + 1),
@@ -1226,7 +1242,7 @@ int main(int argc, char* argv[]) {
             make_const_view3(defor33.data(), nx, nz),
             make_const_view3(defor12.data(), nx + 1, nz),
             make_const_view3(defor13.data(), nx + 1, nz + 1),
-            make_const_view3(defor23.data(), nx, nz + 1),
+            make_const_view3(defor23.data(), nx + 1, nz + 1),
             make_const_view3(u.data(), nx + 1, nz),
             make_const_view3(v.data(), nx, nz),
             make_const_view3(tke.data(), nx, nz),
@@ -1264,7 +1280,7 @@ int main(int argc, char* argv[]) {
             make_const_view3(defor33.data(), nx, nz),
             make_const_view3(defor12.data(), nx + 1, nz),
             make_const_view3(defor13.data(), nx + 1, nz + 1),
-            make_const_view3(defor23.data(), nx, nz + 1),
+            make_const_view3(defor23.data(), nx + 1, nz + 1),
             make_const_view3(u.data(), nx + 1, nz),
             make_const_view3(v.data(), nx, nz),
             make_const_view3(tke.data(), nx, nz),
@@ -1317,7 +1333,7 @@ int main(int argc, char* argv[]) {
                            make_const_view3(defor33.data(), nx, nz),
                            make_const_view3(defor12.data(), nx + 1, nz),
                            make_const_view3(defor13.data(), nx + 1, nz + 1),
-                           make_const_view3(defor23.data(), nx, nz + 1),
+                           make_const_view3(defor23.data(), nx + 1, nz + 1),
                            make_const_view3(rho.data(), nx, nz),
                            make_const_view3(xkmh.data(), nx, nz),
                            make_const_view3(xkmv.data(), nx, nz),
@@ -1532,7 +1548,7 @@ int main(int argc, char* argv[]) {
                     make_const_view3(defor33.data(), nx, nz),
                     make_const_view3(defor12.data(), nx + 1, nz),
                     make_const_view3(defor13.data(), nx + 1, nz + 1),
-                    make_const_view3(defor23.data(), nx, nz + 1),
+                    make_const_view3(defor23.data(), nx + 1, nz + 1),
                     make_const_view3(tke.data(), nx, nz),
                     make_const_view3(p8w.data(), nx, nz + 1),
                     make_const_view3(t8w.data(), nx, nz + 1),
@@ -1577,7 +1593,7 @@ int main(int argc, char* argv[]) {
                     make_const_view3(defor33.data(), nx, nz),
                     make_const_view3(defor12.data(), nx + 1, nz),
                     make_const_view3(defor13.data(), nx + 1, nz + 1),
-                    make_const_view3(defor23.data(), nx, nz + 1),
+                    make_const_view3(defor23.data(), nx + 1, nz + 1),
                     make_const_view3(tke.data(), nx, nz),
                     make_const_view3(p8w.data(), nx, nz + 1),
                     make_const_view3(t8w.data(), nx, nz + 1),
