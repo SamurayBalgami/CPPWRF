@@ -364,7 +364,16 @@ struct KAdvancePpt {
 // module_cumulus_driver.F cumulus_driver for KFETASCHEME (cu_physics = 1)
 void PhysicsSuite::cumulus_driver(const dyn::State& s, const dyn::BaseState& b) {
   if (o_.cu_physics == 0) return;
-  const bool run_param = itimestep == 1 || o_.cudt == 0 || stepcu == 1 || itimestep % stepcu == 0;
+  // module_cumulus_driver.F:803-860: with the adaptive time step the first call sets cudtacttime, and the scheme
+  // runs when curr_secs reaches it (then cudt minutes later) instead of every stepcu steps
+  const real curr_secs = wrf_time::real_time<real>(elapsed);
+  if (adapt_step_flag && cudtacttime == real(0.)) cudtacttime = curr_secs + real(o_.cudt) * real(60.);
+  bool run_param = itimestep == 1 || o_.cudt == 0 || stepcu == 1;
+  if (!run_param && !adapt_step_flag) run_param = itimestep % stepcu == 0;
+  if (!run_param && adapt_step_flag && curr_secs >= cudtacttime) {
+    run_param = true;
+    cudtacttime = curr_secs + real(o_.cudt) * real(60);
+  }
   if (!run_param) return;
   using namespace wrfc;
   if (o_.cu_physics == 3) {
@@ -510,7 +519,7 @@ void PhysicsSuite::cumulus_driver(const dyn::State& s, const dyn::BaseState& b) 
   kf.shall = shall.view();
   kf.nx = g_.nx; kf.ny = g_.ny; kf.nz = g_.nz;
   kf.dt = real(g_.dt); kf.dx = real(g_.dx); kf.cudt = real(o_.cudt);
-  kf.stepcu = stepcu; kf.ktau = int(itimestep); kf.trigger = o_.kfeta_trigger;
+  kf.stepcu = stepcu; kf.adapt_step_flag = adapt_step_flag; kf.ktau = int(itimestep); kf.trigger = o_.kfeta_trigger;
   kf.warm_rain = o_.warm_rain;
   kf.flag_qi = s.P_QI >= 0; kf.flag_qs = s.P_QS >= 0; kf.flag_qr = s.P_QR >= 0;
   kf.xlv0 = xlv0; kf.xlv1 = xlv1; kf.xls0 = xls0; kf.xls1 = xls1;
@@ -542,10 +551,18 @@ int stepave_count = 0;
 void PhysicsSuite::convtrans_prep(const dyn::State& s) {
   const int ktau = int(itimestep);
   const int stepave = int(real(o_.convtrans_avglen_m) * real(60.) / real(g_.dt));
-  if (stepave < 1)  // WRF: MOD(ktau, stepave) divides by zero
-    throw std::runtime_error("convtrans_prep: convtrans_avglen_m is shorter than the time step");
-  const bool avg_end_flag = (ktau % stepave == 0);
-  const bool first_period_flag = (ktau <= stepave);
+  bool avg_end_flag, first_period_flag;
+  if (adapt_step_flag) {  // module_convtrans_prep.F:57-62: the end of the averaging period by the time (REAL(8))
+    const double cs = double(wrf_time::real_time<real>(elapsed));
+    const double per = double(real(o_.convtrans_avglen_m) * real(60.));
+    avg_end_flag = cs + double(real(g_.dt)) + double(real(0.01)) >= double((long long)(cs / per + 1.0)) * per;
+    first_period_flag = cs <= per;
+  } else {
+    if (stepave < 1)  // WRF: MOD(ktau, stepave) divides by zero
+      throw std::runtime_error("convtrans_prep: convtrans_avglen_m is shorter than the time step");
+    avg_end_flag = (ktau % stepave == 0);
+    first_period_flag = (ktau <= stepave);
+  }
   if (ktau <= 1) stepave_count = 0;
   stepave_count = stepave_count + 1;
   KConvtransPrep k{};

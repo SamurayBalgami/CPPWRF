@@ -560,6 +560,29 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     auto it = p_hyd_snap_.find(step_);
     if (it != p_hyd_snap_.end() && it->second.size() == n) { out = it->second; return true; }
   }
+  if (m_.adapt) {  // the adaptive time step's state: restart fields, MAX_MSFTX / MAX_MSFTY also in the history
+    const AdaptTimeStep& a = *m_.adapt;
+    const phys::driver::PhysicsSuite* su = m_.suite.get();
+    const std::map<std::string, double> sc = {
+        {"LAST_DT_SEC", a.last_dt_sec}, {"LAST_DT_SEC_NUM", a.last_dt_sec_num}, {"LAST_DT_SEC_DEN", a.last_dt_sec_den},
+        {"LAST_STEP_UPDATED", a.last_step_updated}, {"STEPPING_TO_TIME", a.stepping_to_time ? 1.0 : 0.0},
+        {"MAX_MSFTX", double(a.max_msftx())}, {"MAX_MSFTY", double(a.max_msfty())},
+        {"RADTACTTIME", su ? double(su->radtacttime) : 0.0}, {"BLDTACTTIME", su ? double(su->bldtacttime) : 0.0},
+        {"CUDTACTTIME", su ? double(su->cudtacttime) : 0.0}, {"DTBC", m_.bc ? double(real(m_.bc->dtbc)) : 0.0}};
+    auto it = sc.find(name);
+    if (it != sc.end() && n == 1) { out.assign(1, it->second); return true; }
+    if (name == "FCX" || name == "GCX") {  // lbc_fcx_gcx of the current dt (adapt_timestep)
+      const int w = std::max(1, wc_->integer("spec_bdy_width")), sz = wc_->integer("spec_zone"),
+                rz = wc_->integer("relax_zone");
+      const Grid& g = m_.g;
+      std::vector<double> fcx(std::size_t(w), 0.0), gcx(std::size_t(w), 0.0);
+      for (int loop = sz + 1; g.bc_x == BC::Specified && loop <= sz + rz - 1 && loop <= w; ++loop) {
+        fcx[std::size_t(loop - 1)] = double(real(0.1) / real(g.dt) * real(sz + rz - loop) / real(rz - 1));
+        gcx[std::size_t(loop - 1)] = double(real(1.0) / real(g.dt) / real(50.) * real(sz + rz - loop) / real(rz - 1));
+      }
+      if (n == std::size_t(w)) { out = name == "FCX" ? fcx : gcx; return true; }
+    }
+  }
   if (!model_only_) {  // phy_init / start_em values (nest feedback replaces them on the parent)
     auto it = phy_init_.find(name);
     if (it != phy_init_.end() && it->second.size() == n) {
@@ -593,7 +616,10 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     out.assign(n, name == "AREA2D" ? double(dx * dy) : double(dx));
     return true;
   }
-  if (name == "XTIME") { out.assign(1, time_sec_ / 60.0); return true; }
+  if (name == "XTIME") {  // the adaptive clock: minutesSinceSimulationStart of the exact time
+    out.assign(1, has_exact_ ? double(wrf_time::minutes<real>(exact_)) : time_sec_ / 60.0);
+    return true;
+  }
   for (int q = 0; q < s.n_scalars(); ++q) {  // moist species and scalars under WRF's names
     std::string qn = s.q_names[std::size_t(q)];
     static const std::map<std::string, std::string> wn = {{"qv", "QVAPOR"}, {"qc", "QCLOUD"}, {"qr", "QRAIN"},
@@ -872,6 +898,12 @@ wrf_io::DomainAtts WrfHistory::domain_atts() {
   d.j_parent_start = wc_->integer("j_parent_start"); d.parent_grid_ratio = wc_->integer("parent_grid_ratio");
   if (d.grid_id == 1) { d.parent_id = 0; d.parent_grid_ratio = 1; }  // i/j_parent_start: the namelist value (WRF writes it)
   d.dt = g.dt;
+  if (m_.adapt) {
+    d.adaptive = true;
+    d.adapt_dt_start = m_.adapt->starting_time_step();
+    d.adapt_dt_max = m_.adapt->max_time_step();
+    d.adapt_dt_min = m_.adapt->min_time_step();
+  }
   d.real_bytes = int(sizeof(real));
   d.ideal = wrfinput_id_ < 0;
   if (wrfinput_id_ >= 0) {  // grid metadata of the input file
@@ -914,11 +946,16 @@ wrf_io::DomainAtts WrfHistory::domain_atts() {
   return d;
 }
 
+std::string WrfHistory::date_of(double time_sec) const {
+  // the adaptive clock: wrf_timetoa of the time's whole seconds
+  return has_exact_ ? wrf_io::add_seconds(start_date_, long(exact_.S)) : wrf_io::add_seconds(start_date_, std::lround(time_sec));
+}
+
 void WrfHistory::write_restart(long step, double time_sec, double history_interval_s, double history_ref_s,
                                double restart_secs_to_ring, double auxinput4_ref_s) {
   step_ = step;
   time_sec_ = time_sec;
-  const std::string date = wrf_io::add_seconds(start_date_, std::lround(time_sec));
+  const std::string date = date_of(time_sec);
   std::filesystem::create_directories(out_dir_);
   const std::string path = out_dir_ + "/" + wrf_io::stream_filename(rst_outname_, std::stoi(domain_tag_.substr(1)), date);
   const Grid& g = m_.g;
@@ -941,7 +978,10 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
     std::snprintf(n1, sizeof n1, "WRF_ALARM_ISRINGING_%02d", a);
     std::snprintf(n2, sizeof n2, "WRF_ALARM_SECS_TIL_NEXT_RING_%02d", a);
     int ring = 0, secs = 1700000000;
-    if (a == 1 && history_interval_s > 0) {
+    if (a == 1 && hist_alarm_ring_ >= 0) {  // the adaptive time step: the history alarm by time (DomainRunner)
+      ring = hist_alarm_ring_;
+      secs = int(hist_alarm_secs_);
+    } else if (a == 1 && history_interval_s > 0) {
       const long iv = std::lround(history_interval_s), since = el - std::lround(history_ref_s);
       secs = int(iv - since % iv);  // interval - (time - PrevRingTime)
       // the last step: med_restart_out runs before med_last_solve_io writes that frame
@@ -983,7 +1023,8 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
 void WrfHistory::write(long step, double time_sec) {
   step_ = step;
   time_sec_ = time_sec;
-  const std::string date = wrf_io::add_seconds(start_date_, std::lround(time_sec));
+  const std::string date = date_of(time_sec);
+  // DT: grid%dt when the file is opened (the netCDF I/O keeps the attributes of a file's first frame)
   if (!file_ || file_->records() >= std::size_t(frames_per_outfile_)) {
     file_.reset();
     std::filesystem::create_directories(out_dir_);

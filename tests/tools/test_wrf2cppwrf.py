@@ -1148,6 +1148,26 @@ class TestWrfNamelistSemantics(unittest.TestCase):
             self.assertIn(err, " ".join(t.errors), nl)
 
 
+    def test_adaptive_time_step(self):
+        """use_adaptive_time_step (adapt_timestep_em.F): d01's options and the history / boundary intervals reach
+        [time]; nests and sst_update are errors."""
+        t = WrfTranslator(parse_namelist(real_case(
+            "&time_control history_interval_s = 600 /\n&domains time_step = 60, use_adaptive_time_step = .true., "
+            "target_cfl = 1.1, max_time_step = 90, step_to_output_time = .false. /\n&physics /\n")))
+        cfg = t.translate()
+        self.assertEqual(t.errors, [])
+        tm = cfg["time"]
+        self.assertTrue(tm["adaptive"])
+        self.assertEqual((tm["target_cfl"], tm["max_time_step"], tm["step_to_output_time"]), (1.1, 90, False))
+        self.assertEqual((tm["history_interval_s"], tm["interval_seconds"]), (600, 21600))
+        self.assertNotIn("target_hcfl", tm)
+        for nl, err in (("&domains time_step = 60, use_adaptive_time_step = .true. /\n&physics sst_update = 1 /",
+                         "sst_update"),):
+            t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n{nl}\n")))
+            t.translate()
+            self.assertIn(err, " ".join(t.errors), nl)
+
+
 class TestExecution2Steps(unittest.TestCase):
     """Verify that generated INI executes for 2 steps (binary: $CPPWRF_BIN, default build/cppwrf)."""
 

@@ -513,16 +513,24 @@ std::vector<std::pair<std::string, IntField2*>> PhysicsSuite::carried_int() {
   return v;
 }
 
+void PhysicsSuite::set_dt(double dt) {
+  g_.dt = dt;
+  gs_.dt = dt;
+}
+
 void PhysicsSuite::part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies&) {
   ++itimestep;  // solve_em: grid%itimestep = grid%itimestep + 1
   if (rainncv_mp_) rainncv.copy_from(*rainncv_mp_);  // the microphysics' grid%rainncv and grid%sr
   if (sr_mp_) sr.copy_from(*sr_mp_);
   run_phy_prep(s, b, prep, PhyPrepParams{o_.use_theta_m});
   if (rad_) {  // radiation_driver: xtime (minutes) and julian of the step start
-    const double xtime = double(itimestep - 1) * g_.dt / 60.;
-    const double julian = wrf_julian(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt);
+    // the adaptive time step: WRF's clock (grid%xtime = minutesSinceSimulationStart, grid%julian)
+    const double xtime = adapt_step_flag ? double(wrf_time::minutes<real>(elapsed)) : double(itimestep - 1) * g_.dt / 60.;
+    const double julian = adapt_step_flag ? wrf_julian(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, elapsed)
+                                          : wrf_julian(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt);
     // YR: first_rk_step_part1's WRFU_TimeGet(currentTime, YY=yr), a new year after 31 December
-    const int yr = wrf_year(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt);
+    const int yr = adapt_step_flag ? wrf_year(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, elapsed)
+                                   : wrf_year(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt);
     auto q = [&](int n) -> const Field3* { return n >= 0 ? &s.q_2[n] : nullptr; };
     RadiationInputs ri{&prep.t_phy, &prep.p_hyd, &prep.p_hyd_w, &prep.pi_phy, &prep.rho, &prep.dz8w,
                        &prep.t8w, &s.q_2[s.P_QV], q(s.P_QC), q(s.P_QI), q(s.P_QS), re_cloud_, re_ice_,
@@ -537,7 +545,7 @@ void PhysicsSuite::part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies
                         &rthratenlwc, &rthratenswc, &o3rad, &lwcf, &swcf, &hrang,
                         {&lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &olr}, {&swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc},
                         {&swvisdir, &swvisdif, &swnirdir, &swnirdif, &swddir, &swddni, &swddif, &swddirc, &swddnic, &diffuse_frac}};
-    rad_->run(itimestep, xtime, julian, yr, ri, ro);
+    rad_->run(itimestep, xtime, julian, yr, ri, ro, adapt_step_flag, wrf_time::real_time<real>(elapsed), &radtacttime);
   }
   if (rad_) {  // radiation_driver: accumulated fluxes, every step (DTaccum = DT)
     const real dt = real(g_.dt);

@@ -613,6 +613,9 @@ void med_nest_feedback(Model& parent, const Model& child, const NestDomainSpec& 
 }
 
 int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
+  // adapt_timestep's nest branches (the child's dt from the parent's, adaptation_domain) are not ported
+  if (root_cfg.get_bool("time.adaptive", false))
+    throw std::runtime_error("time.adaptive (WRF use_adaptive_time_step) with nests is not supported");
   std::vector<NestDomainSpec> specs = parse_nest_specs(root_cfg);
   const int max_dom = static_cast<int>(specs.size());
 

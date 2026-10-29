@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "cases/model.hpp"
+#include "core/wrf_time.hpp"
 #include "dyn/diagnostics.hpp"
 #include "io/config.hpp"
 #include "io/output.hpp"
@@ -81,10 +82,26 @@ class DomainRunner {
   // WRF's HISTORY_ALARM: rings every hist_iv_ steps after step hist_ref_ (the start; a run resumed from a WRF
   // restart file takes the interval and first ring from it, see load_restart_file); 0: never
   long hist_iv_ = 1, hist_ref_ = 0;
-  bool hist_due(long n) const { return hist_iv_ > 0 && n > hist_ref_ && (n - hist_ref_) % hist_iv_ == 0; }
+  bool hist_due(long n) const {
+    if (m_.adapt) return n > start_step && n - start_step < long(hist_ring_.size()) && hist_ring_[std::size_t(n - start_step)];
+    return hist_iv_ > 0 && n > hist_ref_ && (n - hist_ref_) % hist_iv_ == 0;
+  }
   double rst_iv_s_ = 0.0;  // restart interval (s), WRF's RESTART_ALARM
   double rst_prev_ = 0.0;  // the alarm's PrevRingTime (s)
   bool rst_due(long n) const;
+  // adaptive time step: the exact time (since this run's start) at the end of step start_step + i, and the history and
+  // restart alarms of ESMF_ClockAdvance by time (PrevRingTime + interval <= current time; PrevRingTime += interval)
+  std::vector<wrf_time::Interval> t_end_{wrf_time::Interval{}};
+  std::vector<char> hist_ring_{0}, rst_ring_{0};
+  wrf_time::Interval hist_iv_t_, hist_prev_t_, rst_iv_t_, rst_prev_t_;
+  bool hist_alarm_t_ = false;
+  void adapt_before_step(long n);
+  // the model time at the end of step n, seconds since the simulation start
+  double time_s(long n) const {
+    if (!m_.adapt) return double(n) * m_.g.dt;
+    return wrf_time::real_time<double>(m_.sim_offset + t_end_[std::size_t(n - start_step)]);
+  }
+  wrf_time::Interval elapsed(long n) const { return m_.sim_offset + t_end_[std::size_t(n - start_step)]; }
   // sst_update: AUXINPUT4_ALARM rings at aux4_first_s_ + k * interval (from the start, or as the WRF restart file
   // set it) and at the restart time when a WRF restart file has it ringing (-1: a CPPWRF restart file, by the schedule)
   double aux4_first_s_ = 0.0;

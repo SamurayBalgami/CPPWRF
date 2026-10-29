@@ -417,7 +417,6 @@ UNSUPPORTED_DYNAMICS_SWITCHES = {
 DEFAULT_ONLY_OPTIONS = {
     ("dynamics", "momentum_adv_opt"): (1, "WENO momentum advection"),
     ("dynamics", "phi_adv_z"): (1, "geopotential advection without double-staggered omega"),
-    ("domains", "use_adaptive_time_step"): (False, "adaptive time step"),
     ("physics", "no_mp_heating"): (0, "microphysics without latent heating"),
     ("physics", "mp_zero_out"): (0, "microphysics zero-out of small moist values"),
     ("bdy_control", "polar"): (False, "polar filters and boundaries"),
@@ -570,7 +569,8 @@ NO_EFFECT_OPTIONS = {
     # not used by wrf.exe 4.8.0 (Registry entries only; variants r32cor / r32curv identical to WRF)
     "do_coriolis": "not used by wrf.exe", "do_curvature": "not used by wrf.exe", "do_gradp": "not used by wrf.exe",
     "coriolis2d": "not used by wrf.exe", "top_radiation": "not used by wrf.exe",
-    # adaptive time step only (use_adaptive_time_step is rejected); max_time_step also by nwp_diagnostics
+    # adaptive time step only (translated with use_adaptive_time_step = .true.); max_time_step also by
+    # nwp_diagnostics
     "target_cfl": "adaptive time step only", "target_hcfl": "adaptive time step only",
     "max_step_increase_pct": "adaptive time step only", "starting_time_step": "adaptive time step only",
     "starting_time_step_den": "adaptive time step only", "max_time_step": "adaptive time step only",
@@ -731,6 +731,41 @@ class WrfTranslator:
                 if key in ("km_opt", "diff_opt") and default == -1:
                     default = vals[0]
                 vals.extend([default] * (self._max_dom - len(vals)))
+
+    def history_seconds(self, d: int) -> int:
+        """History interval of domain index d in seconds (set_timekeeping_alarms.inc; 0: none)."""
+        def v(key):
+            return self.get_dom_opt("time_control", key, d, 0, fallback_d0=False) or 0
+        m = v("history_interval_m") or v("history_interval")
+        return v("history_interval_d") * 86400 + v("history_interval_h") * 3600 + m * 60 + v("history_interval_s")
+
+    def translate_adaptive(self, sections: Dict[str, Dict[str, Any]], case_name: str, total_s: int):
+        """use_adaptive_time_step = .true. (dyn_em/adapt_timestep_em.F, start_em.F): d01's options to [time]."""
+        if case_name != "real":
+            self.error("WRF use_adaptive_time_step is ported for real-data runs only.")
+        if self._max_dom > 1:
+            self.error("WRF use_adaptive_time_step with nests (max_dom > 1: adaptation_domain, the nests' time steps "
+                       "from the parent's) is not supported by CPPWRF.")
+        if self.get_opt("physics", "sst_update", 0) != 0:
+            self.error("WRF use_adaptive_time_step with sst_update = 1 is not supported by CPPWRF (the auxinput4 alarm "
+                       "of an adaptive clock is not ported).")
+        t = sections["time"]
+        t["adaptive"] = True
+        for key, default in (("target_cfl", 1.2), ("target_hcfl", 0.84), ("max_step_increase_pct", 5),
+                             ("starting_time_step", -1), ("starting_time_step_den", 0), ("max_time_step", -1),
+                             ("max_time_step_den", 0), ("min_time_step", -1), ("min_time_step_den", 0)):
+            val = self.get_opt("domains", key, default)
+            if val != default:
+                t[key] = val
+        if not self.get_opt("domains", "step_to_output_time", True):
+            t["step_to_output_time"] = False
+        self.get_opt("domains", "adaptation_domain", 1)  # nests only (max_dom = 2)
+        hs = self.history_seconds(0)
+        if hs <= 0 and t.get("step_to_output_time", True):
+            self.error("WRF use_adaptive_time_step with step_to_output_time needs a history interval "
+                       "(WRF takes mod(time, 0)).")
+        t["history_interval_s"] = hs
+        t["interval_seconds"] = self.get_opt("time_control", "interval_seconds", 21600)
 
     def history_steps(self, d: int, dt: float, fallback: int) -> int:
         """Steps between the history frames of domain index d (set_timekeeping_alarms.inc: the interval is
@@ -1151,14 +1186,17 @@ class WrfTranslator:
         dt = float(time_step)
         num = self.get_opt("domains", "time_step_fract_num", 0)
         den = self.get_opt("domains", "time_step_fract_den", 1)
-        if den and den > 0 and num:
+        adaptive = bool(self.get_opt("domains", "use_adaptive_time_step", False))
+        if den and den > 0 and num and not adaptive:
             self.error("WRF time_step_fract_num/den (fractional time step) is not supported: WRF's boundary "
                        "time dtbc is a running sum of dt, not verified for a non-integer dt.")
             dt += float(num) / float(den)
         sections["time"]["dt"] = int(dt) if dt.is_integer() else dt
+        if adaptive:
+            self.translate_adaptive(sections, case_name, total_s)
         # start_em.F: d01 of a real-data run (map_proj /= 0) with dt / dx [s/km] above reasonable_time_step_ratio
-        # stops with "Time step too large"
-        if case_name == "real":
+        # stops with "Time step too large" (not with the adaptive time step)
+        if case_name == "real" and not adaptive:
             dx_km = min(float(self.get_opt("domains", "dx", 200.0)), float(self.get_opt("domains", "dy", 200.0))) / 1000.
             ratio = float(self.get_opt("domains", "reasonable_time_step_ratio", 6.0))
             if dx_km > 0 and dt / dx_km > ratio:
@@ -1166,7 +1204,7 @@ class WrfTranslator:
                            f"reasonable_time_step_ratio = {ratio:g}.")
 
         tss =self.get_opt("dynamics", "time_step_sound", 0)
-        if tss and tss > 0:
+        if tss and tss > 0 and not adaptive:  # start_em sets time_step_sound = 0 with the adaptive time step
             sections["time"]["time_step_sound"] = tss
 
         # 9. Dynamics Section [dyn]
@@ -1749,6 +1787,9 @@ class WrfTranslator:
                 ratio = self.get_dom_opt("domains", "parent_time_step_ratio", d, 1, fallback_d0=False)
                 dts.append(dts[pid - 1] / float(ratio) if isinstance(pid, int) and 1 <= pid <= d else dt)
             for d, dt_d in enumerate(dts):
+                # with the adaptive time step convtrans_prep decides by the time (no MOD)
+                if self.get_opt("domains", "use_adaptive_time_step", False):
+                    break
                 if self.get_dom_opt("physics", "cu_physics", d, 0) == 3 and int(float(convtrans) * 60.0 / dt_d) < 1:
                     self.error(f"WRF convtrans_avglen_m = {convtrans} is shorter than domain {d + 1}'s time step "
                                f"({dt_d} s): WRF's convtrans_prep divides by zero (MOD(ktau, 0)).")
@@ -1918,7 +1959,10 @@ class WrfTranslator:
             sections["output"]["wrf_namelist"] = os.path.abspath(self.namelist_path)
         self.check_history_stream()
         dt_val = float(sections["time"]["dt"])
-        out_interval = self.history_steps(0, dt_val, max(1, round(float(total_s) / dt_val)))
+        if sections["time"].get("adaptive"):  # the history alarm by time (time.history_interval_s)
+            out_interval = 10**9
+        else:
+            out_interval = self.history_steps(0, dt_val, max(1, round(float(total_s) / dt_val)))
 
         diag_interval = 1 if (out_interval == 1 or case_name in ("hill2d",)) else min(10, out_interval)
         sections["output"]["diag_interval"] = diag_interval

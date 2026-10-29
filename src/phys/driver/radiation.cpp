@@ -289,10 +289,16 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
 RadiationDriver::~RadiationDriver() = default;
 
 bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, const RadiationInputs& in,
-                          const RadiationOutputs& out) {
-  // run decision (radiation_driver, no adaptive time step)
-  const bool run_param = itimestep == 1 || o_.radt == 0. || stepra_ == 1 ||
-                         int(itimestep % stepra_) == 1 + o_.ra_call_offset;
+                          const RadiationOutputs& out, bool adapt_step_flag, real curr_secs, real* radtacttime) {
+  // run decision (module_radiation_driver.F:1083-1138); the adaptive time step's first call sets the activation time
+  const bool doing_adapt_dt = adapt_step_flag;
+  if (doing_adapt_dt && *radtacttime == real(0.)) *radtacttime = curr_secs + real(o_.radt) * real(60.);
+  bool run_param = itimestep == 1 || o_.radt == 0. || stepra_ == 1;
+  if (!run_param && !doing_adapt_dt) run_param = int(itimestep % stepra_) == 1 + o_.ra_call_offset;
+  if (!run_param && doing_adapt_dt && curr_secs >= *radtacttime) {
+    run_param = true;
+    *radtacttime = curr_secs + real(o_.radt) * real(60);
+  }
   if (!run_param) return false;
   double declin, solcon;
   radconst(julian, declin, solcon);  // Solar_step (radconst before calc_coszen)

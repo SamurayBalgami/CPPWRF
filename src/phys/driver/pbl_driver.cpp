@@ -210,10 +210,19 @@ struct KBlFogdes {
 void PhysicsSuite::pbl_driver(dyn::State& s, const dyn::BaseState& b) {
   if (o_.bl_pbl_physics == 0) return;  // module_pbl_driver: no PBL scheme (surface fluxes reach diff_opt 2)
   const Range2D cols = g_.columns();
-  const bool run_param = itimestep == 1 || o_.bldt == 0 || stepbl == 1 || itimestep % stepbl == 0;
+  // module_pbl_driver.F:910-975: the adaptive time step's first call sets bldtacttime, which moves bldt minutes on
+  // after each run by the activation time
+  const real curr_secs = wrf_time::real_time<real>(elapsed);
+  if (adapt_step_flag && bldtacttime == real(0.)) bldtacttime = curr_secs + real(o_.bldt) * real(60.);
+  bool run_param = itimestep == 1 || o_.bldt == 0 || stepbl == 1;
+  if (!run_param && !adapt_step_flag) run_param = itimestep % stepbl == 0;
+  if (!run_param && adapt_step_flag && curr_secs >= bldtacttime) {
+    run_param = true;
+    bldtacttime = curr_secs + real(o_.bldt) * real(60);
+  }
   if (!run_param) return;
   const real dt = real(g_.dt);
-  const real dtbl = o_.bldt == 0 ? dt : dt * real(stepbl);
+  const real dtbl = o_.bldt == 0 ? dt : (adapt_step_flag ? real(o_.bldt) * real(60) : dt * real(stepbl));
   const bool flag_qc = s.P_QC >= 0, flag_qi = s.P_QI >= 0;
   column_for(cols, KPblPrep{prep.u_phy.cview(), prep.v_phy.cview(), prep.p_hyd_w.cview(), u_phytmp.view(),
                             v_phytmp.view(), pt.rthblten.view(), pt.rublten.view(), pt.rvblten.view(),
