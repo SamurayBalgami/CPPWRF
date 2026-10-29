@@ -39,12 +39,6 @@ void NcOut::att_d(const std::string& name, double v) {
   ck(nc_put_att_double(nc_, NC_GLOBAL, name.c_str(), NC_DOUBLE, 1, &v), "att " + name);
 }
 
-void NcOut::reatt_real(const std::string& name, double v, int real_bytes) {
-  ck(nc_redef(nc_), "redef");
-  if (real_bytes == 8) att_d(name, v); else att_f(name, float(v));
-  ck(nc_enddef(nc_), "enddef");
-}
-
 void NcOut::var(const std::string& name, char type, const std::vector<std::string>& dims,
                 const std::map<std::string, std::string>& satts, int field_type) {
   std::vector<int> ids;

@@ -1024,9 +1024,7 @@ void WrfHistory::write(long step, double time_sec) {
   step_ = step;
   time_sec_ = time_sec;
   const std::string date = date_of(time_sec);
-  // output_wrf writes the domain attributes with every frame: the adaptive time step's DT of this time
-  if (file_ && file_->records() < std::size_t(frames_per_outfile_) && m_.adapt)
-    file_->set_real_att("DT", m_.g.dt, int(sizeof(real)));
+  // DT: grid%dt when the file is opened (the netCDF I/O keeps the attributes of a file's first frame)
   if (!file_ || file_->records() >= std::size_t(frames_per_outfile_)) {
     file_.reset();
     std::filesystem::create_directories(out_dir_);

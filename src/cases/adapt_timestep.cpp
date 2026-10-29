@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace cppwrf::cases {
 
@@ -14,6 +15,16 @@ constexpr int precision = 100;
 // Fortran NINT / INT of a REAL
 long nint(double x) { return std::lround(x); }
 long fint(double x) { return long(x); }
+
+// NINT(dt * precision) of adapt_timestep's DOUBLE PRECISION dt
+long nint_dt(double dt) {
+  if constexpr (sizeof(real) == 8) {
+    static_assert(std::numeric_limits<long double>::digits >= 60, "dt * 100 must be exact in long double");
+    return std::lround(static_cast<long double>(dt) * 100.0L);
+  } else {
+    return std::lround(dt * precision);
+  }
+}
 
 // adapt_timestep_em.F calc_dt
 Interval calc_dt(real max_cfl, real max_increase_factor, const Interval& last_dtInterval, real target_cfl) {
@@ -96,9 +107,10 @@ void AdaptTimeStep::adapt_timestep(long itimestep, const Interval& now, real dtb
   Interval tmpTimeInterval = last_dtInterval * num / den;
   if (now != Interval{} && dtInterval > tmpTimeInterval) dtInterval = tmpTimeInterval;
 
-  // Round dtInterval to the nearest 1/100 (dt is a double precision local)
-  double dt = double(wrf_time::real_time<real>(dtInterval));
-  num = int(nint(dt * precision));
+  // Round dtInterval to the nearest 1/100. dt is a DOUBLE PRECISION local: real*8 WRF (-r8, which promotes DOUBLE
+  // PRECISION to 16 bytes) rounds the exact product dt*100 (60 bits), real*4 WRF the double product.
+  const double dt = double(wrf_time::real_time<real>(dtInterval));
+  num = int(nint_dt(dt));
   den = precision;
   dtInterval = wrf_time::make(0, num, den);
 
