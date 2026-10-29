@@ -114,8 +114,8 @@ enforce them:
   Intel-made references there.
 - **Threads:** the CPU result does not depend on `OMP_NUM_THREADS`. Every kernel writes its own grid
   points, the radiation columns are independent (McICA seeds from each column's pressures), and the solution
-  has no floating-point sums or maxima over the domain: the w_damping CFL maxima (WRF uses them only for
-  the adaptive time step, which is not ported) and the `diag.csv` sums use `Reducer`, which sums each level in a fixed order
+  has no floating-point sums over the domain: the w_damping CFL maxima of the adaptive time step and the
+  `diag.csv` sums use `Reducer`, which sums each level in a fixed order
   and then the levels in order, whatever the thread count.
 - **CUDA:** nvcc's defaults (`-prec-div=true`, `-prec-sqrt=true`, `-ftz=false`); device code contracts
   FMAs (`--fmad=true`) except RRTMG's batch kernels, Thompson and the physics drivers (`--fmad=false`). GPU
@@ -153,7 +153,7 @@ python3 tools/wrf2cppwrf.py /path/to/wrf/run/namelist.input -o run.ini --format 
 Key translator features:
 - **f90nml-Free Parser:** Pure Python tokenizer supporting standard Fortran namelist syntax, repetition counts (`3*0`), exponents (`1.0d-4`), and inline comments.
 - **Complete Option Coverage:**
-  - **Time & I/O:** Translates `run_days/hours/minutes/seconds` (or `start_*`/`end_*` timestamps), `time_step` + `time_step_fract_num/den`, `time_step_sound`, `history_interval_s` / `history_interval`, and `restart` / `restart_interval`.
+  - **Time & I/O:** Translates `run_days/hours/minutes/seconds` (or `start_*`/`end_*` timestamps), `time_step` + `time_step_fract_num/den`, `time_step_sound`, `use_adaptive_time_step` with its &domains options, `history_interval_s` / `history_interval`, and `restart` / `restart_interval`.
   - **Dynamics (`[dyn]`):** Translates `diff_opt` (`0..2`), `km_opt` (`1..4`), `c_s`, `c_k`, `mix_isotropic`, `mix_upper_bound`, `mix_full_fields`, `tke_drag_coefficient`, `tke_heat_flux`, `tke_upper_bound`, `moist_mix2_off`, `scalar_mix2_off`, `tke_mix2_off`, `moist_mix6_off`, `scalar_mix6_off`, `tke_mix6_off`, `diff_6th_opt` (`0..2`), `diff_6th_factor`, `w_damping` (`0, 1`), `w_crit_cfl`, `damp_opt` (`0..3`), `zdamp`, `dampcoef`, `khdif`, `kvdif`, `moist_adv_opt` (`0, 1`), `scalar_adv_opt` (`0, 1`), `tke_adv_opt` (`0, 1`), `prandtl` ($\to$ `pr_inv`), `top_lid`, `h_mom_adv_order` ($\to$ `h_adv_order`), `v_mom_adv_order` ($\to$ `v_adv_order`), `epssm`, `smdiv`, `emdiv`, `etac`, `hybrid_opt` (`0..2`), and `hypsometric_opt` (`1, 2`).
   - **Physics (`[phys]` & `[moist]`):** Translates `mp_physics` (`0, 1, 6, 8`), `mp_tend_lim`, `hail_opt` (`0, 1`), `use_mp_re` (`0, 1`), `sf_sfclay_physics` (`0, 1, 2, 5`), `sf_surface_physics` (`0, 2, 4`), `num_soil_layers` (`4`), `opt_thcnd` (`1, 2`; Noah), `bl_pbl_physics` (`0, 1, 2, 5`), `cu_physics` (`0, 1, 3, 16`), `ishallow` (`0, 1`), `clos_choice` (`0..16`), `kfeta_trigger` (`1, 3`), `convtrans_avglen_m`, `ra_lw_physics` (`0, 4`), `ra_sw_physics` (`0, 4`), `radt`, `bldt`, `cudt`, `isfflx` (`0, 1`), `ysu_topdown_pblmix` (`0, 1`), `kim_tofd`, `tofd_factor`, `rdmaxalb`, `usemonalb` (every LSM: landuse_init keeps the wrfinput `ALBBCK`), `rdlai2d` (Noah; an urban point with `VEGFRA = 0` and `LAI <= 0` stops the run: WRF's result there is undefined), `icloud` (`0, 1`), `cldovrlp` (`1..5`), `idcor` (`0, 1`), `o3input` (`0, 2`), `ghg_input` (`0, 1`), `aer_opt` (`0`), and all 27 `&noah_mp` options when `sf_surface_physics = 4`.
   - **Nested Domains (`max_dom > 1`):** Translates multi-domain real-data namelists into `[domains]` (`max_dom`, `feedback`, `smooth_option`, `save_topo_from_real`, `blend_width`, `spec_bdy_width`, and `d02` placement keys) and per-child `[d02]`..`[d0N]` sections (`wrfinput`, `dt`, `out_interval`, `diag_interval`, `parent_id`, `i_parent_start`, `j_parent_start`, `parent_grid_ratio`, `parent_time_step_ratio`, and per-domain dynamics overrides).
@@ -245,6 +245,11 @@ Every option supported by the CPPWRF runtime is cataloged below, along with its 
 | `[case]` | `xa` | double | `5.0` | Hill half-width in grid points (`em_hill2d_x`; WRF hard-codes 5) | `xa` |
 | `[time]` | `dt` | double | *required* | Large time step in seconds ($\Delta t$) | `time_step` |
 | `[time]` | `time_step_sound` | integer | `0` (auto) | Acoustic small steps per RK stage (0 = auto-computed CFL rule) | `time_step_sound` |
+| `[time]` | `adaptive` | bool | `false` | Adaptive time step (real-data, single domain; `dt` is then replaced by the starting step) | `use_adaptive_time_step` |
+| `[time]` | `target_cfl`, `target_hcfl`, `max_step_increase_pct` | double, double, integer | `1.2`, `0.84`, `5` | Adaptive step: target vertical / horizontal CFL and the largest increase per step | same names (`&domains`) |
+| `[time]` | `starting_time_step`, `max_time_step`, `min_time_step` (and `_den`) | integer | `-1` (4, 8, 3 × min(dx,dy)/1000 s) | Adaptive step limits in seconds (a fraction with `_den` > 0) | same names (`&domains`) |
+| `[time]` | `step_to_output_time` | bool | `true` | Adaptive step: land on the history times | `step_to_output_time` |
+| `[time]` | `history_interval_s`, `interval_seconds` | integer | `3600`, `21600` | Adaptive step: the history interval (seconds) and the boundary interval it steps to | `history_interval*`, `interval_seconds` |
 | `[dyn]` | `khdif`, `kvdif` | double | `0.0` | Constant horizontal/vertical eddy diffusion in $m^2/s$ | `khdif`, `kvdif` |
 | `[dyn]` | `diff_opt` | integer | `0` | Diffusion option (0 = off, 1 = coordinate-surface diffusion, 2 = physical-space diffusion) | `diff_opt` |
 | `[dyn]` | `km_opt` | integer | `1` | Eddy viscosity closure (1 = constant, 2 = 1.5-order TKE, 3 = 3D Smagorinsky, 4 = 2D Smagorinsky) | `km_opt` |

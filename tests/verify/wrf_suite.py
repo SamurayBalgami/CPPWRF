@@ -157,6 +157,18 @@ CASES = [
     ("real_p4_fp32_1h", "cuda", "configs/real_p4_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P4/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-3, "W": 7e-2, "THM": 3e-5, "QV": 2e-3}),
+    # B01 = P4 with the adaptive time step (use_adaptive_time_step: dt from the CFL numbers of each step, stepping to the
+    # history times; 1 h: steps of 60 to 120 s): bit-identical for 3 minutes (history every minute) and 1 h
+    ("real_b01_r8_fp64_cpu", "cpu_dp", "configs/real_b01_r8.ini", [],
+     f"{WR}/run_B01_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
+    ("real_b01_r8_fp64_cpu_1h", "cpu_dp", "configs/real_b01_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "time.history_interval_s=600"],
+     f"{WR}/run_B01_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0}),
+    ("real_b01_r8_fp64_cuda_1h", "cuda_dp", "configs/real_b01_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "time.history_interval_s=600"],
+     f"{WR}/run_B01_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 6e-4, "W": 1e-2, "THM": 8e-6, "QV": 5e-4}),
     # KESSKF = P4 with Kessler (mp_physics = 1): Kain-Fritsch rain into Kessler's sedimentation (nfall > 1),
     # bit-identical for 3 steps and 1 h
     ("real_kesskf_r8_fp64_cpu", "cpu_dp", "configs/real_kesskf_r8.ini", [],
