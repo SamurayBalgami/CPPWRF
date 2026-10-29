@@ -1,9 +1,8 @@
 #pragma once
 // Specified lateral boundary conditions of a real-data run (WRF specified = .true.,
 // spec_bdy_width = 5, spec_zone = 1, relax_zone = 4), device-resident and single source.
-// The point formulas and index ranges are those of src/bdy/bdy_kernels.hpp (the port of
-// share/module_bc.F and dyn_em/module_bc_em.F, differential-tested against the Fortran); here
-// they are restructured as parallel kernels over the boundary ring.
+// The port of share/module_bc.F and dyn_em/module_bc_em.F as parallel kernels over the boundary
+// ring; tests/dyn/lateral_bc compares every call with WRF's own routines (specified and nested).
 //
 // Call order inside a time step (WRF solve_em), done by the dycore when a LateralBC is attached:
 //   start of step: advance_time(dt)                       (dtbc = dtbc + dt)

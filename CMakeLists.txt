@@ -207,7 +207,7 @@ option(CPPWRF_DIFF_TESTS "Register the WRF-Fortran differential tests with ctest
 if(CPPWRF_DIFF_TESTS)
   find_package(OpenMP REQUIRED COMPONENTS CXX)  # the CPU reference drivers (also in CUDA builds)
   add_subdirectory(tests/phys)
-  foreach(t dyn/diffusion phys/suite nest)  # need WRF_DIR (a WRF v4.8.0 -r8 build); nest also NETCDF
+  foreach(t dyn/diffusion dyn/lateral_bc phys/suite nest)  # need WRF_DIR (a WRF v4.8.0 -r8 build); nest also NETCDF
     string(REPLACE "/" "_" tname "diff_${t}")
     add_test(NAME ${tname} COMMAND bash ${CMAKE_SOURCE_DIR}/tests/${t}/run_test.sh WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     set_tests_properties(${tname} PROPERTIES LABELS diff SKIP_RETURN_CODE 77)  # 77: no WRF build / runs
