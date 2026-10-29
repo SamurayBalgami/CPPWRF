@@ -7,6 +7,8 @@ BUILD_DIR="${DIFF_TEST_BUILD_DIR:-${SCRIPT_DIR}/build}"
 HEAVY="${REPO_ROOT}/tools/heavy.sh"
 [ -n "${WRF_DIR:-}" ] || { echo "SKIP: set WRF_DIR to a WRF v4.8.0 -r8 build"; exit 77; }  # ctest: skipped
 WRF_R8="${WRF_DIR}"
+HAVE_CUDA=0
+if command -v nvcc &>/dev/null && nvidia-smi &>/dev/null; then HAVE_CUDA=1; fi
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
@@ -44,13 +46,17 @@ echo "======================================================================"
 echo "======================================================================"
 echo " 3. Building C++ CUDA FP64 Driver (nvcc -std=c++20 -DCPPWRF_USE_CUDA -DCPPWRF_DOUBLE)"
 echo "======================================================================"
-"${HEAVY}" nvcc -std=c++20 -DCPPWRF_DOUBLE -DCPPWRF_USE_CUDA -O3 \
-  --expt-relaxed-constexpr --extended-lambda \
-  -I "${REPO_ROOT}/src" \
-  -x cu "${SCRIPT_DIR}/driver_diffusion_cuda.cu" \
-  -x cu "${REPO_ROOT}/src/core/backend.cpp" \
-  -lmvec \
-  -o "${BUILD_DIR}/driver_diffusion_cuda"
+if [ "${HAVE_CUDA}" = 1 ]; then
+  "${HEAVY}" nvcc -std=c++20 -DCPPWRF_DOUBLE -DCPPWRF_USE_CUDA -O3 \
+    --expt-relaxed-constexpr --extended-lambda \
+    -I "${REPO_ROOT}/src" \
+    -x cu "${SCRIPT_DIR}/driver_diffusion_cuda.cu" \
+    -x cu "${REPO_ROOT}/src/core/backend.cpp" \
+    -lmvec \
+    -o "${BUILD_DIR}/driver_diffusion_cuda"
+else
+  echo "CUDA not detected; skipping the GPU driver."
+fi
 
 echo "======================================================================"
 echo " 4. Generating Physical 3D Test Inputs (Terrain, Map Factors, Shear, Steps)"
@@ -72,17 +78,21 @@ echo " 6. Running CPPWRF C++ CPU Driver"
 echo "======================================================================"
 "${HEAVY}" "${BUILD_DIR}/driver_diffusion_cpp" "${INPUT_BIN}" "${CPP_OUT}"
 
-echo "======================================================================"
-echo " 7. Running CPPWRF C++ CUDA Driver"
-echo "======================================================================"
-"${HEAVY}" "${BUILD_DIR}/driver_diffusion_cuda" "${INPUT_BIN}" "${CUDA_OUT}"
+if [ "${HAVE_CUDA}" = 1 ]; then
+  echo "======================================================================"
+  echo " 7. Running CPPWRF C++ CUDA Driver"
+  echo "======================================================================"
+  "${HEAVY}" "${BUILD_DIR}/driver_diffusion_cuda" "${INPUT_BIN}" "${CUDA_OUT}"
+fi
 
 echo "======================================================================"
-echo " 8. Comparing Fortran vs C++ CPU Outputs (Tolerance 1e-12)"
+echo " 8. Comparing Fortran vs C++ CPU Outputs (bit-identical, --tol 0)"
 echo "======================================================================"
 python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0
 
-echo "======================================================================"
-echo " 9. Comparing Fortran vs C++ CUDA Outputs (Tolerance 1e-12)"
-echo "======================================================================"
-python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CUDA_OUT}" --tol 1e-12
+if [ "${HAVE_CUDA}" = 1 ]; then
+  echo "======================================================================"
+  echo " 9. Comparing Fortran vs C++ CUDA Outputs (Tolerance 1e-12)"
+  echo "======================================================================"
+  python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CUDA_OUT}" --tol 1e-12
+fi
