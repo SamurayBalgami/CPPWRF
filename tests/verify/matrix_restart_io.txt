@@ -1,5 +1,6 @@
 # Restart, nest and output-option variants for tools/gcp/gcp_matrix.sh (WRF and CPPWRF at tolerance 0):
-#   tools/gcp/gcp_matrix.sh tests/verify/matrix_restart_io.txt --data matrix_data.tar,matrix_nest.tar,matrix_n3x.tar,matrix_a01su.tar,matrix_ideal.tar
+#   tools/gcp/gcp_matrix.sh tests/verify/matrix_restart_io.txt \
+#     --data matrix_data.tar,matrix_nest.tar,matrix_n3x.tar,matrix_gwd.tar,matrix_r31v2.tar,matrix_a01su.tar,matrix_ideal.tar
 # rs_*: restart files in the middle of the run, then both models resumed from WRF's wrfrst (run.resume): the
 #       history and restart files of the straight and the resumed runs are compared with WRF's, and each resumed run
 #       with its straight run. n_*: the two-way nests N3s, N3sib (siblings) and N3gc (d03 inside d02) with each scheme,
