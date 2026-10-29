@@ -19,6 +19,8 @@ port_a07_data.tar
 v05_suite_refs.tar
 # the same for the MYNNX1 / MYNNX2 cases (with their steps/ references)
 v05_suite_refs2.tar
+# the iofields_filename files (myoutfields.txt) of the KESSKF, MYNNSF1/2 and MYNNX1/2 reference runs, next to them
+v05_iofields.tar
 # the references of run_wrf_files_test.sh and ideal_files_test.py, which the full VM suite runs (tools/gcp/stage_files_data.py)
 v05_files_data.tar
 # its files that are links on the reference machine, as files (stage_files_data.py --links-only)

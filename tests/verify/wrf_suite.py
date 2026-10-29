@@ -18,6 +18,7 @@ Exit status 0 = every selected case PASSed; a case whose reference is missing is
 --allow-skip. The last line counts the results.
 """
 import argparse
+import filecmp
 import glob
 import os
 import re
@@ -562,8 +563,11 @@ def config_vs_namelist(cfg, sets, nml):
     # input directory
     skip = {("run", "run_time")} | (set() if os.path.exists(os.path.join(os.path.dirname(nml), "wrfinput_d01"))
                                     else {("real", "dir")})
+    def same(a, b):  # files by their content (a reference directory's copy of a linked input_sounding)
+        a, b = norm(a), norm(b)
+        return a == b or (a.startswith("/") and os.path.isfile(a) and os.path.isfile(b) and filecmp.cmp(a, b, False))
     return [f"{s}.{k}: namelist {v} configuration {conf[s][k]}" for s, kv in gen.items() if s not in ("output", "restart")
-            for k, v in kv.items() if (s, k) not in skip and k in conf.get(s, {}) and norm(v) != norm(conf[s][k])]
+            for k, v in kv.items() if (s, k) not in skip and k in conf.get(s, {}) and not same(v, conf[s][k])]
 
 
 def exact_case(refs, out, t, sets):
@@ -584,6 +588,10 @@ def exact_case(refs, out, t, sets):
         mine = glob.glob(os.path.join(out, f"wrfout_{d}_*")) + glob.glob(os.path.join(out, d, f"wrfout_{d}_*"))
         dif, n = exact.compare_stream(mine, [w], subset=True, until=final[0],
                                       global_atts=os.path.exists(os.path.join(os.path.dirname(w), "namelist.input")))
+        with netCDF4.Dataset(w) as ds:  # WRF leaves RQCBLTEN / RQIBLTEN uninitialised without qc / qi
+            for v, q in (("RQCBLTEN", "QCLOUD"), ("RQIBLTEN", "QICE")):
+                if q not in ds.variables:
+                    dif.pop(v, None)
         frames += n
         bad += [f"{d}.{k}: {v}" for k, v in dif.items()]
     return bad, f"{frames} frames, {nvars} variables"
