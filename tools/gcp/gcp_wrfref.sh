@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # WRF reference runs for the suite on a Google Compute Engine spot VM (Intel; see gcp_run.sh).
 #
-#   CPPWRF_GCP_PROJECT=... CPPWRF_GCP_BUCKET=... tools/gcp/gcp_wrfref.sh REFS.txt [--machine TYPE] [--data OBJ,...]
+#   CPPWRF_GCP_PROJECT=... CPPWRF_GCP_BUCKET=... tools/gcp/gcp_wrfref.sh REFS.txt [--machine TYPE] [--zones Z,...] [--data OBJ,...]
 #       [--files NAME,...] [--cases NAME,...] [--runs DIR] [--out DIR] [--check-only]
 #
 # REFS.txt: one reference per line "NAME BASE_RUN WRF_EXE section.key=value ..." as gcp_matrix.sh's variants
@@ -11,20 +11,22 @@
 # of the committed HEAD against them. The references are unpacked into --runs (default $CPPWRF_WRF_RUNS, an
 # existing run_NAME stops the script), the links to the VM's inputs pointing to the files of DIR/BASE_RUN and
 # wrf.exe to $WRF_R8 / $WRF_R8D8 (default ~/wrf_real/WRF-4.8.0-r8[d8]/main/wrf.exe). --check-only: only the tests
-# on the VM (the references are neither uploaded nor unpacked).
+# on the VM (the references are neither uploaded nor unpacked). Machine: tools/gcp/gcp_pick.py's cheapest Intel
+# spot VM with 22 vCPUs and its zone now (--machine fixes the type, --zones limits the zones).
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$REPO/tools/gcp/pick_lib.sh"
 : "${CPPWRF_GCP_PROJECT:?set CPPWRF_GCP_PROJECT}" "${CPPWRF_GCP_BUCKET:?set CPPWRF_GCP_BUCKET}"
 P=$CPPWRF_GCP_PROJECT BK=$CPPWRF_GCP_BUCKET
 REFS=$1; shift
-MACHINE=c3-highcpu-22 DATA=matrix_data.tar OUT= FILES= CASES= FETCH=1 RUNS=${CPPWRF_WRF_RUNS:-$HOME/wrf_real480}
+MACHINE= DATA=matrix_data.tar OUT= FILES= CASES= FETCH=1 RUNS=${CPPWRF_WRF_RUNS:-$HOME/wrf_real480}
 WRF_R8=${WRF_R8:-$HOME/wrf_real/WRF-4.8.0-r8/main/wrf.exe} WRF_R8D8=${WRF_R8D8:-$HOME/wrf_real/WRF-4.8.0-r8d8/main/wrf.exe}
-ZONES=us-central1-a,us-central1-b,us-central1-c,us-central1-f,us-east1-b,us-east1-c,us-east1-d,us-east4-a,us-east4-b,us-east4-c
+ZONES=
 while [ $# -gt 0 ]; do
   case $1 in
-    --machine) MACHINE=$2; shift 2 ;; --data) DATA=$2; shift 2 ;; --out) OUT=$2; shift 2 ;;
+    --machine) MACHINE=$2; shift 2 ;; --zones) ZONES=$2; shift 2 ;; --data) DATA=$2; shift 2 ;; --out) OUT=$2; shift 2 ;;
     --files) FILES=$2; shift 2 ;; --cases) CASES=$2; shift 2 ;; --runs) RUNS=$2; shift 2 ;;
-    --check-only) FETCH=0; shift ;; *) sed -n '2,15p' "$0"; exit 2 ;;
+    --check-only) FETCH=0; shift ;; *) sed -n '2,17p' "$0"; exit 2 ;;
   esac
 done
 names=$(grep -v '^\s*#' "$REFS" | awk 'NF {print $1}')
@@ -38,18 +40,18 @@ gcloud storage cp "$REFS" "gs://$BK/src/$STAMP.refs.txt" --project "$P" -q
 ZONE=
 cleanup() { [ -n "$ZONE" ] && gcloud compute instances delete "$VM" --zone "$ZONE" --project "$P" -q 2>/dev/null || true; }
 trap cleanup EXIT
-for z in ${ZONES//,/ }; do
-  if gcloud compute instances create "$VM" --project "$P" --zone "$z" --machine-type "$MACHINE" \
+while read -r -u 3 M z DISK; do
+  if gcloud compute instances create "$VM" --project "$P" --zone "$z" --machine-type "$M" \
        --provisioning-model=SPOT --instance-termination-action=DELETE --max-run-duration=4h \
-       --image-family=debian-13 --image-project=debian-cloud --boot-disk-size=60GB --boot-disk-type=pd-balanced \
+       --image-family=debian-13 --image-project=debian-cloud --boot-disk-size=60GB --boot-disk-type=$DISK \
        --scopes=storage-rw --metadata-from-file=startup-script="$REPO/tools/gcp/remote_wrfref.sh" \
        --metadata="^@^bucket=$BK@src=src/$STAMP.tar.gz@data=$DATA@result=$RES@refs=src/$STAMP.refs.txt@files=$FILES@cases=$CASES@fetch=$FETCH" \
-       > "$OUT/create.log" 2>&1; then ZONE=$z; break; fi
+       > "$OUT/create.log" 2>&1; then ZONE=$z MACHINE=$M; break; fi
   why=$(grep -oE "stockout|ZONE_RESOURCE_POOL_EXHAUSTED|Quota '[A-Z0-9_]*'|does not exist|not available|not supported" "$OUT/create.log" | head -1)
-  echo "[gcp_wrfref] $z: ${why:-error}"
+  echo "[gcp_wrfref] $M $z: ${why:-error}"
   [ -n "$why" ] || { cat "$OUT/create.log"; exit 1; }  # not a capacity or quota problem
-done
-[ -n "$ZONE" ] || { echo "[gcp_wrfref] no zone has $MACHINE now"; cat "$OUT/create.log"; exit 1; }
+done 3< <(vm_candidates "$MACHINE" 22 1 "$DATA" "$ZONES")
+[ -n "$ZONE" ] || { echo "[gcp_wrfref] no machine and zone available now"; cat "$OUT/create.log"; exit 1; }
 echo "[gcp_wrfref] $VM ($MACHINE spot, $ZONE): results to gs://$BK/$RES"
 gone=0
 while :; do
