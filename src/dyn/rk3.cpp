@@ -55,9 +55,11 @@ void RK3::set_lateral_bc(LateralBC* bc) {
 #endif
 }
 
+// In WRF's REAL, as adaptive_sound_steps: 300*dt/spacing - 0.01 can land on either side of an
+// integer (dx 1000 m, dt 6.7 s: 1.99999... in double -> 4 steps, 2 in float -> 6 steps)
 int RK3::auto_sound_steps(double dt, double dx, double dy) {
-  const double spacing = std::min(dx, dy);  // solve_em: also in 2-D (dy of the namelist)
-  return std::max(2 * (int(300.0 * dt / spacing - 0.01) + 1), 4);
+  const real spacing = std::min(real(dx), real(dy));  // solve_em: also in 2-D (dy of the namelist)
+  return std::max(2 * (int(real(300.) * real(dt) / spacing - real(0.01)) + 1), 4);
 }
 
 int RK3::adaptive_sound_steps(real dt, real dx, real dy, real max_msft) {
