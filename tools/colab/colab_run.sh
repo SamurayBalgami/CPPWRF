@@ -2,7 +2,7 @@
 # Run CPPWRF's GPU suite cases (and timings) on a Google Colab GPU VM with the `colab` CLI
 # (google-colab-cli, authorised once with `colab usage`). The VM is always released at the end.
 #
-#   tools/colab/colab_run.sh [--gpu T4|L4|G4|A100|H100] [--cases NAME,...] [--bench NAME,...] [--keep] [--out DIR]
+#   tools/colab/colab_run.sh [--gpu T4|L4|G4|A100|H100] (default G4: RTX PRO 6000, the fastest per credit) [--cases NAME,...] [--bench NAME,...] [--keep] [--out DIR]
 #
 #   --cases  wrf_suite.py cases to run on the VM against the WRF references (default: the GPU core set below)
 #   --bench  suite cases to run again without history output for the stepping time (default: P1 and D0)
@@ -17,7 +17,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_WRF_RUNS:?set CPPWRF_WRF_RUNS}"
 SCRATCH=${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}
-GPU=L4 KEEP=0 OUT= MAX_UPLOAD_MIN=${MAX_UPLOAD_MIN:-20}
+GPU=G4 KEEP=0 OUT= MAX_UPLOAD_MIN=${MAX_UPLOAD_MIN:-20}
 CASES=real_r1_fp64_cuda,real_p1_r8_fp64_cuda_1h,real_p1_fp32_1h,real_p4_r8_fp64_cuda_1h,real_p8_r8_fp64_cuda_1h,real_t6_r8_fp64_cuda_1h,real_d0_r8_fp64_cuda_1h,real_nmp1_r8_fp64_cuda_1h
 BENCH=real_p1_r8_fp64_cuda_1h,real_p1_fp32_1h,real_d0_r8_fp64_cuda_1h
 while [ $# -gt 0 ]; do

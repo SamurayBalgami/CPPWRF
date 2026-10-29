@@ -2,6 +2,7 @@
 # WRF-vs-CPPWRF namelist-variant matrix on a Google Compute Engine spot VM (Intel; see gcp_run.sh).
 #
 #   CPPWRF_GCP_PROJECT=... CPPWRF_GCP_BUCKET=... tools/gcp/gcp_matrix.sh VARIANTS.txt [--machine TYPE] [--data OBJ,...]
+#   (default machine: the smallest c3-highcpu with a core per variant line, at least 8)
 #
 # VARIANTS.txt: one variant per line "NAME BASE_RUN WRF_EXE section.key=value ..." (BASE_RUN a run directory of
 # the data tar's runs/, WRF_EXE a file of its wrf/: wrf_r8.exe or wrf_r8d8.exe). Each variant runs 3 minutes in
@@ -14,11 +15,16 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_GCP_PROJECT:?set CPPWRF_GCP_PROJECT}" "${CPPWRF_GCP_BUCKET:?set CPPWRF_GCP_BUCKET}"
 P=$CPPWRF_GCP_PROJECT BK=$CPPWRF_GCP_BUCKET
 VARS=$1; shift
-MACHINE=c3-highcpu-44 DATA=matrix_data.tar OUT=
+MACHINE= DATA=matrix_data.tar OUT=
 ZONES=us-central1-a,us-central1-b,us-central1-c,us-central1-f,us-east1-b,us-east1-c,us-east1-d,us-east4-a,us-east4-b,us-east4-c
 while [ $# -gt 0 ]; do
   case $1 in --machine) MACHINE=$2; shift 2 ;; --data) DATA=$2; shift 2 ;; --out) OUT=$2; shift 2 ;; *) sed -n '2,10p' "$0"; exit 2 ;; esac
 done
+if [ -z "$MACHINE" ]; then  # one core per variant line (each runs WRF, then CPPWRF, single-threaded); at least 8 for the build
+  N=$(grep -cvE '^[[:space:]]*(#|$)' "$VARS" || true)
+  for c in 8 22 44 88 176; do MACHINE=c3-highcpu-$c; [ "$N" -le "$c" ] && break; done
+fi
+echo "[gcp_matrix] $MACHINE for $(grep -cvE '^[[:space:]]*(#|$)' "$VARS" || true) variants"
 STAMP=$(date +%Y%m%d-%H%M%S)-$(printf %04x $RANDOM) VM=cppwrf-matrix-$STAMP RES=results/matrix-$STAMP
 OUT=${OUT:-${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}/gcp/matrix-$STAMP}; mkdir -p "$OUT"
 git -C "$REPO" archive --format=tar.gz -o "$OUT/src.tar.gz" HEAD
