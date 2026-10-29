@@ -1015,6 +1015,29 @@ class TestWrfNamelistSemantics(unittest.TestCase):
                      self.FULL.replace("&dynamics ", "&dynamics damp_opt = 0, zdamp = 3000., ")):
             self.assertEqual(self.errors(text), [], text)
 
+    def test_single_entry_options(self):
+        # r34_t1_*: WRF's namelist read stops on more values than a single-entry option (Registry "1") holds
+        for opt in ("isfflx = 1, 1", "cldovrlp = 2, 2", "bl_mynn_closure = 2.6, 2.6"):
+            text = self.FULL.replace("&physics ", f"&physics {opt}, ")
+            self.assertTrue(any("takes one value" in e for e in self.errors(text)), opt)
+        for opt in ("isfflx = 1", "cudt = 5, 5"):  # cudt: max_domains entries
+            self.assertEqual(self.errors(self.FULL.replace("&physics ", f"&physics {opt}, ")), [], opt)
+
+    def test_namelist_outside_real_dir(self):
+        # the model reads the output options and global attributes from real.dir/namelist.input unless
+        # output.wrf_namelist names the translated namelist
+        tmp = tempfile.mkdtemp()
+        for d in ("a", "b"):
+            os.makedirs(os.path.join(tmp, d))
+            with open(os.path.join(tmp, d, "namelist.input"), "w") as f:
+                f.write(self.FULL)
+        nml = os.path.join(tmp, "a", "namelist.input")
+        for real_dir, expect in ((None, None), (os.path.join(tmp, "a"), None), (os.path.join(tmp, "b"), nml)):
+            t = WrfTranslator(parse_namelist(self.FULL), namelist_path=nml, real_dir=real_dir)
+            sec = t.translate()
+            self.assertEqual(t.errors, [])
+            self.assertEqual(sec["output"].get("wrf_namelist"), expect, real_dir)
+
     def test_output_file_names(self):
         # history_outname / rst_outname: the model names its files as construct_filename2a does; a directory part
         # (CPPWRF writes into output.dir) or an empty name is an error

@@ -654,6 +654,7 @@ class WrfTranslator:
         self.notices: List[str] = []
         self.used_keys: Set[Tuple[str, str]] = set()
         self._max_dom: int = 1
+        self._real_nml: Optional[str] = None  # real.dir's namelist.input (real cases)
 
     def warn(self, msg: str):
         self.warnings.append(msg)
@@ -700,6 +701,16 @@ class WrfTranslator:
     def has_opt(self, group: str, key: str) -> bool:
         grp = self.nml.get(group, {})
         return key in grp and len(grp[key]) > 0
+
+    def check_entry_counts(self):
+        """WRF's namelist read (config_reads.inc, READ ... ERR=9201) stops on more values than a single-entry option
+        holds."""
+        for group, opts in self.nml.items():
+            for key, vals in opts.items():
+                reg = REGISTRY_DEFAULTS.get(key)
+                if reg and reg[0] == group and reg[2] == "1" and len(vals) > 1:
+                    self.error(f"WRF &{group}.{key} takes one value, the namelist gives {len(vals)}; "
+                               "WRF's namelist read stops with an error.")
 
     def pad_max_domains(self):
         """A max_domains option with fewer entries than max_dom: WRF's namelist read leaves the missing domains at the
@@ -847,6 +858,7 @@ class WrfTranslator:
         else:
             max_dom = max_dom_raw
         self._max_dom = max_dom
+        self.check_entry_counts()
         self.pad_max_domains()
         self.apply_physics_suite()
 
@@ -1002,6 +1014,7 @@ class WrfTranslator:
             if not r_dir:
                 r_dir = os.path.dirname(self.namelist_path) if self.namelist_path else "."
             r_dir_abs = os.path.abspath(os.path.expanduser(r_dir))
+            self._real_nml = os.path.join(r_dir_abs, "namelist.input")
             wrf_runs = os.environ.get("CPPWRF_WRF_RUNS")
             if wrf_runs:
                 wrf_runs_abs = os.path.abspath(os.path.expanduser(wrf_runs))
@@ -1897,6 +1910,11 @@ class WrfTranslator:
                            "writes NetCDF (2).")
         if case_name.startswith("em_") and self.namelist_path:
             # ideal cases: the history / restart files take WRF's namelist values (radt, cudt, iofields, ...)
+            sections["output"]["wrf_namelist"] = os.path.abspath(self.namelist_path)
+        elif self.namelist_path and self._real_nml and \
+                os.path.realpath(self.namelist_path) != os.path.realpath(self._real_nml):
+            # the model reads the output options and global attributes from real.dir's namelist.input unless told
+            # otherwise: with another input directory they come from the translated namelist, as in wrf.exe
             sections["output"]["wrf_namelist"] = os.path.abspath(self.namelist_path)
         self.check_history_stream()
         dt_val = float(sections["time"]["dt"])
