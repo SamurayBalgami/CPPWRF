@@ -12,7 +12,7 @@
 # existing run_NAME stops the script), the links to the VM's inputs pointing to the files of DIR/BASE_RUN and
 # wrf.exe to $WRF_R8 / $WRF_R8D8 (default ~/wrf_real/WRF-4.8.0-r8[d8]/main/wrf.exe). --check-only: only the tests
 # on the VM (the references are neither uploaded nor unpacked). Machine: tools/gcp/gcp_pick.py's cheapest Intel
-# spot VM with 22 vCPUs and its zone now (--machine fixes the type, --zones limits the zones).
+# spot VM with a vCPU per reference line (at least 8) and its zone now (--machine fixes the type, --zones limits the zones).
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$REPO/tools/gcp/pick_lib.sh"
@@ -30,6 +30,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 names=$(grep -v '^\s*#' "$REFS" | awk 'NF {print $1}')
+N=$(wc -w <<< "$names") NEED=$(( N > 8 ? N : 8 ))  # the references run in parallel, one serial WRF each
 [ $FETCH = 0 ] || for n in $names; do [ ! -e "$RUNS/run_$n" ] || { echo "[gcp_wrfref] $RUNS/run_$n exists"; exit 1; }; done
 STAMP=$(date +%Y%m%d-%H%M%S)-$(printf %04x $RANDOM) VM=cppwrf-wrfref-$STAMP RES=results/wrfref-$STAMP
 OUT=${OUT:-${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}/gcp/wrfref-$STAMP}; mkdir -p "$OUT"
@@ -50,7 +51,7 @@ while read -r -u 3 M z DISK; do
   why=$(grep -oE "stockout|ZONE_RESOURCE_POOL_EXHAUSTED|Quota '[A-Z0-9_]*'|does not exist|not available|not supported" "$OUT/create.log" | head -1)
   echo "[gcp_wrfref] $M $z: ${why:-error}"
   [ -n "$why" ] || { cat "$OUT/create.log"; exit 1; }  # not a capacity or quota problem
-done 3< <(vm_candidates "$MACHINE" 22 1 "$DATA" "$ZONES")
+done 3< <(vm_candidates "$MACHINE" $NEED 1 "$DATA" "$ZONES")
 [ -n "$ZONE" ] || { echo "[gcp_wrfref] no machine and zone available now"; cat "$OUT/create.log"; exit 1; }
 echo "[gcp_wrfref] $VM ($MACHINE spot, $ZONE): results to gs://$BK/$RES"
 gone=0
