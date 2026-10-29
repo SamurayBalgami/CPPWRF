@@ -21,6 +21,8 @@ class NcOut {
   void att(const std::string& name, int v);
   void att_f(const std::string& name, float v);
   void att_d(const std::string& name, double v);
+  // a global attribute of a file in data mode (redef, put, enddef: WRF's ext_ncd_put_dom_ti in a written file)
+  void reatt_real(const std::string& name, double v, int real_bytes);
   // define a variable; dims slowest first, e.g. {"Time","bottom_top","south_north","west_east"}
   void var(const std::string& name, char type /* 'f','d','i','c' */, const std::vector<std::string>& dims,
            const std::map<std::string, std::string>& satts, int field_type);

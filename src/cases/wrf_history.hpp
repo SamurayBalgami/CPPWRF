@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "cases/model.hpp"
+#include "core/wrf_time.hpp"
 #include "io/config.hpp"
 #include "phys/driver/phy_prep.hpp"
 
@@ -57,6 +58,11 @@ class WrfHistory {
   void restart_slopes();
   // a run resumed from a restart file at time_sec: START_DATE is the restart time
   void set_restart_time(double time_sec) { restart_sec_ = time_sec; }
+  // adaptive time step: the exact time since the simulation start of the next write (Times = its whole seconds,
+  // XTIME = minutesSinceSimulationStart), and the history alarm of the next write_restart (ringing, seconds to the
+  // next ring)
+  void set_exact_time(const wrf_time::Interval& t) { exact_ = t; has_exact_ = true; }
+  void set_history_alarm(int ring, long secs) { hist_alarm_ring_ = ring; hist_alarm_secs_ = secs; }
 
  private:
   // value() of a stream variable; ideal x-z runs repeat the model's row (WRF: e_sn = 3, two identical rows)
@@ -92,6 +98,11 @@ class WrfHistory {
   long prep_step_ = -1;
   double restart_sec_ = 0;
   double time_sec_ = 0;
+  bool has_exact_ = false;
+  wrf_time::Interval exact_;
+  int hist_alarm_ring_ = -1;
+  long hist_alarm_secs_ = 0;
+  std::string date_of(double time_sec) const;  // Times of a write
 
 };
 

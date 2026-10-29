@@ -105,6 +105,11 @@ void write_global_atts(NcOut& nc, const WrfConfig& c, const DomainAtts& d, Strea
     ci("SHCU_PHYSICS", "shcu_physics"); ci("MFSHCONV", "mfshconv"); ci("FEEDBACK", "feedback");
     ci("SMOOTH_OPTION", "smooth_option"); cr("SWRAD_SCAT", "swrad_scat"); ci("W_DAMPING", "w_damping");
     r("DT", d.dt);
+    if (d.adaptive) {  // output_wrf.F:704-708
+      r("ADAPT_DT_START", d.adapt_dt_start);
+      r("ADAPT_DT_MAX", d.adapt_dt_max);
+      r("ADAPT_DT_MIN", d.adapt_dt_min);
+    }
     cr("RADT", "radt"); cr("BLDT", "bldt"); cr("CUDT", "cudt");
     ci("AER_OPT", "aer_opt"); ci("SWINT_OPT", "swint_opt"); ci("AER_TYPE", "aer_type");
     ci("AER_AOD550_OPT", "aer_aod550_opt"); ci("AER_ANGEXP_OPT", "aer_angexp_opt");

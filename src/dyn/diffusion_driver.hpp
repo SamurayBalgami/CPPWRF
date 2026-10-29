@@ -56,6 +56,7 @@ class DiffusionDriver {
   const DiffusionConfig& config() const { return c_; }
   const diffusion::DiffusionParams& params() const { return p_; }
   void set_physics_suite(phys::driver::PhysicsSuite* suite) { suite_ = suite; }
+  void set_dt(double dt) { g_.dt = dt; gp_.dt = dt; }  // adaptive time step
   void prepare(const State& s, const BaseState& b);
   void dynamics(const State& s, const BaseState& b, Tendencies& t) const;
   void scalar(const State& s, const BaseState& b, int n, Field3& tend, real dt_rk) const;

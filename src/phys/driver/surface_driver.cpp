@@ -890,11 +890,15 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
                                 snow.view(), snowc.view(), snowh.view(), ivgtyp.view(), isltyp.view(), tslb.view(),
                                 smois.view(), sh2o.view(), xice_threshold, real(o_.seaice_albedo_default),
                                 o_.num_soil_layers, o_.isice, o_.iswater, o_.fractional_seaice == 1});
-  // run_param: itimestep == 1, bldt == 0 or stepbl == 1, mod(itimestep, stepbl) == 0
-  const bool run_param = itimestep == 1 || o_.bldt == 0 || stepbl == 1 || itimestep % stepbl == 0;
+  // run_param: itimestep == 1, bldt == 0 or stepbl == 1, mod(itimestep, stepbl) == 0; with the adaptive time step
+  // curr_secs >= bldtacttime instead of the step count (the PBL driver, called after this one, moves bldtacttime)
+  bool run_param = itimestep == 1 || o_.bldt == 0 || stepbl == 1;
+  if (!run_param && !adapt_step_flag) run_param = itimestep % stepbl == 0;
+  if (!run_param && adapt_step_flag) run_param = wrf_time::real_time<real>(elapsed) >= bldtacttime;
   if (!run_param) return;
   const real dt = real(g_.dt);
-  const real dtbl = o_.bldt == 0 ? dt : dt * real(stepbl);
+  // DTBL (module_surface_driver.F:2015-2030): bldt*60 with the adaptive time step
+  const real dtbl = o_.bldt == 0 ? dt : (adapt_step_flag ? real(o_.bldt) * real(60) : dt * real(stepbl));
 
   column_for(cols, KSfcPrep{psfc.view(), prep.p_hyd_w.cview(), prep.u_phy.cview(), prep.v_phy.cview(),
                             uoce.cview(), voce.cview(), u_phytmp.view(), v_phytmp.view(), nz});
@@ -1265,7 +1269,8 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
                                 acgrdflx.view(), q2.view(), t2.view(), th2.view(), dtbl, dt});
     } else if (o_.sf_surface_physics == 4) {
       // ---- Noah-MP (NoahmpWRFmain -> NoahmpDriverMain, module_surface_driver.F:3134-3481) ----
-      const real julian_in = real(wrf_julian(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt));
+      const real julian_in = real(adapt_step_flag ? wrf_julian(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, elapsed)
+                                                  : wrf_julian(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt));
       noahmp::NoahmpKernel nmp{};
       nmp.ivgtyp = ivgtyp.cview();
       nmp.isltyp = isltyp.cview();
@@ -1418,7 +1423,9 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
       nmp.opts = o_.noahmp;
       nmp.itimestep = int(itimestep);
       // YR: the year of the current time, which changes in a run past 31 December (Noah-MP's YEARLEN)
-      nmp.yr = o_.rad.julyr > 0 ? wrf_year(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt) : 2000;
+      nmp.yr = o_.rad.julyr <= 0 ? 2000
+               : adapt_step_flag ? wrf_year(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, elapsed)
+                                 : wrf_year(o_.rad.julyr, o_.rad.julday, o_.rad.gmt, double(itimestep - 1) * g_.dt);
       nmp.julian_in = julian_in;
       nmp.dtbl = dtbl;
       nmp.dx = real(g_.dx);

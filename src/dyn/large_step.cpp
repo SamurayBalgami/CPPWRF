@@ -635,6 +635,25 @@ struct KTendPh {
   }
 };
 
+// w_damp's Courant numbers (module_big_step_utilities_em.F:2621-2668), w levels 2..kde-1 of the mass columns:
+// vert_cfl = abs(ww/(c1f*mut+c2f)*rdnw*dt), horiz_cfl = max(abs(u*rdx*msfux*dt), abs(v*rdy*msfvy*dt))
+struct FVertCfl {
+  C3 ww; C2 mut; VCoef c; real dt;
+  CPPWRF_HD double operator()(int i, int j, int k) const {
+    const real x = ww(i, j, k) / (c.c1f(k) * mut(i, j) + c.c2f(k)) * c.rdnw(k) * dt;
+    return double(x < real(0) ? -x : x);
+  }
+};
+struct FHorizCfl {
+  C3 u, v; B2 msfux, msfvy; real rdx, rdy, dt;
+  CPPWRF_HD double operator()(int i, int j, int k) const {
+    real a = u(i, j, k) * rdx * msfux(i, j) * dt, b = v(i, j, k) * rdy * msfvy(i, j) * dt;
+    a = a < real(0) ? -a : a;
+    b = b < real(0) ? -b : b;
+    return double(b > a ? b : a);
+  }
+};
+
 }  // namespace
 
 VCoef VCoef::from(const BaseState& b) {
@@ -738,6 +757,22 @@ void LargeStep::tendencies(const State& s, Tendencies& t, const BaseState& b, in
                            b.msftx.view()});
   if (bc_) bc_->spec_dry(t);  // spec_bdy_dry: spec-zone tendencies from the boundary file
   // mu_tend stays 0 (dry, no physics); allocated zero.
+}
+
+// The domain maxima of w_damp's vertical and horizontal Courant numbers (WRF keeps them for the adaptive time
+// step). The maximum does not depend on the order of the points: Reducer's per-level maxima, then the levels.
+void LargeStep::cfl_max(const State& s, const BaseState& b, double dt, real& vert, real& horiz) const {
+  const Grid& g = g_;
+  if (g.nz < 2) { vert = horiz = 0; return; }
+  if (!red_) red_ = std::make_unique<Reducer>(g.nz + 1);
+  const Range3D r{0, g.nx, 0, g.ny, 1, g.nz};
+  const real rdt = real(dt);
+  // WRF's running maxima start at 0 and take a value when it is larger (a NaN never)
+  const double v = red_->max(r, FVertCfl{s.ww.cview(), s.mut.cview(), VCoef::from(b), rdt});
+  const double h = red_->max(r, FHorizCfl{s.u_2.cview(), s.v_2.cview(), b.msfux.view(), b.msfvy.view(), real(b.rdx),
+                                          real(b.rdy), rdt});
+  vert = v > 0.0 ? real(v) : real(0);
+  horiz = h > 0.0 ? real(h) : real(0);
 }
 
 // WRF init_zero_tendency (first_rk_step_part1): the held stage-1 tendencies, scalars included.

@@ -151,6 +151,12 @@ void derive_config(WrfConfig& c, int max_dom, bool real_exe) {
   }
   // wrf.exe: seed_dim from random_seed(size=...) of gfortran's runtime
   if (!real_exe) c.set("seed_dim", "8");
+  // check_a_mundo (module_check_a_mundo.F:2156-2174): with the adaptive time step BMJ, the SAS schemes and Tiedtke
+  // (d01's cu_physics) run every step, cudt = 0 on every domain
+  if (!real_exe && c.logical("use_adaptive_time_step")) {
+    const int cu = c.integer("cu_physics");
+    if (cu == 2 || cu == 4 || cu == 94 || cu == 95 || cu == 14 || cu == 96 || cu == 6) c.set("cudt", "0");
+  }
 }
 
 WrfSchema WrfSchema::load(const std::string& path) {

@@ -1,6 +1,8 @@
 #pragma once
 // Large-step (RK stage) part of the ARW dynamical core (TN ch. 3.1-3.2, 4.1; WRF solve_em:
 // rk_step_prep, rk_tendency, rk_addtend_dry), dry, flat or terrain-following eta.
+#include <memory>
+
 #include "core/backend.hpp"
 #include "core/field.hpp"
 #include "dyn/column_physics.hpp"
@@ -47,6 +49,10 @@ class LargeStep {
   void zero_tendf(Tendencies& t) const;
   void set_column_physics(ColumnPhysics* cp) { cp_ = cp; }
   void set_diffusion(const DiffusionDriver* d) { dd_ = d; }
+  // w_damp's domain maxima of the vertical and horizontal Courant numbers of the stage state (rk_tendency's u_2,
+  // v_2, ww, mut) with the large step dt (solve_em.F:919-934, for the adaptive time step)
+  void cfl_max(const State& s, const BaseState& b, double dt, real& vert, real& horiz) const;
+  void set_dt(double dt) { g_.dt = dt; }
 
  private:
   Grid g_;
@@ -54,6 +60,7 @@ class LargeStep {
   const LateralBC* bc_ = nullptr;
   ColumnPhysics* cp_ = nullptr;
   const DiffusionDriver* dd_ = nullptr;
+  mutable std::unique_ptr<Reducer> red_;
 };
 
 }  // namespace cppwrf::dyn

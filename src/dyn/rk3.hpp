@@ -37,7 +37,13 @@ class RK3 {
   ~RK3();
   // WRF solve_em auto rule when time_step_sound == 0 (n even, >= 4).
   static int auto_sound_steps(double dt, double dx, double dy);
+  // the same with the adaptive time step (solve_em.F:458): spacing / MAX(max_msftx, max_msfty), in WRF's REAL
+  static int adaptive_sound_steps(real dt, real dx, real dy, real max_msft);
   int n_sound() const { return n_sound_; }
+  // adaptive time step: the large step and the acoustic step count of the next step
+  void set_dt(double dt, int n_sound);
+  // adaptive time step: called after each stage's rk_tendency with w_damp's CFL maxima (vertical, horizontal)
+  std::function<void(real, real)> on_cfl;
   static bool small_step_available();
   // Column physics after the RK3 loop (WRF solve_em order). mp_physics = 0 leaves it off.
   void enable_physics(const PhysicsParams& pp) { phys_ = std::make_unique<PhysicsCoupling>(g_, pp); }

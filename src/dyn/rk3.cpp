@@ -60,6 +60,18 @@ int RK3::auto_sound_steps(double dt, double dx, double dy) {
   return std::max(2 * (int(300.0 * dt / spacing - 0.01) + 1), 4);
 }
 
+int RK3::adaptive_sound_steps(real dt, real dx, real dy, real max_msft) {
+  const real spacing = std::min(dx, dy);
+  return std::max(2 * (int(real(300.) * dt / (spacing / max_msft) - real(0.01)) + 1), 4);
+}
+
+void RK3::set_dt(double dt, int n_sound) {
+  if (n_sound < 2 || n_sound % 2) throw std::runtime_error("time_step_sound must be even and >= 2");
+  g_.dt = dt;
+  n_sound_ = n_sound;
+  large_.set_dt(dt);
+}
+
 void RK3::step(State& s, Tendencies& t, const BaseState& b) {
 #ifndef CPPWRF_HAVE_SMALL_STEP
   (void)s; (void)t; (void)b;
@@ -87,6 +99,11 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
     if (rk == 1) { const char* e = std::getenv("CPPWRF_VM_DUMP_STEP"); vmdump::on() = vm_step_ == (e ? std::atol(e) - 1 : 0); }
     if (rk == 1 && dd_) dd_->prepare(s, b);  // first_rk_step_part2: metrics, deformation, K
     large_.tendencies(s, t, b, rk);  // part2 (diffusion, update_phy_ten) + rk_tendency
+    if (on_cfl) {  // w_damp's CFL maxima of this stage (solve_em.F:919-934)
+      real vert, horiz;
+      large_.cfl_max(s, b, g_.dt, vert, horiz);
+      on_cfl(vert, horiz);
+    }
     vmdump::on() = false;
     { const char* e = std::getenv("CPPWRF_VM_DUMP_STEP"); vmdump::on() = vm_step_ == (e ? std::atol(e) - 1 : 0); }
     if (rk == 1 && bc_ && vmdump::on()) {  // debug: boundary slabs (values, tendencies) of T and U, all sides

@@ -240,6 +240,7 @@ struct KFKernel {
     T dx;
     T cudt;
     int stepcu;
+    bool adapt_step_flag;  // adaptive time step: W0AVG averages over 2*MAX(CUDT*60,DT) seconds
     int ktau;
     int trigger;
     bool warm_rain;
@@ -320,9 +321,17 @@ struct KFKernel {
         // 1. Running mean vertical velocity W0AVG
         const T ntst = static_cast<T>(stepcu);
         const T tst = ntst * static_cast<T>(2.0);
-        const T w0avgfctr = tst - static_cast<T>(1.0);
-        const T w0fctr = static_cast<T>(1.0);
-        const T w0den = tst;
+        T w0avgfctr, w0fctr, w0den;
+        if (adapt_step_flag) {  // module_cu_kfeta.F:222-225
+            const T m = cudt * static_cast<T>(60) > dt ? cudt * static_cast<T>(60) : dt;
+            w0avgfctr = static_cast<T>(2) * m - dt;
+            w0fctr = dt;
+            w0den = static_cast<T>(2) * m;
+        } else {
+            w0avgfctr = tst - static_cast<T>(1.0);
+            w0fctr = static_cast<T>(1.0);
+            w0den = tst;
+        }
 
         for (int k = 0; k < kx; ++k) {
             T w0 = static_cast<T>(0.5) * (w(i, j, k) + w(i, j, k + 1));

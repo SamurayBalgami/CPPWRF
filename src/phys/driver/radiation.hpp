@@ -13,6 +13,7 @@
 
 #include "core/field.hpp"
 #include "core/grid.hpp"
+#include "core/wrf_time.hpp"
 #include "phys/ra_rrtmg_common/strided.hpp"
 
 namespace cppwrf::phys::driver {
@@ -77,6 +78,30 @@ inline int wrf_year(int julyr, int julday, double gmt, double elapsed_s) {
   int yr = julyr;
   for (;; ++yr) {
     const double ylen = (((yr % 4 == 0 && yr % 100 != 0) || yr % 400 == 0) ? 366.0 : 365.0) * 86400.0;
+    if (s < ylen) break;
+    s -= ylen;
+  }
+  return yr;
+}
+
+// the same for an exact time since the start (WRF's clock, the adaptive time step): ESMF_TimeGet's dayOfYear_r8 =
+// (S + Sn/Sd) / 86400 + 1 with the whole seconds S of the year
+inline double wrf_julian(int julyr, int julday, double gmt, const wrf_time::Interval& el) {
+  long long s = (long long)(julday - 1) * 86400 + std::llround(gmt * 3600.0) + el.S;
+  for (int yr = julyr;; ++yr) {
+    const long long ylen = (((yr % 4 == 0 && yr % 100 != 0) || yr % 400 == 0) ? 366LL : 365LL) * 86400LL;
+    if (s < ylen) break;
+    s -= ylen;
+  }
+  double rsec = double(s);
+  if (el.Sd != 0) rsec = rsec + double(el.Sn) / double(el.Sd);
+  return (rsec / 86400.0 + 1.0) - 1.0;
+}
+inline int wrf_year(int julyr, int julday, double gmt, const wrf_time::Interval& el) {
+  long long s = (long long)(julday - 1) * 86400 + std::llround(gmt * 3600.0) + el.S;
+  int yr = julyr;
+  for (;; ++yr) {
+    const long long ylen = (((yr % 4 == 0 && yr % 100 != 0) || yr % 400 == 0) ? 366LL : 365LL) * 86400LL;
     if (s < ylen) break;
     s -= ylen;
   }
@@ -155,9 +180,11 @@ class RadiationDriver {
   int stepra() const { return stepra_; }
   // radiation_driver for time step itimestep (1-based) at xtime minutes after the start,
   // julian (day of year - 1 + fraction) and yr (the year of that time, RRTMG's YR); returns false
-  // when the radiation is not called
+  // when the radiation is not called. adapt_step_flag: the adaptive time step's decision by
+  // curr_secs >= radtacttime (radtacttime is updated as WRF does)
   bool run(long itimestep, double xtime, double julian, int yr, const RadiationInputs& in,
-           const RadiationOutputs& out);
+           const RadiationOutputs& out, bool adapt_step_flag = false, real curr_secs = 0,
+           real* radtacttime = nullptr);
   double declin() const { return declin_; }  // radconst of the last call (DECLINX, SOLCONX)
   double solcon() const { return solcon_; }
 

@@ -271,6 +271,7 @@ int main(int argc, char** argv) {
     kernel.dx = static_cast<real>(dx_in);
     kernel.cudt = static_cast<real>(cudt_in);
     kernel.stepcu = stepcu;
+    kernel.adapt_step_flag = false;  // the harness calls KFCPS with ADAPT_STEP_FLAG = .false.
     kernel.ktau = ktau;
     kernel.trigger = trigger;
     kernel.warm_rain = (warm_rain_int != 0);

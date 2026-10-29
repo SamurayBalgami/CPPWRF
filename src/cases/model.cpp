@@ -1,7 +1,9 @@
 #include "cases/model.hpp"
 #include "cases/wrf_ideal.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numbers>
 #include <stdexcept>
 
@@ -157,6 +159,71 @@ static void init_ideal(const io::Config& cfg, Model& m, const std::string& cname
   m.base->upload_levels();
 }
 
+// use_adaptive_time_step: start_em.F:932-1000 before phy_init (the physics take STEPRA, STEPBL, STEPCU from this dt)
+static void init_adaptive(const io::Config& cfg, Model& m, const std::string& cname) {
+  if (cname != "real") throw std::runtime_error("time.adaptive: the adaptive time step is ported for real-data runs");
+  Grid& g = m.g;
+  AdaptOptions o;
+  o.target_cfl = real(cfg.get_double("time.target_cfl", 1.2));
+  o.target_hcfl = real(cfg.get_double("time.target_hcfl", 0.84));
+  o.max_step_increase_pct = int(cfg.get_int("time.max_step_increase_pct", 5));
+  o.starting_time_step = int(cfg.get_int("time.starting_time_step", -1));
+  o.starting_time_step_den = int(cfg.get_int("time.starting_time_step_den", 0));
+  o.max_time_step = int(cfg.get_int("time.max_time_step", -1));
+  o.max_time_step_den = int(cfg.get_int("time.max_time_step_den", 0));
+  o.min_time_step = int(cfg.get_int("time.min_time_step", -1));
+  o.min_time_step_den = int(cfg.get_int("time.min_time_step_den", 0));
+  o.step_to_output_time = cfg.get_bool("time.step_to_output_time", true);
+  // d01's history interval in seconds (history_interval_d/h/m/s, m = history_interval when 0)
+  o.history_interval = 0;
+  o.history_interval_m = 0;
+  o.history_interval_s = int(cfg.get_int("time.history_interval_s", 3600));
+  if (o.step_to_output_time && o.history_interval_s <= 0)
+    throw std::runtime_error("time.adaptive with step_to_output_time needs time.history_interval_s > 0");
+  o.interval_seconds = int(cfg.get_int("time.interval_seconds", 21600));
+  if (o.interval_seconds <= 0) throw std::runtime_error("time.interval_seconds must be > 0");
+  m.adapt = std::make_unique<AdaptTimeStep>(o);
+  // MAXVAL(grid%msftx), MAXVAL(grid%msfty): the input's map factors (the memory halo of a serial WRF is 0)
+  auto maxval = [](const BaseField2& f) {
+    std::vector<real> h;
+    f.download(h);
+    const Layout& L = f.layout();
+    if (f.uniform()) return h[L.index(0, 0, 0)];
+    real mx = h[L.index(0, 0, 0)];
+    for (int j = 0; j < L.ny; ++j)
+      for (int i = 0; i < L.nx; ++i) mx = std::max(mx, h[L.index(i, j, 0)]);
+    return mx;
+  };
+  const bool restart = !cfg.get_string("run.restart_file", "").empty();
+  m.adapt->start_em(0, g.dx, g.dy, maxval(m.base->msftx), maxval(m.base->msfty), restart);
+  g.dt = double(m.adapt->dt());
+  m.run_length = wrf_time::make(std::llround(m.run_time));
+  m.nsteps = m.run_time > 0 ? std::numeric_limits<long>::max() / 4 : 0;  // set when the last step is known
+  if (m.bc) m.bc->set_dt(g.dt);  // start_em's lbc_fcx_gcx
+}
+
+void Model::set_dt(double dt) {
+  g.dt = dt;
+  n_sound = dyn::RK3::adaptive_sound_steps(real(dt), real(g.dx), real(g.dy), std::max(adapt->max_msftx(), adapt->max_msfty()));
+  if (rk) rk->set_dt(dt, n_sound);
+  if (bc) bc->set_dt(dt);
+  if (diff) diff->set_dt(dt);
+  if (suite) suite->set_dt(dt);
+}
+
+void Model::adapt_step(long n) {
+  const wrf_time::Interval elapsed = sim_offset + now;
+  if (before_step_time) before_step_time(elapsed);  // med_before_solve_io: med_latbound_in
+  adapt->adapt(n - 1, now, real(bc ? bc->dtbc : 0.0));  // grid%itimestep before solve_em's increment
+  set_dt(double(adapt->dt()));
+  adapt->reset_cfl();
+  step_end = now + adapt->time_step();
+  if (suite) {
+    suite->adapt_step_flag = true;
+    suite->elapsed = elapsed;
+  }
+}
+
 Model Model::build(const io::Config& cfg) {
   Model m;
   Grid& g = m.g;
@@ -241,11 +308,20 @@ Model Model::build(const io::Config& cfg) {
   if (cfg.has("dyn.legacy_diffusion"))
     throw std::runtime_error("dyn.legacy_diffusion was removed; use dyn.diff_opt = 1 (WRF horizontal/vertical_diffusion)");
   sp.h_adv_order = lp.h_adv_order; sp.v_adv_order = lp.v_adv_order;
-  const int tss = int(cfg.get_int("time.time_step_sound", 0));
+  if (cfg.get_bool("time.adaptive", false)) init_adaptive(cfg, m, cname);
+  // the adaptive time step sets time_step_sound = 0 (start_em.F:979)
+  const int tss = m.adapt ? 0 : int(cfg.get_int("time.time_step_sound", 0));
   m.n_sound = tss > 0 ? tss : dyn::RK3::auto_sound_steps(g.dt, g.dx, g.dy);
   if (m.nsteps > 0) {
     m.rk = std::make_unique<dyn::RK3>(g, lp, m.ap, tss, sp);
     m.n_sound = m.rk->n_sound();
+    if (m.adapt) {
+      m.n_sound = dyn::RK3::adaptive_sound_steps(real(g.dt), real(g.dx), real(g.dy),
+                                                 std::max(m.adapt->max_msftx(), m.adapt->max_msfty()));
+      m.rk->set_dt(g.dt, m.n_sound);
+      AdaptTimeStep* a = m.adapt.get();
+      m.rk->on_cfl = [a](real vert, real horiz) { a->add_cfl(vert, horiz); };
+    }
     dyn::PhysicsParams pp;
     pp.mp_physics = int(cfg.get_int("phys.mp_physics", 0));
     pp.mp_tend_lim = real(cfg.get_double("phys.mp_tend_lim", 10.0));

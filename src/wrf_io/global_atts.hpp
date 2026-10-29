@@ -28,6 +28,9 @@ struct DomainAtts {
   int ide = 0, jde = 0, kde = 0;      // staggered grid dimensions
   int grid_id = 1, parent_id = 0, i_parent_start = 1, j_parent_start = 1, parent_grid_ratio = 1;
   double dt = 0;                      // grid%dt
+  // use_adaptive_time_step: ADAPT_DT_START / _MAX / _MIN of history files (grid%starting_time_step, ...)
+  bool adaptive = false;
+  double adapt_dt_start = 0, adapt_dt_max = 0, adapt_dt_min = 0;
   std::map<std::string, double> proj; // CEN_LAT, CEN_LON, TRUELAT1, TRUELAT2, MOAD_CEN_LAT, STAND_LON, POLE_LAT, POLE_LON
   int map_proj = 0;
   std::string mminlu;

@@ -180,6 +180,23 @@ struct KFinal {  // spec_bdy_final: exact boundary values at the end of the step
 
 }  // namespace
 
+// lbc_fcx_gcx (module_bc_em.F): the same ramp for specified (spongeweight = 1 with spec_exp = 0) and nested
+// domains; start_em, and adapt_timestep after every change of d01's dt
+void LateralBC::set_dt(double dt) {
+  g_.dt = dt;
+  fcx_h_.assign(width_, 0.0);
+  gcx_h_.assign(width_, 0.0);
+  for (int loop = spec_zone_ + 1; loop <= spec_zone_ + relax_zone_; ++loop) {  // Fortran index
+    // WRF: 0.1 / dt * (spec_zone + relax_zone - loop) / (relax_zone - 1), left to right
+    const double num = double(spec_zone_ + relax_zone_ - loop), den = double(relax_zone_ - 1);
+    fcx_h_[loop - 1] = 0.1 / dt * num / den;
+    gcx_h_[loop - 1] = 1.0 / dt / 50.0 * num / den;
+  }
+  std::vector<real> h(2 * std::size_t(width_));
+  for (int b = 0; b < width_; ++b) { h[b] = real(fcx_h_[b]); h[width_ + b] = real(gcx_h_[b]); }
+  copy_to_dev(coef_.get(), h.data(), h.size() * sizeof(real));
+}
+
 LateralBC::LateralBC(const Grid& g, double dt, int width, int spec_zone, int relax_zone, bool nested)
     : g_(g), width_(width), spec_zone_(spec_zone), relax_zone_(relax_zone), nested_(nested),
       coef_(2 * std::size_t(width)) {
@@ -187,19 +204,7 @@ LateralBC::LateralBC(const Grid& g, double dt, int width, int spec_zone, int rel
   // share/module_check_a_mundo.F:248-250: spec_zone = 1, relax_zone = spec_bdy_width - 1
   if (width != 5 || spec_zone != 1 || relax_zone != 4)
     throw std::runtime_error("LateralBC: spec_bdy_width must be 5 (spec_zone 1, relax_zone 4)");
-  // lbc_fcx_gcx (module_bc_em.F): the same ramp for specified (spongeweight = 1 with spec_exp = 0)
-  // and nested domains
-  fcx_h_.assign(width, 0.0);
-  gcx_h_.assign(width, 0.0);
-  for (int loop = spec_zone + 1; loop <= spec_zone + relax_zone; ++loop) {  // Fortran index
-    // WRF: 0.1 / dt * (spec_zone + relax_zone - loop) / (relax_zone - 1), left to right
-    const double num = double(spec_zone + relax_zone - loop), den = double(relax_zone - 1);
-    fcx_h_[loop - 1] = 0.1 / dt * num / den;
-    gcx_h_[loop - 1] = 1.0 / dt / 50.0 * num / den;
-  }
-  std::vector<real> h(2 * std::size_t(width));
-  for (int b = 0; b < width; ++b) { h[b] = real(fcx_h_[b]); h[width + b] = real(gcx_h_[b]); }
-  copy_to_dev(coef_.get(), h.data(), h.size() * sizeof(real));
+  set_dt(dt);
   const int nz = g.nz;
   nk_ = {nz, nz, nz, nz + 1, 1, nz + 1};  // U V T PH MU W
   for (int v = 0; v < NVAR; ++v) {

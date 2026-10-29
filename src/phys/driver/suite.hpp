@@ -20,6 +20,7 @@
 #include "core/backend.hpp"
 #include "core/field.hpp"
 #include "core/grid.hpp"
+#include "core/wrf_time.hpp"
 #include "dyn/column_physics.hpp"
 #include "dyn/state.hpp"
 #include "phys/bl_mynn/mynnedmf_common.hpp"
@@ -131,6 +132,14 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   bool restart_flag = false;
   int stepbl = 1;      // WRF grid%stepbl (set_physics_rconfigs: nint(bldt*60/dt), >= 1)
   int stepcu = 1;      // WRF grid%stepcu (cu_init: max(nint(cudt*60/dt), 1))
+  // use_adaptive_time_step: solve_em's adapt_step_flag (the drivers run by their activation times, not by the
+  // step counts), the time of the step start since the simulation start (WRF's clock: XTIME, julian, curr_secs)
+  // and the activation times RADTACTTIME, BLDTACTTIME, CUDTACTTIME (restart fields, WRF's REAL)
+  bool adapt_step_flag = false;
+  wrf_time::Interval elapsed;
+  real radtacttime = 0, bldtacttime = 0, cudtacttime = 0;
+  // the large step of the coming step (adaptive time step)
+  void set_dt(double dt);
   // true (model): keep WRF's grid%t_1 for conv_t_tendf_to_moist, i.e. theta_m at the start of the
   // previous step (the dycore's s.t_1 is the current step start); false: s.t_1 already holds it
   // (the differential test passes WRF's t_1).

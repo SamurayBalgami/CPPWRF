@@ -378,8 +378,12 @@ void init_real_case(const io::Config& cfg, Model& m) {
   // WRF's dtbc is a running sum of dt, reset only when the model time equals a boundary time exactly
   // (mediation_integrate.F); dtbc = t0 - need * interval below is that sum only when dt is an integer
   // (exact sums) that divides the interval
-  if (g.dt != std::floor(g.dt) || std::fmod(interval, g.dt) != 0.0)
+  const bool adaptive = cfg.get_bool("time.adaptive", false);
+  if (!adaptive && (g.dt != std::floor(g.dt) || std::fmod(interval, g.dt) != 0.0))
     throw std::runtime_error("real: time.dt must be an integer number of seconds that divides the boundary interval");
+  if (adaptive && (interval != std::floor(interval) ||
+                   std::lround(interval) != cfg.get_int("time.interval_seconds", std::lround(interval))))
+    throw std::runtime_error("real: time.interval_seconds (WRF interval_seconds) differs from the wrfbdy interval");
   // record r is used for [start + r * interval, start + (r + 1) * interval): WRF selects records by their times
   // (mediation_integrate.F), so the file must start at the simulation start with a uniform interval
   if (!d.start_date.empty())
@@ -438,6 +442,19 @@ void init_real_case(const io::Config& cfg, Model& m) {
     if (need != *rec_now) { load(need); *rec_now = need; }
     bc->dtbc = t0 - need * interval;  // RK3::step adds dt (solve_em: dtbc = dtbc + dt)
   };
+  if (adaptive) {  // med_latbound_in (mediation_integrate.F:1507-1536) at the exact time of the adaptive clock
+    const long iv = std::lround(interval);
+    m.before_step = nullptr;
+    m.before_step_time = [load, bc, rec_now, iv](const wrf_time::Interval& t) {
+      // the records while current time >= next_bdy_time; dtbc = 0 only at this_bdy_time exactly (otherwise
+      // the running sum of dt goes on)
+      while (t >= wrf_time::make(std::int64_t(*rec_now + 1) * iv)) {
+        ++*rec_now;
+        load(*rec_now);
+      }
+      if (t == wrf_time::make(std::int64_t(*rec_now) * iv)) bc->dtbc = 0;
+    };
+  }
 }
 #endif
 

@@ -219,6 +219,9 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.num_soil_layers = int(cfg.get_int("phys.num_soil_layers", 4));
   o.bldt = cfg.get_double("phys.bldt", 0.0);
   o.cudt = cfg.get_double("phys.cudt", 0.0);
+  // check_a_mundo (module_check_a_mundo.F:2156-2174): the adaptive time step runs BMJ, the SAS schemes and Tiedtke
+  // every step (cudt = 0)
+  if (cfg.get_bool("time.adaptive", false) && o.cu_physics == 6) o.cudt = 0.0;
   {
     const std::string nl_path = cfg.get_string("output.wrf_namelist", dir + "/namelist.input");
     const double nl_avg = std::filesystem::exists(nl_path)

@@ -26,6 +26,8 @@ class StreamFile {
              Stream s, bool netcdf4);
   void write(const std::string& date, const StreamValueFn& value);  // appends one record
   std::size_t records() const { return rec_; }
+  // output_wrf writes the domain attributes with every record: DT of the adaptive time step changes
+  void set_real_att(const std::string& name, double v, int real_bytes) { nc_->reatt_real(name, v, real_bytes); }
 
  private:
   std::unique_ptr<NcOut> nc_;

@@ -7,7 +7,9 @@
 #include <string>
 #include <vector>
 
+#include "cases/adapt_timestep.hpp"
 #include "cases/cases.hpp"
+#include "core/wrf_time.hpp"
 #include "dyn/lateral_bc.hpp"
 #include "dyn/diffusion_driver.hpp"
 #include "dyn/rk3.hpp"
@@ -47,6 +49,23 @@ struct Model {
   std::unique_ptr<phys::driver::PhysicsSuite> suite;  // column physics (sfclay/LSM/PBL), null: off  // WRF diff_opt 1 / sixth-order diffusion (null: off)
   // Called before step n (1-based) of the time loop: boundary interval switching (real data).
   std::function<void(long)> before_step;
+
+  // ---- use_adaptive_time_step (time.adaptive = true): WRF's clock and adapt_timestep ----
+  std::unique_ptr<AdaptTimeStep> adapt;  // null: a fixed time step
+  wrf_time::Interval now;         // current time - this run's start (the start of the coming step)
+  wrf_time::Interval step_end;    // now + the step's dt (set by adapt_step)
+  wrf_time::Interval sim_offset;  // this run's start - the simulation start (a resumed run: the restart time)
+  wrf_time::Interval run_length;  // stop time - this run's start
+  // med_latbound_in at the time since the simulation start: the boundary records and dtbc (real data)
+  std::function<void(const wrf_time::Interval&)> before_step_time;
+  // solve_em.F:352-386 at the start of step n: the boundary input, adapt_timestep, the new dt of every component,
+  // the CFL maxima zeroed; step_end = now + dt
+  void adapt_step(long n);
+  // ESMF_ClockAdvance after step n
+  void advance_clock() { now = step_end; }
+  // the large step of every component and the acoustic step count of solve_em.F:458 (adaptive time step)
+  void set_dt(double dt);
+
   static Model build(const io::Config& cfg);
 };
 
