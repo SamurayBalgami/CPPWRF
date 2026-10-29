@@ -51,17 +51,22 @@ def wrf_failed(d, logname="wrf.log"):
     return [l.strip() for l in lines if 'ERROR' in l or 'FATAL' in l][:4] or lines[-1:]
 
 
-def nlint(nl, key):
-    return int(re.search(rf"^\s*{key}\s*=\s*(\d+)", nl, re.M | re.I).group(1))
+def nlint(nl, key, default=None):
+    """The (first) integer value of a namelist key; `default` when the namelist does not set it (WRF's default)."""
+    m = re.search(rf"^\s*{key}\s*=\s*(\d+)", nl, re.M | re.I)
+    if m is None and default is None:
+        raise KeyError(f"namelist.input sets no {key}")
+    return int(m.group(1)) if m else default
 
 
 def segmented(R, nl, seg, parts_prefix):
     """wrf.exe in R in parts of `seg` seconds (run.segment), the wrfrst files of the namelist's restart_interval
     kept; then each domain's history files appended to the first part's file. None or the error lines."""
-    total, ri, ndom = nlint(nl, "run_seconds"), nlint(nl, "restart_interval") * 60, nlint(nl, "max_dom")
+    total, ri, ndom = nlint(nl, "run_seconds"), nlint(nl, "restart_interval") * 60, nlint(nl, "max_dom", 1)
     if total % seg or seg % 60:
         return [f"run_seconds {total} is not a multiple of run.segment {seg} (whole minutes)"]
-    t0 = datetime.datetime(*(nlint(nl, f"start_{k}") for k in ("year", "month", "day", "hour", "minute", "second")))
+    t0 = datetime.datetime(*(nlint(nl, f"start_{k}", 0 if k in ("minute", "second") else None)
+                             for k in ("year", "month", "day", "hour", "minute", "second")))
     tag = lambda t: t.strftime("%Y-%m-%d_%H:%M:%S")
     first = 0
     if parts_prefix:  # the last part a previous VM kept
