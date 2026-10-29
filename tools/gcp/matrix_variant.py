@@ -171,7 +171,11 @@ if "SUCCESS COMPLETE WRF" not in open(os.path.join(R, "rsl.out.0000") if os.path
 if keep:  # WORK/keep/run_NAME: what the suite needs of the reference (remote_matrix.sh uploads keep.tar)
     K = os.path.join(work, "keep", f"run_{name}")
     os.makedirs(K, exist_ok=True)
-    for f in ["namelist.input", "wrfinput_d01", "input_sounding"] + sorted(glob.glob(os.path.join(R, "wrfout_d0*"))):
+    # with the iofields files the namelist names (the history's variable list)
+    iof = re.findall(r"'([^']*)'|\"([^\"]*)\"", " ".join(re.findall(r"(?im)^\s*iofields_filename\s*=([^\n]*)",
+                                                                      open(os.path.join(R, "namelist.input")).read())))
+    iof = sorted({a or b for a, b in iof if (a or b).strip()})
+    for f in ["namelist.input", "wrfinput_d01", "input_sounding"] + iof + sorted(glob.glob(os.path.join(R, "wrfout_d0*"))):
         f = os.path.join(R, f)
         if os.path.exists(f):
             subprocess.run(["cp", "-L", f, K])
