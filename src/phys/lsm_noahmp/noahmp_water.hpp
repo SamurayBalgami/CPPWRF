@@ -604,17 +604,18 @@ CPPWRF_HD inline void CanopyHydrology(NoahmpType& noahmp) {
 
   CanopyLiqWaterMax = VegFrac * CanopyLiqHoldCap * (LeafAreaIndEff + StemAreaIndEff);
 
+  // max(x, 0.0): gfortran's maxsd(x, 0.0) = x > 0 ? x : 0 (+0.0 for x = -0.0; std::max keeps -0.0)
   if (!FlagFrozenCanopy) {
-    Transpiration   = std::max(HeatLatentTransp / ConstLatHeatEvap, real(0.0));
-    EvapCanopyLiq   = std::max(HeatLatentCanopy / ConstLatHeatEvap, real(0.0));
+    Transpiration   = HeatLatentTransp / ConstLatHeatEvap > real(0.0) ? HeatLatentTransp / ConstLatHeatEvap : real(0.0);
+    EvapCanopyLiq   = HeatLatentCanopy / ConstLatHeatEvap > real(0.0) ? HeatLatentCanopy / ConstLatHeatEvap : real(0.0);
     DewCanopyLiq    = std::abs(std::min(HeatLatentCanopy / ConstLatHeatEvap, real(0.0)));
     SublimCanopyIce = real(0.0);
     FrostCanopyIce  = real(0.0);
   } else {
-    Transpiration   = std::max(HeatLatentTransp / ConstLatHeatSublim, real(0.0));
+    Transpiration   = HeatLatentTransp / ConstLatHeatSublim > real(0.0) ? HeatLatentTransp / ConstLatHeatSublim : real(0.0);
     EvapCanopyLiq   = real(0.0);
     DewCanopyLiq    = real(0.0);
-    SublimCanopyIce = std::max(HeatLatentCanopy / ConstLatHeatSublim, real(0.0));
+    SublimCanopyIce = HeatLatentCanopy / ConstLatHeatSublim > real(0.0) ? HeatLatentCanopy / ConstLatHeatSublim : real(0.0);
     FrostCanopyIce  = std::abs(std::min(HeatLatentCanopy / ConstLatHeatSublim, real(0.0)));
   }
 
