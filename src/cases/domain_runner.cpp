@@ -851,15 +851,16 @@ void DomainRunner::do_snap(long n) {
 #endif
 }
 
-#ifdef CPPWRF_HAVE_NETCDF
 // RESTART_ALARM (set_timekeeping.F:412, an interval only): ESMF_ClockAdvance rings when PrevRingTime + interval
 // <= the current time and then adds the interval to PrevRingTime once (ESMF_Clock.F90:1020-1029), so an
-// interval that is not a multiple of dt rings at the first step past each multiple of it
+// interval that is not a multiple of dt rings at the first step past each multiple of it. Also without NetCDF:
+// before_step sets the physics' restart_flag from it (never rings there, restarts need NetCDF).
 bool DomainRunner::rst_due(long n) const {
   if (m_.adapt) return n > start_step && n - start_step < long(rst_ring_.size()) && rst_ring_[std::size_t(n - start_step)];
   return rst_iv_s_ > 0 && rst_prev_ + rst_iv_s_ <= double(n) * m_.g.dt + 1e-6 * m_.g.dt;
 }
 
+#ifdef CPPWRF_HAVE_NETCDF
 void DomainRunner::do_restart(long n, bool ring) {
   char rst_name[64];
   std::snprintf(rst_name, sizeof(rst_name), "restart_%06ld.nc", n);
