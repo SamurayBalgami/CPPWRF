@@ -34,7 +34,9 @@ struct KPrep {
   C3 t, qv, ph, al, p; B3 phb, alb, pb;
   V3 th_phy, hd, qvd, rho, pii, z, dz8w, p_phy;
   int i0, ni;  // WRF's i loop (its..ite = i0..i0+ni-1): gfortran pairs it into libmvec's 2-lane pow (cppwrf::vm)
+  int j0, nj;  // WRF's j loop: h_diabatic and qv_diabatic outside the tile (spec zone) are left alone
   CPPWRF_HD void operator()(int i, int j, int k) const {
+    const bool tile = i >= i0 && i < i0 + ni && j >= j0 && j < j0 + nj;
     const real zw0 = (ph(i, j, k) + phb(i, j, k)) / real(cst::g);
     const real zw1 = (ph(i, j, k + 1) + phb(i, j, k + 1)) / real(cst::g);
     dz8w(i, j, k) = zw1 - zw0;
@@ -42,8 +44,10 @@ struct KPrep {
     const real q = qv(i, j, k);
     const real th = (t(i, j, k) + T0) / (real(1) + RVRD * q);
     th_phy(i, j, k) = th;
-    hd(i, j, k) = th;
-    qvd(i, j, k) = q;
+    if (tile) {
+      hd(i, j, k) = th;
+      qvd(i, j, k) = q;
+    }
     rho(i, j, k) = real(1) / (al(i, j, k) + alb(i, j, k));
     p_phy(i, j, k) = p(i, j, k) + pb(i, j, k);
     pii(i, j, k) = vm::pow((p(i, j, k) + pb(i, j, k)) / real(cst::p1000mb), real(cst::rcp), i - i0, ni);
@@ -152,14 +156,18 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
     throw std::runtime_error("mp_physics = 8 (Thompson) needs qv, qc, qr, qi, qs, qg, qni, qnr");
   const Grid& g = g_;
   Field3& qv = s.q_2[s.P_QV];
-  // solve_em calls moist_physics_prep_em on the tile without the spec zone (sz) in x (unless periodic_x)
-  // and y; only the lanes of its i loop matter here (the mp columns all lie inside it)
+  // solve_em calls moist_physics_prep_em and moist_physics_finish_em on the tile without the spec
+  // zone (sz) in x (unless periodic_x) and y: there the state and h_diabatic, qv_diabatic, qc_diabatic
+  // are left for spec_bdy_final (finish's theta_m -> theta -> theta_m is not exact roundoff-wise).
+  // The scratch fields (th_phy, rho, pii, ...) are formed everywhere; the mp columns lie inside.
   const int pz = g.bc_x == BC::Specified || g.bc_y == BC::Specified ? 1 : 0;
-  const int pi0 = g.bc_x == BC::Periodic ? 0 : pz;
+  const int pi0 = g.bc_x == BC::Periodic ? 0 : pz, pj0 = g.two_d() ? 0 : pz;
+  const Range3D tile{pi0, g.nx - pi0, pj0, g.ny - pj0, 0, g.nz};
   parallel_for(g.mass_cells(), KPrep{s.t_2.cview(), qv.cview(), s.ph_2.cview(), s.al.cview(), s.p.cview(),
                                      b.phb.view(), b.alb.view(), b.pb.view(), th_phy.view(), s.h_diabatic.view(),
-                                     qv_diabatic.view(), rho.view(), pii.view(), z.view(), dz8w.view(), p_phy.view(), pi0, g.nx - 2 * pi0});
-  if (s.P_QC >= 0) parallel_for(g.mass_cells(), KSaveQc{s.q_2[s.P_QC].cview(), qc_diabatic.view()});
+                                     qv_diabatic.view(), rho.view(), pii.view(), z.view(), dz8w.view(), p_phy.view(),
+                                     pi0, g.nx - 2 * pi0, pj0, g.ny - 2 * pj0});
+  if (s.P_QC >= 0) parallel_for(tile, KSaveQc{s.q_2[s.P_QC].cview(), qc_diabatic.view()});
   namespace pc = phys::cst;
   // microphysics_driver: with specified boundaries the spec zone is skipped (sz = spec_zone)
   const int sx = g.bc_x == BC::Specified ? 1 : 0, sy = g.bc_y == BC::Specified ? 1 : 0;
@@ -209,7 +217,7 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
                                             real(pc::svp1), real(pc::svp2), real(pc::svp3), real(pc::svpt0),
                                             real(pc::rhowater), g.nz, mp_cols.i0, mp_cols.i1 - mp_cols.i0});
   }
-  parallel_for(g.mass_cells(), KFinish{s.t_2.view(), s.h_diabatic.view(), th_phy.cview(), qv.cview(),
+  parallel_for(tile, KFinish{s.t_2.view(), s.h_diabatic.view(), th_phy.cview(), qv.cview(),
                                        qv_diabatic.view(), s.P_QC >= 0 ? s.q_2[s.P_QC].cview() : qv.cview(),
                                        qc_diabatic.view(), dt, p_.mp_tend_lim, s.P_QC >= 0});
   std::vector<Field3*> fs{&s.t_2, &s.h_diabatic};
