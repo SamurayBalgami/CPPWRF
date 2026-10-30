@@ -515,7 +515,7 @@ CASES = [
                     ("P9", ("U", "W", "THM", "QV")))],
     *[(f"real_n3_r8_fp64_cpu_{h}h", "cpu_dp", "configs/real_n3.ini",
        [f"run.run_time={h * 3600}", "real.dir=" + f"{WR}/run_N3_{h}h_r8", "phys.table_dir=" + f"{WR}/run_N3_{h}h_r8",
-        "output.out_interval=180", "output.diag_interval=180", "d02.out_interval=540", "d02.diag_interval=540",
+        "output.out_interval=180", "output.diag_interval=180", "d02.out_interval=540",
         f"suite.restart_at={h * 1800}"] + (["suite.slow"] if h == 72 else []),
        {d: f"{WR}/run_N3_{h}h_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, h * 3600,
        {f"{d}.{x}": 0.0 for d in ("d01", "d02") for x in ("U", "W", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW",
@@ -744,7 +744,8 @@ def exact_case(refs, out, t, sets):
 
 
 def restarted_case(b, cfg, sets, refs, t, mid, out):
-    """A run to `t` s restarted at `mid` s from its own wrfrst files: the first run (0 to mid, wrfrst files at mid)
+    """A run to `t` s restarted at `mid` s from its own wrfrst files: the first run (to one step past mid, wrfrst files
+    at mid only: written within the run, as WRF's, not at its last step, where WRF's history alarm is still ringing)
     and the resumed one (mid to t) together against WRF's uninterrupted run at tolerance 0 (every reference frame),
     and the wrfrst files at mid against WRF's (the reference run's restart_interval writes them there):
     (differences, summary). As run_wrf_files_test.sh, RQCBLTEN / RQIBLTEN are not compared when WRF's restart file
@@ -757,7 +758,10 @@ def restarted_case(b, cfg, sets, refs, t, mid, out):
         at = [exact.text(ds["Times"], i).decode() for i, x in enumerate(ds["XTIME"][:]) if abs(float(x) * 60.0 - mid) < 1e-6]
     if not at:
         return [f"{w0} has no frame at the restart time {mid:g}s"], ""
-    rc, log = run(b, cfg, sets + [f"run.run_time={mid:g}", f"restart.interval={mid:g}"], first)
+    nl = os.path.join(os.path.dirname(w0), "namelist.input")
+    dt = float(re.search(r"^\s*time_step\s*=\s*(\d+)", open(nl).read(), re.M).group(1))
+    rc, log = run(b, cfg, sets + [f"run.run_time={mid + dt:g}", f"restart.interval={mid:g}", f"restart.end={mid:g}"],
+                  first)
     if rc != 0:
         return [f"run to the restart failed: {log[-200:]}"], ""
     rc, log = run(b, cfg, sets + [f"run.restart_file={first}/wrfrst_d01_{at[0]}"], resumed)
