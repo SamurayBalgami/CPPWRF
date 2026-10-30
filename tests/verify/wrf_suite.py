@@ -764,7 +764,14 @@ def restarted_case(b, cfg, sets, refs, t, mid, out):
                   first)
     if rc != 0:
         return [f"run to the restart failed: {log[-200:]}"], ""
-    rc, log = run(b, cfg, sets + [f"run.restart_file={first}/wrfrst_d01_{at[0]}"], resumed)
+    # a nested run writes each domain's files in first/<domain>; the resumed run reads every domain's wrfrst file
+    # from the directory of d01's (as WRF's run directory)
+    rst = os.path.join(out, "rst")
+    os.makedirs(rst, exist_ok=True)
+    for pat in (f"wrfrst_d??_{at[0]}", f"d??/wrfrst_d??_{at[0]}"):
+        for f in glob.glob(os.path.join(first, pat)):
+            os.symlink(f, os.path.join(rst, os.path.basename(f)))
+    rc, log = run(b, cfg, sets + [f"run.restart_file={rst}/wrfrst_d01_{at[0]}"], resumed)
     if rc != 0:
         return [f"resumed run failed: {log[-200:]}"], ""
     bad, what = exact_case(refs, [first, resumed], t, sets)
