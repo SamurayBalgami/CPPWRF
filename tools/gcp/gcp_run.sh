@@ -16,7 +16,7 @@
 # glibc's libmvec log differs on AMD, so AMD runs are not bit-identical to Intel-made WRF references), the next
 # one tried while one has no capacity or quota; --machine fixes the type, --zones limits the zones. Without
 # --threads each of the --jobs suite jobs gets the machine's vCPUs / jobs threads. --slow: also wrf_suite.py's slow
-# cases (the 72 h runs; their data, e.g. long72_data.tar, in --data), with a 16 h limit instead of 8 h.
+# cases (the 24 h and 72 h runs; their data long_data.tar, long72_data.tar, long72n3_data.tar in --data), with a 16 h limit instead of 8 h.
 # Exit status 0 only for a complete suite without FAIL or SKIP (wrf_suite.py's SUITE line and exit 0), passing
 # translator tests and comparator self-test (tests/verify/selftest.py), files, differential and ctest tests without
 # FAIL or SKIP (full suite), and no data or build failure on the VM; a

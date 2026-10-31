@@ -104,7 +104,7 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | D0 / D0V | WRF's default em_real namelist (physics_suite CONUS, fractional sea ice, gwd_opt 1, diff_opt 2 / km_opt 4, w_damping 0) on the P2 / V2 domains, configuration from tools/wrf2cppwrf.py | 6 h |
 | SU1 / SU2 | D0V with sst_update 1 (wrflowinp from real.exe, read every 6 h); SU2: changed sea ice at the start (water/ice transitions) | 7 h / 20 min |
 | HY1 | P1 with hypsometric_opt 1 (real.exe and wrf.exe) | 1 h |
-| P4, P6, P9, N3 long runs | inputs from real.exe for 24 h / 72 h (wrfbdy every 6 h; 24-72 h from the GFS forecast through WPS), history every 3 h, CPPWRF restarted in the middle from its own wrfrst files | 24 h and 72 h (P4, P6, P9) |
+| P4, P6, P9, N3 long runs | inputs from real.exe for 24 h / 72 h (wrfbdy every 6 h; 24-72 h from the GFS forecast through WPS), history every 3 h, CPPWRF restarted in the middle from its own wrfrst files | 24 h and 72 h |
 
 V1-V3, T6, G2, F1, F2, D0, D0V, SU1 and SU2 are compared in every wrfout variable over the whole run; V1-V3 start from the
 global GFS of 2026-10-12 00 UTC through WPS, so the domains, projections and surface types differ from the P
@@ -113,10 +113,12 @@ gfortran makes Thompson's DOUBLE PRECISION variables 16-byte.
 
 The long runs compare every 3-hourly frame of both halves (the run stopped one step after 12 h / 36 h and the run
 resumed from its wrfrst files) and the wrfrst files at the restart with WRF's uninterrupted run, every variable at
-tolerance 0: 24 h for P4, P6, P9 and the two-way nest N3 (both domains), 72 h for P4, P6 and P9. The references come
+tolerance 0: 24 h and 72 h for P4, P6, P9 and the two-way nest N3 (both domains; its 72 h reference from wrf.exe in
+12 h parts resumed from WRF's own wrfrst files, run.segment). The references come
 from tools/gcp/gcp_wrfref.sh (real.exe inputs, run.real), the met_em files beyond 24 h from tools/gcp/gcp_wps.sh
-(GFS 0.25 degree, NOAA open data; the 24 h met_em file it makes is identical to the existing one). The 72 h cases are
-slow (`wrf_suite.py --slow`, `tools/gcp/gcp_run.sh --slow` with long72_data.tar); the 24 h ones run in the default suite.
+(GFS 0.25 degree, NOAA open data; the 24 h met_em file it makes is identical to the existing one). All long-run cases
+are slow (`wrf_suite.py --slow`, `tools/gcp/gcp_run.sh --slow` with long_data.tar, long72_data.tar and long72n3_data.tar
+in `--data`): the 24 h ones alone made the default VM suite 65 instead of 43 minutes.
 
 Bit identity holds for references made with gfortran 14.2 on the CPU family the references were made on
 (Intel x86-64, glibc 2.41; another gfortran version vectorises other loops, e.g. in Thompson): WRF's

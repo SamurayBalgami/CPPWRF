@@ -16,7 +16,7 @@ an option otherwise than tools/wrf2cppwrf.py's translation of that namelist.
 Only the cases of the given binaries are selected; a given binary that does not exist is an error (exit 2).
 Exit status 0 = every selected case PASSed; a case whose reference is missing is a SKIP and fails the suite unless
 --allow-skip. The last line counts the results.
-Slow cases (suite.slow in their --set list: the 72 h runs) are left out unless --slow is given or --only --exact
+Slow cases (suite.slow in their --set list: the 24 h and 72 h runs) are left out unless --slow is given or --only --exact
 names them.
 """
 import argparse
@@ -504,11 +504,11 @@ CASES = [
     # Long runs (24 h and 72 h): P4, P6, P9 and N3 from real.exe inputs (wrfbdy every 6 h; 24-72 h: GFS through
     # tools/gcp/gcp_wps.sh), history every 3 h, restarted in the middle from CPPWRF's own wrfrst files
     # (suite.restart_at); every 3-hourly frame and the wrfrst files at the restart equal WRF's uninterrupted run
-    # (tools/gcp/gcp_wrfref.sh; references: long_data.tar, 72 h long72_data.tar). The 72 h cases are slow (suite.slow:
-    # wrf_suite.py --slow, gcp_run.sh --slow)
+    # (tools/gcp/gcp_wrfref.sh; references: long_data.tar, 72 h long72_data.tar, long72n3_data.tar). All are slow
+    # (suite.slow: wrf_suite.py --slow, gcp_run.sh --slow; the 24 h ones made the VM suite 65 instead of 43 min)
     *[(f"real_{c.lower()}_r8_fp64_cpu_{h}h", "cpu_dp", f"configs/real_{c.lower()}_r8.ini",
        [f"run.run_time={h * 3600}", "real.dir=" + f"{WR}/run_{c}_{h}h_r8", "output.out_interval=180",
-        "output.diag_interval=180", f"suite.restart_at={h * 1800}"] + (["suite.slow"] if h == 72 else []),
+        "output.diag_interval=180", f"suite.restart_at={h * 1800}"] + ["suite.slow"],
        f"{WR}/run_{c}_{h}h_r8/wrfout_d01_2026-10-12_00:00:00", h * 3600, {v: 0.0 for v in vs})
       for h in (24, 72)
       for c, vs in (("P4", ("U", "W", "THM", "QV", "QCLOUD", "QRAIN", "QICE")),
@@ -517,7 +517,7 @@ CASES = [
     *[(f"real_n3_r8_fp64_cpu_{h}h", "cpu_dp", "configs/real_n3.ini",
        [f"run.run_time={h * 3600}", "real.dir=" + f"{WR}/run_N3_{h}h_r8", "phys.table_dir=" + f"{WR}/run_N3_{h}h_r8",
         "output.out_interval=180", "output.diag_interval=180", "d02.out_interval=540",
-        f"suite.restart_at={h * 1800}"] + (["suite.slow"] if h == 72 else []),
+        f"suite.restart_at={h * 1800}"] + ["suite.slow"],
        {d: f"{WR}/run_N3_{h}h_r8/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, h * 3600,
        {f"{d}.{x}": 0.0 for d in ("d01", "d02") for x in ("U", "W", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QSNOW",
                                                          "QGRAUP")})
@@ -840,7 +840,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=1, help="CPU cases run at the same time (GPU cases: one at a time)")
     ap.add_argument("--keep", action="store_true", help="keep the outputs of passing cases (default: deleted)")
     ap.add_argument("--allow-skip", action="store_true", help="cases without their reference do not fail the suite")
-    ap.add_argument("--slow", action="store_true", help="also the slow cases (suite.slow: the 72 h runs)")
+    ap.add_argument("--slow", action="store_true", help="also the slow cases (suite.slow: the 24 h and 72 h runs)")
     a = ap.parse_args()
     only = a.only.split(",") if a.only else None
 
