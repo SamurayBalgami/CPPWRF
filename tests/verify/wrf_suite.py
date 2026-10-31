@@ -27,6 +27,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -943,8 +944,13 @@ def main():
     # longest simulated time first; each task prints its line as soon as it ends; GPU cases share the one GPU
     cpu = sorted(cpu, key=lambda x: -x[0])
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def timed(fn):  # the case's line ends with its wall time
+        t0 = time.monotonic()
+        good, line = fn()
+        return good, f"{line}  ({time.monotonic() - t0:.0f} s)"
     with ThreadPoolExecutor(max(1, a.jobs)) as pc, ThreadPoolExecutor(1) as pg:
-        futs = {pc.submit(f): n for _, n, f in cpu} | {pg.submit(f): n for _, n, f in gpu}
+        futs = {pc.submit(timed, f): n for _, n, f in cpu} | {pg.submit(timed, f): n for _, n, f in gpu}
         for f in as_completed(futs):
             try:
                 good, line = f.result()

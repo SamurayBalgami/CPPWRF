@@ -29,3 +29,5 @@ v05_files_links.tar
 # the WRF v4.8.0 objects (-r8, -r8 -fdefault-double-8 builds) and input subsets of the differential tests
 # (ctest -L diff; tools/gcp/stage_diff_data.sh, tools/gcp/run_diff_tests.sh)
 diff_data.tar
+# the 24 h long-run references (whole, with the wrfrst files at 12 h; gcp_wrfref.sh --stage)
+long_data.tar
