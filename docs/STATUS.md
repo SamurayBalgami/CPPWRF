@@ -179,6 +179,7 @@ CUDA (relative L2 at 1 h unless noted):
 | MYNN | FP64 | 2.6e-4 | 5.8e-3 | 5.5e-6 | 1.1e-4 |
 | MYNNSF1 / MYNNSF2 | FP64 | 2.5e-4 / 2.6e-4 | 5.3e-3 / 5.4e-3 | 5.3e-6 / 5.6e-6 | 2.9e-4 / 1.1e-4 |
 | MYNNX1 / MYNNX2 (largest of L4 and G4) | FP64 | 3.2e-4 / 2.1e-4 | 8.6e-3 / 7.3e-3 | 9.0e-6 / 4.8e-6 | 1.4e-4 / 6.7e-5 |
+| A08 (G4) | FP64 | 1.8e-4 | 4.6e-3 | 3.1e-6 | 1.0e-4 |
 | KESSKF | FP64 | 6.9e-5 (L4), 9.2e-5 (G4) | 1.2e-3 | 1.1e-6 / 1.2e-6 | 4.4e-5 / 6.2e-5 |
 | A01V (Arctic, V2 domain) | FP64 | 7.8e-5 | 3.2e-3 | 2.4e-6 | 1.8e-4 |
 | V1 / V2 (2 h) | FP64 | 1.8e-3 / 1.1e-4 | 9.4e-2 / 3.8e-3 | 1.6e-5 / 3.6e-6 | 4.7e-4 / 3.5e-4 |
