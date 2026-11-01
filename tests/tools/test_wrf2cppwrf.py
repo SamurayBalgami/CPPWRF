@@ -629,7 +629,8 @@ class TestValidationAndWarnings(unittest.TestCase):
         self.assertEqual(err, [])
         self.assertEqual(p["ifsnow"], 0)
         for extra, msg in ((", num_soil_layers = 4", "num_soil_layers = 4"), (", ifsnow = 2", "ifsnow = 2"),
-                           (", fractional_seaice = 1", "fractional_seaice = 1")):
+                           (", fractional_seaice = 1", "fractional_seaice = 1"),
+                           (", sst_update = 1", "sst_update = 1 with sf_surface_physics = 1")):
             err, _ = phys(extra)
             self.assertIn(msg, " ".join(err), extra)
 

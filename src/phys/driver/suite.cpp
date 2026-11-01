@@ -245,6 +245,8 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       throw std::runtime_error("PhysicsSuite: the slab LSM requires num_soil_layers=5");
     if (o.fractional_seaice == 1)
       throw std::runtime_error("PhysicsSuite: fractional_seaice=1 does not work with the slab LSM, as in WRF");
+    if (o.sst_update == 1)  // the water points' TSLB(1) = SST of the sst_update branch: no reference run
+      throw std::runtime_error("PhysicsSuite: sst_update=1 with the slab LSM (sf_surface_physics=1) is not supported");
     thc = Field2(g, Stagger::M, "thc");
     capg = Field2(g, Stagger::M, "capg");
   }

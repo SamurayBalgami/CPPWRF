@@ -74,14 +74,18 @@ The reference set covers 43 cases:
 - `sst_update = 1` (`wrflowinp_d01`);
 - two-domain nests.
 
-All 43 are identical.
+All 43 are identical. The slab land surface (`sf_surface_physics = 1`: 5 soil layers, TMN from the input soil
+temperature closest to 30 cm, sea ice turned into land ice) is compared with real.exe in the variant matrix
+(`tools/gcp/real_variant.py`: the P1 domain, also with `real_data_init_type = 2`, the two-domain nest N3s and the
+Arctic V2 domain with sea ice), every file identical.
 
 ## Not covered
 
 The following real.exe paths are not ported. `cppwrf_real` stops with an error when the namelist
 selects one:
 
-- `sf_surface_physics` other than 0, 2 and 4 (RUC, PX, CLM and SSiB soil handling);
+- `sf_surface_physics` other than 0, 1, 2 and 4 (RUC, PX, CLM and SSiB soil handling), and TAVGSFC input with the
+  slab;
 - `use_tavg_for_tsk`;
 - `chem_opt` and `tracer_opt` (the 4-D chemistry and tracer arrays);
 - `vert_refine_method`.

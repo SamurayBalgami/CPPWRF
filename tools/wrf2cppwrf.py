@@ -1577,6 +1577,9 @@ class WrfTranslator:
                 if sstu not in (0, 1):
                     self.error(f"WRF sst_update = {sstu} is not supported; CPPWRF supports 0 and 1.")
                 elif sstu == 1:
+                    if sf_surface == 1:
+                        self.error("WRF sst_update = 1 with sf_surface_physics = 1 (slab) is not supported "
+                                   "(no reference run).")
                     if self.get_opt("time_control", "io_form_auxinput4", 0) == 0:
                         self.error("WRF sst_update = 1 needs io_form_auxinput4 /= 0 (as WRF).")
                     for k in ("auxinput4_interval_s", "auxinput4_interval_h", "auxinput4_interval_d", "auxinput4_interval_y",

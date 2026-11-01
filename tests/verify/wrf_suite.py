@@ -470,6 +470,24 @@ CASES = [
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_HY1_r8", "dyn.hypsometric_opt=1", "output.out_interval=10",
       "output.diag_interval=10"],
      f"{WR}/run_HY1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 5e-11, "W": 1e-9, "THM": 1e-11, "QV": 6e-10}),
+    # SLAB1 / SLAB4 = P1 / P4 with the 5-layer thermal diffusion land surface (sf_surface_physics = 1), inputs from
+    # real.exe with the slab's 5 soil layers
+    ("real_slab1_r8_fp64_cpu", "cpu_dp", "configs/real_slab1_r8.ini", [],
+     f"{WR}/run_SLAB1_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
+    ("real_slab1_r8_fp64_cpu_1h", "cpu_dp", "configs/real_slab1_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_SLAB1_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_SLAB1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    ("real_slab1_r8_fp64_cuda_1h", "cuda_dp", "configs/real_slab1_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_SLAB1_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_SLAB1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-7, "W": 1e-6, "THM": 1e-8, "QV": 1e-7}),
+    ("real_slab4_r8_fp64_cpu_1h", "cpu_dp", "configs/real_slab4_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_SLAB4_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_SLAB4_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0}),
+    ("real_slab4_r8_fp64_cuda_1h", "cuda_dp", "configs/real_slab4_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_SLAB4_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_SLAB4_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-3, "W": 2e-2, "THM": 2e-5, "QV": 1e-3}),
     # NMP1 = P1 with Noah-MP v5.1.2 (sf_surface_physics = 4) against WRF v4.8.0 real*8 and single precision.
     ("real_nmp1_r8_fp64_cpu", "cpu_dp", "configs/real_nmp1_r8.ini", [],
      f"{WR}/run_NMP1_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
@@ -682,7 +700,8 @@ RESTARTS = (("p1", "configs/real_p1_r8.ini", "run_P1_r8"), ("a01", "configs/real
             ("mynnsf1", "configs/real_mynnsf1_r8.ini", "run_P6_r8"), ("mynnsf2", "configs/real_mynnsf2_r8.ini", "run_P6_r8"),
             ("mynnx1", "configs/real_mynnx1_r8.ini", "run_P6_r8"), ("mynnx2", "configs/real_mynnx2_r8.ini", "run_P6_r8"),
             ("t1", "configs/real_t1.ini", "run_R1_r8"),
-            ("a05", "configs/real_a05_r8.ini", "run_A05_r8"), ("a05g", "configs/real_a05g_r8.ini", "run_A05G_r8"))
+            ("a05", "configs/real_a05_r8.ini", "run_A05_r8"), ("a05g", "configs/real_a05g_r8.ini", "run_A05G_r8"),
+            ("slab1", "configs/real_slab1_r8.ini", "run_SLAB1_r8"))
 # restart_<tag>_fp64_cuda: the same in CUDA FP64 (the GPU run is deterministic: restarted = straight bit for bit)
 SPECIAL = (["straka_wrf", "straka_wrf_cuda", "restart_p1_fp32_cuda"] + [f"restart_{t}_fp64" for t, _, _ in RESTARTS]
            + [f"restart_{t}_fp64_cuda" for t, _, _ in RESTARTS])
