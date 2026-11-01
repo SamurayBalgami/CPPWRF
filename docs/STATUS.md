@@ -171,6 +171,7 @@ CUDA (relative L2 at 1 h unless noted):
 | P7 | FP64 | 4.7e-7 | 1.1e-5 | 6.0e-8 | 1.2e-5 |
 | P2 | FP64 | 5.2e-5 | 1.8e-3 | 9.4e-7 | 4.0e-5 |
 | P4 | FP64 | 2.2e-4 | 3.6e-3 | 2.7e-6 | 2.1e-4 |
+| A05 / A05C / A05G (G4) | FP64 | 6.4e-4 / 1.6e-5 / 5.4e-4 | 2.5e-2 / 5.5e-4 / 1.3e-2 | 9.9e-6 / 2.7e-7 / 7.7e-6 | 5.8e-4 / 1.9e-5 / 2.7e-4 |
 | P5 (WSM6) | FP64 | 8.4e-5 | 1.1e-3 | 2.6e-6 | 5.1e-4 |
 | P6 (Thompson) | FP64 | 3.2e-5 | 9.0e-4 | 4.0e-7 | 8.5e-6 |
 | MYNN | FP64 | 2.6e-4 | 5.8e-3 | 5.5e-6 | 1.1e-4 |
@@ -198,7 +199,7 @@ roundoff over an hour, which is why P2 and P4 show larger CUDA FP64 differences 
 build is the reference for bit identity. Every CPU FP64 case of the suite has a CUDA twin (FP64, or FP32 against
 WRF's single-precision run), with tolerances of about three times the differences above (Colab L4 and RTX PRO 6000
 Blackwell "G4"). On the GPU a run restarted after its first step reproduces the uninterrupted run bit for bit
-(restart_<case>_fp64_cuda for P1, A01, P7, P8, P9, NMP1, MYNN, MYNNSF1, MYNNSF2, MYNNX1, MYNNX2, T1), and the
+(restart_<case>_fp64_cuda for P1, A01, A05, A05G, P7, P8, P9, NMP1, MYNN, MYNNSF1, MYNNSF2, MYNNX1, MYNNX2, T1), and the
 wrfout / wrfrst files of a GPU run (P1, P4, MYNN, N2, also resumed from WRF's wrfrst) have WRF's variables,
 dimensions, attributes, global attributes and times (run_wrf_files_test.sh with CPPWRF_FILES_NO_VALUES=1).
 The GPU results depend on the GPU architecture only through the compiler: with the same nvcc 13.0 and libdevice,
