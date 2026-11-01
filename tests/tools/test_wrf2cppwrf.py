@@ -610,6 +610,29 @@ class TestValidationAndWarnings(unittest.TestCase):
         p = phys("usemonalb = .true.")
         self.assertEqual(p["usemonalb"], True)
 
+    def test_slab_lsm(self):
+        # sf_surface_physics = 1 (module_sf_slab.F): 5 soil layers (the Registry default), ifsnow 1 (default) or 0
+        def phys(extra):
+            t = WrfTranslator(parse_namelist(real_case(f"""
+            &time_control /
+            &domains time_step = 60 /
+            &physics sf_sfclay_physics = 1, sf_surface_physics = 1, bl_pbl_physics = 1{extra} /
+            &dynamics /
+            """)))
+            gen = t.translate()
+            return t.errors, gen.get("phys", {})
+        err, p = phys("")
+        self.assertEqual(err, [])
+        self.assertEqual((p["sf_surface_physics"], p["num_soil_layers"]), (1, 5))
+        self.assertNotIn("ifsnow", p)
+        err, p = phys(", num_soil_layers = 5, ifsnow = 0")
+        self.assertEqual(err, [])
+        self.assertEqual(p["ifsnow"], 0)
+        for extra, msg in ((", num_soil_layers = 4", "num_soil_layers = 4"), (", ifsnow = 2", "ifsnow = 2"),
+                           (", fractional_seaice = 1", "fractional_seaice = 1")):
+            err, _ = phys(extra)
+            self.assertIn(msg, " ".join(err), extra)
+
     def test_force_read_thompson(self):
         def phys(mp, extra):
             t = WrfTranslator(parse_namelist(real_case(f"""
