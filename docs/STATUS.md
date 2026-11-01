@@ -2,7 +2,7 @@
 
 CPPWRF reproduces WRF-ARW v4.8.0 statement by statement. This page lists what is implemented, how it
 is verified against WRF, and the current results. All numbers come from `tests/verify/wrf_suite.py`
-(145 cases and 27 restart / Straka checks, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
+(154 cases and 31 restart / Straka checks, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
 
 ## Implemented
 
@@ -13,7 +13,7 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 | Microphysics | Kessler (1), WSM6 (6, with effective radii), Thompson (8) |
 | Cumulus | Kain-Fritsch (1), Grell-Freitas-Li (3, deep and shallow), Tiedtke (6), New Tiedtke (16) |
 | PBL, surface layer, land surface | YSU (1), MYJ (2), MYNN-EDMF (5, icloud_bl 0 / 1, with the surface layers 1, 2 and 5; bl_mynn_tkeadvect, bl_mynn_cloudpdf -2..2, bl_mynn_mixlength 0..2, bl_mynn_closure 2.5 / 2.6 / 3.0, bl_mynn_edmf 0 / 1, bl_mynn_edmf_mom, bl_mynn_edmf_tke, bl_mynn_cloudmix, bl_mynn_mixqt, bl_mynn_ess, bl_mynn_mixscalars, bl_mynn_output 0 / 1, tke_budget 0 / 1), MYNN surface layer options sf_mynn_sfcflux_land 0..3 and sf_mynn_sfcflux_water 0..4, fog deposition (grav_settling 1, 2), revised MM5 surface layer (1), Eta surface layer (2), MYNN surface layer (5), Noah LSM (2, including glacial and sea-ice points; usemonalb and rdlai2d: background albedo and LAI from wrfinput), Noah-MP v5.1.2 (4, default options), fractional sea ice (fractional_seaice = 1), SST update (sst_update = 1, wrflowinp), gravity wave drag (gwd_opt = 1, GWDO) |
-| Radiation | RRTMG LW and SW (4), CAM ozone and greenhouse gases, cal_cldfra1, McICA |
+| Radiation | RRTMG LW and SW (4), CAM ozone and greenhouse gases, cal_cldfra1, McICA (cldovrlp 1-5) and clear sky only (cldovrlp 0), cumulus clouds in the radiation (cu_rad_feedback: Kain-Fritsch, Grell-Freitas; no effect with Tiedtke / New Tiedtke as in WRF) |
 | Nesting | static one-way and two-way nests (interp_fcn_sint, bdy_interp1, copy_fcn feedback, sm121/smdsm smoothers, blend_terrain, adjust_tempqv) |
 | Namelist | physics_suite CONUS and tropical (the -1 options), in tools/wrf2cppwrf.py and in the WRF I/O schema |
 | I/O | reads wrfinput_d0N / wrfbdy_d01; writes WRF v4.8.0 wrfout_d0N and wrfrst_d0N files (WRF I/O schema, iofields_filename, history_outname / rst_outname, frames_per_outfile, use_netcdf_classic) and its own restart files; native binary output; cppwrf_real (real.exe) |
@@ -79,6 +79,7 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | P2 | P1 + Kain-Fritsch | 1 h |
 | P3 | P1 + RRTMG LW/SW (radt 1 min) | 3 steps |
 | P4 | P2 + WSM6 + RRTMG (cloudy, effective radii) + diff_opt 1 / km_opt 4 | 1 h |
+| A05 / A05C / A05G | P4 with cu_rad_feedback (Kain-Fritsch cloud fraction and water in RRTMG) / P4 with cldovrlp 0 (RRTMG without clouds) / P8 + WSM6 + RRTMG with cu_rad_feedback (Grell-Freitas QC_CU / QI_CU) | 1 h |
 | KESSKF | P4 with Kessler instead of WSM6 (Kain-Fritsch rain in Kessler's split sedimentation steps) | 1 h |
 | P5 | P1 + WSM6 + diff_opt 1 / km_opt 4 | 1 h |
 | P6 | P5 with Thompson | 1 h |
@@ -132,7 +133,7 @@ P1 with Noah-MP and the two-way nest N3s (1 h, both domains) and em_quarter_ss (
 threads are bit-identical to serial WRF on c3 (Sapphire Rapids) and n2 machines (`run.threads` in
 tools/gcp/gcp_matrix.sh). The required build flags are in [USER_GUIDE.md](USER_GUIDE.md#required-flags-and-determinism).
 
-Restarts reproduce an uninterrupted run bit for bit (P1, A01, P7, P8, P9, NMP1, MYNN, MYNNSF1, MYNNSF2, MYNNX1, MYNNX2, T1; P1 also in FP32 on the GPU), and a run
+Restarts reproduce an uninterrupted run bit for bit (P1, A01, A05, A05G, P7, P8, P9, NMP1, MYNN, MYNNSF1, MYNNSF2, MYNNX1, MYNNX2, T1; P1 also in FP32 on the GPU), and a run
 resumed from WRF's own wrfrst files continues as WRF does (also the two-way physics nest N3, both domains).
 The restart variants of tests/verify/matrix_restart_io.txt (tools/gcp/gcp_matrix.sh) write restart files in the
 middle of a run and resume both models from WRF's: the wrfrst files of the straight and the resumed runs (data and
@@ -222,7 +223,7 @@ within WRF's own single/double difference in FP32 (U 6.8e-5; WRF real*8 vs. WRF 
 cases (also symmetric, open and diff_opt 2) agree with WRF in CUDA FP64 to 1e-16 .. 5e-11 (W).
 
 Namelist variants (tools/gcp/gcp_matrix.sh, 3-minute runs from the P1, P4, P6, P8 and P9 inputs, every wrfout
-variable at tolerance 0): kfeta_trigger 3, ysu_topdown_pblmix 0, icloud 0, cldovrlp 1-5 with idcor 0 and 1,
+variable at tolerance 0): kfeta_trigger 3, ysu_topdown_pblmix 0, icloud 0, cldovrlp 0-5 (1-5 with idcor 0 and 1; 0 also with restart files, MYNN and the N3s nest), cu_rad_feedback (Kain-Fritsch: also cudt 5, Kessler, icloud 0, cldovrlp 0, wrfrst at 30 min; Grell-Freitas with WSM6 or Kessler and RRTMG, ishallow 0 and 1, wrfrst at 30 min; Tiedtke and New Tiedtke 1 h; the N3s nest on both or one domain; 3 min and 1 h), shallowcu_forced_ra,
 o3input 0, ghg_input 0, use_mp_re 0, rdmaxalb false, ifsnow 0, kim_tofd, isfflx 0, Kessler on real data (also with
 Kain-Fritsch: cudt, kfeta_trigger 3, dt 30 s and 90 s, radiation off, 4.5 h with restart files),
 radt / bldt / cudt > dt, Grell-Freitas clos_choice 1, 4, 10 and ishallow 0, hybrid_opt (input-file check),
