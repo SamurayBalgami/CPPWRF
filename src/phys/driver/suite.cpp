@@ -646,6 +646,9 @@ void PhysicsSuite::part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies
     RadiationInputs ri{&prep.t_phy, &prep.p_hyd, &prep.p_hyd_w, &prep.pi_phy, &prep.rho, &prep.dz8w,
                        &prep.t8w, &s.q_2[s.P_QV], q(s.P_QC), q(s.P_QI), q(s.P_QS), re_cloud_, re_ice_,
                        re_snow_, &tsk, &albedo, &emiss, &xland, &xice, &snow};
+    ri.qr = q(s.P_QR);  // Dudhia SW
+    ri.qg = q(s.P_QG);
+    ri.ht = &b.ht;
     // check_a_mundo: icloud_bl = 1 needs the MYNN PBL (reset to 0 otherwise)
     if (o_.icloud_bl == 1 && o_.bl_pbl_physics == 5) {
       ri.cldfra_bl = &cldfra_bl;

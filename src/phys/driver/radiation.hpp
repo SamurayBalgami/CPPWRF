@@ -1,7 +1,8 @@
 #pragma once
-// WRF phys/module_radiation_driver.F radiation_driver for ra_lw_physics = 4 / ra_sw_physics = 4
-// (RRTMG) with o3input = 2 (CAM ozone), ghg_input = 1 (CAMtr_volume_mixing_ratio), aer_opt = 0,
-// swint_opt = 0, icloud = 1, cldovrlp, idcor, cu_rad_feedback, slope_rad = topo_shading = 0, single domain.
+// WRF phys/module_radiation_driver.F radiation_driver for ra_lw_physics = 4 (RRTMG) with ra_sw_physics = 4
+// (RRTMG) or 1 (Dudhia, module_ra_sw.F) with o3input = 2 (CAM ozone), ghg_input = 1 (CAMtr_volume_mixing_ratio),
+// aer_opt = 0, swint_opt = 0, icloud = 1, cldovrlp, idcor, cu_rad_feedback, slope_rad = topo_shading = 0, single
+// domain.
 // CPU builds: one RRTMG column at a time per OpenMP thread (rrtmg_lw_column / rrtmg_sw_column).
 // CUDA builds: everything on the device: inputs staged column-fastest, coszen, CAM ozone and
 // cal_cldfra1 per column, the RRTMG stages as kernels (RrtmgLwBatch / RrtmgSwBatch).
@@ -29,6 +30,8 @@ struct RadiationOptions {
   // oznini and the ozone interpolation run on domain 1 only (module_physics_init.F, module_radiation_driver.F,
   // EM_CORE): a nest's radiation uses o3rad, which med_nest_force interpolates from the parent (Registry f=p2c)
   bool oznini = true;
+  double swrad_scat = 1;   // Dudhia: swinit's CSSCA = swrad_scat * 1.e-5
+  bool warm_rain = false;  // mp_init: Kessler (Dudhia keeps its cloud and rain liquid without qi)
   int julyr = 0, julday = 1;  // start (wrfinput JULYR/JULDAY), gmt start hour
   double gmt = 0;
   double p_top = 0;
@@ -45,6 +48,9 @@ struct RadiationInputs {  // device fields (mass points) read by the radiation
   const Field3 *cldfra_bl = nullptr, *qc_bl = nullptr, *qi_bl = nullptr;
   // icloud_cu > 0: the cumulus scheme's clouds of its last call (radiation runs before cumulus_driver)
   const Field3 *qc_cu = nullptr, *qi_cu = nullptr, *cldfra_dp = nullptr, *cldfra_sh = nullptr;
+  // Dudhia SW: rain and graupel (nullptr without F_QR / F_QG) and the terrain height of the direct / diffuse split
+  const Field3 *qr = nullptr, *qg = nullptr;
+  const BaseField2* ht = nullptr;
 };
 
 struct RadiationOutputs {

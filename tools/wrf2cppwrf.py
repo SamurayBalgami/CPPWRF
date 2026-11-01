@@ -340,6 +340,7 @@ SUPPORTED_OPTIONS = {
     },
     "ra_sw_physics": {
         0: "None / off",
+        1: "Dudhia shortwave radiation (with RRTMG longwave)",
         4: "RRTMG shortwave radiation",
     },
     "diff_opt": {
@@ -566,6 +567,8 @@ NO_EFFECT_OPTIONS = {
     # not used by wrf.exe 4.8.0 (Registry entries only; variants r32cor / r32curv identical to WRF)
     "do_coriolis": "not used by wrf.exe", "do_curvature": "not used by wrf.exe", "do_gradp": "not used by wrf.exe",
     "coriolis2d": "not used by wrf.exe", "top_radiation": "not used by wrf.exe",
+    # swinit only (Dudhia shortwave, translated with ra_sw_physics = 1)
+    "swrad_scat": "read by the Dudhia shortwave scheme only",
     # adaptive time step only (translated with use_adaptive_time_step = .true.); max_time_step also by
     # nwp_diagnostics
     "target_cfl": "adaptive time step only", "target_hcfl": "adaptive time step only",
@@ -1493,9 +1496,18 @@ class WrfTranslator:
                 sections["phys"]["ra_lw_physics"] = ra_lw
                 sections["phys"]["ra_sw_physics"] = ra_sw
 
-                if (ra_lw == 4 or ra_sw == 4) and (ra_lw != 4 or ra_sw != 4):
-                    self.error(f"CPPWRF RRTMG requires both ra_lw_physics = 4 and ra_sw_physics = 4 "
-                               f"(got ra_lw_physics = {ra_lw}, ra_sw_physics = {ra_sw}).")
+                # radiation_driver: a LW scheme needs a SW scheme and the reverse (wrf_error_fatal); CPPWRF ports
+                # RRTMG LW with RRTMG SW or with Dudhia SW
+                if (ra_lw == 0) != (ra_sw == 0):
+                    self.error(f"WRF ra_lw_physics = {ra_lw} with ra_sw_physics = {ra_sw}: wrf.exe stops (a longwave "
+                               f"scheme needs a shortwave scheme and the reverse).")
+                elif ra_lw != 0 and (ra_lw, ra_sw) not in ((4, 4), (4, 1)):
+                    self.error(f"CPPWRF supports ra_lw_physics = 4 (RRTMG) with ra_sw_physics = 4 (RRTMG) or 1 "
+                               f"(Dudhia) (got ra_lw_physics = {ra_lw}, ra_sw_physics = {ra_sw}).")
+                # swinit (Dudhia): CSSCA = swrad_scat * 1.e-5; the other schemes do not read it
+                swrad_scat = self.get_opt("physics", "swrad_scat", 1.0)
+                if ra_sw == 1 and float(swrad_scat) != 1.0:
+                    sections["phys"]["swrad_scat"] = swrad_scat
 
                 if ra_lw != 0 or ra_sw != 0 or radt != 0:
                     # as given: stepra = nint(radt*60/dt) and calc_coszen at xtime + radt/2 use it
