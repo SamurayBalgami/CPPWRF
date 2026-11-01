@@ -97,6 +97,8 @@ RealOptions RealOptions::from_namelist(const Namelist& nl, const WrfSchema& sc, 
   o.surface_input_source = c.integer("surface_input_source");
   o.sf_urban_physics = c.integer("sf_urban_physics");
   o.fractional_seaice = c.integer("fractional_seaice");
+  if (o.fractional_seaice == 1 && lsm1 == 1)  // check_nml_consistency (module_check_a_mundo.F:1024)
+    throw std::runtime_error("real: fractional seaice does not work with simple slab thermal diffusion land model");
   o.default_soiltype = c.integer("default_soiltype");
   o.sst_update = c.integer("sst_update");
   o.grid_fdda = c.integer("grid_fdda");
@@ -106,6 +108,7 @@ RealOptions RealOptions::from_namelist(const Namelist& nl, const WrfSchema& sc, 
   o.seaice_threshold = c.num("seaice_threshold");
   o.use_tavg_for_tsk = c.logical("use_tavg_for_tsk");
   o.spec_bdy_width = c.integer("spec_bdy_width");
+  o.real_data_init_type = c.integer("real_data_init_type");
   o.input_from_file = c.logical("input_from_file");
   o.parent_id = c.integer("parent_id");
   o.i_parent_start = c.integer("i_parent_start");
@@ -323,9 +326,10 @@ void RealDomain<T>::init_domain(int loop, const std::string& current_date) {
   const T g = C::g, r_d = C::r_d, cp = C::cp, t0 = C::t0, p1000mb = C::p1000mb, cvpm = C::cvpm, cpovcv = C::cpovcv,
           rvovrd = C::rvovrd;
   const int sfs = o.sf_surface_physics;
-  if (sfs != 0 && sfs != 2 && sfs != 4)
-    throw std::runtime_error("real: only sf_surface_physics = 0, 2 (Noah) and 4 (Noah-MP) are ported");
+  if (sfs != 0 && sfs != 1 && sfs != 2 && sfs != 4)
+    throw std::runtime_error("real: only sf_surface_physics = 0, 1 (slab), 2 (Noah) and 4 (Noah-MP) are ported");
   const bool lsm = (sfs == 2 || sfs == 4);  // LSMSCHEME, NOAHMPSCHEME: module_initialize_real treats them alike
+  const bool slab = sfs == 1;               // SLABSCHEME (5-layer thermal diffusion)
   SkipCtx sk;
   sk.width = o.spec_bdy_width;
   sk.hold_ups = (loop == 1) || o.grid_fdda != 0 || o.sst_update == 1 || o.qna_update == 1 || o.all_ic_times || o.polar;
@@ -621,6 +625,73 @@ void RealDomain<T>::init_domain(int loop, const std::string& current_date) {
     }
   ifndsnowh = flag("SNOWH");
   ifndsoilw = num_sw_levels_input >= 1 ? 1 : 0;
+  if (slab) {
+    // process_soil_real (module_soil_pre.F), SLABSCHEME: fix_bottom_level_for_temp takes TMN from the input soil
+    // temperature closest to 30 cm (TAVGSFC is not read by cppwrf_real)
+    if (flag("TAVGSFC") == 1) throw std::runtime_error("real: TAVGSFC input with sf_surface_physics = 1 is not ported");
+    int closest_layer = 1000;
+    T closest_depth = T(1.e6);
+    for (int k = 1; k <= num_st_levels_input; ++k) {
+      const T diff_cm = std::abs(T(st_levels_input[std::size_t(k - 1)]) - T(30.));
+      if (diff_cm < closest_depth) {
+        closest_depth = diff_cm;
+        closest_layer = k;
+      }
+    }
+    if (closest_layer != 1000)
+      for (int j = jts; j <= j1; ++j)
+        for (int i = its; i <= i1; ++i) {
+          if (skip(i, j)) continue;
+          tmn(i, j) = st_input(i, closest_layer + 1, j);
+        }
+    // adjust_soil_temp_new: no lapse-rate TMN for the slab; with the input's soil height, TMN is lowered by the
+    // height difference when a layer lies above 40 cm (by the model terrain otherwise)
+    if (flag("SOILHGT") == 1) {
+      int st_near_sfc = 0;
+      for (int k = 1; k <= num_st_levels_input; ++k)
+        if (st_levels_input[std::size_t(k - 1)] <= 40) st_near_sfc = 1;
+      for (int j = jts; j <= j1; ++j)
+        for (int i = its; i <= i1; ++i) {
+          if (skip(i, j)) continue;
+          T vmin = toposoil(i, j), vmax = toposoil(i, j);
+          T dmin = ht(i, j) - toposoil(i, j), dmax = ht(i, j) - toposoil(i, j);
+          if (vmin < T(-1000)) continue;
+          if (vmax > T(10000)) continue;
+          if (dmin < T(-3000) || dmax > T(3000)) continue;
+          if (landmask(i, j) > T(0.5)) {
+            if (st_near_sfc == 1) tmn(i, j) = tmn(i, j) - T(0.0065) * (ht(i, j) - toposoil(i, j));
+            else tmn(i, j) = tmn(i, j) - T(0.0065) * ht(i, j);
+            tsk(i, j) = tsk(i, j) - T(0.0065) * (ht(i, j) - toposoil(i, j));
+            for (int k = 2; k <= num_st_levels_input + 1; ++k)
+              st_input(i, k, j) = st_input(i, k, j) - T(0.0065) * (ht(i, j) - toposoil(i, j));
+          }
+        }
+    }
+    if (o.num_soil_layers > 1) {
+      // init_soil_depth_1: top layer 1 cm, each layer twice as thick as the one above
+      if (o.num_soil_layers != 5) throw std::runtime_error("real: the slab LSM (sf_surface_physics = 1) uses 5 layers");
+      dzs(1) = T(.01);
+      zs(1) = T(.5) * dzs(1);
+      for (int l = 2; l <= o.num_soil_layers; ++l) {
+        dzs(l) = T(2) * dzs(l - 1);
+        zs(l) = zs(l - 1) + T(.5) * dzs(l - 1) + T(.5) * dzs(l);
+      }
+      // init_soil_1_real: land TSLB linear in depth from TSK at zs(1) to TMN at zs(num_soil_layers); water SST / TSK
+      const int ns = o.num_soil_layers;
+      for (int j = jts; j <= j1; ++j)
+        for (int i = its; i <= i1; ++i) {
+          if (skip(i, j)) continue;
+          if (landmask(i, j) > T(0.5)) {
+            for (int l = 1; l <= ns; ++l)
+              tslb(i, l, j) = (tsk(i, j) * (zs(ns) - zs(l)) + tmn(i, j) * (zs(l) - zs(1))) / (zs(ns) - zs(1));
+          } else if (o.real_data_init_type == 1 && flag_sst == 1) {
+            for (int l = 1; l <= ns; ++l) tslb(i, l, j) = sst(i, j);
+          } else {
+            for (int l = 1; l <= ns; ++l) tslb(i, l, j) = tsk(i, j);
+          }
+        }
+    }
+  }
   if (lsm) {
     if (num_st_levels_input < 2) throw std::runtime_error("real: not enough soil temperature data for Noah LSM");
     // process_soil_real: fix_bottom_level_for_temp has no action for LSMSCHEME
@@ -756,7 +827,37 @@ void RealDomain<T>::init_domain(int loop, const std::string& current_date) {
       }
     if (o.sf_urban_physics != 0) throw std::runtime_error("real: urban physics input is not ported");
   }
-  // adjust_for_seaice_pre (LSMSCHEME: no sea ice on land points; no-op for sf_surface_physics = 0)
+  // adjust_for_seaice_pre (LSMSCHEME: no sea ice on land points; SLABSCHEME: sea ice becomes land-ice land; no-op for
+  // sf_surface_physics = 0)
+  if (slab) {
+    const T xice_threshold = o.fractional_seaice == 0 ? T(0.5) : T(0.02);
+    const T seaice_threshold = T(o.seaice_threshold);
+    for (int j = jts; j <= j1; ++j)
+      for (int i = its; i <= i1; ++i) {
+        if (skip(i, j)) continue;
+        if (xice(i, j) > T(200.0)) xice(i, j) = T(0.);
+      }
+    for (int j = jts; j <= j1; ++j)
+      for (int i = its; i <= i1; ++i) {
+        if (skip(i, j)) continue;
+        if (xice(i, j) >= xice_threshold || (landmask(i, j) < T(0.5) && tsk(i, j) < seaice_threshold)) {
+          if (o.fractional_seaice == 0) xice(i, j) = T(1.0);
+          if (landmask(i, j) < T(0.5)) tmn(i, j) = T(271.4);
+          vegcat(i, j) = T(isice); ivgtyp(i, j) = isice; lu_index(i, j) = T(isice);
+          landmask(i, j) = T(1.); xland(i, j) = T(1.);
+          for (int l = 1; l <= num_veg_cat; ++l) landusef(i, l, j) = T(0.);
+          landusef(i, ivgtyp(i, j), j) = T(1.);
+          isltyp(i, j) = 16;
+          soilcat(i, j) = T(isltyp(i, j));
+          for (int l = 1; l <= num_soil_top_cat; ++l) soilctop(i, l, j) = T(0);
+          for (int l = 1; l <= num_soil_bot_cat; ++l) soilcbot(i, l, j) = T(0);
+          soilctop(i, isltyp(i, j), j) = T(1.);
+          soilcbot(i, isltyp(i, j), j) = T(1.);
+        } else {
+          xice(i, j) = T(0.0);
+        }
+      }
+  }
   if (lsm)
     for (int j = jts; j <= j1; ++j)
       for (int i = its; i <= i1; ++i) {
@@ -770,7 +871,7 @@ void RealDomain<T>::init_domain(int loop, const std::string& current_date) {
       if (int(lu_index(i, j)) != iswater) { landmask(i, j) = T(1); xland(i, j) = T(1); }
       else { landmask(i, j) = T(0); xland(i, j) = T(2); }
     }
-  if (lsm)  // fix_tsk_tmn
+  if (lsm || slab)  // fix_tsk_tmn
     for (int j = jts; j <= j1; ++j)
       for (int i = its; i <= i1; ++i) {
         if (skip(i, j)) continue;
@@ -815,7 +916,8 @@ void RealDomain<T>::init_domain(int loop, const std::string& current_date) {
         if (landmask(i, j) > T(0.5) && tslb(i, 1, j) > T(170) && tslb(i, 1, j) < T(400) && smois(i, 1, j) < T(0.005))
           for (int l = 1; l <= o.num_soil_layers; ++l) smois(i, l, j) = T(0.005);
       }
-  // soil temperature checks (sf_surface_physics = 0: tslb stays 0 and WRF resets smois(1:4) to 0.3 on land)
+  // soil temperature checks (sf_surface_physics = 0: tslb stays 0 and WRF resets smois(1:4) to 0.3 on land, as for
+  // the slab)
   if (loop != 1) {
     for (int j = jts; j <= j1; ++j)
       for (int ns = 1; ns <= o.num_soil_layers; ++ns)
@@ -834,7 +936,7 @@ void RealDomain<T>::init_domain(int loop, const std::string& current_date) {
           if (!lsm)
             for (int l = 1; l <= 4 && l <= o.num_soil_layers; ++l) smois(i, l, j) = T(0.3);
           if (tsk(i, j) > T(170.) && tsk(i, j) < T(400.) && tmn(i, j) > T(170.) && tmn(i, j) < T(400.)) {
-            if (lsm)  // fake_soil_temp
+            if (lsm || slab)  // fake_soil_temp (the same formula for both)
               for (int ns = 1; ns <= o.num_soil_layers; ++ns)
                 tslb(i, ns, j) = (tsk(i, j) * (T(3.0) - zs(ns)) + tmn(i, j) * (T(0.0) - zs(ns))) / (T(3.0) - T(0.0));
           } else {
@@ -843,7 +945,7 @@ void RealDomain<T>::init_domain(int loop, const std::string& current_date) {
         }
       }
   }
-  // adjust_for_seaice_post (LSMSCHEME; no-op for sf_surface_physics = 0)
+  // adjust_for_seaice_post (LSMSCHEME; no-op for sf_surface_physics = 0 and SLABSCHEME)
   if (lsm) {
     const T xice_threshold = o.fractional_seaice == 0 ? T(0.5) : T(0.02);
     const T seaice_threshold = T(o.seaice_threshold);

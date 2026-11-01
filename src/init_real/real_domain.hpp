@@ -50,6 +50,7 @@ struct RealOptions {
   bool use_tavg_for_tsk = false;
   // bdy_control
   int spec_bdy_width = 5;
+  int real_data_init_type = 1;  // init_soil_1_real: water points' TSLB from SST only for 1 (SI)
 
   bool input_from_file = false;  // a nest is processed only with input_from_file (real_em.F)
 
