@@ -10,7 +10,9 @@ makes the inputs first: real.exe (EXE, next to WRFEXE) runs in run_NAME on the m
 first directory holding a file name gives it) with the same namelist, and both runs read its wrfinput / wrfbdy
 instead of BASE's; run.steps=0 leaves the 3-step run out (long references). run.segment=S runs wrf.exe in parts of
 S seconds, each resumed from the previous part's wrfrst files (WRF's own restart; for runs longer than a spot VM
-lasts), and merges each domain's history files into the first part's; with the environment WRFREF_PARTS (a bucket
+lasts), and merges each domain's history files into the first part's (each part but the last runs one history
+interval past its end, so that the history frames and wrfrst files at the part's end come from within the run as in
+an uninterrupted run: at a run's last step WRF's nest history differs); with the environment WRFREF_PARTS (a bucket
 prefix) the run directory goes there after each part and a new run continues after the last part found there.
 Prints one line per run: NAME[/steps] SUCCESS | WRF-FAILED [error lines] (NAME REAL-FAILED [error lines] when
 real.exe fails)."""
@@ -60,11 +62,14 @@ def nlint(nl, key, default=None):
 
 
 def segmented(R, nl, seg, parts_prefix):
-    """wrf.exe in R in parts of `seg` seconds (run.segment), the wrfrst files of the namelist's restart_interval
-    kept; then each domain's history files appended to the first part's file. None or the error lines."""
+    """wrf.exe in R in parts of `seg` seconds (run.segment), each but the last one history interval longer, the wrfrst
+    files of the namelist's restart_interval kept; then each domain's history files appended to the first part's file
+    up to the next part's start. None or the error lines."""
     total, ri, ndom = nlint(nl, "run_seconds"), nlint(nl, "restart_interval") * 60, nlint(nl, "max_dom", 1)
-    if total % seg or seg % 60:
-        return [f"run_seconds {total} is not a multiple of run.segment {seg} (whole minutes)"]
+    his = re.search(r"^\s*history_interval_s\s*=\s*([\d,\s]+)", nl, re.M).group(1)
+    hi = max(int(x) for x in his.replace(",", " ").split())  # the overlap of the parts
+    if total % seg or seg % 60 or hi >= seg:
+        return [f"run_seconds {total} is not a multiple of run.segment {seg} (whole minutes, above the history interval)"]
     t0 = datetime.datetime(*(nlint(nl, f"start_{k}", 0 if k in ("minute", "second") else None)
                              for k in ("year", "month", "day", "hour", "minute", "second")))
     tag = lambda t: t.strftime("%Y-%m-%d_%H:%M:%S")
@@ -79,7 +84,9 @@ def segmented(R, nl, seg, parts_prefix):
     for k in range(first, total // seg):
         t = t0 + datetime.timedelta(seconds=k * seg)
         n = nl
-        for key, v in [("run_seconds", seg), ("restart", ".true." if k else ".false."), ("restart_interval", seg // 60)] \
+        last = k == total // seg - 1
+        for key, v in [("run_seconds", seg if last else seg + hi), ("restart", ".true." if k else ".false."),
+                       ("restart_interval", seg // 60)] \
                 + [(f"start_{u}", getattr(t, u)) for u in ("year", "month", "day", "hour", "minute", "second")]:
             n = setkey(n, "time_control", key, ", ".join([str(v)] * (1 if key in ("run_seconds", "restart",
                                                                                   "restart_interval") else ndom)))
@@ -103,17 +110,24 @@ def segmented(R, nl, seg, parts_prefix):
     for d in range(1, ndom + 1):  # one history file per domain, as an uninterrupted run with frames_per_outfile
         files = sorted(glob.glob(os.path.join(R, f"wrfout_d{d:02d}_*")))
         main = os.path.join(R, f"wrfout_d{d:02d}_{tag(t0)}")
+        starts = []  # each file's first frame: a part's frames from the next part's first frame on are its overlap
+        for f in files:
+            with netCDF4.Dataset(f) as b:
+                starts.append(b["Times"][0].tobytes())
         with netCDF4.Dataset(main, "a") as a:
             a.set_auto_maskandscale(False)
-            for f in files:
+            for i, f in enumerate(files):
+                end = starts[i + 1] if i + 1 < len(files) else None
                 if f == main:
+                    n0 = sum(1 for t in a["Times"][:] if end is None or t.tobytes() < end)
                     continue
-                with netCDF4.Dataset(f) as b:
+                with netCDF4.Dataset(f) as b:  # appended after the frames kept so far (the overlap overwritten)
                     b.set_auto_maskandscale(False)
-                    n0, m = len(a.dimensions["Time"]), len(b.dimensions["Time"])
+                    m = sum(1 for t in b["Times"][:] if end is None or t.tobytes() < end)
                     for v in b.variables:
                         if b[v].dimensions[:1] == ("Time",):
-                            a[v][n0:n0 + m] = b[v][:]
+                            a[v][n0:n0 + m] = b[v][:m]
+                n0 += m
                 os.remove(f)
     open(os.path.join(R, "namelist.input"), "w").write(nl)  # the reference's namelist (suite configuration check)
     return None
