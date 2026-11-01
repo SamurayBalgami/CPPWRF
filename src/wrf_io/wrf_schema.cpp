@@ -158,6 +158,14 @@ void derive_config(WrfConfig& c, int max_dom, bool real_exe) {
       for (const char* o : {"nssl_2moment_on", "nssl_hail_on", "nssl_density_on", "nssl_3moment", "nssl_ccn_on"})
         c.set(o, "0");
   }
+  // check_nml_consistency (module_check_a_mundo.F:1124-1146): the bucket and prec_acc packages
+  c.set("bucketr_opt", c.num("bucket_mm") > 0 ? "1" : "0");
+  c.set("bucketf_opt", c.num("bucket_j") > 0 ? "1" : "0");
+  {
+    bool on = false;
+    for (int id = 1; id <= max_dom; ++id) on = on || c.num("prec_acc_dt", id) > 0;
+    c.set("prec_acc_opt", on ? "1" : "0");
+  }
   // wrf.exe: seed_dim from random_seed(size=...) of gfortran's runtime
   if (!real_exe) c.set("seed_dim", "8");
   // check_a_mundo (module_check_a_mundo.F:2156-2174): with the adaptive time step BMJ, the SAS schemes and Tiedtke

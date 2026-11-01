@@ -167,6 +167,8 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
     c.set("ysu_topdown_pblmix", std::to_string(o.ysu_topdown_pblmix));
     if (o.rad.icloud_cu != 0) c.set("cu_rad_feedback", ".true.");  // ICLOUD_CU (derive_config)
     c.set("kim_tofd", o.kim_tofd ? ".true." : ".false.");
+    c.set("bucket_mm", str(o.bucket_mm)); c.set("bucket_j", str(o.bucket_j));
+    c.set("prec_acc_dt", str(o.prec_acc_dt));
     if (o.sf_surface_physics == 4) {
       c.set("dveg", std::to_string(o.noahmp.dveg));
       c.set("opt_crs", std::to_string(o.noahmp.opt_crs));
@@ -502,6 +504,7 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
       else if (name == "CROPCAT") fi = &m_.suite->cropcat;
       else if (name == "PGS" || name == "PGSXY") fi = &m_.suite->pgsxy;
     }
+    if (!fi) fi = m_.suite->bucket_int(to_lower(name));  // I_RAINC, I_ACSWUPT, ... (bucket_mm, bucket_J)
     if (fi) {
       std::vector<int> h;
       fi->download(h);
@@ -787,7 +790,7 @@ void WrfHistory::feedback_physics(WrfHistory& child, int ipos, int jpos, int rat
           if (v.name == "CROPCAT") return &su.cropcat;
           if (v.name == "PGSXY") return &su.pgsxy;
         }
-        return nullptr;
+        return su.bucket_int(to_lower(v.name));
       };
       phys::driver::IntField2* pi = ifield(m_);
       const phys::driver::IntField2* ci = ifield(child.m_);

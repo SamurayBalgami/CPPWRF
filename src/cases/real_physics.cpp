@@ -246,6 +246,10 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.fractional_seaice = int(cfg.get_int("phys.fractional_seaice", 0));
   o.tice2tsk_if2cold = cfg.get_bool("phys.tice2tsk_if2cold", false);
   o.sst_update = int(cfg.get_int("phys.sst_update", 0));
+  o.bucket_mm = cfg.get_double("phys.bucket_mm", -1.0);  // diagnostic_output_calc (module_diag_misc.F)
+  o.bucket_j = cfg.get_double("phys.bucket_j", -1.0);
+  o.prec_acc_dt = cfg.get_double("phys.prec_acc_dt", 0.0);  // this domain's entry (minutes)
+  o.prec_acc_opt = cfg.get_bool("phys.prec_acc_opt", o.prec_acc_dt > 0);  // check_a_mundo: some domain's > 0
   o.gwd_opt = int(cfg.get_int("dyn.gwd_opt", 0));
   o.gwd_dx_factor = cfg.get_double("dyn.gwd_dx_factor", 2.0);
   o.gwd_if_nonhyd = cfg.get_bool("dyn.gwd_if_nonhyd", true);
@@ -438,6 +442,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
     su.set_effective_radii(&pc->re_cloud, &pc->re_ice, &pc->re_snow);
   if (auto* pc = m.rk->physics(); pc && pc->params().mp_physics != 0) {
     const bool has_ice_precip = pc->params().mp_physics == 6 || pc->params().mp_physics == 8;
+    su.set_microphysics_accum(&pc->rainnc);
     su.set_microphysics_precip(&pc->rainncv, has_ice_precip ? &pc->sr : nullptr,
                                has_ice_precip ? &pc->snowncv : nullptr,
                                has_ice_precip ? &pc->graupelncv : nullptr);

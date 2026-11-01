@@ -11,6 +11,8 @@
 //              t.rv_tendf, t.t_tendf, t.q_tendf; the diffusion is added after it, as in WRF)
 //   after the RK loop, before microphysics:
 //     after_rk = phy_prep_part2 (decouples the persistent R*TEN fields with the new mut)
+//   at the end of the step (after the microphysics, spec_bdy_final and set_w_surface):
+//     after_all_rk_steps = module_after_all_rk_steps.F (the diagnostics driver)
 #include "dyn/state.hpp"
 
 namespace cppwrf::dyn {
@@ -21,6 +23,7 @@ class ColumnPhysics {
   virtual void part1(State& s, const BaseState& b, Tendencies& t) = 0;
   virtual void part2(const State& s, const BaseState& b, Tendencies& t) = 0;
   virtual void after_rk(const State& s, const BaseState& b) = 0;
+  virtual void after_all_rk_steps() {}
   // Advective forcing for cumulus schemes that need it (WRF RTHFTEN / RQVFTEN, set_tend in
   // rk_tendency and rk_scalar_tend: theta / qv advection tendency * msfty, every RK stage).
   // nullptr: not wanted.

@@ -12,6 +12,7 @@
 // WRF keeps as locals of solve_em / surface_driver (th_phy, pi_phy, p_phy, dz8w, p8w, t8w,
 // psim, psih, gz1oz0, chklowq, QGH, CHS, CHS2, CQS2, CPM, u_phytmp) are scratch members.
 // The initial surface state (what wrfinput + phy_init provide) is filled by the caller.
+#include <array>
 #include <memory>
 #include <string>
 #include <utility>
@@ -110,6 +111,11 @@ struct SuiteOptions {
   std::string mminsl = "STAS";
   int iswater = 17, isice = 15, isurban = 13;
   std::string table_dir = ".";   // VEGPARM.TBL, SOILPARM.TBL, GENPARM.TBL, NoahmpTable.TBL
+  // diagnostic_output_calc (module_diag_misc.F): the buckets of RAINC / RAINNC (bucket_mm) and of the radiation
+  // accumulations (bucket_J; Registry -1: off) and the precipitation over prec_acc_dt minutes (0: off);
+  // prec_acc_opt (check_a_mundo): some domain's prec_acc_dt > 0, every domain has the PREC_ACC fields
+  double bucket_mm = -1, bucket_j = -1, prec_acc_dt = 0;
+  bool prec_acc_opt = false;
 };
 
 class PhysicsSuite : public dyn::ColumnPhysics {
@@ -120,6 +126,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   void part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) override;
   void part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) override;
   void after_rk(const dyn::State& s, const dyn::BaseState& b) override;
+  void after_all_rk_steps() override;  // diagnostic_output_calc: buckets and prec_acc_dt accumulations
   Field3* th_forcing() override { return o_.cu_physics == 16 || o_.cu_physics == 3 ? &pt.rthften : nullptr; }
   // rk_scalar_tend sets RQVFTEN for Kain-Fritsch too (module_em.F), though KF does not use it
   Field3* qv_forcing() override {
@@ -137,6 +144,10 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   // and the activation times RADTACTTIME, BLDTACTTIME, CUDTACTTIME (restart fields, WRF's REAL)
   bool adapt_step_flag = false;
   wrf_time::Interval elapsed;
+  // solve_em's curr_secs2 (the step start since this run's start): itimestep - run_start_step - 1 steps, or the
+  // clock's time since the run's start (adaptive time step)
+  long run_start_step = 0;
+  wrf_time::Interval run_now;
   real radtacttime = 0, bldtacttime = 0, cudtacttime = 0;
   // the large step of the coming step (adaptive time step)
   void set_dt(double dt);
@@ -217,6 +228,14 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   // diffuse, clear-sky direct and direct normal irradiance; the diffuse fraction (radiation_driver)
   Field2 swvisdir, swvisdif, swnirdir, swnirdif, swddir, swddni, swddif, swddirc, swddnic, diffuse_frac;
   Field2 aclwupt, aclwuptc, aclwdnt, aclwdntc, aclwupb, aclwupbc, aclwdnb, aclwdnbc, acswupt, acswuptc, acswdnt, acswdntc, acswupb, acswupbc, acswdnb, acswdnbc;
+  // diagnostic_output_calc: PREC_ACC_C, PREC_ACC_NC, SNOW_ACC_NC (prec_acc_opt), the bucket counters I_RAINC,
+  // I_RAINNC (bucket_mm > 0) and I_ACSWUPT ... I_ACLWDNBC (bucket_J > 0, in the order of acrad()); restart fields
+  Field2 prec_acc_c, prec_acc_nc, snow_acc_nc;
+  IntField2 i_rainc, i_rainnc;
+  std::array<IntField2, 16> i_acrad;
+  std::array<Field2*, 16> acrad();  // ACSWUPT, ACSWUPTC, ACSWDNT, ..., ACLWDNBC (module_diag_misc.F order)
+  // a bucket counter by its lower-case WRF name (i_rainc, i_acswupt, ...); nullptr when its package is off
+  IntField2* bucket_int(const std::string& name);
   std::unique_ptr<RadiationDriver> rad_;
   Field3 *re_cloud_ = nullptr, *re_ice_ = nullptr, *re_snow_ = nullptr;
   // radiation needs latitude/longitude (wrfinput XLAT/XLONG, i + nx*j); call before the first step
@@ -235,6 +254,9 @@ class PhysicsSuite : public dyn::ColumnPhysics {
     snowncv_mp_ = snowncv_mp; graupelncv_mp_ = graupelncv_mp;
   }
   const Field2 *rainncv_mp_ = nullptr, *sr_mp_ = nullptr, *snowncv_mp_ = nullptr, *graupelncv_mp_ = nullptr;
+  // the microphysics' grid%rainnc (PhysicsCoupling), changed by bucket_mm; nullptr without microphysics (WRF: 0)
+  void set_microphysics_accum(Field2* rainnc_mp) { rainnc_mp_ = rainnc_mp; }
+  Field2* rainnc_mp_ = nullptr;
   Field3 cldfra;  // radiation cloud fraction (WRF CLDFRA)
   const RadiationDriver* radiation() const { return rad_.get(); }
   bool radiation_on() const { return o_.rad.ra_lw_physics != 0 || o_.rad.ra_sw_physics != 0; }
@@ -249,6 +271,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   std::vector<std::pair<std::string, IntField2*>> carried_int();
   void restarted(long step) {
     itimestep = step;
+    run_start_step = step;
     t1_lag_set_ = true;
     // NOAHMP_INIT on a restart (NoahmpWRFinitMod.F90:463): CROPCAT is an output only, NoahmpIO%CROPCAT keeps its
     // allocation value undefined_int, which replaces the restart file's values

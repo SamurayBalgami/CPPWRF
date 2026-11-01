@@ -301,7 +301,7 @@ def parse_namelist(text: str) -> Dict[str, Dict[str, List[Any]]]:
 # -----------------------------------------------------------------------------
 
 # physics options a nest may set differently from its parent (verified bit-identical with WRF nests)
-PER_DOMAIN_PHYS = {"cu_physics", "cudt", "radt", "bldt", "cu_rad_feedback"}  # max_domains entries of the WRF Registry
+PER_DOMAIN_PHYS = {"cu_physics", "cudt", "radt", "bldt", "cu_rad_feedback", "prec_acc_dt"}  # max_domains entries of the WRF Registry
 SUPPORTED_OPTIONS = {
     "mp_physics": {
         0: "None / off",
@@ -443,9 +443,6 @@ DEFAULT_ONLY_OPTIONS = {
     ("physics", "sst_skin"): (0, "skin SST"),
     ("physics", "sf_ocean_physics"): (0, "ocean mixed layer / 3-D ocean model"),
     ("physics", "omlcall"): (0, "ocean mixed layer"),
-    ("physics", "bucket_mm"): (-1, "rain accumulation buckets (I_RAINC, I_RAINNC)"),
-    ("physics", "bucket_j"): (-1, "radiation accumulation buckets (I_ACSWUPT, ...)"),
-    ("physics", "prec_acc_dt"): (0, "precipitation accumulation outputs (PREC_ACC_C, PREC_ACC_NC, SNOW_ACC_NC)"),
     ("physics", "aercu_opt"): (0, "aerosol-aware cumulus"),
     ("physics", "windfarm_opt"): (0, "wind farm parameterisation"),
     ("physics", "sf_surf_irr_scheme"): (0, "irrigation"),
@@ -1466,6 +1463,14 @@ class WrfTranslator:
                 sections["moist"]["species"] = "qv, qc, qr"
 
         # 11. Physics Section [phys]
+        # diagnostic_output_calc (module_diag_misc.F): the buckets of RAINC / RAINNC (bucket_mm) and of the radiation
+        # accumulations (bucket_J), the precipitation over prec_acc_dt minutes (every domain's entry)
+        bucket_mm = self.get_opt("physics", "bucket_mm", -1.0)
+        bucket_j = self.get_opt("physics", "bucket_j", -1.0)
+        prec_acc = self.get_opt_list("physics", "prec_acc_dt")[:max(1, max_dom)]
+        if (bucket_mm > 0 or bucket_j > 0 or any(v > 0 for v in prec_acc)) and not has_physics_suite:
+            self.error("WRF bucket_mm / bucket_J / prec_acc_dt need the column physics (surface layer, land surface, "
+                       "PBL or cumulus) in CPPWRF.")
         if self.get_opt("physics", "sst_update", 0) != 0 and not (mp_physics != 0 or has_physics_suite):
             self.error("WRF sst_update = 1 needs the physics suite (mp_physics /= 0) in CPPWRF.")
         if mp_physics != 0 or has_physics_suite:
@@ -1498,6 +1503,14 @@ class WrfTranslator:
                     sections["phys"]["bldt"] = bldt
                 if cudt > 0:
                     sections["phys"]["cudt"] = cudt
+                if bucket_mm > 0:
+                    sections["phys"]["bucket_mm"] = bucket_mm
+                if bucket_j > 0:
+                    sections["phys"]["bucket_j"] = bucket_j
+                if prec_acc and prec_acc[0] > 0:
+                    sections["phys"]["prec_acc_dt"] = prec_acc[0]
+                if any(v > 0 for v in prec_acc):  # check_a_mundo: prec_acc_opt = 1, the fields on every domain
+                    sections["phys"]["prec_acc_opt"] = 1
 
                 if sf_surface != 0:
                     # check_a_mundo uses 4 layers for Noah and Noah-MP, but the history output keeps the
@@ -2161,7 +2174,7 @@ class WrfTranslator:
                 phys_over = {}
                 for pk in ("mp_physics", "sf_sfclay_physics", "sf_surface_physics", "bl_pbl_physics",
                            "cu_physics", "ra_lw_physics", "ra_sw_physics", "radt", "bldt", "cudt",
-                           "ishallow", "clos_choice", "kfeta_trigger", "sf_urban_physics", "cu_rad_feedback"):
+                           "prec_acc_dt", "ishallow", "clos_choice", "kfeta_trigger", "sf_urban_physics", "cu_rad_feedback"):
                     if self.has_opt("physics", pk):
                         v_d = self.get_dom_opt("physics", pk, d, None)
                         v_0 = self.get_dom_opt("physics", pk, 0, None)

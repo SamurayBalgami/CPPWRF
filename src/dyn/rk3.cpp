@@ -151,6 +151,7 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
   }
   // solve_em: "reset surface w for consistency" (kinematic condition from the new u, v)
   if (!b.ht.uniform()) set_w_surface(s.w_2, s.u_2, s.v_2, b, g_, false);
+  if (cp_) cp_->after_all_rk_steps();  // solve_em: after_all_rk_steps (diagnostics_driver)
 #endif
 }
 

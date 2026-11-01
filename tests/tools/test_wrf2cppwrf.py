@@ -1096,6 +1096,29 @@ class TestWrfNamelistSemantics(unittest.TestCase):
         self.assertEqual(sec["d02"]["phys_auxinput4_interval"], 0)
         self.assertEqual(sec["d02"]["wrflowinp"], "lowinp_d02")
 
+    def test_buckets_and_prec_acc(self):
+        # diagnostic_output_calc: bucket_mm, bucket_J (one entry) and prec_acc_dt (every domain's entry; check_a_mundo's
+        # prec_acc_opt = 1 when some domain has prec_acc_dt > 0); a nest's missing entry is the Registry default 0
+        phys = ("&physics mp_physics = 2*6, sf_sfclay_physics = 2*1, sf_surface_physics = 2*2, bl_pbl_physics = 2*1,"
+                " bucket_mm = 1., bucket_J = 1.e7, prec_acc_dt = 10. /\n")
+        t, sec = self.translate(self.NEST + phys)
+        self.assertEqual(t.errors, [])
+        self.assertEqual((sec["phys"]["bucket_mm"], sec["phys"]["bucket_j"]), (1.0, 1.e7))
+        self.assertEqual((sec["phys"]["prec_acc_dt"], sec["phys"]["prec_acc_opt"]), (10.0, 1))
+        self.assertEqual(sec["d02"]["phys_prec_acc_dt"], 0.0)
+        t, sec = self.translate(self.NEST + phys.replace("prec_acc_dt = 10.", "prec_acc_dt = 0., 5."))
+        self.assertEqual(t.errors, [])
+        self.assertNotIn("prec_acc_dt", sec["phys"])
+        self.assertEqual((sec["phys"]["prec_acc_opt"], sec["d02"]["phys_prec_acc_dt"]), (1, 5.0))
+        t, sec = self.translate(self.NEST + phys.replace(" bucket_mm = 1., bucket_J = 1.e7, prec_acc_dt = 10.",
+                                                         " bucket_mm = -1., prec_acc_dt = 0."))
+        self.assertEqual(t.errors, [])
+        self.assertFalse({"bucket_mm", "bucket_j", "prec_acc_dt", "prec_acc_opt"} & set(sec["phys"]))
+        # without the column physics (microphysics only) CPPWRF has no port: an error
+        for opt in ("bucket_mm = 1.", "bucket_J = 1.e7", "prec_acc_dt = 10."):
+            t, sec = self.translate(self.NEST + f"&physics mp_physics = 2*6, {opt} /\n")
+            self.assertTrue(any("bucket_mm / bucket_J / prec_acc_dt" in e for e in t.errors), opt)
+
     def test_mynn_options_of_every_domain(self):
         text = self.NEST + ("&physics mp_physics = 2*8, sf_sfclay_physics = 2*5, bl_pbl_physics = 2*5,"
                             " bl_mynn_edmf_dd = 0, 1 /\n")

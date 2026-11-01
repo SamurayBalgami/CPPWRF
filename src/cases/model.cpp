@@ -221,6 +221,7 @@ void Model::adapt_step(long n) {
   if (suite) {
     suite->adapt_step_flag = true;
     suite->elapsed = elapsed;
+    suite->run_now = now;
   }
 }
 
@@ -340,6 +341,11 @@ Model Model::build(const io::Config& cfg) {
       throw std::runtime_error("phys.ra_lw/ra_sw_physics without surface-layer, land-surface, PBL or cumulus physics "
                                "is not supported");
     }
+    // diagnostic_output_calc's buckets and prec_acc_dt sums are ported with the column physics suite (RAINC, T2, AC*)
+    if (!m.suite && (cfg.get_double("phys.bucket_mm", -1.0) > 0 || cfg.get_double("phys.bucket_j", -1.0) > 0 ||
+                     cfg.get_double("phys.prec_acc_dt", 0.0) > 0))
+      throw std::runtime_error("phys.bucket_mm / bucket_j / prec_acc_dt without surface-layer, land-surface, PBL or "
+                               "cumulus physics are not supported");
     if (m.bc) m.rk->set_lateral_bc(m.bc.get());
     if (dc.on()) {
       m.diff = std::make_unique<dyn::DiffusionDriver>(g, dc);

@@ -50,6 +50,61 @@ struct KAccum2 {  // ac = ac + x*dt
   CPPWRF_HD void operator()(int i, int j) const { ac(i, j) = ac(i, j) + x(i, j) * dt; }
 };
 
+// phys/module_diag_misc.F diagnostic_output_calc: the buckets (lines 295-428) and the precipitation over
+// prec_acc_dt (432-462); rainnc / rainncv / snowncv without p: no microphysics field (WRF: 0)
+struct KDiagOutputCalc {
+  V2 rainc, rainnc;
+  I2 i_rainc, i_rainnc;
+  V2 ac[16];
+  I2 i_ac[16];
+  C2 raincv, rainncv, snowncv, t2;
+  V2 prec_acc_c, prec_acc_nc, snow_acc_nc;
+  real bucket_mm, bucket_j;
+  bool bucket, bucket_j_on, xtime0, prec_acc, prec_reset;
+  CPPWRF_HD void operator()(int i, int j) const {
+    if (bucket) {  // bucket_mm > 0 .AND. MOD(NINT(curr_secs2),3600) == 0
+      if (xtime0) {
+        i_rainnc(i, j) = 0;
+        i_rainc(i, j) = 0;
+      }
+      if (rainnc.p && rainnc(i, j) > bucket_mm) {
+        rainnc(i, j) = rainnc(i, j) - bucket_mm;
+        i_rainnc(i, j) = i_rainnc(i, j) + 1;
+      }
+      if (rainc(i, j) > bucket_mm) {
+        rainc(i, j) = rainc(i, j) - bucket_mm;
+        i_rainc(i, j) = i_rainc(i, j) + 1;
+      }
+      if (bucket_j_on) {  // bucket_J > 0 (inside the bucket_mm IF)
+        if (xtime0)
+          for (int n = 0; n < 16; ++n) i_ac[n](i, j) = 0;
+        for (int n = 0; n < 16; ++n)
+          if (ac[n](i, j) > bucket_j) {
+            ac[n](i, j) = ac[n](i, j) - bucket_j;
+            i_ac[n](i, j) = i_ac[n](i, j) + 1;
+          }
+      }
+    }
+    if (prec_acc) {  // prec_acc_dt > 0
+      if (prec_reset) {  // mod(curr_secs2, 60.*prec_acc_dt) == 0.
+        prec_acc_c(i, j) = real(0.);
+        prec_acc_nc(i, j) = real(0.);
+        snow_acc_nc(i, j) = real(0.);
+      }
+      const real rncv = rainncv.p ? rainncv(i, j) : real(0.), sncv = snowncv.p ? snowncv(i, j) : real(0.);
+      prec_acc_c(i, j) = prec_acc_c(i, j) + raincv(i, j);
+      prec_acc_nc(i, j) = prec_acc_nc(i, j) + rncv;
+      prec_acc_c(i, j) = c_max(prec_acc_c(i, j), real(0.0));
+      prec_acc_nc(i, j) = c_max(prec_acc_nc(i, j), real(0.0));
+      snow_acc_nc(i, j) = snow_acc_nc(i, j) + sncv;
+      if (t2(i, j) < real(273.15)) {  // convective precipitation into the snow bucket
+        snow_acc_nc(i, j) = snow_acc_nc(i, j) + raincv(i, j);
+        snow_acc_nc(i, j) = c_max(snow_acc_nc(i, j), real(0.0));
+      }
+    }
+  }
+};
+
 }  // namespace
 
 // ------------------------------------------------------------------ PhysicsSuite
@@ -327,6 +382,34 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   // cu_init (module_physics_init.F:4025-4026): STEPCU = max(nint(CUDT*60./DT), 1)
   stepcu = int(std::lround(o.cudt * 60. / g.dt));
   if (stepcu < 1) stepcu = 1;
+  // Registry packages prec_acc (prec_acc_opt == 1), bucketropt (bucketr_opt == 1), bucketfopt (bucketf_opt == 1)
+  if (o.prec_acc_opt) {
+    prec_acc_c = Field2(g, Stagger::M, "prec_acc_c");
+    prec_acc_nc = Field2(g, Stagger::M, "prec_acc_nc");
+    snow_acc_nc = Field2(g, Stagger::M, "snow_acc_nc");
+  }
+  if (o.bucket_mm > 0) {
+    i_rainc = IntField2(g, "i_rainc");
+    i_rainnc = IntField2(g, "i_rainnc");
+  }
+  if (o.bucket_j > 0) {
+    const std::array<Field2*, 16> ac = acrad();
+    for (std::size_t k = 0; k < ac.size(); ++k) i_acrad[k] = IntField2(g, "i_" + ac[k]->name());
+  }
+}
+
+std::array<Field2*, 16> PhysicsSuite::acrad() {
+  return {&acswupt, &acswuptc, &acswdnt, &acswdntc, &acswupb, &acswupbc, &acswdnb, &acswdnbc,
+          &aclwupt, &aclwuptc, &aclwdnt, &aclwdntc, &aclwupb, &aclwupbc, &aclwdnb, &aclwdnbc};
+}
+
+IntField2* PhysicsSuite::bucket_int(const std::string& name) {
+  if (o_.bucket_mm > 0 && name == "i_rainc") return &i_rainc;
+  if (o_.bucket_mm > 0 && name == "i_rainnc") return &i_rainnc;
+  if (o_.bucket_j > 0)
+    for (IntField2& f : i_acrad)
+      if (f.name() == name) return &f;
+  return nullptr;
 }
 
 void PhysicsSuite::init_radiation(const std::vector<double>& xlat, const std::vector<double>& xlong) {
@@ -444,6 +527,8 @@ std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
   if (rad_)  // radiation diagnostics and their accumulations
     for (Field2* f : {&lwcf, &swcf, &lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &olr, &swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc, &swvisdir, &swvisdif, &swnirdir, &swnirdif, &swddir, &swddni, &swddif, &swddirc, &swddnic, &diffuse_frac, &aclwupt, &aclwuptc, &aclwdnt, &aclwdntc, &aclwupb, &aclwupbc, &aclwdnb, &aclwdnbc, &acswupt, &acswuptc, &acswdnt, &acswdntc, &acswupb, &acswupbc, &acswdnb, &acswdnbc})
       v.emplace_back("sfc_" + f->name(), f);
+  if (o_.prec_acc_opt)
+    for (Field2* f : {&prec_acc_c, &prec_acc_nc, &snow_acc_nc}) v.emplace_back("sfc_" + f->name(), f);
   if (o_.sf_surface_physics == 4) {
     for (Field2* f : {&xlat_sfc, &xlong_sfc, &tvxy, &tgxy, &canicexy, &canliqxy, &eahxy, &tahxy, &cmxy, &chxy,
                       &fwetxy, &sneqvoxy, &alboldxy, &qsnowxy, &qrainxy, &wslakexy, &zwtxy, &waxy, &wtxy, &lfmassxy,
@@ -510,6 +595,12 @@ std::vector<std::pair<std::string, IntField2*>> PhysicsSuite::carried_int() {
     v.emplace_back("sfc_cropcat", &cropcat);
     v.emplace_back("sfc_pgsxy", &pgsxy);
   }
+  if (o_.bucket_mm > 0) {
+    v.emplace_back("sfc_i_rainc", &i_rainc);
+    v.emplace_back("sfc_i_rainnc", &i_rainnc);
+  }
+  if (o_.bucket_j > 0)
+    for (IntField2& f : i_acrad) v.emplace_back("sfc_" + f.name(), &f);
   return v;
 }
 
@@ -596,6 +687,47 @@ void PhysicsSuite::after_rk(const dyn::State& s, const dyn::BaseState& b) {
   phy_prep_part2(pt, s, b, g_, CouplingFlags{radiation_on(), o_.bl_pbl_physics > 0, o_.cu_physics, o_.use_theta_m == 1});
 }
 
+// module_after_all_rk_steps.F -> diagnostics_driver -> diagnostic_output_calc, at the end of the step with
+// solve_em's curr_secs2 (seconds of the step start since this run's start) and xtime of the step start
+void PhysicsSuite::after_all_rk_steps() {
+  const bool prec = o_.prec_acc_dt > 0;
+  if (!(o_.bucket_mm > 0) && !prec) return;
+  const real curr_secs2 = adapt_step_flag ? wrf_time::real_time<real>(run_now)
+                                          : real(double(itimestep - run_start_step - 1) * g_.dt);
+  const bool xtime0 = adapt_step_flag ? elapsed == wrf_time::Interval{} : itimestep == 1;
+  KDiagOutputCalc k{};
+  k.bucket = o_.bucket_mm > 0 && std::lround(curr_secs2) % 3600 == 0;
+  k.bucket_j_on = o_.bucket_j > 0;
+  k.xtime0 = xtime0;
+  k.bucket_mm = real(o_.bucket_mm);
+  k.bucket_j = real(o_.bucket_j);
+  k.rainc = rainc.view();
+  if (rainnc_mp_) k.rainnc = rainnc_mp_->view();
+  if (o_.bucket_mm > 0) {
+    k.i_rainc = i_rainc.view();
+    k.i_rainnc = i_rainnc.view();
+  }
+  if (o_.bucket_j > 0) {
+    const std::array<Field2*, 16> ac = acrad();
+    for (int n = 0; n < 16; ++n) {
+      k.ac[n] = ac[std::size_t(n)]->view();
+      k.i_ac[n] = i_acrad[std::size_t(n)].view();
+    }
+  }
+  k.prec_acc = prec;
+  if (prec) {
+    k.prec_reset = std::fmod(curr_secs2, real(60.) * real(o_.prec_acc_dt)) == real(0.);
+    k.raincv = raincv.cview();
+    if (rainncv_mp_) k.rainncv = rainncv_mp_->cview();
+    if (snowncv_mp_) k.snowncv = snowncv_mp_->cview();
+    k.t2 = t2.cview();
+    k.prec_acc_c = prec_acc_c.view();
+    k.prec_acc_nc = prec_acc_nc.view();
+    k.snow_acc_nc = snow_acc_nc.view();
+  }
+  if (k.bucket || prec) column_for(g_.columns(), k);
+}
+
 std::vector<const Field2*> PhysicsSuite::fields2() const {
   std::vector<const Field2*> v = {&lwcf, &swcf, &hrang, &uratx, &vratx, &tratx, &ra, &rs, &shall, &lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc, &swvisdir, &swvisdif, &swnirdir, &swnirdif, &swddir, &swddni, &swddif, &swddirc, &swddnic, &diffuse_frac, &aclwupt, &aclwuptc, &aclwdnt, &aclwdntc, &aclwupb, &aclwupbc, &aclwdnb, &aclwdnbc, &acswupt, &acswuptc, &acswdnt, &acswdntc, &acswupb, &acswupbc, &acswdnb, &acswdnbc, &olr, &tsk, &xland, &xice, &lakemask, &water_depth, &mavail, &tmn, &vegfra, &shdmin, &shdmax, &snoalb, &albbck, &albedo, &emiss, &embck, &znt, &z0, &ust, &ustm, &mol, &rmol, &pblh, &hfx, &qfx, &lh, &grdflx, &qsfc, &flhc, &flqc, &wspd, &br, &fm, &fh, &zol, &regime, &u10, &v10, &t2, &th2, &q2, &psfc, &ch, &snow, &snowh, &snowc, &canwat, &lai, &snotime, &qz0, &rainbl, &raincv, &raincv_a, &raincv_b, &rainncv, &rainshv, &rainc, &rainsh, &pratec, &pratesh, &nca, &htop, &hbot, &cutop, &cubot, &cuppt, &sr, &glw, &swdown, &gsw, &smstav, &smstot, &sfcrunoff, &udrunoff, &acsnom, &acsnow, &snopcx, &potevp, &noahres, &sfcevp, &sfcexc, &achfx, &aclhf, &acgrdflx, &dx2d, &var2d, &uoce, &voce, &ctopo, &ctopo2, &ck, &cka, &cd, &cda, &wstar, &delta, &hol, &thz0, &uz0, &vz0, &akhs, &akms, &ct, &tshltr, &th10, &qshltr, &q10, &pshltr, &u10e, &v10e, &mixht};
   if (o_.sf_surface_physics == 4) {
@@ -615,6 +747,7 @@ std::vector<const Field2*> PhysicsSuite::fields2() const {
     v.insert(v.end(), {&maxwidth, &maxmf, &ztop_plume, &excess_h, &excess_q});
   if (o_.fractional_seaice == 1 || o_.sst_update == 1) v.insert(v.end(), {&sst, &tsk_save});
   if (o_.sst_update == 1) v.push_back(&xicem);
+  if (o_.prec_acc_opt) v.insert(v.end(), {&prec_acc_c, &prec_acc_nc, &snow_acc_nc});
   return v;
 }
 
