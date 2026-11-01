@@ -360,10 +360,11 @@ CPPWRF_FORCEINLINE void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumn
 
   for (int nb = 0; nb < 16; ++nb) v.semiss[nb] = in.emiss;
 
-  // McICA subcolumns (mcica_subcol_lw / generate_stochastic_clouds, KISS, changeSeed = 150, overlap icld)
+  // McICA subcolumns (mcica_subcol_lw / generate_stochastic_clouds, KISS, changeSeed = 150, overlap icld);
+  // icld = 0: mcica_subcol_lw returns at once and inatm keeps its zeroed cloud arrays, a clear column
   bool any_cloud = false;
   for (int ilev = 0; ilev < nlayers; ++ilev) {
-    if (CSD(v.cldfrac)[ilev] >= 1.0e-20) any_cloud = true;
+    if (c.icld != 0 && CSD(v.cldfrac)[ilev] >= 1.0e-20) any_cloud = true;
   }
 #if defined(__CUDA_ARCH__)
   const bool run_mcica = __any_sync(__activemask(), any_cloud);

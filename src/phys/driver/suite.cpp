@@ -541,6 +541,12 @@ void PhysicsSuite::part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies
       ri.qc_bl = &qc_bl;
       ri.qi_bl = &qi_bl;
     }
+    if (o_.rad.icloud_cu != 0) {  // cu_rad_feedback
+      ri.qc_cu = &qc_cu;
+      ri.qi_cu = &qi_cu;
+      ri.cldfra_dp = &cldfra_dp;
+      ri.cldfra_sh = &cldfra_sh;
+    }
     RadiationOutputs ro{&pt.rthraten, &glw, &gsw, &swdown, &coszen, &cldfra, &rthratenlw, &rthratensw,
                         &rthratenlwc, &rthratenswc, &o3rad, &lwcf, &swcf, &hrang,
                         {&lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &olr}, {&swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc},

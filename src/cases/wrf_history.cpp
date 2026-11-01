@@ -165,6 +165,7 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
     c.set("convtrans_avglen_m", str(o.convtrans_avglen_m));
     c.set("isftcflx", std::to_string(o.isftcflx)); c.set("iz0tlnd", std::to_string(o.iz0tlnd));
     c.set("ysu_topdown_pblmix", std::to_string(o.ysu_topdown_pblmix));
+    if (o.rad.icloud_cu != 0) c.set("cu_rad_feedback", ".true.");  // ICLOUD_CU (derive_config)
     c.set("kim_tofd", o.kim_tofd ? ".true." : ".false.");
     if (o.sf_surface_physics == 4) {
       c.set("dveg", std::to_string(o.noahmp.dveg));

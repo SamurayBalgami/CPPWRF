@@ -299,10 +299,11 @@ CPPWRF_HD inline void rrtmg_sw_prep(const RrtmgSwCallConfig& c, const SwColumnIn
   v.iscal[3] = iceflgsw;
   v.iscal[4] = liqflgsw;
 
-  // 5. McICA subcolumns (KISS, permuteseed = 1, overlap icld), subcolumn by subcolumn
+  // 5. McICA subcolumns (KISS, permuteseed = 1, overlap icld), subcolumn by subcolumn; icld = 0: mcica_subcol_sw
+  // returns at once and spcvmc_sw gets zcldfmc = 0, zomgcmc = 1 (rrtmg_sw), a clear column
   bool any_cloud = false;
   for (int ilev = 0; ilev < nlayers; ++ilev) {
-    if (CSD(v.cldfrac)[ilev] >= 1.0e-20) any_cloud = true;
+    if (c.icld != 0 && CSD(v.cldfrac)[ilev] >= 1.0e-20) any_cloud = true;
   }
 #if defined(__CUDA_ARCH__)
   const bool run_mcica = __any_sync(__activemask(), any_cloud);

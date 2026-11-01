@@ -87,6 +87,8 @@ struct KRadColumn {
   long itimestep;
   View3<const real> cfbl, qcbl, qibl;
   double *qcw, *qiw;
+  int icloud_cu;  // cu_rad_feedback: the cumulus clouds into cf and the staged qc (qcw), qi (qiw)
+  View3<const real> qccu, qicu, cfdp, cfsh;
   CPPWRF_HD void operator()(int i, int j) const {
     const int col = i + nx * j;
     double hr = 0;
@@ -101,10 +103,28 @@ struct KRadColumn {
     else if (o3input == 2)
       ozone_column(&ozmixm[std::size_t(col) * per + nm * CamOzone::levsiz],
                    &ozmixm[std::size_t(col) * per + np * CamOzone::levsiz], f1, f2, pin, nz, v(p), v(o3));
+    if (icloud_cu == 1) {  // Grell schemes: qc = qc + qc_cu, qi = qi + qi_cu (F_QC / F_QI)
+      for (int k = 0; k < nz; ++k) {
+        const std::size_t q = std::size_t(k) * ncol + col;
+        if (qcw) qcw[q] = qcw[q] + double(qccu(i, j, k));
+        if (qiw) qiw[q] = qiw[q] + double(qicu(i, j, k));
+      }
+    }
     if (clouds) {
       cal_cldfra1(nz, v(qv), v(qc), qi ? v(qi) : SD{nullptr, 0}, qs ? v(qs) : SD{nullptr, 0}, v(t), v(p), v(cf));
     } else {
       for (int k = 0; k < nz; ++k) cf[std::size_t(k) * ncol + col] = 0.0;
+    }
+    if (clouds && icloud_cu == 2) {  // KF: the convective cloud fraction over the resolved one
+      for (int k = 0; k < nz; ++k) {
+        const std::size_t q = std::size_t(k) * ncol + col;
+        const double cu = double(cfdp(i, j, k) + cfsh(i, j, k));  // cldfra_cu
+        cf[q] = (1. - cu) * cf[q];
+        cf[q] = cf[q] + cu;
+        cf[q] = std::min(1.0, cf[q]);
+        if (qcw) qcw[q] = qcw[q] + double(qccu(i, j, k)) * cu;
+        if (qiw) qiw[q] = qiw[q] + double(qicu(i, j, k)) * cu;
+      }
     }
     if (clouds && bl_clouds) {
       for (int k = 0; k < nz; ++k) {
@@ -214,8 +234,9 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
     throw std::runtime_error("radiation: only ra_lw_physics = ra_sw_physics = 4 (RRTMG) are ported");
   if (o.aer_opt != 0) throw std::runtime_error("radiation: aer_opt != 0 is not ported");
   if (o.o3input != 2 && o.o3input != 0) throw std::runtime_error("radiation: o3input must be 0 or 2");
-  // McICA overlaps 1-5 (WRF's cldovrlp 0 leaves the clouds out of RRTMG; not ported)
-  if (o.cldovrlp < 1 || o.cldovrlp > 5) throw std::runtime_error("radiation: cldovrlp must be 1 to 5");
+  // cldovrlp 0 (clear sky only) and the McICA overlaps 1-5 (mcica_subcol_lw/_sw stop for any other icld)
+  if (o.cldovrlp < 0 || o.cldovrlp > 5) throw std::runtime_error("radiation: cldovrlp must be 0 to 5");
+  if (o.icloud_cu < 0 || o.icloud_cu > 2) throw std::runtime_error("radiation: icloud_cu must be 0, 1 or 2");
   {  // the LW column arrays hold RRTMG_LW_SWEEP_MAX layers: the model's and the buffer layers up to 0 hPa
     RrtmgLwConfig lc;
     lc.p_top = o.p_top;
@@ -364,9 +385,14 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
     if (kc.o3_field) kc.o3_in = out.o3rad->cview();
     kc.bl_clouds = in.cldfra_bl != nullptr && in.qc && in.qi;
     kc.itimestep = itimestep;
+    kc.qcw = in.qc ? q.qc : nullptr; kc.qiw = in.qi ? q.qi : nullptr;
     if (kc.bl_clouds) {
       kc.cfbl = in.cldfra_bl->cview(); kc.qcbl = in.qc_bl->cview(); kc.qibl = in.qi_bl->cview();
-      kc.qcw = q.qc; kc.qiw = q.qi;
+    }
+    kc.icloud_cu = o_.icloud_cu;
+    if (o_.icloud_cu != 0) {
+      kc.qccu = in.qc_cu->cview(); kc.qicu = in.qi_cu->cview();
+      kc.cfdp = in.cldfra_dp->cview(); kc.cfsh = in.cldfra_sh->cview();
     }
     column_for(Range2D{0, nx, 0, ny}, kc);
     LwBatchInput li{};
@@ -415,7 +441,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
   const int nx = g_.nx, ny = g_.ny, nz = g_.nz;
   // inputs to the host
   std::vector<real> t, p, pw, pi, rho, dz, tw, qv, qc, qi, qs, rec, rei, res, tsk, alb, ems, xland, xice, snow, cfbl,
-      qcbl, qibl;
+      qcbl, qibl, qccu, qicu, cfdp, cfsh;
   in.t_phy->download(t); in.p_hyd->download(p); in.p_hyd_w->download(pw); in.pi_phy->download(pi);
   in.rho->download(rho); in.dz8w->download(dz); in.t8w->download(tw); in.qv->download(qv);
   if (in.qc) in.qc->download(qc);
@@ -426,6 +452,9 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
   if (in.re_snow) in.re_snow->download(res);
   const bool bl_clouds = in.cldfra_bl != nullptr;
   if (bl_clouds) { in.cldfra_bl->download(cfbl); in.qc_bl->download(qcbl); in.qi_bl->download(qibl); }
+  if (o_.icloud_cu != 0) {
+    in.qc_cu->download(qccu); in.qi_cu->download(qicu); in.cldfra_dp->download(cfdp); in.cldfra_sh->download(cfsh);
+  }
   // icloud = 1 with F_QC or F_QI: cal_cldfra1 (else CLDFRA = 0); qc is required with qi (WSM/Kessler)
   const bool clouds = o_.icloud != 0 && in.qc != nullptr;
   if (o_.icloud != 0 && o_.icloud != 1) throw std::runtime_error("radiation: only icloud = 0 or 1 are ported");
@@ -472,9 +501,27 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
         if (!rei.empty()) crei[k] = rei[q];
         if (!res.empty()) cres[k] = res[q];
       }
+      if (o_.icloud_cu == 1) {  // Grell schemes (module_radiation_driver.F:1264-1281): qc + qc_cu, qi + qi_cu
+        for (int k = 0; k < nz; ++k) {
+          const std::size_t q = Lm.index(i, j, k);
+          if (!qc.empty()) cqc[k] = cqc[k] + qccu[q];
+          if (!qi.empty()) cqi[k] = cqi[k] + qicu[q];
+        }
+      }
       if (clouds)
         cal_cldfra1(nz, sd(cqv.data()), sd(cqc.data()), SD{qi.empty() ? nullptr : cqi.data(), 1},
                     SD{qs.empty() ? nullptr : cqs.data(), 1}, sd(ct.data()), sd(cp.data()), sd(ccf.data()));
+      if (clouds && o_.icloud_cu == 2) {  // KF (:1333-1347): cldfra_cu = cldfra_dp + cldfra_sh over CLDFRA
+        for (int k = 0; k < nz; ++k) {
+          const std::size_t q = Lm.index(i, j, k);
+          const double cu = double(real(cfdp[q] + cfsh[q]));
+          ccf[k] = (1. - cu) * ccf[k];
+          ccf[k] = ccf[k] + cu;
+          ccf[k] = std::min(1.0, ccf[k]);
+          if (!qc.empty()) cqc[k] = cqc[k] + qccu[q] * cu;
+          if (!qi.empty()) cqi[k] = cqi[k] + qicu[q] * cu;
+        }
+      }
       if (clouds && bl_clouds) {  // BL clouds (icloud_bl > 0)
         for (int k = 0; k < nz; ++k) {
           const std::size_t q = Lm.index(i, j, k);

@@ -839,7 +839,7 @@ class TestValidationAndWarnings(unittest.TestCase):
             ("&physics ra_lw_physics = 4, ra_sw_physics = 0 /", "requires both ra_lw_physics = 4 and ra_sw_physics = 4"),
             ("&physics ra_lw_physics = 4, ra_sw_physics = 4, aer_opt = 1 /", "aer_opt = 1"),
             ("&physics ra_lw_physics = 4, ra_sw_physics = 4, cldovrlp = 9 /", "cldovrlp = 9"),
-            ("&physics cu_rad_feedback = .true. /", "cu_rad_feedback"),
+            ("&physics ra_lw_physics = 4, ra_sw_physics = 4, cldovrlp = -1 /", "cldovrlp = -1"),
             ("&physics shcu_physics = 2 /", "shcu_physics"),
             ("&physics topo_wind = 1 /", "topo_wind"),
             ("&dynamics moist_adv_opt = 2 /", "moist_adv_opt = 2"),
@@ -964,6 +964,24 @@ class TestWrfNamelistSemantics(unittest.TestCase):
         self.assertEqual(t.errors, [])
         self.assertNotIn("radt", sec["phys"])
         self.assertEqual(sec["d02"]["phys_radt"], 3)
+
+    def test_cu_rad_feedback_cldovrlp_0(self):
+        # cldovrlp 0: RRTMG without clouds; cu_rad_feedback per domain (phy_init's icloud_cu); shallowcu_forced_ra
+        # acts only with KF-CuP (cu_physics 10)
+        t, sec = self.translate(self.NEST + "&physics cu_physics = 1, 1, ra_lw_physics = 2*4, ra_sw_physics = 2*4, "
+                                "cldovrlp = 0, cu_rad_feedback = .true., .false., shallowcu_forced_ra = 2*.true. /\n")
+        self.assertEqual(t.errors, [])
+        self.assertEqual(sec["phys"]["cldovrlp"], 0)
+        self.assertEqual(sec["phys"]["cu_rad_feedback"], True)
+        self.assertEqual(sec["d02"]["phys_cu_rad_feedback"], False)
+        # a nest without an entry: the Registry default .false.
+        t, sec = self.translate(self.NEST + "&physics cu_physics = 3, 3, cu_rad_feedback = .true. /\n")
+        self.assertEqual(t.errors, [])
+        self.assertEqual(sec["d02"]["phys_cu_rad_feedback"], False)
+        t, sec = self.translate(self.NEST + "&physics cu_physics = 6, 6, cu_rad_feedback = .false., .true. /\n")
+        self.assertEqual(t.errors, [])
+        self.assertNotIn("cu_rad_feedback", sec["phys"])
+        self.assertEqual(sec["d02"]["phys_cu_rad_feedback"], True)
 
     def test_nest_entries_take_registry_defaults(self):
         # r32cudt1 / r32bldt1: a nest without a cudt / bldt entry calls the scheme every step (Registry default 0,

@@ -301,7 +301,7 @@ def parse_namelist(text: str) -> Dict[str, Dict[str, List[Any]]]:
 # -----------------------------------------------------------------------------
 
 # physics options a nest may set differently from its parent (verified bit-identical with WRF nests)
-PER_DOMAIN_PHYS = {"cu_physics", "cudt", "radt", "bldt"}  # max_domains entries of the WRF Registry
+PER_DOMAIN_PHYS = {"cu_physics", "cudt", "radt", "bldt", "cu_rad_feedback"}  # max_domains entries of the WRF Registry
 SUPPORTED_OPTIONS = {
     "mp_physics": {
         0: "None / off",
@@ -477,7 +477,6 @@ SAME_ON_ALL_DOMAINS = (("physics", "kim_tofd"), ("physics", "tofd_factor"), ("dy
                        ("dynamics", "gwd_if_nonhyd"))
 
 UNSUPPORTED_PHYSICS_SWITCHES = {
-    "cu_rad_feedback": "Cumulus-radiation feedback",
     "shcu_physics": "Separate shallow cumulus scheme",
     "sf_lake_physics": "Lake physics model",
     "topo_wind": "Topographic wind correction",
@@ -602,6 +601,8 @@ NO_EFFECT_OPTIONS = {
     **{k: "NSSL microphysics only (check_a_mundo resets it)" for k in (
         "nssl_2moment_on", "nssl_hail_on", "nssl_density_on", "nssl_3moment", "nssl_ccn_on")},
     "tc": "tc.exe (bogus vortex) only",
+    # radiation_driver reads it only with cu_physics = 10 (KF-CuP, rejected)
+    "shallowcu_forced_ra": "KF-CuP (cu_physics = 10) only",
 }
 
 
@@ -1747,6 +1748,11 @@ class WrfTranslator:
             elif use_mp_re != 1:
                 sections.setdefault("phys", {})["use_mp_re"] = use_mp_re
 
+        # cu_rad_feedback (max_domains): phy_init's icloud_cu puts KF's (2) or the Grell schemes' (1) clouds into
+        # the radiation; with Tiedtke / New Tiedtke icloud_cu = 0 (no effect). Nests: [d0N] phys_cu_rad_feedback
+        if bool(self.get_dom_opt("physics", "cu_rad_feedback", 0, False)):
+            sections.setdefault("phys", {})["cu_rad_feedback"] = True
+
         if self.has_opt("physics", "ishallow"):
             # module_cu_gfl_wrf: the shallow plume runs for ishallow == 1 only; the other ported schemes ignore it
             if self.get_opt("physics", "ishallow", 0) == 1:
@@ -1834,8 +1840,9 @@ class WrfTranslator:
 
         if self.has_opt("physics", "cldovrlp"):
             cldovrlp = self.get_opt("physics", "cldovrlp", 2)
-            if cldovrlp not in (1, 2, 3, 4, 5):
-                self.error(f"WRF cldovrlp = {cldovrlp} is not supported; CPPWRF supports 1..5.")
+            # 0: RRTMG without clouds (mcica_subcol_lw/_sw return at once); wrf.exe stops for values outside 0..5
+            if cldovrlp not in (0, 1, 2, 3, 4, 5):
+                self.error(f"WRF cldovrlp = {cldovrlp} is not supported; WRF's values are 0..5.")
             elif cldovrlp != 2:
                 sections.setdefault("phys", {})["cldovrlp"] = cldovrlp
 
@@ -2154,7 +2161,7 @@ class WrfTranslator:
                 phys_over = {}
                 for pk in ("mp_physics", "sf_sfclay_physics", "sf_surface_physics", "bl_pbl_physics",
                            "cu_physics", "ra_lw_physics", "ra_sw_physics", "radt", "bldt", "cudt",
-                           "ishallow", "clos_choice", "kfeta_trigger", "sf_urban_physics"):
+                           "ishallow", "clos_choice", "kfeta_trigger", "sf_urban_physics", "cu_rad_feedback"):
                     if self.has_opt("physics", pk):
                         v_d = self.get_dom_opt("physics", pk, d, None)
                         v_0 = self.get_dom_opt("physics", pk, 0, None)

@@ -1,7 +1,7 @@
 #pragma once
 // WRF phys/module_radiation_driver.F radiation_driver for ra_lw_physics = 4 / ra_sw_physics = 4
 // (RRTMG) with o3input = 2 (CAM ozone), ghg_input = 1 (CAMtr_volume_mixing_ratio), aer_opt = 0,
-// swint_opt = 0, icloud = 1, cldovrlp, idcor, slope_rad = topo_shading = 0, single domain.
+// swint_opt = 0, icloud = 1, cldovrlp, idcor, cu_rad_feedback, slope_rad = topo_shading = 0, single domain.
 // CPU builds: one RRTMG column at a time per OpenMP thread (rrtmg_lw_column / rrtmg_sw_column).
 // CUDA builds: everything on the device: inputs staged column-fastest, coszen, CAM ozone and
 // cal_cldfra1 per column, the RRTMG stages as kernels (RrtmgLwBatch / RrtmgSwBatch).
@@ -23,6 +23,9 @@ struct RadiationOptions {
   double radt = 0;          // minutes; stepra = max(nint(radt*60/dt), 1)
   int ra_call_offset = 0;
   int icloud = 1, cldovrlp = 2, idcor = 0, o3input = 2, ghg_input = 1, aer_opt = 0;
+  // cu_rad_feedback (phy_init's icloud_cu): 1 = Grell schemes (QC_CU / QI_CU added to qc / qi), 2 = KF (CLDFRA_DP
+  // + CLDFRA_SH into CLDFRA, QC_CU / QI_CU times that fraction into qc / qi), 0 = none
+  int icloud_cu = 0;
   // oznini and the ozone interpolation run on domain 1 only (module_physics_init.F, module_radiation_driver.F,
   // EM_CORE): a nest's radiation uses o3rad, which med_nest_force interpolates from the parent (Registry f=p2c)
   bool oznini = true;
@@ -40,6 +43,8 @@ struct RadiationInputs {  // device fields (mass points) read by the radiation
   // icloud_bl = 1 with the MYNN PBL: subgrid clouds (module_radiation_driver.F, ICLOUD == 1): after step 1
   // CLDFRA = CLDFRA_BL; QC_BL / QI_BL are added where qc < 1e-6 / qi < 1e-8 and CLDFRA_BL > 0.001
   const Field3 *cldfra_bl = nullptr, *qc_bl = nullptr, *qi_bl = nullptr;
+  // icloud_cu > 0: the cumulus scheme's clouds of its last call (radiation runs before cumulus_driver)
+  const Field3 *qc_cu = nullptr, *qi_cu = nullptr, *cldfra_dp = nullptr, *cldfra_sh = nullptr;
 };
 
 struct RadiationOutputs {

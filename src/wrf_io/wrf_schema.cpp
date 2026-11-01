@@ -139,6 +139,15 @@ void derive_config(WrfConfig& c, int max_dom, bool real_exe) {
     const int cu = c.integer("cu_physics");
     c.set("cu_diag", cu == 93 || cu == 3 || cu == 10 || cu == 5 ? "1" : "0");
   }
+  // phy_init (module_physics_init.F:1192-1206, wrf.exe only): icloud_cu = 2 for KF with cu_rad_feedback and for
+  // MSKF (11), 1 for the Grell schemes with cu_rad_feedback, else 0 (the history attribute ICLOUD_CU)
+  if (!real_exe) {
+    const int cu = c.integer("cu_physics");
+    int icloud_cu = 0;
+    if (c.logical("cu_rad_feedback")) icloud_cu = cu == 1 ? 2 : (cu == 3 || cu == 5 || cu == 93) ? 1 : 0;
+    if (cu == 11) icloud_cu = 2;
+    c.set("icloud_cu", std::to_string(icloud_cu));
+  }
   // mfshconv only with the QNSE PBL (bl_pbl_physics = 4)
   if (c.integer("bl_pbl_physics") != 4) c.set("mfshconv", "0");
   // check_a_mundo: a domain without NSSL microphysics (mp_physics 18, or 17, 19, 21, 22 which become 18) turns the
