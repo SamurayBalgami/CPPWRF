@@ -851,6 +851,21 @@ class TestValidationAndWarnings(unittest.TestCase):
             else:
                 self.assertIn(err, " ".join(t.errors), (sf, extra))
 
+    def test_dudhia_shortwave(self):
+        # RRTMG LW with Dudhia SW (module_ra_sw.F); swrad_scat (swinit) only with Dudhia
+        for extra, scat in (("", None), (", swrad_scat = 0.5", 0.5)):
+            phys = f"&physics ra_lw_physics = 4, ra_sw_physics = 1, radt = 15, sf_sfclay_physics = 1{extra} /"
+            t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n&domains time_step = 60 /\n{phys}\n")))
+            cfg = t.translate()
+            self.assertEqual(t.errors, [], extra)
+            self.assertEqual((cfg["phys"]["ra_lw_physics"], cfg["phys"]["ra_sw_physics"]), (4, 1))
+            self.assertEqual(cfg["phys"].get("swrad_scat"), scat)
+        phys = "&physics ra_lw_physics = 4, ra_sw_physics = 4, sf_sfclay_physics = 1, swrad_scat = 0.5 /"
+        t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n&domains time_step = 60 /\n{phys}\n")))
+        cfg = t.translate()
+        self.assertEqual(t.errors, [])
+        self.assertNotIn("swrad_scat", cfg["phys"])
+
     def test_unsupported_physics_and_dynamics_errors(self):
         cases = [
             # share/module_check_a_mundo.F: "bl_mynn_edmf > 0 requires both shcu_physics=0 & ishallow=0"
@@ -860,7 +875,11 @@ class TestValidationAndWarnings(unittest.TestCase):
             ("&physics cu_physics = 1, kfeta_trigger = 2 /", "kfeta_trigger = 2"),
             ("&physics sf_surface_physics = 2, num_soil_layers = 5 /", "num_soil_layers = 5"),
             ("&physics sf_surface_physics = 4, opt_crop = 1 /", "opt_crop = 1"),
-            ("&physics ra_lw_physics = 4, ra_sw_physics = 0 /", "requires both ra_lw_physics = 4 and ra_sw_physics = 4"),
+            ("&physics ra_lw_physics = 4, ra_sw_physics = 0 /", "a longwave scheme needs a shortwave scheme"),
+            ("&physics ra_lw_physics = 0, ra_sw_physics = 1 /", "a longwave scheme needs a shortwave scheme"),
+            ("&physics ra_lw_physics = 1, ra_sw_physics = 1 /", "ra_lw_physics = 1 is not supported"),
+            ("&physics ra_lw_physics = 1, ra_sw_physics = 4 /", "ra_lw_physics = 1 is not supported"),
+            ("&physics ra_lw_physics = 4, ra_sw_physics = 2 /", "ra_sw_physics = 2 is not supported"),
             ("&physics ra_lw_physics = 4, ra_sw_physics = 4, aer_opt = 1 /", "aer_opt = 1"),
             ("&physics ra_lw_physics = 4, ra_sw_physics = 4, cldovrlp = 9 /", "cldovrlp = 9"),
             ("&physics ra_lw_physics = 4, ra_sw_physics = 4, cldovrlp = -1 /", "cldovrlp = -1"),
