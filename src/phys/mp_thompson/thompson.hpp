@@ -90,7 +90,13 @@ inline constexpr double Lam1 = 3.29;
 
 inline constexpr double Nt_c = 100.0e6;
 inline constexpr double Nt_c_max = 1999.0e6;
+inline constexpr double naIN0 = 1.5e6;
 inline constexpr double naIN1 = 0.5e6;
+inline constexpr double naCCN0 = 300.0e6;
+inline constexpr double naCCN1 = 50.0e6;
+inline constexpr double R_uni = 8.314;
+// 4./3.*PI*(2.5e-6)**3: gfortran folds the power correctly rounded, which here equals the two products
+inline constexpr double ar_volume = 4. / 3. * PI_CONST * (2.5e-6 * 2.5e-6 * 2.5e-6);
 
 // Thermodynamic helper functions
 template <typename Real>
@@ -200,6 +206,114 @@ CPPWRF_HD inline Real compT_fr_The(Real thelcl_K, Real pres_Pa) {
     return thwlcl_K * std::pow(pres_Pa / Real(100000.0), Real(0.286));
 }
 
+// module_mp_thompson.F Eff_aero: collision efficiency of rain ('r'), snow ('s') or graupel ('g') of diameter D
+// with aerosols of diameter Da (Wang et al. 2010)
+template <typename Real>
+CPPWRF_HD inline Real eff_aero(Real D, Real Da, Real visc, Real rhoa, Real Temp, char species) {
+    const Real boltzman = Real(1.3806503E-23);
+    const Real meanPath = Real(0.0256E-6);
+    Real vt = Real(1.);
+    if (species == 'r') {
+        vt = Real(-0.1021) + Real(4.932E3) * D - Real(0.9551E6) * D * D + Real(0.07934E9) * D * D * D -
+             Real(0.002362E12) * D * D * D * D;
+    } else if (species == 's') {
+        vt = Real(av_s) * std::pow(D, Real(bv_s));
+    } else if (species == 'g') {
+        vt = Real(av_g5) * std::pow(D, Real(bv_g5));
+    }
+    const Real Cc = Real(1.) + Real(2.) * meanPath / Da * (Real(1.257) + Real(0.4) * std::exp(-(Real(0.55) * Da / meanPath)));
+    const Real diff = boltzman * Temp * Cc / (Real(3.) * Real(PI_CONST) * visc * Da);
+    const Real Re = Real(0.5) * rhoa * D * vt / visc;
+    const Real Sc = visc / (rhoa * diff);
+    const Real St = Da * Da * vt * Real(1000.) / (Real(9.) * visc * D);
+    const Real aval = Real(1.) + std::log(Real(1.) + Re);
+    const Real St2 = (Real(1.2) + Real(1. / 12.) * aval) / (Real(1.) + aval);
+    Real Eff = Real(4.) / (Re * Sc) *
+                   (Real(1.) + Real(0.4) * std::sqrt(Re) * std::pow(Sc, Real(0.3333)) +
+                    Real(0.16) * std::sqrt(Re) * std::sqrt(Sc)) +
+               Real(4.) * Da / D * (Real(0.02) + Da / D * (Real(1.) + Real(2.) * std::sqrt(Re)));
+    if (St > St2) Eff = Eff + std::pow((St - St2) / (St - St2 + Real(0.666667)), Real(1.5));
+    return c_max(Real(1.E-5), c_min(Eff, Real(1.0)));
+}
+
+// module_mp_thompson.F activ_ncloud: activated CCN from the table of activated fractions (CCN number varies
+// fastest, then updraft, temperature, mean radius l = 3 and hygroscopicity m = 2)
+template <typename Real>
+CPPWRF_HD inline Real activ_ncloud(Real Tt, Real Ww, Real NCCN, const ThompsonTablesView<Real>& tb) {
+    constexpr Real ta_Na[ntb_arc] = {Real(10.0), Real(31.6), Real(100.0), Real(316.0), Real(1000.0), Real(3160.0),
+                                     Real(10000.0)};
+    constexpr Real ta_Ww[ntb_arw] = {Real(0.01), Real(0.0316), Real(0.1), Real(0.316), Real(1.0), Real(3.16),
+                                     Real(10.0), Real(31.6), Real(100.0)};
+    constexpr Real ta_Tk1 = Real(243.15);
+    Real n_local = NCCN * Real(1.E-6);
+    Real w_local = Ww;
+    if (n_local >= ta_Na[ntb_arc - 1]) {
+        n_local = ta_Na[ntb_arc - 1] - Real(1.0);
+    } else if (n_local <= ta_Na[0]) {
+        n_local = ta_Na[0] + Real(1.0);
+    }
+    int n = 2;  // Fortran n = 2, ntb_arc
+    for (; n <= ntb_arc; ++n)
+        if (n_local >= ta_Na[n - 2] && n_local < ta_Na[n - 1]) break;
+    const int i = n;
+    const Real x1 = std::log(ta_Na[i - 2]);
+    const Real x2 = std::log(ta_Na[i - 1]);
+    if (w_local >= ta_Ww[ntb_arw - 1]) {
+        w_local = ta_Ww[ntb_arw - 1] - Real(1.0);
+    } else if (w_local <= ta_Ww[0]) {
+        w_local = ta_Ww[0] + Real(0.001);
+    }
+    for (n = 2; n <= ntb_arw; ++n)
+        if (w_local >= ta_Ww[n - 2] && w_local < ta_Ww[n - 1]) break;
+    const int j = n;
+    const Real y1 = std::log(ta_Ww[j - 2]);
+    const Real y2 = std::log(ta_Ww[j - 1]);
+    int k = static_cast<int>(std::round((Tt - ta_Tk1) * Real(0.1))) + 1;  // NINT
+    k = k < ntb_art ? k : ntb_art;
+    k = k > 1 ? k : 1;
+    const int l = 3, m = 2;
+    const Real A = tb.tnccn_act[tb.idx_ccn(i - 2, j - 2, k - 1, l - 1, m - 1)];
+    const Real B = tb.tnccn_act[tb.idx_ccn(i - 1, j - 2, k - 1, l - 1, m - 1)];
+    const Real C = tb.tnccn_act[tb.idx_ccn(i - 1, j - 1, k - 1, l - 1, m - 1)];
+    const Real D = tb.tnccn_act[tb.idx_ccn(i - 2, j - 1, k - 1, l - 1, m - 1)];
+    const Real nx = std::log(n_local);
+    const Real wy = std::log(w_local);
+    const Real t = (nx - x1) / (x2 - x1);
+    const Real u = (wy - y1) / (y2 - y1);
+    const Real fraction = (Real(1.0) - t) * (Real(1.0) - u) * A + t * (Real(1.0) - u) * B + t * u * C +
+                          (Real(1.0) - t) * u * D;
+    return NCCN * fraction;
+}
+
+// module_mp_thompson.F iceDeMott (the DeMott et al. 2010 branch that WRF 4.8 uses for every condition)
+template <typename Real>
+CPPWRF_HD inline Real ice_demott(Real tempc, Real rho, Real nifa) {
+    constexpr double rho_not0 = 101325. / (287.05 * 273.15);
+    const Real nifa_cc = c_max(Real(0.5), nifa * Real(rho_not0) * Real(1.E-6) / rho);
+    Real xni = (Real(5.94e-5) * std::pow(-tempc, Real(3.33))) *
+               std::pow(nifa_cc, (-(Real(0.0264) * tempc)) + Real(0.0033));
+    xni = xni * rho / Real(rho_not0) * Real(1000.);
+    return c_max(Real(0.), xni);
+}
+
+// module_mp_thompson.F iceKoop: homogeneous freezing of deliquesced aerosols (Koop et al. 2001)
+template <typename Real>
+CPPWRF_HD inline Real ice_koop(Real temp, Real qv, Real qvs, Real naero, Real dt) {
+    Real xni = Real(0.0);
+    const Real satw = qv / qvs;
+    const Real mu_diff = Real(210368.0) + (Real(131.438) * temp) - (Real(3.32373E6) / temp) -
+                         (Real(41729.1) * std::log(temp));
+    const Real a_w_i = std::exp(mu_diff / (Real(R_uni) * temp));
+    const Real delta_aw = satw - a_w_i;
+    Real log_J_rate = Real(-906.7) + (Real(8502.0) * delta_aw) - (Real(26924.0) * delta_aw * delta_aw) +
+                      (Real(29180.0) * delta_aw * delta_aw * delta_aw);
+    log_J_rate = c_min(Real(20.0), log_J_rate);
+    const Real J_rate = std::pow(Real(10.), log_J_rate);
+    const Real prob_h = c_min(Real(1.) - std::exp(-(J_rate * Real(ar_volume) * dt)), Real(1.));
+    if (prob_h > Real(0.)) xni = c_min(prob_h * naero, Real(1000.E3));
+    return c_max(Real(0.0), xni);
+}
+
 // Single-source Thompson column kernel; NL >= nz sizes the column arrays (thread-local memory on the GPU)
 template <typename Real, int NL = kMaxLevels>
 struct ThompsonKernel {
@@ -234,15 +348,21 @@ struct ThompsonKernel {
     bool has_re = false;
     View3<Real> re_cloud, re_ice, re_snow;
 
-    // module_mp_thompson.F calc_effectRad (not aerosol aware: nc = Nt_c) and the driver's limits; t1d, p1d
-    // and the moist arrays are the column after mp_thompson
-    CPPWRF_HD void effect_rad(int i, int j, const Real* t1d, const Real* p1d) const {
+    // mp_physics = 28 (is_aerosol_aware, aer_init_opt 0 or 1, wif_input_opt /= 2): cloud droplet number nc and
+    // the water- / ice-friendly aerosols nwfa / nifa are predicted (scalars QNCLOUD, QNWFA, QNIFA [#/kg]);
+    // nwfa2d / nifa2d are their surface emission rates [#/kg/s]; nbca (QNBCA) is set to 0 as WRF does
+    bool aero = false;
+    View3<Real> nc_f, nwfa_f, nifa_f, nbca_f;
+    View2<const Real> nwfa2d, nifa2d;
+
+    // module_mp_thompson.F calc_effectRad and the driver's limits; t1d, p1d and the moist arrays are the column
+    // after mp_thompson, nc1d its droplet number (not aerosol aware: nc = Nt_c)
+    CPPWRF_HD void effect_rad(int i, int j, const Real* t1d, const Real* p1d, const Real* nc1d) const {
         constexpr Real g_ratio[15] = {24, 60, 120, 210, 336, 504, 720, 990, 1320, 1716, 2184, 2730, 3360, 4080, 4896};
         constexpr Real re_qc_bg = Real(2.49E-6), re_qi_bg = Real(4.99E-6), re_qs_bg = Real(9.99E-6);
         const Real obmr = Real(1.0) / Real(bm_r);
         const Real obmi = Real(1.0) / Real(bm_i);
-        const Real nc = Real(Nt_c);  // .NOT. is_aerosol_aware
-        Real rc[NL], ri[NL], ni_c[NL], rs[NL];
+        Real rc[NL], ri[NL], ni_c[NL], rs[NL], ncl[NL];
         bool has_qc = false, has_qi = false, has_qs = false;
         for (int k = 0; k < nz; ++k) {  // re_qc1d etc. live in re_cloud, re_ice, re_snow
             re_cloud(i, j, k) = re_qc_bg;
@@ -252,6 +372,8 @@ struct ThompsonKernel {
         for (int k = 0; k < nz; ++k) {
             const Real rho = Real(0.622) * p1d[k] / (Real(R_d) * t1d[k] * (qv(i, j, k) + Real(0.622)));
             rc[k] = c_max(Real(R1), qc(i, j, k) * rho);
+            ncl[k] = aero ? c_max(Real(2.), c_min(nc1d[k] * rho, Real(Nt_c_max))) : Real(Nt_c);
+            const Real nc = ncl[k];
             if (rc[k] > Real(R1) && nc > Real(R2)) has_qc = true;
             ri[k] = c_max(Real(R1), qi(i, j, k) * rho);
             ni_c[k] = c_max(Real(R2), ni(i, j, k) * rho);
@@ -260,17 +382,18 @@ struct ThompsonKernel {
             if (rs[k] > Real(R1)) has_qs = true;
         }
         if (has_qc) {
-            int inu_c;
-            if (nc < Real(100)) {
-                inu_c = 15;
-            } else if (nc > Real(1.E10)) {
-                inu_c = 2;
-            } else {
-                inu_c = int(lround(Real(1000.E6) / nc)) + 2;  // NINT
-                if (inu_c > 15) inu_c = 15;
-            }
             for (int k = 0; k < nz; ++k) {
+                const Real nc = ncl[k];
                 if (rc[k] <= Real(R1) || nc <= Real(R2)) continue;
+                int inu_c;
+                if (nc < Real(100)) {
+                    inu_c = 15;
+                } else if (nc > Real(1.E10)) {
+                    inu_c = 2;
+                } else {
+                    inu_c = int(lround(Real(1000.E6) / nc)) + 2;  // NINT
+                    if (inu_c > 15) inu_c = 15;
+                }
                 const Real lamc = std::pow(nc * Real(am_r) * g_ratio[inu_c - 1] / rc[k], obmr);
                 re_cloud(i, j, k) = c_max(Real(2.51E-6), c_min(Real(0.5) * (Real(3.) + Real(inu_c)) / lamc, Real(50.E-6)));
             }
@@ -309,6 +432,19 @@ struct ThompsonKernel {
         }
     }
 
+    // mp_gt_driver after mp_thompson: the surface emissions into the lowest level (nwfa2d, nifa2d are number
+    // tendencies), then nc, nwfa, nifa (and nbca = 0) back to the fields
+    CPPWRF_HD void aero_out(int i, int j, const Real* nc1d, Real* nwfa1d, Real* nifa1d) const {
+        nwfa1d[0] = nwfa1d[0] + nwfa2d(i, j) * dt;
+        nifa1d[0] = nifa1d[0] + nifa2d(i, j) * dt;
+        for (int k = 0; k < nz; ++k) {
+            nc_f(i, j, k) = nc1d[k];
+            nwfa_f(i, j, k) = nwfa1d[k];
+            nifa_f(i, j, k) = nifa1d[k];
+            nbca_f(i, j, k) = Real(0.0);
+        }
+    }
+
     CPPWRF_HD void operator()(int i, int j) const {
         if (nz > NL) return;
 
@@ -341,6 +477,9 @@ struct ThompsonKernel {
         Real prg_scw[NL], prg_rfz[NL], prg_gde[NL], prg_gcw[NL], prg_rci[NL], prg_rcs[NL], prg_rcg[NL], prg_ihm[NL];
         Real png_scw[NL], png_rcs[NL], png_rcg[NL], png_gde[NL];
         Real pbg_scw[NL], pbg_rfz[NL], pbg_gcw[NL], pbg_rci[NL], pbg_rcs[NL], pbg_rcg[NL], pbg_sml[NL], pbg_gml[NL];
+        // aerosol aware: nwfa1d / nifa1d [#/kg], nwfa / nifa [#/m3], wet scavenging by rain, snow and graupel
+        Real nwfa1d[NL], nifa1d[NL], nwfa[NL], nifa[NL], nwfaten[NL], nifaten[NL];
+        Real pna_rca[NL], pna_sca[NL], pna_gca[NL], pnd_rcd[NL], pnd_scd[NL], pnd_gcd[NL];
 
         bool L_qc[NL], L_qi[NL], L_qr[NL], L_qs[NL], L_qg[NL];
 
@@ -370,6 +509,14 @@ struct ThompsonKernel {
             niten[k] = Real(0.0);
             nrten[k] = Real(0.0);
             ncten[k] = Real(0.0);
+            nwfaten[k] = Real(0.0);
+            nifaten[k] = Real(0.0);
+            pna_rca[k] = Real(0.0);
+            pna_sca[k] = Real(0.0);
+            pna_gca[k] = Real(0.0);
+            pnd_rcd[k] = Real(0.0);
+            pnd_scd[k] = Real(0.0);
+            pnd_gcd[k] = Real(0.0);
 
             prw_vcd[k] = Real(0.0);
             pnc_wcd[k] = Real(0.0);
@@ -468,7 +615,13 @@ struct ThompsonKernel {
             ni1d[k] = ni(i, j, k);
             nr1d[k] = nr(i, j, k);
             Real rho_drv = Real(0.622) * pres[k] / (Real(R_d) * temp[k] * (qv_in + Real(0.622)));
-            nc1d[k] = Real(Nt_c) / rho_drv;
+            if (aero) {  // mp_gt_driver: the predicted numbers (nbca1d = 0 without wif_input_opt 2)
+                nc1d[k] = nc_f(i, j, k);
+                nwfa1d[k] = nwfa_f(i, j, k);
+                nifa1d[k] = nifa_f(i, j, k);
+            } else {
+                nc1d[k] = Real(Nt_c) / rho_drv;
+            }
             if (qg1d[k] > Real(R1)) {
                 Real rg_drv = qg1d[k] * rho_drv;
                 Real ygra1 = std::log10((rg_drv > Real(1.0e-9)) ? rg_drv : Real(1.0e-9));
@@ -488,12 +641,32 @@ struct ThompsonKernel {
 
             qv_loc[k] = (qv_in > Real(1.0e-10)) ? qv_in : Real(1.0e-10);
             rho[k] = Real(0.622) * pres[k] / (Real(R_d) * temp[k] * (qv_loc[k] + Real(0.622)));
+            if (aero) {  // aer_init_opt < 2 (constant or climatology)
+                nwfa[k] = c_max(Real(11.1E6), c_min(Real(9999.E6), nwfa1d[k] * rho[k]));
+                nifa[k] = c_max(Real(naIN1 * 0.01), c_min(Real(9999.E6), nifa1d[k] * rho[k]));
+            }
 
             // Cloud water
             if (qc1d[k] > Real(R1)) {
                 no_micro = false;
                 rc[k] = qc1d[k] * rho[k];
-                nc[k] = Real(Nt_c);
+                if (aero) {
+                    nc[k] = c_max(Real(2.), c_min(nc1d[k] * rho[k], Real(Nt_c_max)));
+                    int nu_c = static_cast<int>(std::round(Real(1000.0e6) / nc[k])) + 2;
+                    if (nu_c > 15) nu_c = 15;
+                    const int nu_idx = nu_c - 1;
+                    Real lamc = std::pow(nc[k] * Real(am_r) * tables.ccg[1][nu_idx] * tables.ocg1[nu_idx] / rc[k], obmr);
+                    const Real xDc = (Real(bm_r) + Real(nu_c) + Real(1.)) / lamc;
+                    if (xDc < Real(D0c)) {
+                        lamc = tables.cce[1][nu_idx] / Real(D0c);
+                    } else if (xDc > Real(D0r * 2.)) {
+                        lamc = tables.cce[1][nu_idx] / Real(D0r * 2.);
+                    }
+                    nc[k] = c_min(Real(Nt_c_max),
+                                  tables.ccg[0][nu_idx] * tables.ocg2[nu_idx] * rc[k] / Real(am_r) * std::pow(lamc, Real(bm_r)));
+                } else {
+                    nc[k] = Real(Nt_c);
+                }
                 L_qc[k] = true;
             } else {
                 qc1d[k] = Real(0.0);
@@ -682,7 +855,8 @@ struct ThompsonKernel {
             snowncv(i, j) = Real(0.0);
             graupelncv(i, j) = Real(0.0);
             sr(i, j) = Real(0.0);
-            if (has_re) effect_rad(i, j, temp, pres);
+            if (aero) aero_out(i, j, nc1d, nwfa1d, nifa1d);  // mp_thompson returned with nc1d = 0 where qc <= R1
+            if (has_re) effect_rad(i, j, temp, pres, nc1d);
             return;
         }
 
@@ -843,6 +1017,17 @@ struct ThompsonKernel {
                 Real rate_nc = rhof[k] * tables.t1_qr_qc * Ef_rw * nc[k] * N0_r[k] * std::pow(lamr + Real(fv_r), -tables.cre[8]);
                 pnc_rcw[k] = (rate_nc < nc[k] * odts) ? rate_nc : nc[k] * odts;
             }
+
+            // Rain collecting aerosols, wet scavenging (only the aerosol tendencies use them)
+            if (aero && L_qr[k] && mvd_r[k] > Real(D0r)) {
+                Real Ef_ra = eff_aero(mvd_r[k], Real(0.04E-6), visco[k], rho[k], temp[k], 'r');
+                const Real lamr = Real(1.0) / ilamr[k];
+                pna_rca[k] = rhof[k] * tables.t1_qr_qc * Ef_ra * nwfa[k] * N0_r[k] * std::pow(lamr + Real(fv_r), -tables.cre[8]);
+                pna_rca[k] = c_min(nwfa[k] * odts, pna_rca[k]);
+                Ef_ra = eff_aero(mvd_r[k], Real(0.8E-6), visco[k], rho[k], temp[k], 'r');
+                pnd_rcd[k] = rhof[k] * tables.t1_qr_qc * Ef_ra * nifa[k] * N0_r[k] * std::pow(lamr + Real(fv_r), -tables.cre[8]);
+                pnd_rcd[k] = c_min(nifa[k] * odts, pnd_rcd[k]);
+            }
         }
 
         // Frozen processes
@@ -960,6 +1145,25 @@ struct ThompsonKernel {
                 }
             }
 
+            // Snow and graupel collecting aerosols, wet scavenging
+            if (aero && rs[k] > tables.r_s[0]) {
+                Real Ef_sa = eff_aero(xDs, Real(0.04E-6), visco[k], rho[k], temp[k], 's');
+                pna_sca[k] = rhof[k] * tables.t1_qs_qc * Ef_sa * nwfa[k] * smoe[k];
+                pna_sca[k] = c_min(nwfa[k] * odts, pna_sca[k]);
+                Ef_sa = eff_aero(xDs, Real(0.8E-6), visco[k], rho[k], temp[k], 's');
+                pnd_scd[k] = rhof[k] * tables.t1_qs_qc * Ef_sa * nifa[k] * smoe[k];
+                pnd_scd[k] = c_min(nifa[k] * odts, pnd_scd[k]);
+            }
+            if (aero && rg[k] > tables.r_g[0]) {
+                const Real xDg = (Real(bm_g) + Real(mu_g) + Real(1.)) * ilamg[k];
+                Real Ef_ga = eff_aero(xDg, Real(0.04E-6), visco[k], rho[k], temp[k], 'g');
+                pna_gca[k] = rhof[k] * tables.t1_qg_qc * Ef_ga * nwfa[k] * N0_g[k] * std::pow(ilamg[k], tables.cge[8]);
+                pna_gca[k] = c_min(nwfa[k] * odts, pna_gca[k]);
+                Ef_ga = eff_aero(xDg, Real(0.8E-6), visco[k], rho[k], temp[k], 'g');
+                pnd_gcd[k] = rhof[k] * tables.t1_qg_qc * Ef_ga * nifa[k] * N0_g[k] * std::pow(ilamg[k], tables.cge[8]);
+                pnd_gcd[k] = c_min(nifa[k] * odts, pnd_gcd[k]);
+            }
+
             // Rain collecting snow
             if (rr[k] >= tables.r_r[0] && rs[k] >= tables.r_s[0]) {
                 size_t racs_idx = tables.idx_racs(idx_s - 1, idx_t - 1, idx_r1 - 1, idx_r - 1);
@@ -1017,7 +1221,8 @@ struct ThompsonKernel {
                 vts_boost[k] = Real(1.0);
                 Real rate_max = (qv_loc[k] - qvsi[k]) * rho[k] * odts * Real(0.999);
 
-                Real xni = Real(1000.0); // 1.0 per Liter default
+                // dustyIce: DeMott et al. (2010) dust nuclei when aerosol aware, else 1.0 per Liter
+                Real xni = aero ? ice_demott(tempc, rho[k], nifa[k]) : Real(1000.0);
                 int idx_IN = (xni > tables.Nt_IN[0]) ? tables.get_table_index(xni, tables.niIN2, ntb_IN) : 1;
 
                 if (rr[k] > tables.r_r[0]) {
@@ -1047,14 +1252,31 @@ struct ThompsonKernel {
                 }
 
                 if (ssati[k] >= Real(0.25) || (ssatw[k] > Real(eps_val) && temp[k] < Real(253.15))) {
-                    Real xnc = Real(TNO) * std::exp(Real(ATO) * (Real(273.15) - temp[k]));
-                    if (xnc > Real(250.0e3)) xnc = Real(250.0e3);
+                    Real xnc;
+                    if (aero) {
+                        xnc = ice_demott(tempc, rho[k], nifa[k]);
+                    } else {
+                        xnc = Real(TNO) * std::exp(Real(ATO) * (Real(273.15) - temp[k]));
+                        if (xnc > Real(250.0e3)) xnc = Real(250.0e3);
+                    }
                     Real xni_cur = ni_loc[k] + (pni_rfz[k] + pni_wfz[k]) * dtsave;
                     Real diff_ni = xnc - xni_cur;
                     pni_inu[k] = Real(0.5) * (diff_ni + std::abs(diff_ni)) * odts;
                     Real rate_inu = Real(xm0i) * pni_inu[k];
                     pri_inu[k] = (rate_max < rate_inu) ? rate_max : rate_inu;
                     pni_inu[k] = pri_inu[k] / Real(xm0i);
+                }
+
+                // Freezing of aqueous aerosols (Koop et al. 2001)
+                if (aero) {
+                    const Real xni_h = ns[k] + ni_loc[k] + (pni_rfz[k] + pni_wfz[k] + pni_inu[k]) * dtsave;
+                    if (xni_h <= Real(999.E3) && temp[k] < Real(238) && ssati[k] >= Real(0.4)) {
+                        const Real xnc = ice_koop(temp[k], qv_loc[k], qvs[k], nwfa[k], dtsave);
+                        pni_iha[k] = xnc * odts;
+                        const Real rate_iha = Real(xm0i * 0.1) * pni_iha[k];
+                        pri_iha[k] = (rate_max < rate_iha) ? rate_max : rate_iha;
+                        pni_iha[k] = pri_iha[k] / Real(xm0i * 0.1);
+                    }
                 }
 
                 if (L_qi[k]) {
@@ -1335,6 +1557,12 @@ struct ThompsonKernel {
             Real orho = Real(1.0) / rho[k];
             Real lfus2 = Real(lsub) - lvap[k];
 
+            if (aero) {  // aerosol number tendency (dustyIce: nucleation consumes ice-friendly aerosols)
+                nwfaten[k] = nwfaten[k] - (pna_rca[k] + pna_sca[k] + pna_gca[k] + pni_iha[k]) * orho;
+                nifaten[k] = nifaten[k] - (pnd_rcd[k] + pnd_scd[k] + pnd_gcd[k]) * orho;
+                nifaten[k] = nifaten[k] - pni_inu[k] * orho;
+            }
+
             qvten[k] += (-pri_inu[k] - pri_iha[k] - pri_ide[k] - prs_ide[k] - prs_sde[k] - prg_gde[k]) * orho;
             qcten[k] += (-prr_wau[k] - pri_wfz[k] - prr_rcw[k] - prs_scw[k] - prg_scw[k] - prg_gcw[k]) * orho;
             ncten[k] += (-pnc_wau[k] - pnc_rcw[k] - pni_wfz[k] - pnc_scw[k] - pnc_gcw[k]) * orho;
@@ -1488,11 +1716,12 @@ struct ThompsonKernel {
             tcond[k] = (Real(5.69) + Real(0.0168) * tempc) * Real(1.0e-5) * Real(418.936);  // WRF: (..)*1.0E-5 * 418.936
             ocp[k] = Real(1.0) / (Real(Cp_val) * (Real(1.0) + Real(0.887) * qv_loc[k]));
             lvt2[k] = lvap[k] * lvap[k] * ocp[k] * Real(oRv_val) * otemp * otemp;
+            if (aero) nwfa[k] = c_max(Real(11.1E6), (nwfa1d[k] + nwfaten[k] * dt) * rho[k]);
 
             Real qc_new = qc1d[k] + qcten[k] * dt;
             if (qc_new > Real(R1)) {
                 rc[k] = qc_new * rho[k];
-                nc[k] = Real(Nt_c);
+                nc[k] = aero ? c_max(Real(2.), c_min((nc1d[k] + ncten[k] * dt) * rho[k], Real(Nt_c_max))) : Real(Nt_c);
                 L_qc[k] = true;
             } else {
                 rc[k] = Real(R1);
@@ -1630,10 +1859,42 @@ struct ThompsonKernel {
                 Real xrc = rc[k] + clap * rho[k];
                 if (xrc > Real(R1)) {
                     prw_vcd[k] = clap * odt;
-                    if (clap > Real(eps_val)) {
-                        Real xnc = Real(Nt_c);
+                    if (clap > Real(eps_val)) {  // droplet nucleation
+                        Real xnc = aero ? c_max(Real(2.), activ_ncloud(temp[k], w(i, j, k), nwfa[k], tables)) : Real(Nt_c);
                         Real diff_nc = xnc - nc[k];
                         pnc_wcd[k] = Real(0.5) * (diff_nc + std::abs(diff_nc)) * odts * orho;
+                    } else if (clap < -Real(eps_val) && ssatw[k] < Real(-1.E-6) && aero) {  // evaporation
+                        const Real otemp = Real(1.) / temp[k];
+                        const Real rvs = rho[k] * qvs[k];
+                        const Real rvs_p = rvs * otemp * (lvap[k] * otemp * Real(oRv_val) - Real(1.));
+                        const Real rvs_pp = rvs * (otemp * (lvap[k] * otemp * Real(oRv_val) - Real(1.))
+                                                   * otemp * (lvap[k] * otemp * Real(oRv_val) - Real(1.))
+                                                   + (-Real(2.) * lvap[k] * otemp * otemp * otemp * Real(oRv_val))
+                                                   + otemp * otemp);
+                        const Real gamsc = lvap[k] * diffu[k] / tcond[k] * rvs_p;
+                        Real alphsc = Real(0.5) * (gamsc / (Real(1.) + gamsc)) * (gamsc / (Real(1.) + gamsc))
+                                      * rvs_pp / rvs_p * rvs / rvs_p;
+                        alphsc = c_max(Real(1.E-9), alphsc);
+                        Real xsat = ssatw[k];
+                        if (std::abs(xsat) < Real(1.E-9)) xsat = Real(0.);
+                        const Real t1_evap = Real(2. * PI_CONST) * (Real(1.0) - alphsc * xsat
+                                             + Real(2.) * alphsc * alphsc * xsat * xsat
+                                             - Real(5.) * alphsc * alphsc * alphsc * xsat * xsat * xsat)
+                                             / (Real(1.) + gamsc);
+                        // WRF: DSQRT(-2.D0*DT * t1_evap/(2.*PI) * 4.*diffu(k)*ssatw(k)*rvs/rho_w)
+                        const Real Dc_star = std::sqrt(Real(-2.) * dt * t1_evap / Real(2. * PI_CONST) * Real(4.) *
+                                                       diffu[k] * ssatw[k] * rvs / Real(rho_w));
+                        int idx_d = static_cast<int>(Real(1.E6) * Dc_star);
+                        idx_d = idx_d < nbc ? idx_d : nbc;
+                        idx_d = idx_d > 1 ? idx_d : 1;
+                        int idx_n = static_cast<int>(std::round(Real(1.0) + Real(nbc) * std::log(nc[k] / tables.t_Nc_0) /
+                                                                 Real(tables.nic1)));
+                        idx_n = idx_n < nbc ? idx_n : nbc;
+                        idx_n = idx_n > 1 ? idx_n : 1;
+                        const int idx_c = (rc[k] > tables.r_c[0]) ? tables.get_table_index(rc[k], tables.nic2, ntb_c) : 1;
+                        prw_vcd[k] = c_max(-rc[k] * Real(0.99) * orho * odt, prw_vcd[k]);
+                        pnc_wcd[k] = c_max(-nc[k] * Real(0.99) * orho * odt,
+                                           -tables.tnc_wev[tables.idx_wev(idx_d - 1, idx_c - 1, idx_n - 1)] * orho * odt);
                     }
                 } else {
                     prw_vcd[k] = -rc[k] * orho * odt;
@@ -1643,11 +1904,12 @@ struct ThompsonKernel {
                 qvten[k] -= prw_vcd[k];
                 qcten[k] += prw_vcd[k];
                 ncten[k] += pnc_wcd[k];
+                nwfaten[k] = nwfaten[k] - pnc_wcd[k];
                 tten[k] += lvap[k] * ocp[k] * prw_vcd[k];
                 rc[k] = (qc1d[k] + dt * qcten[k]) * rho[k];
                 if (rc[k] < Real(R1)) rc[k] = Real(R1);
                 if (rc[k] == Real(R1)) L_qc[k] = false;
-                nc[k] = Real(Nt_c);
+                nc[k] = aero ? c_max(Real(2.), c_min((nc1d[k] + ncten[k] * dt) * rho[k], Real(Nt_c_max))) : Real(Nt_c);
                 qv_loc[k] = qv(i, j, k) + dt * qvten[k];
                 if (qv_loc[k] < Real(1.0e-10)) qv_loc[k] = Real(1.0e-10);
                 temp[k] = (th(i, j, k) * pii(i, j, k)) + dt * tten[k];
@@ -1717,6 +1979,7 @@ struct ThompsonKernel {
                 qrten[k] -= prv_rev[k];
                 qvten[k] += prv_rev[k];
                 nrten[k] -= pnr_rev[k];
+                nwfaten[k] = nwfaten[k] + pnr_rev[k];
                 tten[k] -= lvap[k] * ocp[k] * prv_rev[k];
 
                 Real rr_new = (qr1d[k] + dt * qrten[k]) * rho[k];
@@ -2098,6 +2361,28 @@ struct ThompsonKernel {
             } else {
                 qc(i, j, k) = qc_final;
             }
+            if (aero) {
+                Real ncf = c_max(Real(2.) / rho[k], c_min(nc1d[k] + ncten[k] * dt, Real(Nt_c_max)));
+                nwfa1d[k] = c_max(Real(11.1E6), c_min(Real(9999.E6), (nwfa1d[k] + nwfaten[k] * dt)));
+                nifa1d[k] = c_max(Real(naIN1 * 0.01), c_min(Real(9999.E6), (nifa1d[k] + nifaten[k] * dt)));
+                if (qc_final <= Real(R1)) {
+                    ncf = Real(0.0);
+                } else {
+                    int nu_c = static_cast<int>(std::round(Real(1000.E6) / (ncf * rho[k]))) + 2;
+                    if (nu_c > 15) nu_c = 15;
+                    const int nu_idx = nu_c - 1;
+                    Real lamc = std::pow(Real(am_r) * tables.ccg[1][nu_idx] * tables.ocg1[nu_idx] * ncf / qc_final, obmr);
+                    const Real xDc = (Real(bm_r) + Real(nu_c) + Real(1.)) / lamc;
+                    if (xDc < Real(D0c)) {
+                        lamc = tables.cce[1][nu_idx] / Real(D0c);
+                    } else if (xDc > Real(D0r * 2.)) {
+                        lamc = tables.cce[1][nu_idx] / Real(D0r * 2.);
+                    }
+                    ncf = c_min(tables.ccg[0][nu_idx] * tables.ocg2[nu_idx] * qc_final / Real(am_r) * std::pow(lamc, Real(bm_r)),
+                                Real(Nt_c_max) / rho[k]);
+                }
+                nc1d[k] = ncf;
+            }
 
             Real qi_final = qi1d[k] + qiten[k] * dt;
             Real ni_final = ni1d[k] + niten[k] * dt;
@@ -2164,8 +2449,16 @@ struct ThompsonKernel {
         graupelncv(i, j) = pptgraul;
         graupelnc(i, j) += pptgraul;
         sr(i, j) = (pptsnow + pptgraul + pptice) / (rain_step + Real(1.0e-12));
-        if (has_re) effect_rad(i, j, twet, pres);
+        if (aero) aero_out(i, j, nc1d, nwfa1d, nifa1d);
+        if (has_re) effect_rad(i, j, twet, pres, nc1d);
     }
+};
+
+// mp_physics = 28 (aerosol aware): the scalars QNCLOUD, QNWFA, QNIFA, QNBCA and the emissions QNWFA2D, QNIFA2D
+template <typename Real>
+struct ThompsonAeroFields {
+    View3<Real> nc, nwfa, nifa, nbca;
+    View2<const Real> nwfa2d, nifa2d;
 };
 
 // Host runner function
@@ -2197,6 +2490,7 @@ void run_thompson(
     const ThompsonTablesView<Real>& tables,
     View3<Real> re_cloud = {},  // all three or none (has_reqc, has_reqi, has_reqs)
     View3<Real> re_ice = {},
-    View3<Real> re_snow = {});
+    View3<Real> re_snow = {},
+    const ThompsonAeroFields<Real>* aero = nullptr);
 
 } // namespace cppwrf::phys::mp_thompson

@@ -308,6 +308,7 @@ SUPPORTED_OPTIONS = {
         1: "Kessler warm-rain",
         6: "WSM6 6-class single-moment",
         8: "Thompson",
+        28: "Thompson aerosol-aware (aer_init_opt = 0, wif_input_opt 0 / 1)",
     },
     "sf_sfclay_physics": {
         0: "None / off",
@@ -585,6 +586,8 @@ NO_EFFECT_OPTIONS = {
         "qv_max_flag", "qv_max_value", "qv_min_p_safe", "qv_min_flag", "qv_min_value", "use_sh_qv", "aggregate_lu",
         "use_tavg_for_tsk", "use_maxw_level", "maxw_above_this_level", "maxw_horiz_pres_diff", "use_trop_level",
         "trop_horiz_pres_diff", "max_dz", "auto_levels_opt", "eta_levels")},
+    # read by the aerosol-aware schemes (mp_physics 28, 29, 38) and aer_opt = 3 only (both translated or rejected)
+    "wif_input_opt": "aerosol-aware microphysics (mp_physics = 28) only",
     # restart runs only (restart = .true. is rejected)
     "override_restart_timers": "restart runs only", "write_hist_at_0h_rst": "restart runs only",
     # time series files (written only with a tslist file), the history read of iofields_filename
@@ -1451,6 +1454,8 @@ class WrfTranslator:
             sections["moist"] = {}
             if mp_physics == 8:  # Thompson: two-moment ice and rain (QNICE, QNRAIN)
                 sections["moist"]["species"] = "qv,qc,qr,qi,qs,qg,qni,qnr"
+            elif mp_physics == 28:  # Registry package thompsonaero: scalar qni, qnr, qnc, qnwfa, qnifa, qnbca
+                sections["moist"]["species"] = "qv,qc,qr,qi,qs,qg,qni,qnr,qnc,qnwfa,qnifa,qnbca"
             elif mp_physics == 6:
                 sections["moist"]["species"] = "qv, qc, qr, qi, qs, qg" if not has_physics_suite else "qv,qc,qr,qi,qs,qg"
             elif mp_physics == 1:
@@ -1458,6 +1463,8 @@ class WrfTranslator:
             else:
                 sections["moist"]["species"] = "qv"
         elif mp_physics > 0 or case_name in ("quarter_ss", "squall2d"):
+            if mp_physics == 28:
+                self.error("WRF mp_physics = 28 (aerosol-aware Thompson) is supported for real-data runs only.")
             sections["moist"] = {}
             if mp_physics == 8:
                 sections["moist"]["species"] = "qv,qc,qr,qi,qs,qg,qni,qnr"
@@ -1484,8 +1491,22 @@ class WrfTranslator:
                 self.check_supported("mp_physics", mp_physics)
             # thompson_init (qr_acr_qg, qr_acr_qs, freezeH2O): a missing or unreadable .dat table is fatal
             # instead of computed; write_thompson_tables only writes the computed tables (no effect on results)
-            if self.get_opt("physics", "force_read_thompson", False) and mp_physics == 8:
+            if self.get_opt("physics", "force_read_thompson", False) and mp_physics in (8, 28):
                 sections["phys"]["force_read_thompson"] = True
+            if mp_physics == 28:
+                # check_a_mundo: use_aero_icbc / use_rap_aero_icbc give aer_init_opt 1 / 2 (the aerosol climatology
+                # through metgrid, scalar_pblmix = 1); those and qna_update, dust_emis stay errors (not ported).
+                # wif_input_opt 0 and 1 run wrf.exe alike (real.exe needs 1); 2 adds the black-carbon aerosols
+                wif = self.get_opt("domains", "wif_input_opt", 0)
+                if wif == 2:
+                    self.error("WRF wif_input_opt = 2 (black-carbon aerosols QNBCA, QNBCA2D with frc_urb2d) is not "
+                               "supported by CPPWRF.")
+                elif wif not in (0, 1):
+                    self.error(f"WRF wif_input_opt = {wif} is not a WRF value (0, 1 or 2).")
+                elif wif != 0:
+                    sections["phys"]["wif_input_opt"] = wif
+                if self._max_dom > 1:
+                    self.error("WRF mp_physics = 28 with nests is not supported by CPPWRF.")
             self.get_opt("physics", "write_thompson_tables", True)
 
             if has_physics_suite:
@@ -1714,7 +1735,10 @@ class WrfTranslator:
                     # the sfclayrev / MYJSFC sea-ice wrappers are verified with YSU / MYJ only
                     if bl_pbl == 5 and fsi == 1:
                         self.error("WRF bl_pbl_physics = 5 (MYNN) with fractional_seaice = 1 is not supported by CPPWRF.")
-                    if bl_pbl == 5 and mp_physics not in (6, 8):
+                    if bl_pbl == 5 and mp_physics == 28:
+                        self.error("WRF bl_pbl_physics = 5 with mp_physics = 28 (MYNN mixing of the aerosols, "
+                                   "bl_mynn_mixaerosols) is not supported by CPPWRF.")
+                    elif bl_pbl == 5 and mp_physics not in (6, 8):
                         self.error("WRF bl_pbl_physics = 5 needs a microphysics with qc, qi and qs (mp_physics 6 or 8): "
                                    "WRF passes the MYNN-EDMF an uninitialised snow content otherwise.")
                     if bl_pbl == 5 and (self.get_opt("physics", "ishallow", 0) > 0 or self.get_opt("physics", "shcu_physics", 0) > 0):
@@ -1983,6 +2007,9 @@ class WrfTranslator:
             self.error(f"WRF grav_settling = {gs_vals} is not supported; WRF's values are 0, 1 and 2.")
         elif any(v != gs_vals[0] for v in gs_vals):
             self.error(f"WRF grav_settling with different values per domain ({gs_vals}) is not supported by CPPWRF.")
+        elif gs_vals[0] != 0 and mp_physics == 28:
+            # check_a_mundo: mp_physics = 28 already has gravitational fog settling; grav_settling is reset to 0
+            self.notice(f"Option &physics.grav_settling = {gs_vals}: reset to 0 with mp_physics = 28 (check_a_mundo).")
         elif gs_vals[0] != 0:
             if "phys" not in sections or mp_physics == 0 or bl_pbl == 0 or sf_sfclay == 0:
                 self.error("WRF grav_settling > 0 needs a microphysics scheme with qc, a PBL scheme and a surface "

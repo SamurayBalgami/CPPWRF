@@ -651,6 +651,39 @@ class TestValidationAndWarnings(unittest.TestCase):
         self.assertNotIn("force_read_thompson", phys(6, "force_read_thompson = .true."))  # read only by Thompson
         self.assertNotIn("write_thompson_tables", phys(8, "write_thompson_tables = .false."))
 
+    def test_thompson_aerosol_aware(self):
+        """mp_physics = 28 with aer_init_opt = 0: the thompsonaero scalars, wif_input_opt 0 / 1, grav_settling reset to 0
+        (check_a_mundo); wif_input_opt = 2, use_aero_icbc, use_rap_aero_icbc, qna_update, dust_emis, MYNN and nests
+        are errors."""
+        def tr(extra, domains="", case=real_case):
+            t = WrfTranslator(parse_namelist(case(f"&time_control /\n&domains time_step = 60{domains} /\n"
+                                                  f"&physics mp_physics = 28{extra} /\n&dynamics /\n")))
+            return t, t.translate()
+        t, gen = tr(", sf_sfclay_physics = 1, sf_surface_physics = 2, bl_pbl_physics = 1, grav_settling = 1",
+                    ", wif_input_opt = 1")
+        self.assertEqual(t.errors, [])
+        self.assertEqual(gen["moist"]["species"], "qv,qc,qr,qi,qs,qg,qni,qnr,qnc,qnwfa,qnifa,qnbca")
+        self.assertEqual((gen["phys"]["mp_physics"], gen["phys"]["wif_input_opt"]), (28, 1))
+        self.assertNotIn("grav_settling", gen["phys"])
+        self.assertTrue(any("grav_settling" in n and "reset to 0" in n for n in t.notices), t.notices)
+        t, gen = tr(", force_read_thompson = .true.")
+        self.assertEqual(t.errors, [])
+        self.assertTrue(gen["phys"]["force_read_thompson"])
+        self.assertNotIn("wif_input_opt", gen["phys"])
+        for extra, domains, err in ((", sf_sfclay_physics = 1, bl_pbl_physics = 5", "", "bl_mynn_mixaerosols"),
+                                    ("", ", wif_input_opt = 2", "wif_input_opt = 2"),
+                                    (", use_aero_icbc = .true.", "", "use_aero_icbc"),
+                                    (", use_rap_aero_icbc = .true.", "", "use_rap_aero_icbc"),
+                                    (", qna_update = 1", "", "qna_update"),
+                                    (", dust_emis = 1", "", "dust_emis")):
+            t, _ = tr(extra, domains)
+            self.assertIn(err, " ".join(t.errors), (extra, domains))
+        # wif_input_opt is read only by the aerosol-aware schemes
+        t = WrfTranslator(parse_namelist(real_case("&time_control /\n&domains time_step = 60, wif_input_opt = 1 /\n"
+                                                   "&physics mp_physics = 8 /\n&dynamics /\n")))
+        t.translate()
+        self.assertEqual(t.errors, [])
+
     def test_opt_thcnd(self):
         base = """
         &time_control /

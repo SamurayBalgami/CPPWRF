@@ -162,10 +162,36 @@ bool read_wrf_dat(const std::string& path, std::initializer_list<std::vector<Rea
     return bool(f);
 }
 
+// table_ccnAct: CCN_ACTIVATE.BIN is one unformatted sequential record of REAL(KIND=R4SIZE) tnccn_act (either
+// byte order); WRF stops when the file cannot be opened or read
+template <typename Real>
+void read_ccn_act(const std::string& path, std::vector<Real>& t) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) throw std::runtime_error("module_mp_thompson: error opening CCN_ACTIVATE.BIN (" + path + ")");
+    const uint32_t want = uint32_t(t.size() * 4);
+    uint32_t m = 0;
+    std::vector<uint32_t> buf(t.size());
+    bool ok = bool(f.read(reinterpret_cast<char*>(&m), 4));
+    const bool swap = ok && m != want && __builtin_bswap32(m) == want;
+    ok = ok && (swap || m == want) && f.read(reinterpret_cast<char*>(buf.data()), std::streamsize(want));
+    if (!ok) throw std::runtime_error("module_mp_thompson: error reading CCN_ACTIVATE.BIN (" + path + ")");
+    for (size_t i = 0; i < buf.size(); ++i) {
+        const uint32_t u = swap ? __builtin_bswap32(buf[i]) : buf[i];
+        float x;
+        std::memcpy(&x, &u, 4);
+        t[i] = Real(x);
+    }
+}
+
 } // namespace
 
 template <typename Real>
-void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& wrf_dat_dir, bool force_read) {
+void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& wrf_dat_dir, bool force_read,
+                          bool aerosol_aware) {
+    // thompson_init: table_ccnAct (is_aerosol_aware) comes before the collection and freezing tables
+    if (aerosol_aware)
+        read_ccn_act<Real>((wrf_dat_dir.empty() ? std::string(".") : wrf_dat_dir) + "/CCN_ACTIVATE.BIN",
+                           tables.tnccn_act);
     // WRF's own table files when present (bit-identical to the WRF run), else computed below
     const std::string dd = wrf_dat_dir.empty() ? std::string(".") : wrf_dat_dir;
     const bool have_qg = !wrf_dat_dir.empty() && read_wrf_dat<Real>(dd + "/qr_acr_qg_V4.dat", {&tables.tcg_racg, &tables.tmr_racg, &tables.tcr_gacr, &tables.tnr_racg, &tables.tnr_gacr});
@@ -927,7 +953,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     }
 }
 
-template void init_thompson_tables<double>(ThompsonHostTables<double>& tables, const std::string&, bool);
-template void init_thompson_tables<float>(ThompsonHostTables<float>& tables, const std::string&, bool);
+template void init_thompson_tables<double>(ThompsonHostTables<double>& tables, const std::string&, bool, bool);
+template void init_thompson_tables<float>(ThompsonHostTables<float>& tables, const std::string&, bool, bool);
 
 } // namespace cppwrf::phys::mp_thompson

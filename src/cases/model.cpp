@@ -331,8 +331,26 @@ Model Model::build(const io::Config& cfg) {
     pp.force_read_thompson = cfg.get_bool("phys.force_read_thompson", false);
     // phy_init: has_reqc = has_reqi = has_reqs = 1 with use_mp_re = 1, RRTMG LW + SW and WSM6 or Thompson
     pp.microp_re = cfg.get_int("phys.use_mp_re", 1) == 1 && cfg.get_int("phys.ra_lw_physics", 0) == 4 &&
-                   cfg.get_int("phys.ra_sw_physics", 0) == 4 && (pp.mp_physics == 6 || pp.mp_physics == 8);
+                   cfg.get_int("phys.ra_sw_physics", 0) == 4 &&
+                   (pp.mp_physics == 6 || pp.mp_physics == 8 || pp.mp_physics == 28);
+    if (pp.mp_physics == 28) {  // aerosol-aware Thompson: aer_init_opt = 0, wif_input_opt 0 / 1, qna_update = 0
+      if (cname != "real") throw std::runtime_error("phys.mp_physics = 28: real-data runs only");
+      const long wif = cfg.get_int("phys.wif_input_opt", 0);
+      if (wif == 2)
+        throw std::runtime_error("phys.wif_input_opt = 2 (black-carbon aerosols QNBCA, frc_urb2d) is not ported");
+      if (wif != 0 && wif != 1) throw std::runtime_error("phys.wif_input_opt must be 0, 1 or 2");
+      if (cfg.get_bool("phys.use_aero_icbc", false) || cfg.get_bool("phys.use_rap_aero_icbc", false))
+        throw std::runtime_error("phys.use_aero_icbc / use_rap_aero_icbc (aer_init_opt 1 / 2, the aerosol "
+                                 "climatology with scalar_pblmix = 1) are not ported");
+      if (cfg.get_int("phys.qna_update", 0) != 0)
+        throw std::runtime_error("phys.qna_update = 1 (time-varying QNWFA2D / QNIFA2D, auxinput17) is not ported");
+      if (cfg.get_int("phys.dust_emis", 0) != 0) throw std::runtime_error("phys.dust_emis = 1 is not ported");
+      if (cfg.get_int("phys.bl_pbl_physics", 0) == 5)
+        throw std::runtime_error("phys.mp_physics = 28 with the MYNN PBL (aerosol mixing, bl_mynn_mixaerosols) is "
+                                 "not ported");
+    }
     if (pp.mp_physics != 0) m.rk->enable_physics(pp);
+    if (pp.mp_physics == 28) init_real_aerosols(cfg, m);  // thompson_init (phy_init), also before a restart load
     if (wants_column_physics(cfg)) {
       if (cname != "real") throw std::runtime_error("phys.sf_*/bl_pbl_physics: real-data runs only");
       init_real_physics(cfg, m);

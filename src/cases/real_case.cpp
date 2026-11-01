@@ -78,6 +78,7 @@ double seconds_between(const std::string& a, const std::string& b) {
 
 #ifndef CPPWRF_HAVE_NETCDF
 void init_real_case(const io::Config&, Model&) { throw std::runtime_error("case = real needs NetCDF"); }
+void init_real_aerosols(const io::Config&, Model&) { throw std::runtime_error("case = real needs NetCDF"); }
 #else
 void init_real_case(const io::Config& cfg, Model& m) {
   const std::string dir = cfg.get_string("real.dir");
@@ -309,6 +310,10 @@ void init_real_case(const io::Config& cfg, Model& m) {
     std::vector<double> extra_q;
     if (nm == "qni") extra_q = read_var_if_present(wi_path, "QNICE", qv.size());
     else if (nm == "qnr") extra_q = read_var_if_present(wi_path, "QNRAIN", qv.size());
+    else if (nm == "qnc") extra_q = read_var_if_present(wi_path, "QNCLOUD", qv.size());
+    else if (nm == "qnwfa") extra_q = read_var_if_present(wi_path, "QNWFA", qv.size());
+    else if (nm == "qnifa") extra_q = read_var_if_present(wi_path, "QNIFA", qv.size());
+    else if (nm == "qnbca") extra_q = read_var_if_present(wi_path, "QNBCA", qv.size());
     else if (nm == "tke") extra_q = read_var_if_present(wi_path, "TKE", qv.size());
     else if (nm == "qke_adv") extra_q = read_var_if_present(wi_path, "qke_adv", qv.size());
     const std::vector<double>* src = nm == "qc" ? &d.qcloud : nm == "qr" ? &d.qrain : nm == "qi" ? &d.qice
@@ -455,6 +460,19 @@ void init_real_case(const io::Config& cfg, Model& m) {
       if (t == wrf_time::make(std::int64_t(*rec_now) * iv)) bc->dtbc = 0;
     };
   }
+}
+
+void init_real_aerosols(const io::Config& cfg, Model& m) {
+  dyn::PhysicsCoupling* pc = m.rk->physics();
+  const Grid& g = m.g;
+  const int nx = g.nx, ny = g.ny;
+  const std::string wi_path = cfg.get_string("real.dir") + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01");
+  // QNWFA2D / QNIFA2D: Registry i01, from wrfinput (real.exe writes 0 with aer_init_opt = 0)
+  for (auto [f, name] : {std::pair{&pc->qnwfa2d, "QNWFA2D"}, std::pair{&pc->qnifa2d, "QNIFA2D"}}) {
+    const std::vector<double> v = read_var_if_present(wi_path, name, std::size_t(nx) * ny);
+    f->fill_host([&](int i, int j, int) { return v.empty() ? 0.0 : v[std::size_t(j) * nx + i]; });
+  }
+  pc->init_aerosols(*m.st, *m.base);
 }
 #endif
 

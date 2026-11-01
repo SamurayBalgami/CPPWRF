@@ -23,7 +23,9 @@ Tendencies::Tendencies(const Grid& g)
       t_tendf(g, S::M, "t_tendf"), ph_tendf(g, S::W, "ph_tendf") {}
 
 int State::add_scalar(const Grid& g, const std::string& name, bool moist) {
-  if (name == "qni" || name == "qnr" || name == "tke" || name == "qke_adv") moist = false;  // number concentrations [#/kg], TKE and 2*TKE are not 'moist'
+  if (name == "qni" || name == "qnr" || name == "qnc" || name == "qnwfa" || name == "qnifa" || name == "qnbca" ||
+      name == "tke" || name == "qke_adv")
+    moist = false;  // number concentrations [#/kg], TKE and 2*TKE are not 'moist'
   for (auto& n : q_names)
     if (n == name) throw std::runtime_error("duplicate scalar '" + name + "'");
   if (moist && n_moist != n_scalars()) throw std::runtime_error("moist species must precede passive tracers");
@@ -46,6 +48,10 @@ int State::add_scalar(const Grid& g, const std::string& name, bool moist) {
   }
   if (name == "qni") P_QNI = idx;
   if (name == "qnr") P_QNR = idx;
+  if (name == "qnc") P_QNC = idx;
+  if (name == "qnwfa") P_QNWFA = idx;
+  if (name == "qnifa") P_QNIFA = idx;
+  if (name == "qnbca") P_QNBCA = idx;
   if (name == "tke") P_TKE = idx;
   if (name == "qke_adv") P_QKE_ADV = idx;
   return idx;

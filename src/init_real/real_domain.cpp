@@ -121,6 +121,17 @@ RealOptions RealOptions::from_namelist(const Namelist& nl, const WrfSchema& sc, 
     if (c.integer(k) != 0) throw std::runtime_error(std::string("real: ") + k + " is not ported");
   for (const char* k : {"insert_init_cloud", "all_ic_times", "multi_bdy_files", "slucm_distributed_drag"})
     if (c.logical(k)) throw std::runtime_error(std::string("real: ") + k + " = .true. is not ported");
+  if (o.mp_physics == 28) {  // aerosol-aware Thompson: aer_init_opt = 0 (QNWFA, QNIFA, QNWFA2D, QNIFA2D zero)
+    // module_initialize_real.F:2743-2748
+    if (c.integer("wif_input_opt") == 0) throw std::runtime_error("real: wif_input_opt=0 but mp_physics=28, 29, or 88");
+    if (c.integer("wif_input_opt") == 2)
+      throw std::runtime_error("real: wif_input_opt = 2 (black-carbon aerosols QNBCA) is not ported");
+    // check_a_mundo: use_aero_icbc / use_rap_aero_icbc set aer_init_opt = 1 / 2 (the aerosol climatology)
+    if (c.logical("use_aero_icbc") || c.logical("use_rap_aero_icbc"))
+      throw std::runtime_error("real: use_aero_icbc / use_rap_aero_icbc (aer_init_opt 1 / 2) are not ported");
+    if (o.qna_update != 0) throw std::runtime_error("real: qna_update = 1 with mp_physics = 28 is not ported");
+    if (c.integer("dust_emis") != 0) throw std::runtime_error("real: dust_emis = 1 is not ported");
+  }
   return o;
 }
 
@@ -1195,7 +1206,7 @@ void RealDomain<T>::init_domain(int loop, const std::string& current_date) {
         if (skip(i, j)) continue;
         q2(i, j) = qv_gc(i, 1, j);
       }
-  // Thompson (mp_physics = 8): number concentrations are derived only where qc, qi, qr > 0 (no hydrometeor
+  // Thompson (mp_physics = 8, 28): number concentrations are derived only where qc, qi, qr > 0 (no hydrometeor
   // input from metgrid here, so nothing to do)
   got_var_sso = false;
   for (int j = jts; j <= j1; ++j)

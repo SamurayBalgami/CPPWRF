@@ -76,7 +76,8 @@ std::vector<std::string> wrf_names(const std::string& n) {
   };
   static const std::map<std::string, std::string> moist = {
       {"qv", "QVAPOR"}, {"qc", "QCLOUD"}, {"qr", "QRAIN"}, {"qi", "QICE"}, {"qs", "QSNOW"},
-      {"qg", "QGRAUP"}, {"qni", "QNICE"}, {"qnr", "QNRAIN"}, {"qke_adv", "qke_adv"}};
+      {"qg", "QGRAUP"}, {"qni", "QNICE"}, {"qnr", "QNRAIN"}, {"qke_adv", "qke_adv"},
+      {"qnc", "QNCLOUD"}, {"qnwfa", "QNWFA"}, {"qnifa", "QNIFA"}, {"qnbca", "QNBCA"}};
   if (n.rfind("q1_", 0) == 0 || n.rfind("q2_", 0) == 0) {  // moist/scalar arrays have one time level (q_1 = q_2
     const std::string q = n.substr(3);                      // at the step start); tke_1 / tke_2
     auto it = moist.find(q);
@@ -235,12 +236,16 @@ void DomainRunner::save_restart_file(const std::string& path, long step, double 
   if (rk && rk->physics()) {
     add_field2("rainnc", rk->physics()->rainnc);
     add_field2("rainncv", rk->physics()->rainncv);
-    if (rk->physics()->params().mp_physics == 6 || rk->physics()->params().mp_physics == 8) {
+    if (rk->physics()->params().mp_physics == 6 || rk->physics()->thompson()) {
       add_field2("snownc", rk->physics()->snownc);
       add_field2("snowncv", rk->physics()->snowncv);
       add_field2("graupelnc", rk->physics()->graupelnc);
       add_field2("graupelncv", rk->physics()->graupelncv);
       add_field2("sr", rk->physics()->sr);
+    }
+    if (rk->physics()->params().mp_physics == 28) {  // Registry i01rhdu: in the restart stream
+      add_field2("qnwfa2d", rk->physics()->qnwfa2d);
+      add_field2("qnifa2d", rk->physics()->qnifa2d);
     }
   }
 
@@ -341,12 +346,16 @@ void DomainRunner::load_restart_file(const std::string& path) {
   if (rk && rk->physics()) {
     reg_field2("rainnc", rk->physics()->rainnc);
     reg_field2("rainncv", rk->physics()->rainncv);
-    if (rk->physics()->params().mp_physics == 6 || rk->physics()->params().mp_physics == 8) {
+    if (rk->physics()->params().mp_physics == 6 || rk->physics()->thompson()) {
       reg_field2("snownc", rk->physics()->snownc);
       reg_field2("snowncv", rk->physics()->snowncv);
       reg_field2("graupelnc", rk->physics()->graupelnc);
       reg_field2("graupelncv", rk->physics()->graupelncv);
       reg_field2("sr", rk->physics()->sr);
+    }
+    if (rk->physics()->params().mp_physics == 28) {
+      reg_field2("qnwfa2d", rk->physics()->qnwfa2d);
+      reg_field2("qnifa2d", rk->physics()->qnifa2d);
     }
   }
 
@@ -459,13 +468,15 @@ void DomainRunner::prepare_output() {
     start_date_ = cfg_.get_string("run.start_date", !m_.start_date.empty() ? m_.start_date : "2000-01-01_00:00:00");
   if (m_.rk && m_.rk->physics()) {
     extra_2d_ = {&m_.rk->physics()->rainnc, &m_.rk->physics()->rainncv};
-    if (m_.rk->physics()->params().mp_physics == 6 || m_.rk->physics()->params().mp_physics == 8) {
+    if (m_.rk->physics()->params().mp_physics == 6 || m_.rk->physics()->thompson()) {
       extra_2d_.push_back(&m_.rk->physics()->snownc);
       extra_2d_.push_back(&m_.rk->physics()->snowncv);
       extra_2d_.push_back(&m_.rk->physics()->graupelnc);
       extra_2d_.push_back(&m_.rk->physics()->graupelncv);
       extra_2d_.push_back(&m_.rk->physics()->sr);
     }
+    if (m_.rk->physics()->params().mp_physics == 28)
+      for (const Field2* f : {&m_.rk->physics()->qnwfa2d, &m_.rk->physics()->qnifa2d}) extra_2d_.push_back(f);
   }
   if (m_.suite) {  // column physics surface and cumulus fields (WRF names in lower case)
     const phys::driver::PhysicsSuite& su = *m_.suite;

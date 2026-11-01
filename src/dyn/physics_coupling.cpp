@@ -3,6 +3,7 @@
 #include <map>
 #include <mutex>
 #include <stdexcept>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -74,15 +75,15 @@ struct KSaveQc {  // moist_physics_prep_em: qc_diabatic = qc
 // module_mp_thompson.F thompson_init computes (or reads) the tables only while tcg_racg is not allocated: the
 // first domain's call makes them and every nest uses that one set (~380 MB in FP64)
 std::shared_ptr<const phys::mp_thompson::ThompsonDeviceTables<real>> thompson_tables(const std::string& dir,
-                                                                                     bool force_read) {
+                                                                                     bool force_read, bool aero) {
   using Tables = phys::mp_thompson::ThompsonDeviceTables<real>;
   static std::mutex m;
-  static std::map<std::pair<std::string, bool>, std::weak_ptr<const Tables>> made;
+  static std::map<std::tuple<std::string, bool, bool>, std::weak_ptr<const Tables>> made;
   std::lock_guard<std::mutex> lock(m);
-  std::weak_ptr<const Tables>& w = made[{dir, force_read}];
+  std::weak_ptr<const Tables>& w = made[{dir, force_read, aero}];
   if (auto t = w.lock()) return t;
   phys::mp_thompson::ThompsonHostTables<real> h;
-  phys::mp_thompson::init_thompson_tables(h, dir, force_read);
+  phys::mp_thompson::init_thompson_tables(h, dir, force_read, aero);
   auto t = std::make_shared<Tables>();
   t->upload(h);
   w = t;
@@ -96,8 +97,8 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
       th_phy(g, Stagger::M, "th_phy"), rho(g, Stagger::M, "rho"), pii(g, Stagger::M, "pii"), z(g, Stagger::M, "z"),
       dz8w(g, Stagger::M, "dz8w"), qv_diabatic(g, Stagger::M, "qv_diabatic"), qc_diabatic(g, Stagger::M, "qc_diabatic"),
       p_phy(g, Stagger::M, "p_phy") {
-  if (p_.mp_physics != 0 && p_.mp_physics != 1 && p_.mp_physics != 6 && p_.mp_physics != 8)
-    throw std::runtime_error("phys.mp_physics must be 0, 1, 6 or 8");
+  if (p_.mp_physics != 0 && p_.mp_physics != 1 && p_.mp_physics != 6 && p_.mp_physics != 8 && p_.mp_physics != 28)
+    throw std::runtime_error("phys.mp_physics must be 0, 1, 6, 8 or 28");
   if (p_.mp_physics == 1 && g.nz > phys::kessler::kMaxLevels) throw std::runtime_error("Kessler: nz > kMaxLevels");
   if (p_.microp_re) {  // phy_init: background values RE_QC_BG, RE_QI_BG, RE_QS_BG
     re_cloud = Field3(g, Stagger::M, "re_cloud");
@@ -128,14 +129,18 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
       throw std::runtime_error("WSM6: cudaDeviceSetLimit(cudaLimitStackSize, 64 KB) failed");
 #endif
   }
-  if (p_.mp_physics == 8) {
+  if (thompson()) {
     if (g.nz > phys::mp_thompson::kMaxLevels) throw std::runtime_error("Thompson: nz > kMaxLevels");
     snownc = Field2(g, Stagger::M, "snownc");
     snowncv = Field2(g, Stagger::M, "snowncv");
     graupelnc = Field2(g, Stagger::M, "graupelnc");
     graupelncv = Field2(g, Stagger::M, "graupelncv");
     sr = Field2(g, Stagger::M, "sr");
-    tp_ = thompson_tables(p_.table_dir, p_.force_read_thompson);
+    if (p_.mp_physics == 28) {  // the input's QNWFA2D / QNIFA2D (real.exe with aer_init_opt 0: zero)
+      qnwfa2d = Field2(g, Stagger::M, "qnwfa2d");
+      qnifa2d = Field2(g, Stagger::M, "qnifa2d");
+    }
+    tp_ = thompson_tables(p_.table_dir, p_.force_read_thompson, p_.mp_physics == 28);
 #if defined(CPPWRF_USE_CUDA)
     if (cudaDeviceSetLimit(cudaLimitStackSize, 64 * 1024) != cudaSuccess)
       throw std::runtime_error("Thompson: cudaDeviceSetLimit(cudaLimitStackSize, 64 KB) failed");
@@ -148,8 +153,10 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
   if (s.P_QV < 0 || s.P_QC < 0 || s.P_QR < 0) throw std::runtime_error("microphysics needs qv, qc, qr");
   if (p_.mp_physics == 6 && (s.P_QI < 0 || s.P_QS < 0 || s.P_QG < 0))
     throw std::runtime_error("mp_physics = 6 (WSM6) needs qv, qc, qr, qi, qs, qg");
-  if (p_.mp_physics == 8 && (s.P_QI < 0 || s.P_QS < 0 || s.P_QG < 0 || s.P_QNI < 0 || s.P_QNR < 0))
-    throw std::runtime_error("mp_physics = 8 (Thompson) needs qv, qc, qr, qi, qs, qg, qni, qnr");
+  if (thompson() && (s.P_QI < 0 || s.P_QS < 0 || s.P_QG < 0 || s.P_QNI < 0 || s.P_QNR < 0))
+    throw std::runtime_error("mp_physics = 8 / 28 (Thompson) needs qv, qc, qr, qi, qs, qg, qni, qnr");
+  if (p_.mp_physics == 28 && (s.P_QNC < 0 || s.P_QNWFA < 0 || s.P_QNIFA < 0 || s.P_QNBCA < 0))
+    throw std::runtime_error("mp_physics = 28 (Thompson aerosol aware) also needs qnc, qnwfa, qnifa, qnbca");
   const Grid& g = g_;
   Field3& qv = s.q_2[s.P_QV];
   // solve_em calls moist_physics_prep_em on the tile without the spec zone (sz) in x (unless periodic_x)
@@ -185,11 +192,15 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
     vmdump::dump("vm_mp_out", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS],
                                   &s.q_2[s.P_QG]},
                  {&rainnc, &rainncv, &snownc, &snowncv, &graupelnc, &graupelncv, &sr});
-  } else if (p_.mp_physics == 8) {
+  } else if (thompson()) {
     // debug (CPPWRF_VM_DUMP): Thompson inputs and outputs, for a replay through WRF's mp_gt_driver
     vmdump::dump("vm_mp_in", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS],
                                  &s.q_2[s.P_QG], &s.q_2[s.P_QNI], &s.q_2[s.P_QNR], &pii, &p_phy, &s.w_2, &dz8w},
                  {&rainnc, &rainncv, &snownc, &snowncv, &graupelnc, &graupelncv, &sr});
+    phys::mp_thompson::ThompsonAeroFields<real> aero{};
+    if (p_.mp_physics == 28)
+      aero = {s.q_2[s.P_QNC].view(), s.q_2[s.P_QNWFA].view(), s.q_2[s.P_QNIFA].view(), s.q_2[s.P_QNBCA].view(),
+              qnwfa2d.cview(), qnifa2d.cview()};
     phys::mp_thompson::run_thompson<real>(
         th_phy.view(), qv.view(), s.q_2[s.P_QC].view(), s.q_2[s.P_QR].view(),
         s.q_2[s.P_QI].view(), s.q_2[s.P_QS].view(), s.q_2[s.P_QG].view(),
@@ -197,7 +208,8 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
         s.w_2.cview(), dz8w.cview(), rainnc.view(), rainncv.view(), snownc.view(),
         snowncv.view(), graupelnc.view(), graupelncv.view(), sr.view(),
         dt, mp_cols, g.nz, tp_->view(), p_.microp_re ? re_cloud.view() : View3<real>{},
-        p_.microp_re ? re_ice.view() : View3<real>{}, p_.microp_re ? re_snow.view() : View3<real>{});
+        p_.microp_re ? re_ice.view() : View3<real>{}, p_.microp_re ? re_snow.view() : View3<real>{},
+        p_.mp_physics == 28 ? &aero : nullptr);
     vmdump::dump("vm_mp_out", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS],
                                   &s.q_2[s.P_QG], &s.q_2[s.P_QNI], &s.q_2[s.P_QNR]},
                  {&rainnc, &rainncv, &snownc, &snowncv, &graupelnc, &graupelncv, &sr});
@@ -214,9 +226,64 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
                                        qc_diabatic.view(), dt, p_.mp_tend_lim, s.P_QC >= 0});
   std::vector<Field3*> fs{&s.t_2, &s.h_diabatic};
   for (int n = 0; n < s.n_moist; ++n) fs.push_back(&s.q_2[n]);
-  if (s.P_QNI >= 0) fs.push_back(&s.q_2[s.P_QNI]);
-  if (s.P_QNR >= 0) fs.push_back(&s.q_2[s.P_QNR]);
+  for (int n : {s.P_QNI, s.P_QNR, s.P_QNC, s.P_QNWFA, s.P_QNIFA, s.P_QNBCA})
+    if (n >= 0) fs.push_back(&s.q_2[n]);
   fill_halos(fs, g);
+}
+
+// module_mp_thompson.F thompson_init (is_aerosol_aware, wif_input_opt /= 2), on the host as a setup step. hgt is
+// start_em's z_at_q = (ph_2 + phb)/g at the w levels k = 1..kde of the whole patch; the profile loops k = 2..kte
+// (kte = kde) are vectorised by gfortran (libmvec exp in pairs from k = 2); C++ k = Fortran k - 1, the level kde
+// (WRF's unused top memory level) is only a lane of that loop.
+void PhysicsCoupling::init_aerosols(State& s, const BaseState& b) {
+  if (p_.mp_physics != 28) return;
+  const Grid& g = g_;
+  const int nx = g.nx, ny = g.ny, nz = g.nz;
+  std::vector<real> ph, phb, nw, w2d;
+  s.ph_2.download(ph);
+  b.phb.download(phb);
+  const Layout &LW = s.ph_2.layout(), &LB = b.phb.layout(), &LM = s.q_2[s.P_QNWFA].layout();
+  const Layout& L2 = qnwfa2d.layout();
+  auto hgt = [&](int i, int k, int j) {
+    return (double(ph[LW.index(i, j, k)]) + double(phb[LB.index(i, j, k)])) / cst::g;
+  };
+  // log(naCCN1/naCCN0), log(naIN1/naIN0): constants that gfortran folds correctly rounded
+  const double lccn = double(logl((long double)(phys::mp_thompson::naCCN1 / phys::mp_thompson::naCCN0)));
+  const double lin = double(logl((long double)(phys::mp_thompson::naIN1 / phys::mp_thompson::naIN0)));
+  auto profile = [&](int n, double na0, double na1, double lna, bool emission) {
+    Field3& f = s.q_2[n];
+    f.download(nw);
+    double max_test = double(nw[LM.index(0, 0, 0)]);
+    for (int k = 0; k < nz; ++k)  // MAXVAL(nwfa(its:ite-1,:,jts:jte-1)): every mass point (WRF's kde level is 0)
+      for (int j = 0; j < ny; ++j)
+        for (int i = 0; i < nx; ++i) max_test = std::max(max_test, double(nw[LM.index(i, j, k)]));
+    if (!(max_test < phys::mp_thompson::eps_val)) return;
+    if (emission) qnwfa2d.download(w2d);
+    for (int j = 0; j < ny; ++j)
+      for (int i = 0; i < nx; ++i) {
+        const double h1 = hgt(i, 0, j);
+        double h_01;
+        if (h1 <= 1000.0) h_01 = 0.8;
+        else if (h1 >= 2500.0) h_01 = 0.01;
+        else h_01 = 0.8 * std::cos(h1 * 0.001 - 1.0);
+        const double ni3 = -1.0 * lna / h_01;
+        nw[LM.index(i, j, 0)] = real(na1 + na0 * std::exp(-((hgt(i, 1, j) - h1) / 1000.) * ni3));
+        if (emission) {
+          const double z1 = hgt(i, 1, j) - h1;
+          w2d[L2.index(i, j, 0)] = real(double(nw[LM.index(i, j, 0)]) * 0.000196 * (50. / z1));
+        }
+        for (int k = 1; k <= nz; ++k) {  // Fortran k = 2..kde
+          const double v = na1 + na0 * vm::exp(-((hgt(i, k, j) - h1) / 1000.) * ni3, k - 1, nz);
+          if (k < nz) nw[LM.index(i, j, k)] = real(v);
+        }
+      }
+    f.fill_host([&](int i, int j, int k) { return nw[LM.index(i, j, k)]; });
+    fill_halo(f, g);
+    s.q_1[n].copy_from(f);
+    if (emission) qnwfa2d.fill_host([&](int i, int j, int) { return w2d[L2.index(i, j, 0)]; });
+  };
+  profile(s.P_QNWFA, phys::mp_thompson::naCCN0, phys::mp_thompson::naCCN1, lccn, true);
+  profile(s.P_QNIFA, phys::mp_thompson::naIN0, phys::mp_thompson::naIN1, lin, false);
 }
 
 std::vector<const Field3*> PhysicsCoupling::fields() const { return {&rho, &qv_diabatic, &qc_diabatic}; }

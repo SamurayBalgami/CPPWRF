@@ -28,6 +28,12 @@ constexpr int ntb_t = 9;
 constexpr int ntb_IN = 55;
 constexpr int dimNRHG1 = 1;
 constexpr int ntb_freeze_temp = 45;
+// CCN activation table (table_ccnAct): CCN number, updraft, temperature, mean radius, hygroscopicity
+constexpr int ntb_arc = 7;
+constexpr int ntb_arw = 9;
+constexpr int ntb_art = 7;
+constexpr int ntb_arr = 5;
+constexpr int ntb_ark = 4;
 
 // Total elements per table
 constexpr size_t N_RACG = static_cast<size_t>(ntb_g1) * ntb_g * dimNRHG1 * ntb_r1 * ntb_r; // 1,874,161
@@ -38,6 +44,7 @@ constexpr size_t N_IAUS = static_cast<size_t>(ntb_i) * ntb_i1;                  
 constexpr size_t N_EFRW = static_cast<size_t>(nbr) * nbc;                                  // 10,000
 constexpr size_t N_EFSW = static_cast<size_t>(nbs) * nbc;                                  // 10,000
 constexpr size_t N_WEV  = static_cast<size_t>(nbc) * ntb_c * nbc;                          // 370,000
+constexpr size_t N_CCN  = static_cast<size_t>(ntb_arc) * ntb_arw * ntb_art * ntb_arr * ntb_ark; // 8,820
 
 // Trivially copyable view holding pointers and scalar constants for CPU/CUDA kernels
 template <typename Real>
@@ -92,6 +99,10 @@ struct ThompsonTablesView {
     // Fortran indices: (i=nbc, j=ntb_c, k=nbc)
     const Real* tpc_wev{nullptr};
     const Real* tnc_wev{nullptr};
+
+    // 8. CCN activated fraction (CCN_ACTIVATE.BIN, REAL(KIND=4) values)
+    // Fortran indices: (i=ntb_arc, j=ntb_arw, k=ntb_art, l=ntb_arr, m=ntb_ark)
+    const Real* tnccn_act{nullptr};
 
     // Precomputed physical constants
     Real t1_qr_qc;
@@ -235,6 +246,13 @@ struct ThompsonTablesView {
         return static_cast<size_t>(i) + static_cast<size_t>(nbc) * (
                static_cast<size_t>(j) + static_cast<size_t>(ntb_c) * static_cast<size_t>(k));
     }
+
+    CPPWRF_HD inline size_t idx_ccn(int i, int j, int k, int l, int m) const {
+        return static_cast<size_t>(i) + static_cast<size_t>(ntb_arc) * (
+               static_cast<size_t>(j) + static_cast<size_t>(ntb_arw) * (
+               static_cast<size_t>(k) + static_cast<size_t>(ntb_art) * (
+               static_cast<size_t>(l) + static_cast<size_t>(ntb_arr) * static_cast<size_t>(m))));
+    }
 };
 
 // Host table container owning allocated memory
@@ -283,6 +301,9 @@ struct ThompsonHostTables {
     // 7. Cloud droplet evaporation (2 tables)
     std::vector<Real> tpc_wev{std::vector<Real>(N_WEV, Real(0))};
     std::vector<Real> tnc_wev{std::vector<Real>(N_WEV, Real(0))};
+
+    // 8. CCN activation (thompson_init: 1.0 until table_ccnAct reads CCN_ACTIVATE.BIN)
+    std::vector<Real> tnccn_act{std::vector<Real>(N_CCN, Real(1))};
 
     // Precomputed constants
     Real t1_qr_qc{0};
@@ -407,6 +428,8 @@ struct ThompsonHostTables {
         v.tpc_wev = tpc_wev.data();
         v.tnc_wev = tnc_wev.data();
 
+        v.tnccn_act = tnccn_act.data();
+
         v.t1_qr_qc = t1_qr_qc;
         v.t1_qr_qi = t1_qr_qi;
         v.t2_qr_qi = t2_qr_qi;
@@ -521,7 +544,7 @@ struct ThompsonDeviceTables {
     void upload(const ThompsonHostTables<Real>& h) {
         if (buf_) dev_free(buf_);
         constexpr size_t total = 5 * N_RACG + 12 * N_RACS + 4 * N_QRFZ + 2 * N_QCFZ +
-                                 3 * N_IAUS + N_EFRW + N_EFSW + 2 * N_WEV;
+                                 3 * N_IAUS + N_EFRW + N_EFSW + 2 * N_WEV + N_CCN;
         buf_ = static_cast<Real*>(dev_alloc(total * sizeof(Real)));
         view_ = h.view();
         size_t off = 0;
@@ -567,19 +590,22 @@ struct ThompsonDeviceTables {
 
         view_.tpc_wev = up(h.tpc_wev);
         view_.tnc_wev = up(h.tnc_wev);
+
+        view_.tnccn_act = up(h.tnccn_act);
     }
 
     const ThompsonTablesView<Real>& view() const { return view_; }
 };
 
 // WRF's table files when present, else the tables computed as thompson_init does; force_read (WRF
-// force_read_thompson): a missing or unreadable table file is an error, as in qr_acr_qg / qr_acr_qs / freezeH2O
+// force_read_thompson): a missing or unreadable table file is an error, as in qr_acr_qg / qr_acr_qs / freezeH2O.
+// aerosol_aware (mp_physics = 28): table_ccnAct reads CCN_ACTIVATE.BIN from wrf_dat_dir (an error if missing)
 template <typename Real>
 void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& wrf_dat_dir = "",
-                          bool force_read = false);
+                          bool force_read = false, bool aerosol_aware = false);
 
 // Explicit instantiations declared
-extern template void init_thompson_tables<double>(ThompsonHostTables<double>& tables, const std::string&, bool);
-extern template void init_thompson_tables<float>(ThompsonHostTables<float>& tables, const std::string&, bool);
+extern template void init_thompson_tables<double>(ThompsonHostTables<double>& tables, const std::string&, bool, bool);
+extern template void init_thompson_tables<float>(ThompsonHostTables<float>& tables, const std::string&, bool, bool);
 
 } // namespace cppwrf::phys::mp_thompson

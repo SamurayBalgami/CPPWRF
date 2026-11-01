@@ -245,8 +245,9 @@ void DiffusionDriver::dynamics(const State& s, const BaseState& b, Tendencies& t
                                 has_tke ? t.q_tendf[s.P_TKE].view() : View3<real>{}, has_tke);
     for (int n = 0; n < s.n_scalars(); ++n) {
       if (n == s.P_QV || n == s.P_TKE) continue;
-      // WRF: moist_mix2_off for qv..qg, scalar_mix2_off for QNICE / QNRAIN / qke_adv, tracers always (tracer_mix2_off)
-      const bool wrf_scalar = (n == s.P_QNI || n == s.P_QNR || n == s.P_QKE_ADV);
+      // WRF: moist_mix2_off for qv..qg, scalar_mix2_off for QNICE / QNRAIN / qke_adv / Thompson's aerosol-aware numbers,
+      // tracers always (tracer_mix2_off)
+      const bool wrf_scalar = s.wrf_scalar(n);
       const bool mix_off = (n < s.n_moist && !wrf_scalar) ? c_.moist_mix2_off : (wrf_scalar ? c_.scalar_mix2_off : false);
       if (!mix_off) {
         column_for(Range2D{is_s, is_e, js_s, js_e},
@@ -291,9 +292,10 @@ void DiffusionDriver::scalar(const State& s, const BaseState& b, int n, Field3& 
   const Field3& q = s.q_2[n];
   const bool is_tke = (n == s.P_TKE);
   const bool moist = (n < s.n_moist);
-  // WRF's arrays: QNICE / QNRAIN / qke_adv are in `scalar` (scalar_mix*_off), qv..qg in `moist` (moist_mix*_off), TKE
-  // (tke_mix*_off); passive tracers are WRF's `tracer` array (tracer_mix*_off: not supported, i.e. off = false)
-  const bool wrf_scalar = (n == s.P_QNI || n == s.P_QNR || n == s.P_QKE_ADV);
+  // WRF's arrays: QNICE / QNRAIN / qke_adv / QNCLOUD / QNWFA / QNIFA / QNBCA are in `scalar` (scalar_mix*_off), qv..qg
+  // in `moist` (moist_mix*_off), TKE (tke_mix*_off); passive tracers are WRF's `tracer` array (tracer_mix*_off: not
+  // supported, i.e. off = false)
+  const bool wrf_scalar = s.wrf_scalar(n);
   const bool wrf_moist = moist && !wrf_scalar;
   const bool mix2_off = is_tke ? c_.tke_mix2_off
                                : (wrf_moist ? c_.moist_mix2_off : (wrf_scalar ? c_.scalar_mix2_off : false));

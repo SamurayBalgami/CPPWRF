@@ -215,6 +215,8 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.bl_mynn_output = int(cfg.get_int("phys.bl_mynn_output", 0));
   o.tke_budget = int(cfg.get_int("phys.tke_budget", 0));
   o.grav_settling = int(cfg.get_int("phys.grav_settling", 0));
+  // check_a_mundo: mp_physics = 28 has its own fog settling, grav_settling is reset to 0
+  if (cfg.get_int("phys.mp_physics", 0) == 28) o.grav_settling = 0;
   o.cu_physics = int(cfg.get_int("phys.cu_physics", 0));
   o.num_soil_layers = int(cfg.get_int("phys.num_soil_layers", 4));
   o.bldt = cfg.get_double("phys.bldt", 0.0);
@@ -457,7 +459,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   if (auto* pc = m.rk->physics(); pc && pc->params().microp_re)
     su.set_effective_radii(&pc->re_cloud, &pc->re_ice, &pc->re_snow);
   if (auto* pc = m.rk->physics(); pc && pc->params().mp_physics != 0) {
-    const bool has_ice_precip = pc->params().mp_physics == 6 || pc->params().mp_physics == 8;
+    const bool has_ice_precip = pc->params().mp_physics == 6 || pc->thompson();
     su.set_microphysics_accum(&pc->rainnc);
     su.set_microphysics_precip(&pc->rainncv, has_ice_precip ? &pc->sr : nullptr,
                                has_ice_precip ? &pc->snowncv : nullptr,

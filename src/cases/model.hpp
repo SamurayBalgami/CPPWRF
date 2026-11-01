@@ -71,6 +71,8 @@ struct Model {
 
 // case = real: grid, base and initial state, boundaries from wrfinput/wrfbdy (src/cases/real_case.cpp)
 void init_real_case(const io::Config& cfg, Model& m);
+// mp_physics = 28: QNWFA2D / QNIFA2D from wrfinput, then thompson_init's aerosol profiles (real_case.cpp)
+void init_real_aerosols(const io::Config& cfg, Model& m);
 // Column physics (real data, P1 suite): true if any of phys.sf_sfclay_physics,
 // sf_surface_physics, bl_pbl_physics is set; init_real_physics builds the suite, fills the
 // initial surface state as WRF start_domain/phy_init and attaches it to m.rk (real_physics.cpp).

@@ -16,7 +16,7 @@
 namespace cppwrf::dyn {
 
 struct PhysicsParams {
-  int mp_physics = 0;        // 0 = none, 1 = Kessler, 6 = WSM6, 8 = Thompson
+  int mp_physics = 0;        // 0 = none, 1 = Kessler, 6 = WSM6, 8 = Thompson, 28 = aerosol-aware Thompson
   int hail_opt = 0;          // WSM6 graupel (0) or hail (1) parameters, WRF namelist hail_opt
   real mp_tend_lim = 10;     // K/s, WRF namelist mp_tend_lim (limit on the mp heating rate)
   std::string table_dir;     // Thompson: WRF's qr_acr_qg_V4.dat, qr_acr_qsV2.dat, freezeH2O.dat if there
@@ -30,12 +30,17 @@ class PhysicsCoupling {
   PhysicsCoupling(const Grid& g, const PhysicsParams& p);
   // One call per time step, after the RK3 loop (before the final calc_p_rho_phi).
   void step(State& s, const BaseState& b, real dt);
+  // mp_physics = 28: thompson_init's aerosol part (start_domain, also at a restart): without initial CCN
+  // (MAXVAL(nwfa) < eps) the boundary-layer following nwfa profile and its emission qnwfa2d, likewise nifa
+  void init_aerosols(State& s, const BaseState& b);
   const PhysicsParams& params() const { return p_; }
+  bool thompson() const { return p_.mp_physics == 8 || p_.mp_physics == 28; }
   // WRF grid fields moist_physics_prep/finish_em leave (rho, qv_diabatic, qc_diabatic), by WRF name
   std::vector<const Field3*> fields() const;
   Field2 rainnc, rainncv;  // accumulated / last-step grid-scale precipitation [mm]
   Field2 snownc, snowncv, graupelnc, graupelncv, sr;  // WSM6/Thompson: snow, graupel [mm]; sr = frozen fraction
   Field3 re_cloud, re_ice, re_snow;  // microp_re: effective radii [m] (RE_QC_BG ... before the first call)
+  Field2 qnwfa2d, qnifa2d;  // mp_physics = 28: surface emission of water- / ice-friendly aerosols [#/kg/s]
 
  private:
   Grid g_;
