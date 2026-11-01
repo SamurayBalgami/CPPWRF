@@ -295,8 +295,13 @@ What WRF executes (and the port):
   src/phys/mp_wsm6/wsm6.hpp, run on the microphysics columns only). The per-row has_qc/qi/qs
   flags only skip work.
 - **radiation_driver**: CLDFRA = 0, then with icloud = 1 and F_QC or F_QI `cal_cldfra1`
-  (Randall / Hong-Pan, t = t_phy, p = p_hyd; `driver::cal_cldfra1`); icloud_cu = 0, no KF cloud
-  fraction. CLDFRA is a suite field (wrfout, restart).
+  (Randall / Hong-Pan, t = t_phy, p = p_hyd; `driver::cal_cldfra1`). cu_rad_feedback (phy_init's
+  icloud_cu): with the Grell schemes (icloud_cu = 1) QC_CU / QI_CU are added to the radiation's qc / qi
+  before cal_cldfra1; with KF (icloud_cu = 2) cldfra_cu = CLDFRA_DP + CLDFRA_SH goes over the resolved
+  fraction after it (CLDFRA = min(1, (1 - cldfra_cu)*CLDFRA + cldfra_cu), qc / qi + QC_CU / QI_CU *
+  cldfra_cu), before the MYNN BL clouds; Tiedtke / New Tiedtke: icloud_cu = 0. The fields are those of the
+  previous cumulus call (radiation runs first). cldovrlp = 0: RRTMG's clear path for every column
+  (mcica_subcol_lw/_sw return at once). CLDFRA is a suite field (wrfout, restart).
 - **RRTMG_LWRAD / RRTMG_SWRAD** (`rrtmg_lw_column` / `rrtmg_sw_column` take re_cloud/re_ice/re_snow,
   nullptr when has_req* = 0): qc/qi/qs clipped at 0; inflg = 3 with re_cloud (recloud =
   max(2.5, re*1e6), 10.5 over ocean / 7.5 over land when <= 2.5 in a cloudy layer), inflg = iceflg

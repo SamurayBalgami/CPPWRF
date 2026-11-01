@@ -160,6 +160,20 @@ CASES = [
     ("real_p4_fp32_1h", "cuda", "configs/real_p4_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_P4/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-3, "W": 7e-2, "THM": 3e-5, "QV": 2e-3}),
+    # A05 = P4 with cu_rad_feedback (Kain-Fritsch's CLDFRA_DP / CLDFRA_SH and QC_CU / QI_CU into RRTMG, icloud_cu 2),
+    # A05C = P4 with cldovrlp = 0 (RRTMG without clouds), A05G = P8 + WSM6 + RRTMG with cu_rad_feedback (the
+    # Grell-Freitas QC_CU / QI_CU into qc / qi, icloud_cu 1): bit-identical for 3 steps and 1 h
+    *[c for tag, ref in (("a05", "A05"), ("a05c", "A05C"), ("a05g", "A05G")) for c in (
+        (f"real_{tag}_r8_fp64_cpu", "cpu_dp", f"configs/real_{tag}_r8.ini", [],
+         f"{WR}/run_{ref}_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+         {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
+        (f"real_{tag}_r8_fp64_cpu_1h", "cpu_dp", f"configs/real_{tag}_r8.ini",
+         ["run.run_time=3600", "real.dir=" + f"{WR}/run_{ref}_r8", "output.out_interval=10", "output.diag_interval=10"],
+         f"{WR}/run_{ref}_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+         {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0}),
+        (f"real_{tag}_r8_fp64_cuda_1h", "cuda_dp", f"configs/real_{tag}_r8.ini",
+         ["run.run_time=3600", "real.dir=" + f"{WR}/run_{ref}_r8", "output.out_interval=10", "output.diag_interval=10"],
+         f"{WR}/run_{ref}_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 6e-4, "W": 1e-2, "THM": 8e-6, "QV": 5e-4}))],
     # B01 = P4 with the adaptive time step (use_adaptive_time_step: dt from the CFL numbers of each step, stepping to the
     # history times; 1 h: steps of 60 to 120 s): bit-identical for 3 minutes (history every minute) and 1 h
     ("real_b01_r8_fp64_cpu", "cpu_dp", "configs/real_b01_r8.ini", [],
@@ -648,7 +662,8 @@ RESTARTS = (("p1", "configs/real_p1_r8.ini", "run_P1_r8"), ("a01", "configs/real
             ("nmp1", "configs/real_nmp1_r8.ini", "run_NMP1_r8"), ("mynn", "configs/real_mynn_r8.ini", "run_MYNN_r8"),
             ("mynnsf1", "configs/real_mynnsf1_r8.ini", "run_P6_r8"), ("mynnsf2", "configs/real_mynnsf2_r8.ini", "run_P6_r8"),
             ("mynnx1", "configs/real_mynnx1_r8.ini", "run_P6_r8"), ("mynnx2", "configs/real_mynnx2_r8.ini", "run_P6_r8"),
-            ("t1", "configs/real_t1.ini", "run_R1_r8"))
+            ("t1", "configs/real_t1.ini", "run_R1_r8"),
+            ("a05", "configs/real_a05_r8.ini", "run_A05_r8"), ("a05g", "configs/real_a05g_r8.ini", "run_A05G_r8"))
 # restart_<tag>_fp64_cuda: the same in CUDA FP64 (the GPU run is deterministic: restarted = straight bit for bit)
 SPECIAL = (["straka_wrf", "straka_wrf_cuda", "restart_p1_fp32_cuda"] + [f"restart_{t}_fp64" for t, _, _ in RESTARTS]
            + [f"restart_{t}_fp64_cuda" for t, _, _ in RESTARTS])
