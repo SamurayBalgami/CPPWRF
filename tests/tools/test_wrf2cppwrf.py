@@ -1101,12 +1101,13 @@ class TestWrfNamelistSemantics(unittest.TestCase):
         # prec_acc_opt = 1 when some domain has prec_acc_dt > 0); a nest's missing entry is the Registry default 0
         phys = ("&physics mp_physics = 2*6, sf_sfclay_physics = 2*1, sf_surface_physics = 2*2, bl_pbl_physics = 2*1,"
                 " bucket_mm = 1., bucket_J = 1.e7, prec_acc_dt = 10. /\n")
-        t, sec = self.translate(self.NEST + phys)
+        t, sec = self.translate(self.NEST + phys.replace(" /\n", ", ra_lw_physics = 2*4, ra_sw_physics = 2*4 /\n"))
         self.assertEqual(t.errors, [])
         self.assertEqual((sec["phys"]["bucket_mm"], sec["phys"]["bucket_j"]), (1.0, 1.e7))
         self.assertEqual((sec["phys"]["prec_acc_dt"], sec["phys"]["prec_acc_opt"]), (10.0, 1))
         self.assertEqual(sec["d02"]["phys_prec_acc_dt"], 0.0)
-        t, sec = self.translate(self.NEST + phys.replace("prec_acc_dt = 10.", "prec_acc_dt = 0., 5."))
+        t, sec = self.translate(self.NEST + phys.replace("prec_acc_dt = 10.", "prec_acc_dt = 0., 5.").replace(
+            "bucket_J = 1.e7, ", ""))
         self.assertEqual(t.errors, [])
         self.assertNotIn("prec_acc_dt", sec["phys"])
         self.assertEqual((sec["phys"]["prec_acc_opt"], sec["d02"]["phys_prec_acc_dt"]), (1, 5.0))
@@ -1114,6 +1115,14 @@ class TestWrfNamelistSemantics(unittest.TestCase):
                                                          " bucket_mm = -1., prec_acc_dt = 0."))
         self.assertEqual(t.errors, [])
         self.assertFalse({"bucket_mm", "bucket_j", "prec_acc_dt", "prec_acc_opt"} & set(sec["phys"]))
+        # ra_init: bucket_J without RRTMG radiation stops wrf.exe
+        t, sec = self.translate(self.NEST + phys)
+        self.assertTrue(any("Need CAM or RRTMG" in e for e in t.errors))
+        rad = phys.replace(" /\n", ", ra_lw_physics = 2*4, ra_sw_physics = 2*4 /\n")
+        t, sec = self.translate(self.NEST + rad)
+        self.assertEqual(t.errors, [])
+        t, sec = self.translate(self.NEST + rad.replace("ra_sw_physics = 2*4", "ra_sw_physics = 4, 0"))
+        self.assertTrue(any("Need CAM or RRTMG" in e for e in t.errors))
         # without the column physics (microphysics only) CPPWRF has no port: an error
         for opt in ("bucket_mm = 1.", "bucket_J = 1.e7", "prec_acc_dt = 10."):
             t, sec = self.translate(self.NEST + f"&physics mp_physics = 2*6, {opt} /\n")

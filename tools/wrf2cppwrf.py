@@ -1507,6 +1507,13 @@ class WrfTranslator:
                     sections["phys"]["bucket_mm"] = bucket_mm
                 if bucket_j > 0:
                     sections["phys"]["bucket_j"] = bucket_j
+                    # ra_init: bucket_J needs the AC* arrays of CAM or RRTMG LW and SW on every domain
+                    for d in range(max(1, max_dom)):
+                        if (self.get_dom_opt("physics", "ra_lw_physics", d, 0) != 4
+                                or self.get_dom_opt("physics", "ra_sw_physics", d, 0) != 4):
+                            self.error("WRF bucket_J > 0 needs CAM or RRTMG radiation on every domain (wrf.exe stops: "
+                                       "'Need CAM or RRTMG radiation for bucket_J option').")
+                            break
                 if prec_acc and prec_acc[0] > 0:
                     sections["phys"]["prec_acc_dt"] = prec_acc[0]
                 if any(v > 0 for v in prec_acc):  # check_a_mundo: prec_acc_opt = 1, the fields on every domain

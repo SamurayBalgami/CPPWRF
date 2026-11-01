@@ -170,6 +170,10 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
                                "bl_mynn_edmf 0|1, bl_mynn_edmf_mom|edmf_tke|cloudmix|mixqt|ess|mixscalars|output 0|1, "
                                "tke_budget 0|1, bl_mynn_closure 2.5|2.6|3.0");
   }
+  // ra_init (module_physics_init.F:2577-2582): bucket_J needs the AC* arrays of CAM or RRTMG LW and SW
+  if (o.bucket_j > 0 && !(o.rad.ra_lw_physics == 4 && o.rad.ra_sw_physics == 4))
+    throw std::runtime_error("PhysicsSuite: bucket_j > 0 needs RRTMG radiation (WRF: 'Need CAM or RRTMG radiation "
+                             "for bucket_J option')");
   // grav_settling 0, 1, 2 (Registry); sf_fogdes stops for land-use data other than USGS and
   // MODIFIED_IGBP_MODIS_NOAH; the deposition runs in the surface and PBL drivers
   if (o.grav_settling < 0 || o.grav_settling > 2)
