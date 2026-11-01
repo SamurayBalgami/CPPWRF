@@ -18,6 +18,7 @@
 #include "phys/driver/suite_internal.hpp"
 #include "phys/driver/wrf_constants.hpp"
 #include "phys/lsm_noah/noah.hpp"
+#include "phys/lsm_slab/slab.hpp"
 
 namespace cppwrf::phys::driver {
 
@@ -149,9 +150,9 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       chs2(g, Stagger::M, "chs2"), cqs2(g, Stagger::M, "cqs2"), cpm(g, Stagger::M, "cpm"),
       u_phytmp(g, Stagger::M, "u_phytmp"), v_phytmp(g, Stagger::M, "v_phytmp"), t1_lag_(g, Stagger::M, "t1_lag"), coszen(g, Stagger::M, "coszen"), rthratenlw(g, Stagger::M, "rthratenlw"), rthratensw(g, Stagger::M, "rthratensw"), rthratenlwc(g, Stagger::M, "rthratenlwc"), rthratenswc(g, Stagger::M, "rthratenswc"), o3rad(g, Stagger::M, "o3rad"), lwcf(g, Stagger::M, "lwcf"), swcf(g, Stagger::M, "swcf"), hrang(g, Stagger::M, "hrang"), uratx(g, Stagger::M, "uratx"), vratx(g, Stagger::M, "vratx"), tratx(g, Stagger::M, "tratx"), ra(g, Stagger::M, "ra"), rs(g, Stagger::M, "rs"), shall(g, Stagger::M, "shall"), lwupt(g, Stagger::M, "lwupt"), lwuptc(g, Stagger::M, "lwuptc"), lwdnt(g, Stagger::M, "lwdnt"), lwdntc(g, Stagger::M, "lwdntc"), lwupb(g, Stagger::M, "lwupb"), lwupbc(g, Stagger::M, "lwupbc"), lwdnb(g, Stagger::M, "lwdnb"), lwdnbc(g, Stagger::M, "lwdnbc"), olr(g, Stagger::M, "olr"), swupt(g, Stagger::M, "swupt"), swuptc(g, Stagger::M, "swuptc"), swdnt(g, Stagger::M, "swdnt"), swdntc(g, Stagger::M, "swdntc"), swupb(g, Stagger::M, "swupb"), swupbc(g, Stagger::M, "swupbc"), swdnb(g, Stagger::M, "swdnb"), swdnbc(g, Stagger::M, "swdnbc"), swvisdir(g, Stagger::M, "swvisdir"), swvisdif(g, Stagger::M, "swvisdif"), swnirdir(g, Stagger::M, "swnirdir"), swnirdif(g, Stagger::M, "swnirdif"), swddir(g, Stagger::M, "swddir"), swddni(g, Stagger::M, "swddni"), swddif(g, Stagger::M, "swddif"), swddirc(g, Stagger::M, "swddirc"), swddnic(g, Stagger::M, "swddnic"), diffuse_frac(g, Stagger::M, "diffuse_frac"), aclwupt(g, Stagger::M, "aclwupt"), aclwuptc(g, Stagger::M, "aclwuptc"), aclwdnt(g, Stagger::M, "aclwdnt"), aclwdntc(g, Stagger::M, "aclwdntc"), aclwupb(g, Stagger::M, "aclwupb"), aclwupbc(g, Stagger::M, "aclwupbc"), aclwdnb(g, Stagger::M, "aclwdnb"), aclwdnbc(g, Stagger::M, "aclwdnbc"), acswupt(g, Stagger::M, "acswupt"), acswuptc(g, Stagger::M, "acswuptc"), acswdnt(g, Stagger::M, "acswdnt"), acswdntc(g, Stagger::M, "acswdntc"), acswupb(g, Stagger::M, "acswupb"), acswupbc(g, Stagger::M, "acswupbc"), acswdnb(g, Stagger::M, "acswdnb"), acswdnbc(g, Stagger::M, "acswdnbc"), g_(g), gs_(g), o_(o) {
   if ((o.sf_sfclay_physics != 1 && o.sf_sfclay_physics != 2 && o.sf_sfclay_physics != 5) ||
-      (o.sf_surface_physics != 2 && o.sf_surface_physics != 4) ||
+      (o.sf_surface_physics != 1 && o.sf_surface_physics != 2 && o.sf_surface_physics != 4) ||
       (o.bl_pbl_physics != 0 && o.bl_pbl_physics != 1 && o.bl_pbl_physics != 2 && o.bl_pbl_physics != 5))
-    throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1|2|5, sf_surface_physics=2|4, bl_pbl_physics=0|1|2|5");
+    throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1|2|5, sf_surface_physics=1|2|4, bl_pbl_physics=0|1|2|5");
   // module_physics_init: MYNNPBLSCHEME needs mynnsfc, sfclay or myjsfc (isfc 5, 1 or 2: all of the above).
   // The sea-ice wrappers of sfclayrev / MYJSFC are verified with YSU / MYJ only (no MYNN reference with sea ice)
   if (o.bl_pbl_physics == 5 && o.fractional_seaice == 1)
@@ -239,6 +240,14 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   // check_a_mundo sets num_soil_layers = 4 for Noah (SFLX scales ET(1:4) only)
   if (o.sf_surface_physics == 2 && o.num_soil_layers != 4)
     throw std::runtime_error("PhysicsSuite: Noah requires num_soil_layers=4");
+  if (o.sf_surface_physics == 1) {  // check_a_mundo: 5 layers; no fractional sea ice with the slab (fatal in WRF)
+    if (o.num_soil_layers != slab::kSoilLayers)
+      throw std::runtime_error("PhysicsSuite: the slab LSM requires num_soil_layers=5");
+    if (o.fractional_seaice == 1)
+      throw std::runtime_error("PhysicsSuite: fractional_seaice=1 does not work with the slab LSM, as in WRF");
+    thc = Field2(g, Stagger::M, "thc");
+    capg = Field2(g, Stagger::M, "capg");
+  }
   if (o.sf_surface_physics == 4) {
     if (o.num_soil_layers != 4) throw std::runtime_error("PhysicsSuite: Noah-MP requires num_soil_layers=4");
     if (o.mminlu == "NLCD40") throw std::runtime_error("PhysicsSuite: Noah-MP does not support NLCD40 landuse");
@@ -270,6 +279,7 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   mk3(gd_cldfr, g, "gd_cldfr");
   mk3(zero3_, g, "zero3");
   dzs.assign(o.num_soil_layers, 0.0);
+  zs.assign(o.num_soil_layers, 0.0);
   if (o.sf_surface_physics == 2) {
     mk3(n_stc, gs_, "n_stc"); mk3(n_smc, gs_, "n_smc"); mk3(n_swc, gs_, "n_swc"); mk3(n_et, gs_, "n_et");
     mk3(n_smav, gs_, "n_smav");
@@ -528,6 +538,10 @@ std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
     v.emplace_back("sfc_tsk_save", &tsk_save);
   }
   if (o_.sst_update == 1) v.emplace_back("sfc_xicem", &xicem);
+  if (o_.sf_surface_physics == 1) {  // THC and CAPG are restart fields (phy_init does not run landuse_init then)
+    v.emplace_back("sfc_thc", &thc);
+    v.emplace_back("sfc_capg", &capg);
+  }
   if (rad_)  // radiation diagnostics and their accumulations
     for (Field2* f : {&lwcf, &swcf, &lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &olr, &swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc, &swvisdir, &swvisdif, &swnirdir, &swnirdif, &swddir, &swddni, &swddif, &swddirc, &swddnic, &diffuse_frac, &aclwupt, &aclwuptc, &aclwdnt, &aclwdntc, &aclwupb, &aclwupbc, &aclwdnb, &aclwdnbc, &acswupt, &acswuptc, &acswdnt, &acswdntc, &acswupb, &acswupbc, &acswdnb, &acswdnbc})
       v.emplace_back("sfc_" + f->name(), f);
@@ -752,6 +766,7 @@ std::vector<const Field2*> PhysicsSuite::fields2() const {
   if (o_.fractional_seaice == 1 || o_.sst_update == 1) v.insert(v.end(), {&sst, &tsk_save});
   if (o_.sst_update == 1) v.push_back(&xicem);
   if (o_.prec_acc_opt) v.insert(v.end(), {&prec_acc_c, &prec_acc_nc, &snow_acc_nc});
+  if (o_.sf_surface_physics == 1) v.push_back(&capg);  // THC: phy_init's landuse_init value (WrfHistory)
   return v;
 }
 

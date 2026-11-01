@@ -18,6 +18,9 @@ takes the base run's file OTHER. CPPWRF always runs when WRF fails (NAME WRF-FAI
 the input as WRF does); run.both=1 is accepted for older variant files.
 run.atts=1 is accepted for older variant files (the attributes are always compared).
 run.file=NAME:TEXT writes the file NAME (e.g. an iofields_filename list) into the run directory.
+run.real=EXE:DIR,... makes the inputs first, as tools/gcp/wrf_ref_run.py: real.exe (EXE, next to WRF_EXE) runs in
+WORK/NAME on the met_em files of RUNS/DIR,... with the variant's namelist, and both models read its wrfinput / wrfbdy
+instead of the base run's (NAME REAL-FAILED [error lines] when real.exe fails).
 run.threads=N runs CPPWRF with OMP_NUM_THREADS=N (default 1; WRF always runs serially). Values are
 percent-decoded keys and values (%20 blank, %0A new line, %27 quote, %23 #, %7C |), as the variant line passes through sh -c.
 The names of the files of a stream (frames_per_outfile, history_outname) are compared too ('(files)').
@@ -73,6 +76,7 @@ nl = re.sub(r"^\s*history_interval\s*=.*\n", "", nl, flags=re.M)
 keep = False
 threads = "1"
 resume = None
+real_spec = None
 for sk, v in sets:
     sec, k = sk.split(".", 1)
     if (sec, k) == ("run", "keep"):  # run.keep=1: WRF's run (namelist, inputs, wrfout) kept as a reference
@@ -83,6 +87,9 @@ for sk, v in sets:
         continue
     if (sec, k) == ("run", "resume"):  # run.resume=S: both models restarted from WRF's wrfrst files at S
         resume = int(v)
+        continue
+    if (sec, k) == ("run", "real"):  # run.real=EXE:DIR,...: the inputs from real.exe on DIR's met_em files
+        real_spec = v
         continue
     if (sec, k) == ("run", "both"):  # always on (see above)
         continue
@@ -126,6 +133,28 @@ for sk, v in sets:
     nl = setkey(nl, sec, k, v)
 open(os.path.join(R, "namelist.input"), "w").write(nl)
 env = dict(os.environ, OMP_NUM_THREADS="1")
+if real_spec:  # real.exe in R with the variant's namelist on the met_em files of the listed directories
+    exe, dirs = real_spec.split(":", 1)
+    for f in os.listdir(R):
+        if re.match(r"(wrfinput.*|wrfbdy.*|wrflowinp.*)$", f):
+            os.remove(os.path.join(R, f))
+    os.symlink(os.path.realpath(os.path.join(os.path.dirname(wrfexe), exe)), os.path.join(R, "real.exe"))
+    for d in dirs.split(","):
+        for f in sorted(os.listdir(os.path.join(runs, d))):
+            if f.startswith("met_em") and not os.path.lexists(os.path.join(R, f)):
+                os.symlink(os.path.realpath(os.path.join(runs, d, f)), os.path.join(R, f))
+    try:
+        subprocess.run("./real.exe > real.log 2>&1", shell=True, cwd=R, env=env, timeout=1800)
+    except subprocess.TimeoutExpired:
+        open(os.path.join(R, "real.log"), "a").write("\nTIMEOUT after 1800 s\n")
+    rlog = "".join(open(os.path.join(R, f), errors="replace").read()
+                   for f in ("real.log", "rsl.out.0000", "rsl.error.0000") if os.path.exists(os.path.join(R, f)))
+    if "SUCCESS COMPLETE REAL_EM" not in rlog:
+        lines = rlog.strip().splitlines()
+        print(f"{name} REAL-FAILED {[x.strip() for x in lines if 'ERROR' in x or 'FATAL' in x][:4] or lines[-1:]}")
+        sys.exit(0)
+    for f in glob.glob(os.path.join(R, "rsl.*")):  # wrf.exe's rsl files are read below
+        os.remove(f)
 # ideal cases: WRF_EXE wrf_X.exe with an ideal_X.exe next to it -> ideal.exe makes wrfinput_d01 from the
 # variant's namelist first (boundary and grid options act in ideal.exe too)
 iexe = os.path.join(os.path.dirname(wrfexe), "ideal_" + os.path.basename(wrfexe)[len("wrf_"):])

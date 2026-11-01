@@ -234,6 +234,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.gf_ichoice = int(cfg.get_int("phys.clos_choice", 0));     // Grell-Freitas closure
   o.warm_rain = cfg.get_int("phys.mp_physics", 0) == 1;  // mp_init: true only for KESSLERSCHEME
   o.isfflx = int(cfg.get_int("phys.isfflx", 1));
+  o.ifsnow = int(cfg.get_int("phys.ifsnow", 1));        // the slab's snow cover effects (Registry default 1)
   o.opt_thcnd = int(cfg.get_int("phys.opt_thcnd", 1));
   o.rdlai2d = cfg.get_bool("phys.rdlai2d", false);      // Noah: LAI from the input instead of the table
   o.usemonalb = cfg.get_bool("phys.usemonalb", false);  // landuse_init and Noah: ALBBCK from the input
@@ -355,6 +356,10 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   }
   const std::vector<double> dzs = in.var("DZS", std::size_t(ns));
   for (int k = 0; k < ns; ++k) su.dzs[k] = dzs[k];
+  if (o.sf_surface_physics == 1) {
+    const std::vector<double> zs = in.var("ZS", std::size_t(ns));
+    for (int k = 0; k < ns; ++k) su.zs[k] = zs[k];
+  }
 
   // ---- phy_init / myjsfcinit
   put_const(su.ust, o.sf_sfclay_physics == 2 ? 0.1 : 0.0001);
@@ -379,12 +384,21 @@ void init_real_physics(const io::Config& cfg, Model& m) {
                             &emiss = li.emiss, &mavail = li.mavail, &xland = li.xland;
   put2(su.albbck, albbck); put2(su.albedo, albedo); put2(su.z0, z0); put2(su.znt, z0);
   put2(su.embck, embck); put2(su.emiss, emiss); put2(su.mavail, mavail); put2(su.xland, xland);
+  if (o.sf_surface_physics == 1) put2(su.thc, li.thc);
 
   auto put_soil = [&](Field3& f, const std::vector<double>& a) {
     f.fill_host([&](int i, int j, int k) { return a[i + std::size_t(nx) * j + n2 * k]; });
   };
 
-  if (o.sf_surface_physics == 2) {
+  if (o.sf_surface_physics == 1) {
+    // ---- bl_init / slabinit (no statement): the soil, snow and canopy fields stay as in wrfinput
+    put2(su.snoalb, snoalb);
+    put_soil(su.tslb, tslb); put_soil(su.smois, smois);
+    if (in.has("SH2O")) put_soil(su.sh2o, in.var("SH2O", n2 * ns));
+    if (in.has("SMCREL")) put_soil(su.smcrel, in.var("SMCREL", n2 * ns));
+    if (in.has("SNOWH")) put2(su.snowh, rd2("SNOWH"));
+    if (in.has("CANWAT")) put2(su.canwat, rd2("CANWAT"));
+  } else if (o.sf_surface_physics == 2) {
     // ---- bl_init / LSMINIT (Noah)
     phys::noah::NoahTables nt;
     if (!phys::noah::read_noah_tables(o.table_dir, o.mminlu, o.mminsl, nt))
@@ -436,7 +450,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
     if (in.has("SNOWH")) put2(su.snowh, rd2("SNOWH"));
     su.init_noahmp(in.has("SNOWH"));
   }
-  // CANWAT = 0 (lsminit / NoahmpInitMain), the accumulations and fluxes stay zero
+  // CANWAT = 0 (lsminit / NoahmpInitMain; the slab's from wrfinput), the accumulations and fluxes stay zero
   su.init_radiation(m.xlat, m.xlong);
   if (auto* pc = m.rk->physics(); pc && pc->params().microp_re)
     su.set_effective_radii(&pc->re_cloud, &pc->re_ice, &pc->re_snow);

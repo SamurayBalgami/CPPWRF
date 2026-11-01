@@ -317,6 +317,7 @@ SUPPORTED_OPTIONS = {
     },
     "sf_surface_physics": {
         0: "None / off",
+        1: "5-layer thermal diffusion land surface (slab)",
         2: "Unified Noah land surface model (4 soil layers)",
         4: "Noah-MP land surface model (v5.1.2, 4 soil layers)",
     },
@@ -540,7 +541,7 @@ IGNORED_WRF_OPTIONS = {
     "dy": "Grid spacing (real case: the namelist value, checked against wrfinput as input_wrf does)",
     # &physics
     "ifsnow": "Snow effects flag (used by the slab LSM only)",
-    "num_soil_layers": "4 soil layers (Noah, Noah-MP)",
+    "num_soil_layers": "4 soil layers (Noah, Noah-MP), 5 (slab)",
     # &dynamics
     "base_temp": "Base potential temperature (read from sounding or wrfinput)",
     "hybrid_opt": "Real case hybrid coordinate flag read directly from wrfinput_d01 global attribute",
@@ -1519,7 +1520,22 @@ class WrfTranslator:
                 if any(v > 0 for v in prec_acc):  # check_a_mundo: prec_acc_opt = 1, the fields on every domain
                     sections["phys"]["prec_acc_opt"] = 1
 
-                if sf_surface != 0:
+                if sf_surface == 1:
+                    # module_sf_slab.F: 5 layers (check_a_mundo, init_soil_depth_1); ifsnow 1 limits TSK and the top
+                    # soil layer under snow to 273.16 K, 0 neither (other values: TSK only, not verified)
+                    num_soil = self.get_opt("physics", "num_soil_layers", 5)
+                    if num_soil != 5:
+                        self.error(f"WRF num_soil_layers = {num_soil} is not supported with sf_surface_physics = 1; "
+                                   "CPPWRF requires the slab's 5 soil layers.")
+                    else:
+                        sections["phys"]["num_soil_layers"] = 5
+                    ifsnow = self.get_opt("physics", "ifsnow", 1)
+                    if ifsnow not in (0, 1):
+                        self.error(f"WRF ifsnow = {ifsnow} is not supported with sf_surface_physics = 1; "
+                                   "CPPWRF supports 0 and 1.")
+                    elif ifsnow != 1:
+                        sections["phys"]["ifsnow"] = ifsnow
+                elif sf_surface != 0:
                     # check_a_mundo uses 4 layers for Noah and Noah-MP, but the history output keeps the
                     # namelist's soil dimension (P1 with num_soil_layers = 5: same values, ZS/TSLB/SMOIS shapes differ)
                     num_soil = self.get_opt("physics", "num_soil_layers", 4)

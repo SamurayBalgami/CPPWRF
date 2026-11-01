@@ -12,6 +12,7 @@
 #include "phys/driver/wrf_constants.hpp"
 #include "phys/fogdes/fogdes.hpp"
 #include "phys/lsm_noah/noah.hpp"
+#include "phys/lsm_slab/slab.hpp"
 
 #include "phys/driver/suite_internal.hpp"
 
@@ -586,6 +587,47 @@ struct KNoahmpDiag {
   }
 };
 
+// SLABSCHEME (module_surface_driver.F:2629-2665): CQS2 = CQS2*MAVAIL, SLAB (module_sf_slab.F; t3d = t_phy, p3d =
+// grid%p_hyd at level kts), the accumulations (no SFCEXC / ACGRDFLX) and SFCDIAGS (ua_phys = .false.)
+struct KSlab {
+  C3 t3d, qv3d, p3d;
+  C2 psfc, xland, tmn, gsw, glw, thc, snowc, emiss, mavail, chs2;
+  V2 flhc, flqc, hfx, qfx, lh, tsk, qsfc, chklowq, capg, cqs2, sfcevp, achfx, aclhf, q2, t2, th2;
+  V3 tslb;
+  slab::SlabParams sp;
+  real dtbl, dt;
+  int nx;
+  CPPWRF_HD void operator()(int i, int j) const {
+    using namespace wrfc;
+    cqs2(i, j) = cqs2(i, j) * mavail(i, j);  // CQS2 accounts for MAVAIL for the 2 m Q of SFCDIAGS
+    real ts[slab::kSoilLayers];
+    for (int l = 0; l < slab::kSoilLayers; ++l) ts[l] = tslb(i, j, l);
+    real h = hfx(i, j), q = qfx(i, j), e = lh(i, j), tk = tsk(i, j), qs = qsfc(i, j), ck = chklowq(i, j),
+         cg = capg(i, j);
+    slab::slab1d(sp, t3d(i, j, 0), qv3d(i, j, 0), p3d(i, j, 0), psfc(i, j), xland(i, j), tmn(i, j), gsw(i, j),
+                 glw(i, j), thc(i, j), snowc(i, j), emiss(i, j), mavail(i, j), flhc(i, j), flqc(i, j), h, q, e, tk, qs,
+                 ck, cg, ts, i, nx);
+    for (int l = 0; l < slab::kSoilLayers; ++l) tslb(i, j, l) = ts[l];
+    hfx(i, j) = h; qfx(i, j) = q; lh(i, j) = e; tsk(i, j) = tk; qsfc(i, j) = qs; chklowq(i, j) = ck; capg(i, j) = cg;
+    sfcevp(i, j) = sfcevp(i, j) + qfx(i, j) * dtbl;
+    achfx(i, j) = achfx(i, j) + hfx(i, j) * dt;
+    aclhf(i, j) = aclhf(i, j) + lh(i, j) * dt;
+    // SFCDIAGS (ua_phys = .false.)
+    real rho = psfc(i, j) / (r_d * tsk(i, j));
+    if (cqs2(i, j) < real(1.e-5)) {
+      q2(i, j) = qsfc(i, j);
+    } else {
+      q2(i, j) = qsfc(i, j) - qfx(i, j) / (rho * cqs2(i, j));
+    }
+    if (chs2(i, j) < real(1.e-5)) {
+      t2(i, j) = tsk(i, j);
+    } else {
+      t2(i, j) = tsk(i, j) - hfx(i, j) / (rho * cp * chs2(i, j));
+    }
+    th2(i, j) = t2(i, j) * rpow(real(1.e5) / psfc(i, j), rcp);
+  }
+};
+
 // sst_update = 1, every surface_driver call (module_surface_driver.F:1697-1850, lakemodel = 0): ice and water
 // points follow the SEAICE read from wrflowinp; TSK and the top soil level take the SST over water
 struct KSstUpdate {
@@ -1095,7 +1137,22 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
                                       tsk.view(), xice_threshold});
     };
 
-    if (o_.sf_surface_physics == 2) {
+    if (o_.sf_surface_physics == 1) {
+      // ---- SLAB (module_sf_slab.F) ----
+      using namespace wrfc;
+      slab::SlabParams sp{dtbl, rcp, xlv, svp1, svp2, svp3, svpt0, ep_2, stbolt, p1000mb, o_.ifsnow,
+                          o_.rad.ra_lw_physics > 0, {}, {}};
+      for (int l = 0; l < slab::kSoilLayers; ++l) {
+        sp.zs[l] = real(zs[l]);
+        sp.dzs[l] = real(dzs[l]);
+      }
+      column_for(cols, KSlab{prep.t_phy.cview(), s.q_2[s.P_QV].cview(), prep.p_hyd.cview(), psfc.cview(),
+                             xland.cview(), tmn.cview(), gsw.cview(), glw.cview(), thc.cview(), snowc.cview(),
+                             emiss.cview(), mavail.cview(), chs2.cview(), flhc.view(), flqc.view(), hfx.view(),
+                             qfx.view(), lh.view(), tsk.view(), qsfc.view(), chklowq.view(), capg.view(), cqs2.view(),
+                             sfcevp.view(), achfx.view(), aclhf.view(), q2.view(), t2.view(), th2.view(), tslb.view(),
+                             sp, dtbl, dt, g_.nx});
+    } else if (o_.sf_surface_physics == 2) {
       // ---- lsm (module_sf_noahdrv.F) ----
       seaice_lsm_pre();
       KLsmPre pre{};

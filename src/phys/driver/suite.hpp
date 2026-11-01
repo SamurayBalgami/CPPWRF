@@ -66,7 +66,7 @@ class IntField2 {
 // Namelist options of the P1/P2 suite (WRF Registry defaults unless noted).
 struct SuiteOptions {
   int sf_sfclay_physics = 1;     // 1 = SFCLAYREVSCHEME, 2 = MYJSFCSCHEME, 5 = MYNNSFCSCHEME
-  int sf_surface_physics = 2;    // 2 = LSMSCHEME (Noah), 4 = NOAHMPSCHEME (Noah-MP v5.1.2)
+  int sf_surface_physics = 2;    // 1 = SLABSCHEME, 2 = LSMSCHEME (Noah), 4 = NOAHMPSCHEME (Noah-MP v5.1.2)
   int bl_pbl_physics = 1;        // 1 = YSUSCHEME, 2 = MYJPBLSCHEME, 5 = MYNNPBLSCHEME
   int icloud_bl = 1;             // MYNN subgrid clouds in the radiation (CLDFRA_BL, QC_BL, QI_BL)
   mynnedmf::Options mynn;        // bl_mynn_* options of the MYNN-EDMF PBL
@@ -89,6 +89,7 @@ struct SuiteOptions {
   RadiationOptions rad;          // rad.ra_lw_physics/ra_sw_physics = 0: no radiation
   noahmp::NoahmpOptions noahmp;  // Noah-MP options (sf_surface_physics == 4)
   int isfflx = 1;
+  int ifsnow = 1;  // slab: snow cover limits TSK and the top soil layer to 273.16 K
   int fractional_seaice = 0;
   bool tice2tsk_if2cold = false;  // fractional_seaice: ice temperature = min(TSK, 273.15)
   int sst_update = 0;             // 1: SST, SEAICE, VEGFRA, ALBBCK, LAI from wrflowinp (read_lowinp)
@@ -178,8 +179,10 @@ class PhysicsSuite : public dyn::ColumnPhysics {
       acc_qinsurxy, acc_qsevaxy, eflxbxy, acc_dwaterxy, acc_prcpxy, acc_ecanxy, acc_etranxy, acc_edirxy, acc_glaflwxy;
   IntField2 isnowxy, cropcat, pgsxy;
   IntField2 noahmp_ranland;  // not in the restart file (NoahmpIO is initialised again)
+  Field2 thc, capg;           // slab (sf_surface_physics == 1): thermal inertia (landuse_init), heat capacity
   Field3 tsnoxy, snicexy, snliqxy, zsnsoxy, albsoildirxy, albsoildifxy, smoiseq, acc_etranixy;
   std::vector<double> dzs;            // soil layer thicknesses (m)
+  std::vector<double> zs;             // soil layer centre depths (m; the slab's diffusion)
   Field3 exch_h, exch_m;              // M (WRF kme-sized; levels 0..nz-1 used)
   Field3 tke_pbl, el_pbl;             // MYJ PBL 3D TKE and master length scale (el_pbl: MYNN too)
   // MYNN-EDMF state (bl_pbl_physics = 5): 2*TKE, variances, stability functions, subgrid clouds
