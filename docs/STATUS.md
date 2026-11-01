@@ -16,6 +16,7 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 | Radiation | RRTMG LW and SW (4), CAM ozone and greenhouse gases, cal_cldfra1, McICA (cldovrlp 1-5) and clear sky only (cldovrlp 0), cumulus clouds in the radiation (cu_rad_feedback: Kain-Fritsch, Grell-Freitas; no effect with Tiedtke / New Tiedtke as in WRF) |
 | Nesting | static one-way and two-way nests (interp_fcn_sint, bdy_interp1, copy_fcn feedback, sm121/smdsm smoothers, blend_terrain, adjust_tempqv) |
 | Namelist | physics_suite CONUS and tropical (the -1 options), in tools/wrf2cppwrf.py and in the WRF I/O schema |
+| Diagnostics | accumulation buckets bucket_mm and bucket_J (I_RAINC, I_RAINNC, I_ACSWUPT ... I_ACLWDNBC) and the precipitation windows prec_acc_dt (PREC_ACC_C, PREC_ACC_NC, SNOW_ACC_NC, per domain), with the column physics |
 | I/O | reads wrfinput_d0N / wrfbdy_d01; writes WRF v4.8.0 wrfout_d0N and wrfrst_d0N files (WRF I/O schema, iofields_filename, history_outname / rst_outname, frames_per_outfile, use_netcdf_classic) and its own restart files; native binary output; cppwrf_real (real.exe) |
 | Ideal cases | WRF's ideal.exe for em_hill2d_x, em_quarter_ss, em_squall2d_x/y, em_grav2d_x; CPPWRF's own analytic tests (rest state, warm bubble, Straka, inertia-gravity wave, 2-D squall line) |
 
@@ -81,6 +82,7 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | P4 | P2 + WSM6 + RRTMG (cloudy, effective radii) + diff_opt 1 / km_opt 4 | 1 h |
 | A05 / A05C / A05G | P4 with cu_rad_feedback (Kain-Fritsch cloud fraction and water in RRTMG) / P4 with cldovrlp 0 (RRTMG without clouds) / P8 + WSM6 + RRTMG with cu_rad_feedback (Grell-Freitas QC_CU / QI_CU) | 1 h |
 | KESSKF | P4 with Kessler instead of WSM6 (Kain-Fritsch rain in Kessler's split sedimentation steps) | 1 h |
+| A08 | P4 with bucket_mm 0.05, bucket_J 1e4 and prec_acc_dt 2 min (RAINC / RAINNC and the LW accumulations tip at the first step: I_RAINC, I_ACLW*; PREC_ACC_C, PREC_ACC_NC, SNOW_ACC_NC) | 3 min, 1 h |
 | P5 | P1 + WSM6 + diff_opt 1 / km_opt 4 | 1 h |
 | P6 | P5 with Thompson | 1 h |
 | P7 | P2 with New Tiedtke | 1 h |
@@ -232,7 +234,7 @@ diff_6th_opt 1 and 2, moist/scalar_adv_opt 0, w_damping 0 and w_crit_cfl, damp_o
 epssm, time_step_sound, smdiv / emdiv, c_s, km_opt 1 / 3 / 4 with diff_opt 1 (km_opt 3 also on em_quarter_ss with
 diff_opt 2), diff_opt 2 / km_opt 4 (also mix_full_fields), mix_isotropic 1, PD advection with h_adv_order 6,
 moist_mix2_off, MYNN (P6 inputs) with RRTMG, icloud_bl 0, bldt 2, WSM6, Kain-Fritsch and restart_interval 1 (the restart alarm in the first step), the MYNN PBL on the revised MM5 and Eta surface layers (P6 inputs, 3 min: without radiation, RRTMG with icloud_bl 0, bldt 2, WSM6, Kain-Fritsch, Noah-MP, isfflx 0, iz0tlnd 1, isftcflx 1, wrfrst with restart_interval 1; 1 h with RRTMG and wrfrst at 30 min; two-way nest N3s on d01 and d02), every non-default MYNN option value with a port (P6 inputs, MYNN surface layer, RRTMG: 3 min and 1 h each, wrfrst at 30 min with bl_mynn_tkeadvect, closure 3.0, grav_settling 2 and the combined X1 / X2 options, bldt 2, and the N3s two-way nest with tkeadvect, edmf 0 / closure 3.0 / mixlength 2, the MYNN surface-layer forms and grav_settling), grav_settling 1 and 2 with YSU, usemonalb and rdlai2d (together and alone, also false) on P1, P4, P9, P1 with Noah-MP, V2 (snow, sea ice, glacier) and the N3s nest (both domains), 3 min and 1 h, with wrfrst files at 30 min (P1) and 15 min (V2), and on SU1 over 6 h 20 min across the 6 h wrflowinp update of LAI and ALBBCK, open-boundary 6th-order diffusion (em_squall2d_x, em_quarter_ss open), v_adv_order 4, and surface layer + LSM without a PBL scheme (bl_pbl_physics 0, with
-diff_opt 1 or diff_opt 2 / km_opt 2) are bit-identical to WRF. Two-way nest N3 variants: smooth_option 0 / 1,
+diff_opt 1 or diff_opt 2 / km_opt 2) are bit-identical to WRF. The accumulation buckets and precipitation windows (bucket_mm, bucket_J, prec_acc_dt) are bit-identical on P1 (no microphysics, no radiation: WRF stops with bucket_J there and CPPWRF rejects it), P4 (also Kessler, the adaptive time step, bucket_J alone, which does nothing as in WRF, and 61 min: the buckets of the step at 1 h), P6 (also with RRTMG), P8, V1 (daytime: the SW accumulations tip) and the two-way nest N3s (prec_acc_dt 10 / 5 and 0 / 5), 3 min and 1 h, with wrfrst files at 30 min and runs resumed from them (WRF's resumed run tips the buckets at its first step, its curr_secs2 starting at 0; CPPWRF's resumed run does the same). Two-way nest N3 variants: smooth_option 0 / 1,
 feedback 0, parent_time_step_ratio 2, per-domain cu_physics (cumulus off on d02), cudt, radt and bldt. New Tiedtke
 (cu_physics 16, 30-minute runs) on the P1, P4 (also cudt 5), P6 and P9 inputs and on the N3s (also off on d02), N3sib
 and N3gc nests, whose dx below 15 km takes the scheme's log scale factor, is bit-identical. (WRF leaves RQCBLTEN / RQIBLTEN of runs without qc / qi

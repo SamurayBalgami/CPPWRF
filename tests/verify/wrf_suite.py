@@ -191,6 +191,20 @@ CASES = [
     ("real_b01_r8_fp64_cuda_1h", "cuda_dp", "configs/real_b01_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "time.history_interval_s=600"],
      f"{WR}/run_B01_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 7e-4, "W": 2e-2, "THM": 1.4e-5, "QV": 6e-4}),  # G4: U 2.2e-4 W 6.2e-3 THM 4.5e-6 QV 2.0e-4
+    # A08 = P4 with bucket_mm 0.05, bucket_J 1e4 and prec_acc_dt 2 min (diagnostic_output_calc: the buckets of RAINC /
+    # RAINNC and the LW accumulations tip at the first step, I_RAINC ... I_ACLWDNBC; PREC_ACC_C / NC, SNOW_ACC_NC)
+    ("real_a08_r8_fp64_cpu", "cpu_dp", "configs/real_a08_r8.ini", [],
+     f"{WR}/run_A08_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "RAINC": 0.0, "RAINNC": 0.0, "I_RAINC": 0.0, "I_RAINNC": 0.0,
+      "ACLWUPT": 0.0, "I_ACLWUPT": 0.0, "PREC_ACC_C": 0.0, "PREC_ACC_NC": 0.0, "SNOW_ACC_NC": 0.0}),
+    ("real_a08_r8_fp64_cpu_1h", "cpu_dp", "configs/real_a08_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_A08_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "RAINC": 0.0, "RAINNC": 0.0, "I_RAINC": 0.0, "I_RAINNC": 0.0,
+      "ACLWUPT": 0.0, "I_ACLWUPT": 0.0, "PREC_ACC_C": 0.0, "PREC_ACC_NC": 0.0, "SNOW_ACC_NC": 0.0}),
+    ("real_a08_r8_fp64_cuda_1h", "cuda_dp", "configs/real_a08_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_A08_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 6e-4, "W": 1e-2, "THM": 8e-6, "QV": 5e-4}),
     # KESSKF = P4 with Kessler (mp_physics = 1): Kain-Fritsch rain into Kessler's sedimentation (nfall > 1),
     # bit-identical for 3 steps and 1 h
     ("real_kesskf_r8_fp64_cpu", "cpu_dp", "configs/real_kesskf_r8.ini", [],
