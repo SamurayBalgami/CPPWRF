@@ -42,17 +42,24 @@ for cfg in "2500 50" "201 41"; do
   fi
 done
 # 3. mp_physics = 28 (aerosol aware, aer_init_opt 0, wif_input_opt 1): WRF's mp_gt_driver with nc, nwfa, nifa,
-#    nwfa2d, nifa2d (fortran/driver_thompson_aero.f90) against driver_thompson_cpu --aero; CCN_ACTIVATE.BIN of W's run/
+#    nwfa2d, nifa2d (fortran/driver_thompson_aero.f90) against driver_thompson_cpu --aero, in aero/: the driver is
+#    built with WRF's BYTESWAPIO (wrf.exe reads the big-endian CCN_ACTIVATE.BIN of W's run/ and writes its table
+#    files big-endian, which the C++ driver reads as the model reads a run's tables)
 [ -f "$W/run/CCN_ACTIVATE.BIN" ] || { echo "no $W/run/CCN_ACTIVATE.BIN"; exit 1; }
+byteswap=$(sed -n 's/^BYTESWAPIO *= *//p' "$W/configure.wrf")
+mkdir -p "${WORK_DIR}/aero"
+wrf_fortran "${WORK_DIR}/aero/fortran_driver_thompson_aero" "${SCRIPT_DIR}/fortran/driver_thompson_aero.f90" $byteswap
+cd "${WORK_DIR}/aero"
+rm -f qr_acr_qg_V4.dat qr_acr_qsV2.dat freezeH2O.dat
 ln -sf "$W/run/CCN_ACTIVATE.BIN" CCN_ACTIVATE.BIN
-wrf_fortran "${WORK_DIR}/fortran_driver_thompson_aero" "${SCRIPT_DIR}/fortran/driver_thompson_aero.f90"
 for cfg in "2500 50" "201 41"; do
   set -- $cfg
   echo "=== Aerosol-aware Thompson Differential Test ($1 cols x $2 levels) ==="
   python3 "${SCRIPT_DIR}/generate_inputs.py" --ncols "$1" --nlevels "$2" --aero
-  "${REPO_ROOT}/tools/heavy.sh" "${WORK_DIR}/fortran_driver_thompson_aero" "${INPUT_BIN}" "${FORT_OUT}"
-  "${REPO_ROOT}/tools/heavy.sh" "${CPP_BIN}" "${INPUT_BIN}" "${CPP_OUT}" --aero
-  python3 "${SCRIPT_DIR}/compare.py" "${FORT_OUT}" "${CPP_OUT}" --tol 0 --aero
+  "${REPO_ROOT}/tools/heavy.sh" ./fortran_driver_thompson_aero input_thompson.bin output_fortran.bin
+  "${REPO_ROOT}/tools/heavy.sh" "${CPP_BIN}" input_thompson.bin output_cpp.bin --aero
+  python3 "${SCRIPT_DIR}/compare.py" output_fortran.bin output_cpp.bin --tol 0 --aero
 done
+cd "${WORK_DIR}"
 ls qr_acr_qg_V4.dat qr_acr_qsV2.dat freezeH2O.dat > /dev/null  # the C++ driver read WRF's table files
 echo "=== Thompson Microphysics Differential Test PASSED ==="
