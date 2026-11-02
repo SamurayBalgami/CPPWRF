@@ -766,10 +766,12 @@ def run(binary, cfg, sets, out):
 def config_vs_namelist(cfg, sets, nml):
     """Options of the case's configuration (cfg and its --set) that differ from tools/wrf2cppwrf.py's translation of
     the namelist.input of the WRF run that made the reference (options both set; paths by their real path; the run
-    length, output and restart settings aside), or the translation's errors."""
+    length, output and restart settings aside), or the translation's errors. A case with output.auxhist3=true (the
+    translation of io_form_auxhist3 = 2, which needs WRF history output) is translated with --format wrfout."""
     sys.path.insert(0, REPO)
     from tools.wrf2cppwrf import parse_namelist, WrfTranslator
-    tr = WrfTranslator(parse_namelist(open(nml).read()), namelist_path=nml)
+    tr = WrfTranslator(parse_namelist(open(nml).read()), namelist_path=nml,
+                       output_format="wrfout" if "output.auxhist3=true" in sets else "native")
     gen = tr.translate()
     if tr.errors:
         return [f"{nml} does not translate: {tr.errors}"]
