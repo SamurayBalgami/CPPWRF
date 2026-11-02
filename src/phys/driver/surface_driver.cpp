@@ -1099,7 +1099,8 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
   }
   if (o_.isfflx != 0) {
     const int nsoil = o_.num_soil_layers;
-    column_for(cols, KNoahRa{wspd.cview(), ust.cview(), ra.view()});
+    if (o_.sf_surface_physics != 1)  // the LSM branches set RA (module_surface_driver.F:2740, 3543); the slab's does not
+      column_for(cols, KNoahRa{wspd.cview(), ust.cview(), ra.view()});
     auto run_seaice = [&]() {
       // ---- seaice_noah (module_sf_noah_seaice_drv.F), DT = model time step ----
       KSeaiceNoah si{};
