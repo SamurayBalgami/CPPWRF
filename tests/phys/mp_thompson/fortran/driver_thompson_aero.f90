@@ -1,7 +1,8 @@
 ! mp_physics = 28 (aerosol aware, aer_init_opt 0, wif_input_opt 1): the inputs of driver_thompson.f90 followed by
 ! nc, nwfa, nifa (3-D) and nwfa2d, nifa2d (2-D); thompson_init with the aerosol arguments (CCN_ACTIVATE.BIN in the
 ! working directory; nwfa > eps: no profile), mp_gt_driver as microphysics_driver calls it for THOMPSONAERO; the
-! outputs of driver_thompson.f90 followed by nc, nwfa, nifa, nbca
+! outputs of driver_thompson.f90 followed by nc, nwfa, nifa, nbca. Built with WRF's BYTESWAPIO (as wrf.exe): the input
+! and output files are opened CONVERT='native'
 PROGRAM driver_thompson_aero
   USE module_mp_thompson, ONLY: thompson_init, mp_gt_driver
   IMPLICIT NONE
@@ -35,7 +36,7 @@ PROGRAM driver_thompson_aero
      CALL GET_COMMAND_ARGUMENT(2, outfile)
   END IF
 
-  OPEN(NEWUNIT=u_in, FILE=TRIM(infile), FORM="unformatted", ACCESS="stream", STATUS="old")
+  OPEN(NEWUNIT=u_in, FILE=TRIM(infile), FORM="unformatted", ACCESS="stream", STATUS="old", CONVERT="native")
   READ(u_in) ncols, nlevels, dt_d
 
   ! Allocate 3D arrays: (ncols, nlevels, 1)
@@ -124,7 +125,7 @@ PROGRAM driver_thompson_aero
                     its=1, ite=ncols, jts=1, jte=1, kts=1, kte=nlevels)
 
   ! Write output binary
-  OPEN(NEWUNIT=u_out, FILE=TRIM(outfile), FORM="unformatted", ACCESS="stream", STATUS="replace")
+  OPEN(NEWUNIT=u_out, FILE=TRIM(outfile), FORM="unformatted", ACCESS="stream", STATUS="replace", CONVERT="native")
 
   ! 3D outputs: qv, qc, qr, qi, qs, qg, ni, nr, th
   WRITE(u_out) qv(:, 1:nlevels, 1)
