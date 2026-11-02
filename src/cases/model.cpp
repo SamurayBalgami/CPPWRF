@@ -364,6 +364,26 @@ Model Model::build(const io::Config& cfg) {
                      cfg.get_double("phys.prec_acc_dt", 0.0) > 0))
       throw std::runtime_error("phys.bucket_mm / bucket_j / prec_acc_dt without surface-layer, land-surface, PBL or "
                                "cumulus physics are not supported");
+    // clwrf_output_calc (output_diagnostics = 1): T2, Q2, U10, V10, TSK, RAINCV of the column physics suite
+    if (cfg.get_int("phys.output_diagnostics", 0) != 0) {
+      if (cfg.get_int("phys.output_diagnostics", 0) != 1) throw std::runtime_error("phys.output_diagnostics must be 0 or 1");
+      if (!m.suite)
+        throw std::runtime_error("phys.output_diagnostics without surface-layer, land-surface, PBL or cumulus physics "
+                                 "is not supported");
+      if (m.adapt) throw std::runtime_error("phys.output_diagnostics with time.adaptive is not supported");
+      // module_diagnostics_driver.F:771-775
+      if (cfg.get_int("phys.auxhist3_interval", 0) <= 0)
+        throw std::runtime_error("CLWRF: ERROR -- error -- ERROR -- error : NO 'auxhist3_interval' has been defined in "
+                                 "'namelist.input' (phys.auxhist3_interval, minutes)");
+      const double per = double(cfg.get_int("phys.auxhist3_interval", 0)) * 60.0 / g.dt;
+      if (g.dt != std::floor(g.dt) || per != std::floor(per))
+        throw std::runtime_error("phys.output_diagnostics: phys.auxhist3_interval must be a multiple of time.dt and "
+                                 "time.dt whole seconds");
+    }
+    // module_diag_nwp.F (nwp_diagnostics = 1) needs the radar reflectivity (check_a_mundo sets do_radar_ref = 1)
+    if (cfg.get_int("phys.nwp_diagnostics", 0) != 0)
+      throw std::runtime_error("phys.nwp_diagnostics = 1 (WSPD10MAX, UP_HELI_MAX, ..., REFD_MAX with do_radar_ref = 1) "
+                               "is not ported");
     if (m.bc) m.rk->set_lateral_bc(m.bc.get());
     if (dc.on()) {
       m.diff = std::make_unique<dyn::DiffusionDriver>(g, dc);

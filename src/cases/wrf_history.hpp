@@ -33,6 +33,10 @@ class WrfHistory {
   ~WrfHistory();
   // one history frame at model time time_sec after the start (step = WRF's itimestep)
   void write(long step, double time_sec);
+  // one frame of the auxhist3 stream (med_hist_out(AUXHIST3_ALARM): auxhist3_outname, frames_per_auxhist3)
+  void write_auxhist3(long step, double time_sec);
+  // AUXHIST3_ALARM for the restart files (alarm 4): its interval and a time it rang, in seconds (interval 0: none)
+  void set_auxhist3_alarm(double interval_s, double ref_s) { aux3_iv_s_ = interval_s; aux3_ref_s_ = ref_s; }
   // wrfrst_d0N_<date>: the restart stream at model time time_sec when the restart alarm rings (alarms from the
   // history alarm's interval and a time it rang, in seconds; the restart alarm's seconds to its next ring; a time the
   // sst_update alarm rang)
@@ -83,6 +87,10 @@ class WrfHistory {
   std::unique_ptr<wrf_io::WrfConfig> wc_;
   std::unique_ptr<wrf_io::StreamFile> file_;
   int frames_per_outfile_ = 10;
+  std::unique_ptr<wrf_io::StreamFile> aux3_file_;
+  std::string aux3_outname_;
+  int frames_per_aux3_ = 999999;
+  double aux3_iv_s_ = 0, aux3_ref_s_ = 0;
   int jrep_ = 1;  // output rows per model row: 2 for ideal x-z runs (ny = 1)
   double auxinput4_interval_s_ = 0;  // sst_update: the AUXINPUT4 alarm
   int wrfinput_id_ = -1;

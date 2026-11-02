@@ -434,8 +434,6 @@ DEFAULT_ONLY_OPTIONS = {
     ("dynamics", "use_q_diabatic"): (0, "qv / qc diabatic terms in the scalar tendencies (q_diabatic_add)"),
     ("dynamics", "rad_nudge"): (0, "theta relaxation to the initial profile (theta_relaxation)"),
     # history output options (fields or streams CPPWRF does not write)
-    ("time_control", "nwp_diagnostics"): (0, "NWP diagnostics in the history output (WSPD10MAX, UP_HELI_MAX, ...)"),
-    ("time_control", "output_diagnostics"): (0, "time-window diagnostics (auxhist3)"),
     ("dynamics", "do_avgflx_em"): (0, "time-averaged mass fluxes in the history output (AVGFLX_*)"),
     ("dynamics", "do_avgflx_cugd"): (0, "time-averaged convective mass fluxes in the history output (AVGFLX_*)"),
     ("physics", "acc_phy_tend"): (0, "accumulated physics tendencies in the history output (ATHCUTEN, ...)"),
@@ -799,11 +797,12 @@ class WrfTranslator:
         """History and auxiliary history stream options CPPWRF does not port (registry.io_boilerplate); the output
         file options only with WRF-format output."""
         self.check_iofields_input()
-        # the history fields of these diagnostics (module_diagnostics_driver) are not ported
-        for key, desc in (("nwp_diagnostics", "WSPD10MAX, UP_HELI_MAX, ... in the history"),
-                          ("output_diagnostics", "T2MIN, T2MAX, ... of the auxhist3 stream and the restart file")):
-            if self.get_opt("time_control", key, 0) != 0:
-                self.error(f"WRF {key} = {self.get_opt('time_control', key, 0)} ({desc}) is not supported by CPPWRF.")
+        # diagnostic_output_nwp (module_diag_nwp.F) and cal_helicity are not ported; check_a_mundo also sets
+        # do_radar_ref = 1 with it (REFL_10CM, REFD_MAX of the microphysics)
+        nwp = self.get_opt("time_control", "nwp_diagnostics", 0)
+        if nwp != 0:
+            self.error(f"WRF nwp_diagnostics = {nwp} (WSPD10MAX, UP_HELI_MAX, ... in the history, and REFL_10CM / "
+                       "REFD_MAX: check_a_mundo sets do_radar_ref = 1) is not supported by CPPWRF.")
         if self.output_format not in ("wrfout", "both"):
             return
         for key in ("history_begin", "history_begin_y", "history_begin_d", "history_begin_h", "history_begin_m",
@@ -817,10 +816,64 @@ class WrfTranslator:
             self.error(f"WRF io_form_history = {io_form} is not supported; CPPWRF writes NetCDF (2).")
         # med_hist_out: an auxiliary history stream with an interval and an io_form writes auxhistN files
         for n in range(1, 25):
+            if n == 3 and self.get_opt("time_control", "output_diagnostics", 0) == 1:
+                continue  # auxhist3 of output_diagnostics (auxhist3_minutes)
             iv = [x for k in ("", "_d", "_h", "_m", "_s")
                   for x in self.get_opt_list("time_control", f"auxhist{n}_interval{k}")[:max(1, self._max_dom)]]
             if any(x not in (0, None) for x in iv) and self.get_opt("time_control", f"io_form_auxhist{n}", 0) != 0:
                 self.error(f"WRF auxhist{n} output (auxhist{n}_interval, io_form_auxhist{n}) is not supported by CPPWRF.")
+
+    def auxhist3_minutes(self, d: int, dt: float) -> int:
+        """output_diagnostics = 1 (clwrf_output_calc, module_diag_cl.F): domain index d's auxhist3_interval in minutes,
+        the statistics interval clwrfH and the AUXHIST3_ALARM. A domain without an entry has 0 and stops wrf.exe
+        (module_diagnostics_driver.F:771); the _d/_h/_m/_s/_y forms and begin / end times are not ported; with an
+        interval that is not a multiple of the time step WRF's alarm rings past the interval (not ported)."""
+        tag = f"Domain d{d + 1:02d}: " if d > 0 else ""
+        iv = self.get_dom_opt("time_control", "auxhist3_interval", d, 0, fallback_d0=False) or 0
+        if iv <= 0:
+            self.error(f"{tag}WRF output_diagnostics = 1 without auxhist3_interval: wrf.exe stops (\"CLWRF: ERROR -- "
+                       "error -- ERROR -- error : NO 'auxhist3_interval' has been defined in 'namelist.input'\").")
+            return 0
+        steps = iv * 60.0 / dt
+        if abs(steps - round(steps)) > 1e-9 * steps:
+            self.error(f"{tag}WRF auxhist3_interval = {iv} min is not a multiple of the time step {dt:g} s: not "
+                       "supported by CPPWRF.")
+        return iv
+
+    def translate_output_diagnostics(self, sections, dt: float, has_physics_suite: bool):
+        """output_diagnostics = 1: [phys] output_diagnostics and d01's auxhist3_interval (the nests' entries: [d0N]
+        phys_auxhist3_interval), [output] auxhist3 with io_form_auxhist3 = 2 (the model takes auxhist3_outname and
+        frames_per_auxhist3 from the namelist, as the history's names). The statistics need the column physics."""
+        od = self.get_opt("time_control", "output_diagnostics", 0)
+        if od == 0:
+            return
+        if od != 1:
+            self.error(f"WRF output_diagnostics = {od} is not supported (WRF computes the statistics for 1 only).")
+            return
+        if not has_physics_suite:
+            self.error("WRF output_diagnostics = 1 needs the column physics (surface layer, land surface, PBL or "
+                       "cumulus: T2, Q2, U10, V10, TSK, RAINCV) in CPPWRF.")
+            return
+        if sections["time"].get("adaptive"):
+            self.error("WRF output_diagnostics with use_adaptive_time_step is not supported by CPPWRF.")
+        nd = max(1, self._max_dom)
+        for k in ("auxhist3_interval_d", "auxhist3_interval_h", "auxhist3_interval_m", "auxhist3_interval_s",
+                  "auxhist3_interval_y", "auxhist3_begin", "auxhist3_begin_y", "auxhist3_begin_d", "auxhist3_begin_h",
+                  "auxhist3_begin_m", "auxhist3_begin_s", "auxhist3_end", "auxhist3_end_y", "auxhist3_end_d",
+                  "auxhist3_end_h", "auxhist3_end_m", "auxhist3_end_s"):
+            if any(x not in (0, None) for x in self.get_opt_list("time_control", k)[:nd]):
+                self.error(f"WRF {k} is not supported; CPPWRF reads auxhist3_interval (minutes) from the start.")
+        sections["phys"]["output_diagnostics"] = 1
+        sections["phys"]["auxhist3_interval"] = self.auxhist3_minutes(0, dt)
+        self.get_opt_list("time_control", "frames_per_auxhist3")  # read by the model from the namelist
+        io_form = self.get_opt("time_control", "io_form_auxhist3", 0)
+        if io_form not in (0, 2):
+            self.error(f"WRF io_form_auxhist3 = {io_form} is not supported; CPPWRF writes NetCDF (2).")
+        elif io_form == 2:
+            if self.output_format not in ("wrfout", "both"):
+                self.error("WRF io_form_auxhist3 = 2 (auxhist3 files) needs --format wrfout or both.")
+            self.check_outname("auxhist3_outname", "auxhist3_d<domain>_<date>")
+            sections["output"]["auxhist3"] = True
 
     def check_outname(self, key, default):
         """history_outname / rst_outname: the model names its files as WRF's construct_filename2a (<domain>, <date>,
@@ -2053,6 +2106,7 @@ class WrfTranslator:
             sections["output"]["wrf_namelist"] = os.path.abspath(self.namelist_path)
         self.check_history_stream()
         dt_val = float(sections["time"]["dt"])
+        self.translate_output_diagnostics(sections, dt_val, has_physics_suite)
         if sections["time"].get("adaptive"):  # the history alarm by time (time.history_interval_s)
             out_interval = 10**9
         else:
@@ -2295,6 +2349,10 @@ class WrfTranslator:
                 dom_diag_iv[d] = child_diag_iv
                 sections[tag]["out_interval"] = child_out_iv
                 sections[tag]["diag_interval"] = child_diag_iv
+                if self.get_opt("time_control", "output_diagnostics", 0) == 1 and has_physics_suite:
+                    iv3 = self.auxhist3_minutes(d, child_dt)
+                    if iv3 != sections["phys"].get("auxhist3_interval"):
+                        sections[tag]["phys_auxhist3_interval"] = iv3
 
                 if self.has_opt("dynamics", "non_hydrostatic"):
                     if not self.get_dom_opt("dynamics", "non_hydrostatic", d, True):

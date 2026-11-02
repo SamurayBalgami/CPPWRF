@@ -106,6 +106,132 @@ struct KDiagOutputCalc {
   }
 };
 
+// phys/module_diag_cl.F clwrf_output_calc: reinit (the step starts an interval) sets the statistics from this step's
+// values; otherwise varstatistics / varstatisticsWIND / varstatisticsMAX add them, and the step that ends the interval
+// (finish) turns the sums into means and standard deviations. tt = xtime + dt/60. (the end of the step), nsteps =
+// REAL(grid%nsteps) after its update; rainncv without p: no microphysics field (WRF: 0)
+struct KClwrfOutputCalc {
+  C2 t2, q2, u10, v10, skintemp, raincv, rainncv;
+  V2 t2min, t2max, tt2min, tt2max, t2mean, t2std, q2min, q2max, tq2min, tq2max, q2mean, q2std, skintempmin,
+      skintempmax, tskintempmin, tskintempmax, skintempmean, skintempstd, u10max, v10max, spduv10max, tspduv10max,
+      u10mean, v10mean, spduv10mean, u10std, v10std, spduv10std, raincvmax, rainncvmax, traincvmax, trainncvmax,
+      raincvmean, rainncvmean, raincvstd, rainncvstd;
+  real dt, tt, nsteps;
+  bool reinit, finish;
+  // varstatistics: strict < / > for the extremes and their times, then mean = mean + var, std = std + var*var
+  CPPWRF_HD static void stats(real var, real tt, real& vmin, real& vmax, real& tmin, real& tmax, real& mean,
+                              real& std) {
+    if (var < vmin) {
+      vmin = var;
+      tmin = tt;
+    }
+    if (var > vmax) {
+      vmax = var;
+      tmax = tt;
+    }
+    mean = mean + var;
+    std = std + var * var;
+  }
+  CPPWRF_HD static void stats_max(real var, real tt, real& vmax, real& tmax, real& mean, real& std) {
+    if (var > vmax) {
+      vmax = var;
+      tmax = tt;
+    }
+    mean = mean + var;
+    std = std + var * var;
+  }
+  CPPWRF_HD void operator()(int i, int j) const {
+    const real t273 = real(273.);
+    const real rcv = raincv(i, j), rncv = rainncv.p ? rainncv(i, j) : real(0.);
+    if (reinit) {  // MOD(NINT(curr_secs2/dt),NINT(clwrfH*60./dt)) == 0; U10MAX / V10MAX keep their values
+      t2min(i, j) = t2(i, j) - t273;
+      t2max(i, j) = t2(i, j) - t273;
+      t2mean(i, j) = t2(i, j) - t273;
+      t2std(i, j) = (t2(i, j) - t273) * (t2(i, j) - t273);
+      q2min(i, j) = q2(i, j);
+      q2max(i, j) = q2(i, j);
+      q2mean(i, j) = q2(i, j);
+      q2std(i, j) = q2(i, j) * q2(i, j);
+      spduv10max(i, j) = std::sqrt(u10(i, j) * u10(i, j) + v10(i, j) * v10(i, j));
+      u10mean(i, j) = u10(i, j);
+      v10mean(i, j) = v10(i, j);
+      spduv10mean(i, j) = std::sqrt(u10(i, j) * u10(i, j) + v10(i, j) * v10(i, j));
+      u10std(i, j) = u10(i, j) * u10(i, j);
+      v10std(i, j) = v10(i, j) * v10(i, j);
+      spduv10std(i, j) = u10(i, j) * u10(i, j) + v10(i, j) * v10(i, j);
+      raincvmax(i, j) = rcv / dt;
+      rainncvmax(i, j) = rncv / dt;
+      raincvmean(i, j) = rcv / dt;
+      rainncvmean(i, j) = rncv / dt;
+      raincvstd(i, j) = (rcv / dt) * (rcv / dt);
+      rainncvstd(i, j) = (rncv / dt) * (rncv / dt);
+      skintempmin(i, j) = skintemp(i, j) - t273;
+      skintempmax(i, j) = skintemp(i, j) - t273;
+      skintempmean(i, j) = skintemp(i, j) - t273;
+      skintempstd(i, j) = (skintemp(i, j) - t273) * (skintemp(i, j) - t273);
+      tt2min(i, j) = tt;
+      tt2max(i, j) = tt;
+      tq2min(i, j) = tt;
+      tq2max(i, j) = tt;
+      tspduv10max(i, j) = tt;
+      traincvmax(i, j) = tt;
+      trainncvmax(i, j) = tt;
+      tskintempmin(i, j) = tt;
+      tskintempmax(i, j) = tt;
+      return;
+    }
+    stats(t2(i, j) - t273, tt, t2min(i, j), t2max(i, j), tt2min(i, j), tt2max(i, j), t2mean(i, j), t2std(i, j));
+    stats(q2(i, j), tt, q2min(i, j), q2max(i, j), tq2min(i, j), tq2max(i, j), q2mean(i, j), q2std(i, j));
+    {  // varstatisticsWIND
+      const real varuv = std::sqrt(u10(i, j) * u10(i, j) + v10(i, j) * v10(i, j));
+      if (varuv > spduv10max(i, j)) {
+        u10max(i, j) = u10(i, j);
+        v10max(i, j) = v10(i, j);
+        spduv10max(i, j) = varuv;
+        tspduv10max(i, j) = tt;
+      }
+      spduv10mean(i, j) = spduv10mean(i, j) + varuv;
+      spduv10std(i, j) = spduv10std(i, j) + varuv * varuv;
+      u10mean(i, j) = u10mean(i, j) + u10(i, j);
+      v10mean(i, j) = v10mean(i, j) + v10(i, j);
+      u10std(i, j) = u10std(i, j) + u10(i, j) * u10(i, j);
+      v10std(i, j) = v10std(i, j) + v10(i, j) * v10(i, j);
+    }
+    stats_max(rcv / dt, tt, raincvmax(i, j), traincvmax(i, j), raincvmean(i, j), raincvstd(i, j));
+    stats_max(rncv / dt, tt, rainncvmax(i, j), trainncvmax(i, j), rainncvmean(i, j), rainncvstd(i, j));
+    stats(skintemp(i, j) - t273, tt, skintempmin(i, j), skintempmax(i, j), tskintempmin(i, j), tskintempmax(i, j),
+          skintempmean(i, j), skintempstd(i, j));
+    if (!finish) return;  // MOD(NINT((curr_secs2+dt)/dt),NINT(clwrfH*60./dt)) == 0; x**2. = x*x
+    const real z = real(0.);
+    t2mean(i, j) = t2mean(i, j) / nsteps;
+    t2std(i, j) = std::sqrt(c_max(t2std(i, j) / nsteps - t2mean(i, j) * t2mean(i, j), z));
+    t2mean(i, j) = t2mean(i, j) + t273;
+    t2min(i, j) = t2min(i, j) + t273;
+    t2max(i, j) = t2max(i, j) + t273;
+    q2mean(i, j) = q2mean(i, j) / nsteps;
+    q2std(i, j) = q2std(i, j) / nsteps - q2mean(i, j) * q2mean(i, j);
+    q2std(i, j) = c_max(q2std(i, j), z);
+    q2std(i, j) = std::sqrt(q2std(i, j));
+    u10mean(i, j) = u10mean(i, j) / nsteps;
+    v10mean(i, j) = v10mean(i, j) / nsteps;
+    spduv10mean(i, j) = spduv10mean(i, j) / nsteps;
+    u10std(i, j) = std::sqrt(c_max(u10std(i, j) / nsteps - u10mean(i, j) * u10mean(i, j), z));
+    v10std(i, j) = std::sqrt(c_max(v10std(i, j) / nsteps - v10mean(i, j) * v10mean(i, j), z));
+    spduv10std(i, j) = std::sqrt(c_max(spduv10std(i, j) / nsteps - spduv10mean(i, j) * spduv10mean(i, j), z));
+    raincvmean(i, j) = raincvmean(i, j) / nsteps;
+    rainncvmean(i, j) = rainncvmean(i, j) / nsteps;
+    raincvstd(i, j) = std::sqrt(c_max(raincvstd(i, j) / nsteps - raincvmean(i, j) * raincvmean(i, j), z));
+    rainncvstd(i, j) = std::sqrt(c_max(rainncvstd(i, j) / nsteps - rainncvmean(i, j) * rainncvmean(i, j), z));
+    skintempmean(i, j) = skintempmean(i, j) / nsteps;
+    skintempstd(i, j) = skintempstd(i, j) / nsteps - skintempmean(i, j) * skintempmean(i, j);
+    skintempstd(i, j) = c_max(skintempstd(i, j), z);
+    skintempstd(i, j) = std::sqrt(skintempstd(i, j));
+    skintempmean(i, j) = skintempmean(i, j) + t273;
+    skintempmin(i, j) = skintempmin(i, j) + t273;
+    skintempmax(i, j) = skintempmax(i, j) + t273;
+  }
+};
+
 }  // namespace
 
 // ------------------------------------------------------------------ PhysicsSuite
@@ -412,6 +538,20 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
     const std::array<Field2*, 16> ac = acrad();
     for (std::size_t k = 0; k < ac.size(); ++k) i_acrad[k] = IntField2(g, "i_" + ac[k]->name());
   }
+  if (o.output_diagnostics == 1) {  // Registry package maxmin_output (output_diagnostics == 1)
+    static const char* const names[] = {
+        "t2min", "t2max", "tt2min", "tt2max", "t2mean", "t2std", "q2min", "q2max", "tq2min", "tq2max", "q2mean",
+        "q2std", "skintempmin", "skintempmax", "tskintempmin", "tskintempmax", "skintempmean", "skintempstd",
+        "u10max", "v10max", "spduv10max", "tspduv10max", "u10mean", "v10mean", "spduv10mean", "u10std", "v10std",
+        "spduv10std", "raincvmax", "rainncvmax", "traincvmax", "trainncvmax", "raincvmean", "rainncvmean",
+        "raincvstd", "rainncvstd"};
+    clwrf_ = {&t2min, &t2max, &tt2min, &tt2max, &t2mean, &t2std, &q2min, &q2max, &tq2min, &tq2max, &q2mean, &q2std,
+              &skintempmin, &skintempmax, &tskintempmin, &tskintempmax, &skintempmean, &skintempstd, &u10max,
+              &v10max, &spduv10max, &tspduv10max, &u10mean, &v10mean, &spduv10mean, &u10std, &v10std, &spduv10std,
+              &raincvmax, &rainncvmax, &traincvmax, &trainncvmax, &raincvmean, &rainncvmean, &raincvstd,
+              &rainncvstd};
+    for (std::size_t k = 0; k < clwrf_.size(); ++k) *clwrf_[k] = Field2(g, Stagger::M, names[k]);
+  }
 }
 
 std::array<Field2*, 16> PhysicsSuite::acrad() {
@@ -549,6 +689,7 @@ std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
       v.emplace_back("sfc_" + f->name(), f);
   if (o_.prec_acc_opt)
     for (Field2* f : {&prec_acc_c, &prec_acc_nc, &snow_acc_nc}) v.emplace_back("sfc_" + f->name(), f);
+  for (Field2* f : clwrf_) v.emplace_back("sfc_" + f->name(), f);  // output_diagnostics (Registry rh3)
   if (o_.sf_surface_physics == 4) {
     for (Field2* f : {&xlat_sfc, &xlong_sfc, &tvxy, &tgxy, &canicexy, &canliqxy, &eahxy, &tahxy, &cmxy, &chxy,
                       &fwetxy, &sneqvoxy, &alboldxy, &qsnowxy, &qrainxy, &wslakexy, &zwtxy, &waxy, &wtxy, &lfmassxy,
@@ -710,11 +851,11 @@ void PhysicsSuite::after_rk(const dyn::State& s, const dyn::BaseState& b) {
   phy_prep_part2(pt, s, b, g_, CouplingFlags{radiation_on(), o_.bl_pbl_physics > 0, o_.cu_physics, o_.use_theta_m == 1});
 }
 
-// module_after_all_rk_steps.F -> diagnostics_driver -> diagnostic_output_calc, at the end of the step with
-// solve_em's curr_secs2 (seconds of the step start since this run's start) and xtime of the step start
+// module_after_all_rk_steps.F -> diagnostics_driver -> diagnostic_output_calc, then clwrf_output_calc, at the end of
+// the step with solve_em's curr_secs2 (seconds of the step start since this run's start) and xtime of the step start
 void PhysicsSuite::after_all_rk_steps() {
   const bool prec = o_.prec_acc_dt > 0;
-  if (!(o_.bucket_mm > 0) && !prec) return;
+  if (!(o_.bucket_mm > 0) && !prec && o_.output_diagnostics != 1) return;
   const real curr_secs2 = adapt_step_flag ? wrf_time::real_time<real>(run_now)
                                           : real(double(itimestep - run_start_step - 1) * g_.dt);
   const bool xtime0 = adapt_step_flag ? elapsed == wrf_time::Interval{} : itimestep == 1;
@@ -749,6 +890,37 @@ void PhysicsSuite::after_all_rk_steps() {
     k.snow_acc_nc = snow_acc_nc.view();
   }
   if (k.bucket || prec) column_for(g_.columns(), k);
+  if (o_.output_diagnostics != 1) return;
+  // clwrf_output_calc (module_diagnostics_driver.F:769-834); xtime = minutesSinceSimulationStart of the step start
+  const real dt = real(g_.dt);
+  const real xtime = wrf_time::minutes<real>(wrf_time::make(std::llround(double(itimestep - 1) * g_.dt)));
+  const long per = std::lround(real(o_.auxhist3_interval) * real(60.) / dt);  // NINT(clwrfH*60./dt)
+  KClwrfOutputCalc c{};
+  c.reinit = std::lround(curr_secs2 / dt) % per == 0;
+  if (c.reinit) {
+    nsteps = 1;
+  } else {
+    nsteps = nsteps + 1;
+    c.finish = std::lround((curr_secs2 + dt) / dt) % per == 0;
+  }
+  c.dt = dt;
+  c.tt = xtime + dt / real(60.);
+  c.nsteps = real(nsteps);
+  c.t2 = t2.cview(); c.q2 = q2.cview(); c.u10 = u10.cview(); c.v10 = v10.cview(); c.skintemp = tsk.cview();
+  c.raincv = raincv.cview();
+  if (rainncv_mp_) c.rainncv = rainncv_mp_->cview();
+  c.t2min = t2min.view(); c.t2max = t2max.view(); c.tt2min = tt2min.view(); c.tt2max = tt2max.view();
+  c.t2mean = t2mean.view(); c.t2std = t2std.view(); c.q2min = q2min.view(); c.q2max = q2max.view();
+  c.tq2min = tq2min.view(); c.tq2max = tq2max.view(); c.q2mean = q2mean.view(); c.q2std = q2std.view();
+  c.skintempmin = skintempmin.view(); c.skintempmax = skintempmax.view(); c.tskintempmin = tskintempmin.view();
+  c.tskintempmax = tskintempmax.view(); c.skintempmean = skintempmean.view(); c.skintempstd = skintempstd.view();
+  c.u10max = u10max.view(); c.v10max = v10max.view(); c.spduv10max = spduv10max.view();
+  c.tspduv10max = tspduv10max.view(); c.u10mean = u10mean.view(); c.v10mean = v10mean.view();
+  c.spduv10mean = spduv10mean.view(); c.u10std = u10std.view(); c.v10std = v10std.view();
+  c.spduv10std = spduv10std.view(); c.raincvmax = raincvmax.view(); c.rainncvmax = rainncvmax.view();
+  c.traincvmax = traincvmax.view(); c.trainncvmax = trainncvmax.view(); c.raincvmean = raincvmean.view();
+  c.rainncvmean = rainncvmean.view(); c.raincvstd = raincvstd.view(); c.rainncvstd = rainncvstd.view();
+  column_for(g_.columns(), c);
 }
 
 std::vector<const Field2*> PhysicsSuite::fields2() const {
@@ -771,6 +943,7 @@ std::vector<const Field2*> PhysicsSuite::fields2() const {
   if (o_.fractional_seaice == 1 || o_.sst_update == 1) v.insert(v.end(), {&sst, &tsk_save});
   if (o_.sst_update == 1) v.push_back(&xicem);
   if (o_.prec_acc_opt) v.insert(v.end(), {&prec_acc_c, &prec_acc_nc, &snow_acc_nc});
+  v.insert(v.end(), clwrf_.begin(), clwrf_.end());
   if (o_.sf_surface_physics == 1) v.push_back(&capg);  // THC: phy_init's landuse_init value (WrfHistory)
   return v;
 }

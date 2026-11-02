@@ -436,6 +436,21 @@ void DomainRunner::load_restart_file(const std::string& path) {
     const auto [aring, asecs] = wrf_alarm(path, 30);
     if (asecs >= 0 && asecs < 1700000000) aux4_first_s_ = double(start_step) * g.dt + double(asecs);
     aux4_ring_at_start_ = aring == 1 ? 1 : 0;
+    if (aux3_iv_ > 0) {  // AUXHIST3_ALARM: an output alarm as the history one (share/input_wrf.F:290-325)
+      const auto [ring3, secs3] = wrf_alarm(path, 4);
+      if (secs3 >= 1700000000) {
+        aux3_iv_ = 0;
+      } else if (secs3 >= 0) {
+        const double st = double(secs3) / g.dt;
+        if (secs3 == 0 || std::abs(st - std::round(st)) > 1e-9 * st)
+          throw std::runtime_error(path + ": WRF_ALARM_SECS_TIL_NEXT_RING_04 = " + std::to_string(secs3) +
+                                   " s (the auxhist3 interval after the restart) is not a multiple of the time step");
+        aux3_iv_ = std::lround(st);
+        aux3_ref_ = start_step;
+      }
+      aux3_ring_at_start_ = ring3 == 1 ? 1 : 0;
+    }
+    if (m_.suite) m_.suite->nsteps = int(wrf_scalar(path, "NSTEPS"));  // grid%nsteps (clwrf_output_calc)
   }
 
   for (const auto& t : targets3) {
@@ -567,6 +582,21 @@ bool DomainRunner::start() {
   if (out_iv_ < 1) throw std::runtime_error("output.out_interval must be >= 1 (got " + std::to_string(out_iv_) + ")");
   hist_iv_ = out_iv_;  // load_restart_file may change it
   hist_ref_ = 0;
+  {  // AUXHIST3_ALARM: auxhist3_interval (minutes); load_restart_file may change it
+    const long a3 = cfg_.get_int("phys.auxhist3_interval", 0);
+    const double st = double(a3) * 60.0 / g.dt;
+    if (a3 < 0 || (a3 > 0 && st != std::floor(st)))
+      throw std::runtime_error("phys.auxhist3_interval must be >= 0 and a multiple of time.dt (minutes)");
+    aux3_iv_ = std::lround(st);
+    aux3_ref_ = 0;
+    aux3_write_ = cfg_.get_bool("output.auxhist3", false);
+    if (aux3_write_ && (!write_wrfout_ || aux3_iv_ <= 0))
+      throw std::runtime_error("output.auxhist3 (io_form_auxhist3 = 2) needs output.format = wrfout or both and "
+                               "phys.auxhist3_interval > 0");
+    if (aux3_iv_ > 0 && m_.adapt)
+      throw std::runtime_error("phys.auxhist3_interval with time.adaptive is not supported (the auxhist3 alarm by time "
+                               "is not ported)");
+  }
 
   if (g.dt <= 0.0) throw std::runtime_error("time.dt must be > 0 (got " + std::to_string(g.dt) + ")");
   if (g.nx <= 0) throw std::runtime_error("grid.nx must be > 0 (got " + std::to_string(g.nx) + ")");
@@ -615,6 +645,8 @@ bool DomainRunner::start() {
     load_restart_file(restart_file);
     if (wrfout_)
       wrfout_->set_restart_time(m_.adapt ? wrf_time::real_time<double>(m_.sim_offset) : double(start_step) * g.dt);
+    // med_before_solve_io writes an auxiliary history stream whose alarm the restart file left ringing
+    if (aux3_write_ && wrfout_ && aux3_ring_at_start_ == 1) wrfout_->write_auxhist3(start_step, time_s(start_step));
   }
 #endif
   rst_prev_ = double(start_step) * g.dt;  // the alarm's PrevRingTime starts at the run's start (ESMF_Clock.F90:773)
@@ -718,7 +750,7 @@ bool DomainRunner::start() {
 
 void DomainRunner::after_solve(long n) {
 #ifdef CPPWRF_HAVE_NETCDF
-  if (write_wrfout_ && wrfout_ && (hist_due(n) || n == m_.nsteps || rst_due(n))) wrfout_->after_solve(n);
+  if (write_wrfout_ && wrfout_ && (hist_due(n) || n == m_.nsteps || rst_due(n) || aux3_due(n))) wrfout_->after_solve(n);
 #else
   (void)n;
 #endif
@@ -751,14 +783,14 @@ void DomainRunner::adapt_before_step(long n) {
 void DomainRunner::before_step(long n) {
   if (m_.adapt) adapt_before_step(n);
 #ifdef CPPWRF_HAVE_NETCDF
-  if (write_wrfout_ && wrfout_ && (hist_due(n) || n == m_.nsteps || rst_due(n)))
+  if (write_wrfout_ && wrfout_ && (hist_due(n) || n == m_.nsteps || rst_due(n) || aux3_due(n)))
     wrfout_->before_step(n);
 #endif
   if (pending_ >= 0) {  // deferred frame of the previous step (set_defer_output)
     const long p = pending_;
     pending_ = -1;
     if (p % diag_iv_ == 0) do_diag(p);
-    if (p % out_iv_ == 0 || hist_due(p)) do_snap(p);
+    if (p % out_iv_ == 0 || hist_due(p) || aux3_due(p)) do_snap(p);
   }
   step_start_ = std::chrono::steady_clock::now();
   // solve_em: restart_flag = Is_alarm_tstep(restart alarm) (PrevRingTime + interval <= CurrTime + dt), i.e. the
@@ -795,12 +827,12 @@ bool DomainRunner::after_step(long n) {
   step_time += std::chrono::duration<double>(std::chrono::steady_clock::now() - step_start_).count();
   if (m_.adapt) m_.advance_clock();
   bool last = (n == m_.nsteps);
-  if (defer_output_ && !last && (n % diag_iv_ == 0 || n % out_iv_ == 0 || hist_due(n))) {
+  if (defer_output_ && !last && (n % diag_iv_ == 0 || n % out_iv_ == 0 || hist_due(n) || aux3_due(n))) {
     pending_ = n;
   } else if (n % diag_iv_ == 0 || last) {
     if (!do_diag(n)) return false;
   }
-  if ((n % out_iv_ == 0 || hist_due(n) || last) && pending_ != n) {
+  if ((n % out_iv_ == 0 || hist_due(n) || aux3_due(n) || last) && pending_ != n) {
     do_snap(n);
   }
 #ifdef CPPWRF_HAVE_NETCDF
@@ -859,6 +891,7 @@ void DomainRunner::do_snap(long n) {
     if (m_.adapt) wrfout_->set_exact_time(elapsed(n));
     wrfout_->write(n, time_s(n));
   }
+  if (aux3_write_ && wrfout_ && (n == 0 || aux3_due(n))) wrfout_->write_auxhist3(n, time_s(n));
 #endif
 }
 
@@ -887,9 +920,11 @@ void DomainRunner::do_restart(long n, bool ring) {
     const long hsecs = hist_alarm_t_ ? long(hist_iv_t_.S - (t - hist_prev_t_).S) : 1700000000L;
     wrfout_->set_history_alarm(hring ? 1 : 0, hsecs);
     wrfout_->write_restart(n, time_s(n), 0.0, 0.0, double(rst_iv_t_.S - (t - rst_prev_t_).S), aux4_first_s_);
-  } else if (wrfout_ && ring)
+  } else if (wrfout_ && ring) {
+    wrfout_->set_auxhist3_alarm(double(aux3_iv_) * m_.g.dt, double(aux3_ref_) * m_.g.dt);
     wrfout_->write_restart(n, n * m_.g.dt, double(hist_iv_) * m_.g.dt, double(hist_ref_) * m_.g.dt,
                            std::trunc(rst_iv_s_) - std::trunc(n * m_.g.dt - rst_prev_), aux4_first_s_);
+  }
 }
 #endif
 

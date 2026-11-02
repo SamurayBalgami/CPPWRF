@@ -4,7 +4,7 @@
 One WRF-vs-CPPWRF comparison of a namelist variant: the WRF run RUNS/BASE (inputs and namelist.input) runs
 3 minutes with history every minute and the given namelist changes (key replaced or added in &SECTION), in
 WORK/NAME; CPPWRF runs the configuration tools/wrf2cppwrf.py makes from that namelist; every variable of every frame (by
-Times) of each domain's wrfout and wrfrst files is compared at tolerance 0 (tests/verify/exact.py: NaN equals only
+Times) of each domain's wrfout, wrfrst and auxhist3 (output_diagnostics) files is compared at tolerance 0 (tests/verify/exact.py: NaN equals only
 NaN, -0 differs from +0), with the types, dimensions, variable and global attributes (TITLE aside). Prints one
 line per domain and stream: NAME d0N [wrfrst] frames N differing: none | {VAR: 'time npoints/maxdiff ...', ...};
 times, variables or metadata only one model has are differences too ('(times)', '(wrf-only-vars)',
@@ -204,7 +204,8 @@ if keep:  # WORK/keep/run_NAME: what the suite needs of the reference (remote_ma
     iof = re.findall(r"'([^']*)'|\"([^\"]*)\"", " ".join(re.findall(r"(?im)^\s*iofields_filename\s*=([^\n]*)",
                                                                       open(os.path.join(R, "namelist.input")).read())))
     iof = sorted({a or b for a, b in iof if (a or b).strip()})
-    for f in ["namelist.input", "wrfinput_d01", "input_sounding"] + iof + sorted(glob.glob(os.path.join(R, "wrfout_d0*"))):
+    for f in ["namelist.input", "wrfinput_d01", "input_sounding"] + iof + sorted(glob.glob(os.path.join(R, "wrfout_d0*"))) + \
+            sorted(glob.glob(os.path.join(R, "auxhist3_d0*"))):
         f = os.path.join(R, f)
         if os.path.exists(f):
             subprocess.run(["cp", "-L", f, K])
@@ -227,10 +228,15 @@ def getkey(nl, sec, key, default=None):
 doms = [f"d{i:02d}" for i in range(1, int(getkey(nl, "domains", "max_dom", "1")) + 1)]
 
 
+KINDS = ("wrfout", "wrfrst", "auxhist3")  # history, restart and auxhist3 (output_diagnostics) files
+
+
 def stream_files(d, kind, dom):
-    """The files of a stream (wrfout: by history_outname, wrfrst: by rst_outname) of domain dom in directory d."""
-    key, dflt = ("rst_outname", "wrfrst_d<domain>_<date>") if kind == "wrfrst" else \
-        ("history_outname", "wrfout_d<domain>_<date>")
+    """The files of a stream (wrfout: by history_outname, wrfrst: by rst_outname, auxhist3: by auxhist3_outname) of
+    domain dom in directory d."""
+    key, dflt = {"wrfrst": ("rst_outname", "wrfrst_d<domain>_<date>"),
+                 "auxhist3": ("auxhist3_outname", "auxhist3_d<domain>_<date>")}.get(
+        kind, ("history_outname", "wrfout_d<domain>_<date>"))
     pat = getkey(nl, "time_control", key, dflt).replace("<domain>", dom[1:])
     for tag in ("<date>", "<year>", "<month>", "<day>", "<hour>"):
         pat = pat.replace(tag, "*")
@@ -245,7 +251,7 @@ def compare_runs(wdir, cout, label="", inputs=()):
     """One line per domain and stream: CPPWRF's files in cout (cout/d0N for nests) against WRF's in wdir (its input
     files `inputs` aside)."""
     seen = False
-    for kind in ("wrfout", "wrfrst"):  # history frames, then restart files
+    for kind in KINDS:  # history frames, restart files, auxhist3 frames
         for d in doms:
             cf = stream_files(cdir_of(cout, d), kind, d)
             wf = [f for f in stream_files(wdir, kind, d) if os.path.basename(f) not in inputs]
@@ -280,7 +286,7 @@ def resume_run(S):
     R2 = R + "_rsm"
     subprocess.run(["rm", "-rf", R2])
     os.makedirs(R2)
-    outputs = {os.path.basename(f) for d in doms for k in ("wrfout", "wrfrst") for f in stream_files(R, k, d)}
+    outputs = {os.path.basename(f) for d in doms for k in KINDS for f in stream_files(R, k, d)}
     for f in os.listdir(R):
         if f not in outputs and not re.match(r"(rsl\..*|namelist\.(output|input)|.*\.log|cppwrf|case\.ini)$", f):
             os.symlink(os.path.realpath(os.path.join(R, f)), os.path.join(R2, f))
@@ -327,4 +333,4 @@ def resume_run(S):
 
 if resume is not None:
     resume_run(resume)
-subprocess.run(["rm", "-rf", out] + [f for d in doms for k in ("wrfout", "wrfrst") for f in stream_files(R, k, d)])
+subprocess.run(["rm", "-rf", out] + [f for d in doms for k in KINDS for f in stream_files(R, k, d)])

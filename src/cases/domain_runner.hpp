@@ -86,6 +86,13 @@ class DomainRunner {
     if (m_.adapt) return n > start_step && n - start_step < long(hist_ring_.size()) && hist_ring_[std::size_t(n - start_step)];
     return hist_iv_ > 0 && n > hist_ref_ && (n - hist_ref_) % hist_iv_ == 0;
   }
+  // WRF's AUXHIST3_ALARM (auxhist3_interval, phys.auxhist3_interval minutes): as the history alarm, also after a
+  // restart from a WRF file (its seconds to the next ring become the interval; ringing at the start when the file
+  // says so); aux3_write_: io_form_auxhist3 = 2, the auxhist3 files (output.auxhist3)
+  long aux3_iv_ = 0, aux3_ref_ = 0;
+  int aux3_ring_at_start_ = -1;
+  bool aux3_write_ = false;
+  bool aux3_due(long n) const { return aux3_iv_ > 0 && n > aux3_ref_ && (n - aux3_ref_) % aux3_iv_ == 0; }
   double rst_iv_s_ = 0.0;  // restart interval (s), WRF's RESTART_ALARM
   double rst_prev_ = 0.0;  // the alarm's PrevRingTime (s)
   bool rst_due(long n) const;

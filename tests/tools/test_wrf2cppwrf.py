@@ -1206,6 +1206,43 @@ class TestWrfNamelistSemantics(unittest.TestCase):
             t, sec = self.translate(self.NEST + f"&physics mp_physics = 2*6, {opt} /\n")
             self.assertTrue(any("bucket_mm / bucket_J / prec_acc_dt" in e for e in t.errors), opt)
 
+    def test_output_and_nwp_diagnostics(self):
+        # output_diagnostics = 1 (clwrf_output_calc): every domain's auxhist3_interval (minutes; a domain without one
+        # stops wrf.exe), the auxhist3 files with io_form_auxhist3 = 2 (wrfout format only); nwp_diagnostics stays an
+        # error (check_a_mundo also sets do_radar_ref = 1)
+        phys = "&physics mp_physics = 2*6, sf_sfclay_physics = 2*1, sf_surface_physics = 2*2, bl_pbl_physics = 2*1 /\n"
+
+        def run(tc, physics=phys, fmt="wrfout"):
+            text = self.NEST.replace("&time_control ", f"&time_control history_interval = 2*10, {tc}, ") + physics
+            t = WrfTranslator(parse_namelist(complete(text)), output_format=fmt)
+            return t, t.translate()
+        ok = "output_diagnostics = 1, auxhist3_interval = 10, 20, io_form_auxhist3 = 2"
+        t, sec = run(ok)
+        self.assertEqual(t.errors, [])
+        self.assertEqual((sec["phys"]["output_diagnostics"], sec["phys"]["auxhist3_interval"]), (1, 10))
+        self.assertEqual(sec["d02"]["phys_auxhist3_interval"], 20)
+        self.assertTrue(sec["output"]["auxhist3"])
+        # io_form_auxhist3 = 0: the statistics (restart fields) without auxhist3 files
+        t, sec = run("output_diagnostics = 1, auxhist3_interval = 2*10")
+        self.assertEqual(t.errors, [])
+        self.assertEqual(sec["phys"]["output_diagnostics"], 1)
+        self.assertNotIn("auxhist3", sec["output"])
+        self.assertNotIn("phys_auxhist3_interval", sec["d02"])
+        for tc, err in (("output_diagnostics = 1, auxhist3_interval = 10", "NO 'auxhist3_interval'"),  # d02: none
+                        (ok + ", auxhist3_interval_s = 30", "auxhist3_interval_s"),
+                        (ok + ", auxhist3_begin_m = 30", "auxhist3_begin_m"),
+                        (ok.replace("io_form_auxhist3 = 2", "io_form_auxhist3 = 11"), "io_form_auxhist3 = 11"),
+                        (ok.replace("output_diagnostics = 1", "output_diagnostics = 2"), "output_diagnostics = 2")):
+            t, _ = run(tc)
+            self.assertTrue(any(err in e for e in t.errors), (tc, t.errors))
+        # auxhist3 files need WRF-format output; the statistics need the column physics
+        t, _ = run(ok, fmt="native")
+        self.assertTrue(any("io_form_auxhist3 = 2" in e for e in t.errors), t.errors)
+        t, _ = run(ok, physics="&physics mp_physics = 2*6 /\n")
+        self.assertTrue(any("output_diagnostics = 1 needs the column physics" in e for e in t.errors), t.errors)
+        t, _ = run("nwp_diagnostics = 1")
+        self.assertTrue(any("nwp_diagnostics = 1" in e and "do_radar_ref" in e for e in t.errors), t.errors)
+
     def test_mynn_options_of_every_domain(self):
         text = self.NEST + ("&physics mp_physics = 2*8, sf_sfclay_physics = 2*5, bl_pbl_physics = 2*5,"
                             " bl_mynn_edmf_dd = 0, 1 /\n")

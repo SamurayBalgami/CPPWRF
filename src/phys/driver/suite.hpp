@@ -117,6 +117,10 @@ struct SuiteOptions {
   // prec_acc_opt (check_a_mundo): some domain's prec_acc_dt > 0, every domain has the PREC_ACC fields
   double bucket_mm = -1, bucket_j = -1, prec_acc_dt = 0;
   bool prec_acc_opt = false;
+  // clwrf_output_calc (module_diag_cl.F): output_diagnostics = 1, statistics over this domain's auxhist3_interval
+  // (minutes, WRF's clwrfH)
+  int output_diagnostics = 0;
+  int auxhist3_interval = 0;
 };
 
 class PhysicsSuite : public dyn::ColumnPhysics {
@@ -127,7 +131,8 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   void part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) override;
   void part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) override;
   void after_rk(const dyn::State& s, const dyn::BaseState& b) override;
-  void after_all_rk_steps() override;  // diagnostic_output_calc: buckets and prec_acc_dt accumulations
+  // diagnostics_driver: diagnostic_output_calc (buckets and prec_acc_dt accumulations), clwrf_output_calc
+  void after_all_rk_steps() override;
   Field3* th_forcing() override { return o_.cu_physics == 16 || o_.cu_physics == 3 ? &pt.rthften : nullptr; }
   // rk_scalar_tend sets RQVFTEN for Kain-Fritsch too (module_em.F), though KF does not use it
   Field3* qv_forcing() override {
@@ -239,6 +244,14 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   std::array<Field2*, 16> acrad();  // ACSWUPT, ACSWUPTC, ACSWDNT, ..., ACLWDNBC (module_diag_misc.F order)
   // a bucket counter by its lower-case WRF name (i_rainc, i_acswupt, ...); nullptr when its package is off
   IntField2* bucket_int(const std::string& name);
+  // clwrf_output_calc (output_diagnostics = 1, package maxmin_output): the statistics of T2, Q2, U10 / V10, RAINCV,
+  // RAINNCV and TSK over the auxhist3 interval (Registry rh3: restart and auxhist3 fields) and grid%nsteps
+  Field2 t2min, t2max, tt2min, tt2max, t2mean, t2std, q2min, q2max, tq2min, tq2max, q2mean, q2std, skintempmin,
+      skintempmax, tskintempmin, tskintempmax, skintempmean, skintempstd, u10max, v10max, spduv10max, tspduv10max,
+      u10mean, v10mean, spduv10mean, u10std, v10std, spduv10std, raincvmax, rainncvmax, traincvmax, trainncvmax,
+      raincvmean, rainncvmean, raincvstd, rainncvstd;
+  int nsteps = 0;
+  std::vector<Field2*> clwrf_;  // the fields above in Registry order (empty when the package is off)
   std::unique_ptr<RadiationDriver> rad_;
   Field3 *re_cloud_ = nullptr, *re_ice_ = nullptr, *re_snow_ = nullptr;
   // radiation needs latitude/longitude (wrfinput XLAT/XLONG, i + nx*j); call before the first step

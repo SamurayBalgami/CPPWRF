@@ -253,6 +253,8 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.bucket_j = cfg.get_double("phys.bucket_j", -1.0);
   o.prec_acc_dt = cfg.get_double("phys.prec_acc_dt", 0.0);  // this domain's entry (minutes)
   o.prec_acc_opt = cfg.get_bool("phys.prec_acc_opt", o.prec_acc_dt > 0);  // check_a_mundo: some domain's > 0
+  o.output_diagnostics = int(cfg.get_int("phys.output_diagnostics", 0));  // clwrf_output_calc (module_diag_cl.F)
+  o.auxhist3_interval = int(cfg.get_int("phys.auxhist3_interval", 0));    // this domain's entry (minutes)
   o.gwd_opt = int(cfg.get_int("dyn.gwd_opt", 0));
   o.gwd_dx_factor = cfg.get_double("dyn.gwd_dx_factor", 2.0);
   o.gwd_if_nonhyd = cfg.get_bool("dyn.gwd_if_nonhyd", true);

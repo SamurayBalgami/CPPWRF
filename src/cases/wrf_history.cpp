@@ -169,6 +169,7 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
     c.set("kim_tofd", o.kim_tofd ? ".true." : ".false.");
     c.set("bucket_mm", str(o.bucket_mm)); c.set("bucket_j", str(o.bucket_j));
     c.set("prec_acc_dt", str(o.prec_acc_dt));
+    c.set("output_diagnostics", std::to_string(o.output_diagnostics));
     if (o.sf_surface_physics == 4) {
       c.set("dveg", std::to_string(o.noahmp.dveg));
       c.set("opt_crs", std::to_string(o.noahmp.opt_crs));
@@ -206,6 +207,8 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
     auxinput4_interval_s_ = cfg.get_double("phys.auxinput4_interval", 360.0) * 60.0;
   hist_outname_ = wc_->get("history_outname");  // the file names of open_hist_w / med_restart_out
   rst_outname_ = wc_->get("rst_outname");
+  aux3_outname_ = wc_->get("auxhist3_outname");
+  frames_per_aux3_ = std::max(1, wc_->integer("frames_per_auxhist3"));
   if (!real_dir.empty()) {
     wrfinput_ = real_dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_" + domain_tag_);
     if (domain_tag_ != "d01") wrfinput_ = real_dir + "/wrfinput_" + domain_tag_;
@@ -494,6 +497,7 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     });
   }
   if (name == "ITIMESTEP") { out.assign(1, double(step_)); return true; }
+  if (name == "NSTEPS" && m_.suite) { out.assign(1, double(m_.suite->nsteps)); return true; }  // clwrf_output_calc
   if (m_.suite && dims.size() == 2) {
     const phys::driver::IntField2* fi = nullptr;
     if (name == "KPBL") fi = &m_.suite->kpbl;
@@ -992,6 +996,10 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
       // the last step: med_restart_out runs before med_last_solve_io writes that frame
       // nests: med_restart_out of the parent runs before the nest's next med_before_solve_io turns it off
       if ((step == m_.nsteps || d.grid_id > 1) && since % iv == 0) ring = 1;
+    } else if (a == 4 && aux3_iv_s_ > 0) {  // AUXHIST3_ALARM: med_before_solve_io handles it as the history alarm
+      const long iv = std::lround(aux3_iv_s_), since = el - std::lround(aux3_ref_s_);
+      secs = int(iv - since % iv);
+      if ((step == m_.nsteps || d.grid_id > 1) && since % iv == 0) ring = 1;
     } else if (a == 30 && auxinput4_interval_s_ > 0) {
       const long iv = std::lround(auxinput4_interval_s_), since = el - std::lround(auxinput4_ref_s);
       // a resumed run before its first ring: ESMF_ClockAddAlarm set PrevRingTime to the alarm's first RingTime,
@@ -1051,6 +1059,32 @@ void WrfHistory::write(long step, double time_sec) {
   });
   t_snap_.erase(t_snap_.begin(), t_snap_.lower_bound(step));
   p_hyd_snap_.erase(p_hyd_snap_.begin(), p_hyd_snap_.lower_bound(step));
+}
+
+// output_wrf treats the auxiliary history streams as the history (global attributes of history_only) except
+// adjust_output_times; the variables are those of stream h:3 (Registry h3, iofields_filename)
+void WrfHistory::write_auxhist3(long step, double time_sec) {
+  step_ = step;
+  time_sec_ = time_sec;
+  const std::string date = date_of(time_sec);
+  if (!aux3_file_ || aux3_file_->records() >= std::size_t(frames_per_aux3_)) {
+    aux3_file_.reset();
+    std::filesystem::create_directories(out_dir_);
+    const std::string path = out_dir_ + "/" + wrf_io::stream_filename(aux3_outname_, std::stoi(domain_tag_.substr(1)), date);
+    const Grid& g = m_.g;
+    std::vector<wrf_io::OutVar> vars = schema_->stream_vars(*wc_, g.nx + 1, g.ny * jrep_ + 1, g.nz + 1, int(sizeof(real)), 0, 3);
+    for (wrf_io::OutVar& v : vars)
+      if (v.name == "XTIME") {
+        std::string sd = start_date_.substr(0, 19);
+        sd[10] = ' ';
+        v.desc = v.units = "minutes since " + sd;
+      }
+    aux3_file_ = std::make_unique<wrf_io::StreamFile>(path, std::move(vars), *wc_, domain_atts(), wrf_io::Stream::history,
+                                                      !wc_->logical("use_netcdf_classic"));
+  }
+  aux3_file_->write(date, [&](const wrf_io::OutVar& v, std::vector<double>& out) {
+    return out_value(v, out);
+  });
 }
 
 }  // namespace cppwrf::cases
