@@ -217,7 +217,7 @@ CASES = [
                        "QNIFA", "RAINNC")}),
     ("real_c01_r8_fp64_cuda_1h", "cuda_dp", "configs/real_c01_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_C01_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-4, "W": 3e-3, "THM": 2e-6, "QV": 3e-5}),
+     f"{WR}/run_C01_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1.1e-6, "W": 2.2e-4, "THM": 3.3e-8, "QV": 4.8e-7}),  # G4: U 3.6e-7 W 7.3e-5 THM 1.1e-8 QV 1.6e-7
     # KESSKF = P4 with Kessler (mp_physics = 1): Kain-Fritsch rain into Kessler's sedimentation (nfall > 1),
     # bit-identical for 3 steps and 1 h
     ("real_kesskf_r8_fp64_cpu", "cpu_dp", "configs/real_kesskf_r8.ini", [],
