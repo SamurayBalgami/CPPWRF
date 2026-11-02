@@ -480,14 +480,16 @@ CASES = [
      f"{WR}/run_SLAB1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
     ("real_slab1_r8_fp64_cuda_1h", "cuda_dp", "configs/real_slab1_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_SLAB1_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_SLAB1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-7, "W": 1e-6, "THM": 1e-8, "QV": 1e-7}),
+     f"{WR}/run_SLAB1_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {"U": 1.5e-12, "W": 2.5e-11, "THM": 2.5e-15, "QV": 1e-13}),  # G4: U 4.4e-13 W 7.9e-12 THM 7.8e-16 QV 2.8e-14
     ("real_slab4_r8_fp64_cpu_1h", "cpu_dp", "configs/real_slab4_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_SLAB4_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_SLAB4_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
      {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0}),
     ("real_slab4_r8_fp64_cuda_1h", "cuda_dp", "configs/real_slab4_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_SLAB4_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_SLAB4_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-3, "W": 2e-2, "THM": 2e-5, "QV": 1e-3}),
+     f"{WR}/run_SLAB4_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {"U": 1e-3, "W": 1.5e-2, "THM": 1.6e-5, "QV": 9e-4}),  # G4: U 3.4e-4 W 4.8e-3 THM 5.3e-6 QV 2.9e-4
     # NMP1 = P1 with Noah-MP v5.1.2 (sf_surface_physics = 4) against WRF v4.8.0 real*8 and single precision.
     ("real_nmp1_r8_fp64_cpu", "cpu_dp", "configs/real_nmp1_r8.ini", [],
      f"{WR}/run_NMP1_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
