@@ -14,7 +14,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import colcmp  # noqa: E402
 
-def compare_thompson(f_file="output_fortran.bin", cpp_file="output_cpp.bin", tol=1e-12):
+def compare_thompson(f_file="output_fortran.bin", cpp_file="output_cpp.bin", tol=1e-12, aero=False):
     if not os.path.exists(f_file):
         print(f"Error: {f_file} does not exist")
         return False
@@ -61,6 +61,11 @@ def compare_thompson(f_file="output_fortran.bin", cpp_file="output_cpp.bin", tol
         ("re_ice", "Cloud ice effective radius (m)", True, 1e-6),
         ("re_snow", "Snow effective radius (m)", True, 1e-6),
     ]
+    if aero:  # mp_physics = 28: the predicted numbers after the emissions
+        var_meta += [("nc", "Cloud droplet number (#/kg)", True, 1.0),
+                     ("nwfa", "Water-friendly aerosol number (#/kg)", True, 1.0),
+                     ("nifa", "Ice-friendly aerosol number (#/kg)", True, 1.0),
+                     ("nbca", "Black-carbon aerosol number (#/kg, 0)", True, 1.0)]
 
     with open(f_file, "rb") as ff, open(cpp_file, "rb") as fc:
         print(f"\n### Differential Comparison: Fortran vs C++ (tol = {tol:.1e})\n")
@@ -98,7 +103,7 @@ def compare_thompson(f_file="output_fortran.bin", cpp_file="output_cpp.bin", tol
             print(f"| `{name}` | {desc} | {max_abs:.6e} | {max_rel:.6e} | {worst_col} | {status} |")
 
         if ff.read(1) or fc.read(1):
-            print("Error: more data than the 19 variables")
+            print(f"Error: more data than the {len(var_meta)} variables")
             all_pass = False
         print()
         if all_pass:
@@ -114,6 +119,7 @@ if __name__ == "__main__":
     parser.add_argument("fort_file", nargs="?", default="output_fortran.bin", help="Path to Fortran binary output")
     parser.add_argument("cpp_file", nargs="?", default="output_cpp.bin", help="Path to C++ binary output")
     parser.add_argument("--tol", type=float, default=1e-12, help="Relative difference tolerance")
+    parser.add_argument("--aero", action="store_true", help="mp_physics = 28 outputs (nc, nwfa, nifa, nbca after re_snow)")
     args, unknown = parser.parse_known_args()
     if unknown and len(unknown) == 1:
         try:
@@ -121,5 +127,5 @@ if __name__ == "__main__":
         except ValueError:
             pass
 
-    ok = compare_thompson(args.fort_file, args.cpp_file, args.tol)
+    ok = compare_thompson(args.fort_file, args.cpp_file, args.tol, args.aero)
     sys.exit(0 if ok else 1)

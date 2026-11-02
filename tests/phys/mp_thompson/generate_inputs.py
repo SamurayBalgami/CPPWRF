@@ -241,6 +241,30 @@ def generate_soundings(ncols=2500, nlevels=50, seed=42):
     }
     return data
 
+def add_aerosols(data, seed=7):
+    """mp_physics = 28 inputs: droplet number nc, water- / ice-friendly aerosols nwfa / nifa [#/kg] and their surface
+    emissions nwfa2d / nifa2d [#/kg/s]. Droplet numbers from 2 to 2e9 where there is cloud water (also below 2 and
+    above Nt_c_max: the scheme's limits), aerosols from below the 11.1e6 floor to above 9999e6; a fifth of the
+    columns is made ice-supersaturated (rh_ice 1.45 to 1.7) where T < 238 K for the Koop freezing."""
+    rng = np.random.RandomState(seed)
+    nl, nc_ = data["nlevels"], data["ncols"]
+    qc = data["qc"]
+    nc = np.where(qc > 1.0e-12, 10.0 ** rng.uniform(0.0, 9.4, (nl, nc_)), rng.choice([0.0, 50.0e6], (nl, nc_)))
+    nwfa = 10.0 ** rng.uniform(6.5, 10.1, (nl, nc_))
+    nifa = 10.0 ** rng.uniform(2.5, 7.5, (nl, nc_))
+    nwfa2d = rng.uniform(0.0, 2.0e5, nc_)
+    nifa2d = rng.uniform(0.0, 1.0e3, nc_) * (rng.uniform(size=nc_) < 0.5)
+    t = data["th"] * data["pii"]
+    p = data["p"]
+    cold = t < 238.0
+    sel = np.tile(rng.uniform(size=nc_) < 0.2, (nl, 1)) & cold
+    esi = 611.2 * np.exp(22.46 * (t - 273.15) / (t - 0.53))  # over ice
+    qvsi = 0.622 * esi / np.maximum(100.0, p - esi)
+    data["qv"] = np.where(sel, qvsi * rng.uniform(1.45, 1.7, (nl, nc_)), data["qv"])
+    data.update(nc=nc, nwfa=nwfa, nifa=nifa, nwfa2d=nwfa2d, nifa2d=nifa2d)
+    return data
+
+
 def save_inputs(data, filename="input_thompson.bin"):
     with open(filename, "wb") as f:
         # Header: ncols (i32), nlevels (i32), dt (f64)
@@ -255,6 +279,10 @@ def save_inputs(data, filename="input_thompson.bin"):
         for key in ["rainnc", "rainncv", "snownc", "snowncv", "graupelnc", "graupelncv", "sr"]:
             f.write(data[key].astype(np.float64).tobytes(order="C"))
 
+        if "nc" in data:  # mp_physics = 28: 3-D nc, nwfa, nifa, then 2-D nwfa2d, nifa2d
+            for key in ["nc", "nwfa", "nifa", "nwfa2d", "nifa2d"]:
+                f.write(data[key].astype(np.float64).tobytes(order="C"))
+
     print(f"Saved {data['ncols']} columns x {data['nlevels']} levels to {filename}")
 
 if __name__ == "__main__":
@@ -262,6 +290,9 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--ncols", type=int, default=2500)
     ap.add_argument("--nlevels", type=int, default=50)
+    ap.add_argument("--aero", action="store_true", help="mp_physics = 28 inputs (nc, nwfa, nifa, nwfa2d, nifa2d)")
     args = ap.parse_args()
     data = generate_soundings(ncols=args.ncols, nlevels=args.nlevels)
+    if args.aero:
+        data = add_aerosols(data)
     save_inputs(data)

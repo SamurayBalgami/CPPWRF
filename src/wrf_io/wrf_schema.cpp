@@ -148,6 +148,9 @@ void derive_config(WrfConfig& c, int max_dom, bool real_exe) {
     if (cu == 11) icloud_cu = 2;
     c.set("icloud_cu", std::to_string(icloud_cu));
   }
+  // check_a_mundo: mp_physics 28 / 29 have their own fog settling, grav_settling is reset to 0 (the history
+  // attribute GRAV_SETTLING)
+  if (c.integer("mp_physics") == 28 || c.integer("mp_physics") == 29) c.set("grav_settling", "0");
   // mfshconv only with the QNSE PBL (bl_pbl_physics = 4)
   if (c.integer("bl_pbl_physics") != 4) c.set("mfshconv", "0");
   // check_a_mundo: a domain without NSSL microphysics (mp_physics 18, or 17, 19, 21, 22 which become 18) turns the

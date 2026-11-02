@@ -28,7 +28,7 @@ for b in r8 r8d8; do
       find main frame share phys dyn_em external -name '*.mod'
       find external -name 'lib*.a'
       find inc -type f
-      for t in LANDUSE.TBL VEGPARM.TBL SOILPARM.TBL GENPARM.TBL NoahmpTable.TBL; do echo "run/$t"; done
+      for t in LANDUSE.TBL VEGPARM.TBL SOILPARM.TBL GENPARM.TBL NoahmpTable.TBL CCN_ACTIVATE.BIN; do echo "run/$t"; done
     } | sort -u > "$TMP/list_$b" )
   mkdir -p "$TMP/wrf_build"; ln -s "$W" "$TMP/wrf_build/$b"
 done

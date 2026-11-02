@@ -72,6 +72,7 @@ int main(int argc, char** argv) {
     bool bench_mode = false;
     bool bench_100k = false;
     int bench_iters = 10;
+    bool aero = false;  // --aero: mp_physics = 28 (inputs and outputs of fortran/driver_thompson_aero.f90)
 
     for (int a = 1; a < argc; ++a) {
         std::string arg = argv[a];
@@ -86,6 +87,8 @@ int main(int argc, char** argv) {
             if (a + 1 < argc && argv[a + 1][0] != '-') {
                 bench_iters = std::atoi(argv[++a]);
             }
+        } else if (arg == "--aero") {
+            aero = true;
         } else if (a == 1 && arg[0] != '-') {
             infile = arg;
         } else if (a == 2 && arg[0] != '-') {
@@ -148,8 +151,20 @@ int main(int argc, char** argv) {
         std::fclose(f);
         return 1;
     }
+    std::vector<double> h_nc, h_nwfa, h_nifa, h_nwfa2d, h_nifa2d;
+    if (aero) {
+        h_nc.resize(n3d); h_nwfa.resize(n3d); h_nifa.resize(n3d); h_nwfa2d.resize(n2d); h_nifa2d.resize(n2d);
+        if (!read_3d(h_nc) || !read_3d(h_nwfa) || !read_3d(h_nifa) || !read_2d(h_nwfa2d) || !read_2d(h_nifa2d)) {
+            std::fclose(f);
+            return 1;
+        }
+    }
     std::fclose(f);
 
+    if (bench_100k && aero) {
+        std::fprintf(stderr, "--bench-100k does not take --aero\n");
+        return 1;
+    }
     if (bench_100k) {
         int n_orig = ncols;
         int n_target = 100000;
@@ -189,7 +204,7 @@ int main(int argc, char** argv) {
     // Fortran driver in the working directory), the remaining tables computed as thompson_init does
     phys::mp_thompson::ThompsonHostTables<real> h_tables;
     {
-        phys::mp_thompson::init_thompson_tables(h_tables, ".");
+        phys::mp_thompson::init_thompson_tables(h_tables, ".", false, aero);  // aero: CCN_ACTIVATE.BIN in "."
     }
 
     phys::mp_thompson::ThompsonDeviceTables<real> dev_tables;
@@ -205,6 +220,8 @@ int main(int argc, char** argv) {
     DevBuffer<real> d_rainnc(n2d), d_rainncv(n2d), d_snownc(n2d), d_snowncv(n2d);
     DevBuffer<real> d_graupelnc(n2d), d_graupelncv(n2d), d_sr(n2d);
     DevBuffer<real> d_re_cloud(n3d), d_re_ice(n3d), d_re_snow(n3d);
+    const std::size_t na3 = aero ? n3d : 0, na2 = aero ? n2d : 0;
+    DevBuffer<real> d_nc(na3), d_nwfa(na3), d_nifa(na3), d_nbca(na3), d_nwfa2d(na2), d_nifa2d(na2);
 
     auto copy_to_d = [](const std::vector<double>& h, DevBuffer<real>& d, std::size_t count) {
         h2d(d.get(), h.data(), count);
@@ -231,6 +248,14 @@ int main(int argc, char** argv) {
     copy_to_d(h_graupelnc, d_graupelnc, n2d);
     copy_to_d(h_graupelncv, d_graupelncv, n2d);
     copy_to_d(h_sr, d_sr, n2d);
+    if (aero) {
+        copy_to_d(h_nc, d_nc, n3d);
+        copy_to_d(h_nwfa, d_nwfa, n3d);
+        copy_to_d(h_nifa, d_nifa, n3d);
+        copy_to_d(std::vector<double>(n3d, 0.0), d_nbca, n3d);
+        copy_to_d(h_nwfa2d, d_nwfa2d, n2d);
+        copy_to_d(h_nifa2d, d_nifa2d, n2d);
+    }
 
     int sj3d = ncols * nlevels;
     int sk3d = ncols;
@@ -241,6 +266,10 @@ int main(int argc, char** argv) {
     auto v2 = [&](DevBuffer<real>& b) { return View2<real>{b.get(), sj2d}; };
 
     Range2D range{0, ncols, 0, 1};
+    phys::mp_thompson::ThompsonAeroFields<real> aero_fields{};
+    if (aero)
+        aero_fields = {v3(d_nc), v3(d_nwfa), v3(d_nifa), v3(d_nbca), View2<const real>{d_nwfa2d.get(), sj2d},
+                       View2<const real>{d_nifa2d.get(), sj2d}};
 
     auto launch_kernel = [&]() {
         phys::mp_thompson::run_thompson<real>(
@@ -250,15 +279,15 @@ int main(int argc, char** argv) {
             v2(d_rainnc), v2(d_rainncv), v2(d_snownc), v2(d_snowncv),
             v2(d_graupelnc), v2(d_graupelncv), v2(d_sr),
             static_cast<real>(dt_in), range, nlevels, d_tables_view,
-            v3(d_re_cloud), v3(d_re_ice), v3(d_re_snow)
+            v3(d_re_cloud), v3(d_re_ice), v3(d_re_snow), aero ? &aero_fields : nullptr
         );
     };
 
-    // Warm-up run
+    // Warm-up run (with --aero the only run: the numbers are updated in place)
     launch_kernel();
     dev_sync();
 
-    if (bench_mode) {
+    if (bench_mode && !aero) {
         auto t0 = std::chrono::high_resolution_clock::now();
         for (int iter = 0; iter < bench_iters; ++iter) {
             launch_kernel();
@@ -346,6 +375,13 @@ int main(int argc, char** argv) {
     write_buf(out_re_cloud);
     write_buf(out_re_ice);
     write_buf(out_re_snow);
+    if (aero) {  // nc, nwfa, nifa, nbca (0)
+        for (DevBuffer<real>* b : {&d_nc, &d_nwfa, &d_nifa, &d_nbca}) {
+            std::vector<double> o(n3d);
+            copy_from_d(*b, o, n3d);
+            write_buf(o);
+        }
+    }
 
     std::fclose(fo);
     std::cout << "Wrote " << outfile << " successfully for " << ncols << " columns.\n";
