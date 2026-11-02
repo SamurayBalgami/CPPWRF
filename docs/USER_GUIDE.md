@@ -28,6 +28,7 @@ This guide provides instructions for building CPPWRF on CPU and GPU architecture
    - [Independent Verification Harness (`verify.py`)](#independent-verification-harness-verifypy)
    - [Real-Data WRF Output Comparison (`compare_real.py`)](#real-data-wrf-output-comparison-compare_realpy)
    - [Unit & Differential Physics Tests](#unit--differential-physics-tests)
+   - [The CPU Suite on Google Cloud or Colab](#the-cpu-suite-on-google-cloud-or-colab)
 7. [Performance](#7-performance)
 
 ---
@@ -422,6 +423,34 @@ ctest --test-dir build-cpu --output-on-failure
 
 # Python translation tool tests
 python3 tests/tools/test_wrf2cppwrf.py -v
+```
+
+### The CPU Suite on Google Cloud or Colab
+The full CPU FP64 suite (wrf_suite.py, the output files tests, the differential and ctest tests, the translator
+tests and the comparators' self-test) runs on a remote machine with an Intel CPU: AMD CPUs give different results
+in glibc's vector `log` / `atan`, so they cannot reproduce the Intel-made WRF references.
+
+- `tools/gcp/gcp_run.sh` runs it on a Google Compute Engine spot VM (Debian 13), with the data tars of
+  `tests/verify/vm_data.txt` from the bucket.
+- `tools/colab/colab_suite.sh` runs the same steps (`tools/gcp/suite_body.sh`) on a Colab runtime with an Intel CPU
+  (default `--gpu L4`: Intel Xeon Cascade Lake, 12 vCPUs, 52 GB; the GPU is not used; G4 and the CPU-only runtime
+  are AMD and are refused) inside a Debian 13 chroot, so that gcc, glibc, libmvec, NetCDF and Python are the GCP
+  VMs' packages. The data tars come from Google Drive (`cppwrf-drive:cppwrf-data`), where
+  `tools/colab/drive_sync.sh` copies them from the bucket on a Colab runtime; a tar not yet on Drive is read from
+  the bucket with a read-only token (`tools/colab/gcs_token.py`) and then put on Drive. Same options as
+  `gcp_run.sh` (`--cases`, `--data`, `--out`, `--slow`), plus `--jobs` / `--threads`, `--rev` (another commit),
+  `--keep` / `--session` (reuse a runtime with its chroot and tars). Exit status 0 only for a complete suite
+  without FAIL or SKIP (`tools/gcp/suite_status.sh`, as `gcp_run.sh`).
+- `tools/colab/colab_wrfref.sh REFS.txt` makes WRF references on such a runtime as `tools/gcp/gcp_wrfref.sh`
+  (`--check-only`, `--files`, `--cases`; `--stage OBJ:CASE,...` puts the suite's tar of the new references on Drive).
+
+```bash
+# once: the Drive remote (browser login; scope drive.file), then the tars of vm_data.txt to Drive
+rclone config create cppwrf-drive drive scope=drive.file
+CPPWRF_GCP_BUCKET=cppwrf-data-244589 tools/colab/drive_sync.sh
+# the full suite
+CPPWRF_GCP_BUCKET=cppwrf-data-244589 timeout 43200 tools/colab/colab_suite.sh \
+  --data $(grep -v '^#' tests/verify/vm_data.txt | paste -sd,)
 ```
 
 ---

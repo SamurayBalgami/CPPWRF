@@ -79,26 +79,4 @@ done
 gcloud storage cp "gs://$BK/$RES/*" "$OUT/" --project "$P" -q || true
 rm -f "$OUT/src.tar.gz"; gcloud storage rm "gs://$BK/src/$STAMP.tar.gz" --project "$P" -q || true
 echo "[gcp_run] results in $OUT"
-for k in PASS FAIL SKIP; do echo "$k $(grep -c "^$k " "$OUT/suite.log" 2>/dev/null || true)"; done
-grep -E "^(FAIL|SKIP|ERROR) " "$OUT/suite.log" 2>/dev/null || true
-bad=0
-cat "$OUT/setup.out" 2>/dev/null | grep . && bad=1
-grep -q "^exit 0$" "$OUT/unit.log" 2>/dev/null || { echo "[gcp_run] translator tests: $(tail -1 "$OUT/unit.log" 2>/dev/null || echo 'no unit.log')"; bad=1; }
-grep -q "^exit 0$" "$OUT/selftest.log" 2>/dev/null || { echo "[gcp_run] comparator self-test: $(grep -E "WRONG|SELFTEST" "$OUT/selftest.log" 2>/dev/null || echo 'no selftest.log')"; bad=1; }
-if ! grep -q "^SUITE " "$OUT/suite.log" 2>/dev/null; then echo "[gcp_run] INCOMPLETE: the suite did not end (no SUITE line)"; bad=1
-else grep "^SUITE " "$OUT/suite.log"; grep -q "^exit 0$" "$OUT/suite.log" || bad=1; fi
-if [ -z "$CASES" ]; then  # the full suite: the output files tests too (remote_suite.sh)
-  for f in files idealfiles; do
-    if [ ! -f "$OUT/$f.log" ]; then echo "[gcp_run] INCOMPLETE: no $f.log"; bad=1; continue; fi
-    echo "$f: PASS $(grep -c '^PASS ' "$OUT/$f.log") FAIL $(grep -c '^FAIL ' "$OUT/$f.log") SKIP $(grep -c '^SKIP ' "$OUT/$f.log")"
-    grep -E "^(FAIL|SKIP) " "$OUT/$f.log" | cut -c1-200 || true  # none: grep fails (set -e, pipefail)
-    grep -E "^exit [1-9]" "$OUT/$f.log" && bad=1
-  done
-  for f in diff ctest; do
-    if [ ! -f "$OUT/$f.log" ]; then echo "[gcp_run] INCOMPLETE: no $f.log"; bad=1; continue; fi
-    echo "$f: $(grep -E 'tests passed' "$OUT/$f.log" || echo 'no ctest summary')"
-    grep -E '^\s*[0-9]+ - .*\((Failed|Timeout|SEGFAULT|Subprocess|Skipped|Not Run)|^SKIPPED ' "$OUT/$f.log" || true
-    grep -qx "exit 0" "$OUT/$f.log" || bad=1
-  done
-fi
-exit $bad
+bash "$REPO/tools/gcp/suite_status.sh" "$OUT" "$CASES"

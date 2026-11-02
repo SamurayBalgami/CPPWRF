@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# The VM side of tools/gcp/gcp_run.sh (startup script): installs the build tools, builds the CPU FP64 binary
-# with the instruction set of the reference workstation (-march=skylake, as -march=native there), runs
-# wrf_suite.py, copies the results to the bucket and powers the VM off. The full suite (no cases) also runs the
-# differential and unit tests (tools/gcp/run_diff_tests.sh: diff.log, ctest.log) next to the suite.
+# The VM side of tools/gcp/gcp_run.sh (startup script): installs the build tools, fetches the source and the data,
+# runs tools/gcp/suite_body.sh (the CPU FP64 build, translator tests, comparator self-test, wrf_suite.py; the full
+# suite (no cases) also the differential, unit and output files tests), copies the results to the bucket and powers
+# the VM off.
 # Metadata: bucket, src (object of the git archive), data (objects of tools/colab/stage_data.py's tars, comma-separated),
 #           result (prefix for the results), jobs, threads, cases (empty: all CPU cases).
 md() { curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1"; }
@@ -20,44 +20,6 @@ touch $J/setup.out
 for d in ${DATA//,/ }; do  # in the list's order: a later tar replaces an earlier one's files (whole references)
   ( set -o pipefail; gcloud storage cat "gs://$B/$d" | tar xf - -C $J/data ) || echo "DATA_FAILED $d" >> $J/setup.out
 done
-cmake -S $J/src -B $J/build -DCMAKE_BUILD_TYPE=Release -DCPPWRF_DOUBLE=ON -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_NATIVE=OFF \
-  -DCMAKE_CXX_FLAGS="-march=skylake -mtune=skylake" > $J/cmake.log 2>&1 && cmake --build $J/build -j"$(nproc)" --target cppwrf >> $J/cmake.log 2>&1 \
-  || echo "BUILD_FAILED (cmake.log)" >> $J/setup.out
-put $J/cmake.log $J/setup.out
-cd $J/src
-# the differential tests against WRF's objects (diff_data.tar) and the ctest unit tests, in their own build, while
-# the suite runs
-if [ -z "$CASES" ]; then
-  (OMP_NUM_THREADS=4 bash tools/gcp/run_diff_tests.sh $J/src $J/build_diff $J/data $J > $J/diff_setup.out 2>&1
-   put $J/diff_cmake.log $J/diff.log $J/ctest.log $J/diff_setup.out) &
-  DIFF_PID=$!
-fi
-# the translator's unit tests (tests/tools/test_wrf2cppwrf.py: namelists of the data's WRF runs, 2-step model runs)
-CPPWRF_WRF_RUNS=$J/data/wrf_runs CPPWRF_WRF_REF=$J/data/wrf_ref CPPWRF_BIN=$J/build/cppwrf OMP_NUM_THREADS=1 \
-  python3 tests/tools/test_wrf2cppwrf.py -v > $J/unit.log 2>&1; echo "exit $?" >> $J/unit.log
-put $J/unit.log
-# the comparators' own test: each deliberate fault (one ulp, NaN, -0, a missing variable or frame, ...) must fail
-CPPWRF_SCRATCH=$J python3 tests/verify/selftest.py > $J/selftest.log 2>&1; echo "exit $?" >> $J/selftest.log
-put $J/selftest.log
-only=(); [ -n "$CASES" ] && only=(--only "$CASES" --exact)
-[ "$SLOW" = 1 ] && only+=(--slow)  # the slow cases too (gcp_run.sh --slow)
-(while sleep 60; do put $J/suite.log; done) &  # progress: the lines of the cases that ended
-CPPWRF_WRF_RUNS=$J/data/wrf_runs CPPWRF_WRF_REF=$J/data/wrf_ref OMP_NUM_THREADS=$THR \
-  python3 tests/verify/wrf_suite.py --cpu-dp $J/build/cppwrf --jobs "$JOBS" --out $J/suite "${only[@]}" > $J/suite.log 2>&1
-echo "exit $?" >> $J/suite.log
-put $J/suite.log
-# the full suite also compares the output files with WRF's (wrfout / wrfrst / resumed runs, ideal cases), one
-# run_wrf_files_test.sh per case in parallel; each prints PASS / FAIL / SKIP and its exit status
-if [ -z "$CASES" ]; then
-  sed -n '/^CASES="/,/^"/p' tests/verify/run_wrf_files_test.sh | grep '|' | cut -d'|' -f1 |
-    xargs -P "$JOBS" -I{} sh -c "CPPWRF_WRF_RUNS=$J/data/wrf_runs CPPWRF_SCRATCH=$J OMP_NUM_THREADS=$THR \
-      bash tests/verify/run_wrf_files_test.sh $J/build {} > $J/files_{}.log 2>&1; echo \"exit \$? {}\" >> $J/files_{}.log"
-  cat $J/files_*.log > $J/files.log
-  CPPWRF_WRF_REF=$J/data/wrf_ref CPPWRF_SCRATCH=$J OMP_NUM_THREADS=$THR python3 tests/verify/ideal_files_test.py $J/build \
-    > $J/idealfiles.log 2>&1; echo "exit $?" >> $J/idealfiles.log
-  put $J/files.log $J/idealfiles.log
-fi
-if [ -z "$CASES" ]; then
-  wait $DIFF_PID
-  cat $J/diff_setup.out >> $J/setup.out; put $J/setup.out
-fi
+# the build and the tests (tools/gcp/suite_body.sh, shared with the Colab runtime's tools/colab/remote_cpu_suite.sh)
+export -f put; export B RES  # put() reads them
+bash $J/src/tools/gcp/suite_body.sh $J "$JOBS" "$THR" "$CASES" "$SLOW"
