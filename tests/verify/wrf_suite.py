@@ -205,6 +205,19 @@ CASES = [
     ("real_a08_r8_fp64_cuda_1h", "cuda_dp", "configs/real_a08_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_A08_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 5.4e-4, "W": 1.4e-2, "THM": 9.3e-6, "QV": 3e-4}),  # G4: U 1.8e-4 W 4.6e-3 THM 3.1e-6 QV 1.0e-4
+    # C01 = P6 with the aerosol-aware Thompson (mp_physics = 28, aer_init_opt = 0; WRF r8d8): bit-identical for
+    # 3 minutes (history every minute) and 1 h
+    ("real_c01_r8_fp64_cpu", "cpu_dp", "configs/real_c01_r8.ini", [],
+     f"{WR}/run_C01_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {v: 0.0 for v in ("U", "W", "PH", "MU", "THM", "QV", "QCLOUD", "QNCLOUD", "QNWFA", "QNIFA", "QNWFA2D")}),
+    ("real_c01_r8_fp64_cpu_1h", "cpu_dp", "configs/real_c01_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_C01_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {v: 0.0 for v in ("U", "W", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "QNICE", "QNRAIN", "QNCLOUD", "QNWFA",
+                       "QNIFA", "RAINNC")}),
+    ("real_c01_r8_fp64_cuda_1h", "cuda_dp", "configs/real_c01_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P6_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_C01_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 1e-4, "W": 3e-3, "THM": 2e-6, "QV": 3e-5}),
     # KESSKF = P4 with Kessler (mp_physics = 1): Kain-Fritsch rain into Kessler's sedimentation (nfall > 1),
     # bit-identical for 3 steps and 1 h
     ("real_kesskf_r8_fp64_cpu", "cpu_dp", "configs/real_kesskf_r8.ini", [],

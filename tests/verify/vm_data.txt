@@ -15,6 +15,7 @@ port_a06_data.tar
 port_a01_data.tar
 port_a07_data.tar
 port_b01_data.tar
+port_c01_data.tar
 port_a05_data.tar
 port_a08_data.tar
 port_c22_data.tar
@@ -33,4 +34,6 @@ v05_files_links.tar
 # the WRF v4.8.0 objects (-r8, -r8 -fdefault-double-8 builds) and input subsets of the differential tests
 # (ctest -L diff; tools/gcp/stage_diff_data.sh, tools/gcp/run_diff_tests.sh)
 diff_data.tar
+# CCN_ACTIVATE.BIN of the two WRF builds (the mp_physics = 28 column test), until diff_data.tar is restaged
+port_c01_diff.tar
 # not here: the slow cases' data (gcp_run.sh --slow --data ...,long_data.tar,long72_data.tar,long72n3_data.tar)

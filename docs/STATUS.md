@@ -10,7 +10,7 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 |---|---|
 | Dynamics | RK3 split-explicit, adaptive time step (use_adaptive_time_step, single-domain real-data runs: target_cfl, target_hcfl, max_step_increase_pct, starting / max / min_time_step, step_to_output_time, restarts), hybrid_opt 0/2, hypsometric_opt 1/2, map factors, Coriolis and curvature, terrain, specified (spec_zone 1, relax_zone 4), open, periodic and symmetric lateral boundaries (symmetric: no wind across the walls), w_damping, damp_opt 1, 2 and 3, h_adv_order 5/6, v_adv_order 3/4, positive-definite moisture, scalar and TKE advection (h_adv_order 5 and 6) |
 | Diffusion | diff_opt 1 with km_opt 1 (constant K), 3 (3-D Smagorinsky) and 4 (2-D Smagorinsky); diff_opt 2 with km_opt 2 (1.5-order TKE, advected TKE); 6th-order diffusion (diff_6th_opt 1, 2) |
-| Microphysics | Kessler (1), WSM6 (6, with effective radii), Thompson (8) |
+| Microphysics | Kessler (1), WSM6 (6, with effective radii), Thompson (8), aerosol-aware Thompson (28: aer_init_opt 0, wif_input_opt 0 / 1; single domain, not with MYNN) |
 | Cumulus | Kain-Fritsch (1), Grell-Freitas-Li (3, deep and shallow), Tiedtke (6), New Tiedtke (16) |
 | PBL, surface layer, land surface | YSU (1), MYJ (2), MYNN-EDMF (5, icloud_bl 0 / 1, with the surface layers 1, 2 and 5; bl_mynn_tkeadvect, bl_mynn_cloudpdf -2..2, bl_mynn_mixlength 0..2, bl_mynn_closure 2.5 / 2.6 / 3.0, bl_mynn_edmf 0 / 1, bl_mynn_edmf_mom, bl_mynn_edmf_tke, bl_mynn_cloudmix, bl_mynn_mixqt, bl_mynn_ess, bl_mynn_mixscalars, bl_mynn_output 0 / 1, tke_budget 0 / 1), MYNN surface layer options sf_mynn_sfcflux_land 0..3 and sf_mynn_sfcflux_water 0..4, fog deposition (grav_settling 1, 2), revised MM5 surface layer (1), Eta surface layer (2), MYNN surface layer (5), 5-layer thermal diffusion (1, ifsnow 0 / 1; also in cppwrf_real), Noah LSM (2, including glacial and sea-ice points; usemonalb and rdlai2d: background albedo and LAI from wrfinput), Noah-MP v5.1.2 (4, default options), fractional sea ice (fractional_seaice = 1), SST update (sst_update = 1, wrflowinp), gravity wave drag (gwd_opt = 1, GWDO) |
 | Radiation | RRTMG LW and SW (4), Dudhia SW (1, with RRTMG LW; swrad_scat), CAM ozone and greenhouse gases, cal_cldfra1, McICA (cldovrlp 1-5) and clear sky only (cldovrlp 0), cumulus clouds in the radiation (cu_rad_feedback: Kain-Fritsch, Grell-Freitas; no effect with Tiedtke / New Tiedtke as in WRF) |
@@ -86,6 +86,7 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | DUD | V1 with the Dudhia shortwave and RRTMG longwave (00 UTC: sunrise over the Bay of Bengal, the whole domain sunlit within the hour) | 1 h |
 | P5 | P1 + WSM6 + diff_opt 1 / km_opt 4 | 1 h |
 | P6 | P5 with Thompson | 1 h |
+| C01 | P6 with the aerosol-aware Thompson (mp_physics 28, aer_init_opt 0: thompson_init's QNWFA / QNIFA profiles and QNWFA2D emission) | 1 h |
 | P7 | P2 with New Tiedtke | 1 h |
 | P8 | P2 with Grell-Freitas-Li (deep and shallow) | 1 h |
 | P9 | P1 with MYJ PBL and the Eta surface layer | 1 h |
