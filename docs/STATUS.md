@@ -2,7 +2,7 @@
 
 CPPWRF reproduces WRF-ARW v4.8.0 statement by statement. This page lists what is implemented, how it
 is verified against WRF, and the current results. All numbers come from `tests/verify/wrf_suite.py`
-(159 cases and 33 restart / Straka checks, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
+(162 cases and 33 restart / Straka checks, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
 
 ## Implemented
 
@@ -259,7 +259,7 @@ RRTMG runs on the GPU as a batched pipeline (docs/PHYSICS_SUITE.md section 10).
 
 ## Not yet implemented
 
-RRTM longwave (ra_lw_physics 1; RRTMG LW with the Dudhia or RRTMG SW is ported), sf_sfclay_physics 91, km_opt 5, the MYNN PBL with fractional_seaice = 1, the MYNN options bl_mynn_edmf 2, bl_mynn_edmf_dd, bl_mynn_mixnumcon, bl_mynn_mixaerosols 0, bl_mynn_output 2, other bl_mynn_closure values and the GFS surface-layer forms (sf_mynn_sfcflux_land 4, sf_mynn_sfcflux_water 5), Noah-MP options other than the defaults (and crop/irrigation/
+RRTM longwave (ra_lw_physics 1; RRTMG LW with the Dudhia or RRTMG SW is ported), the Dudhia shortwave with cu_rad_feedback and Grell-Freitas (wrf.exe writes NaN cloud fractions there), sf_sfclay_physics 91, km_opt 5, the MYNN PBL with fractional_seaice = 1, the MYNN options bl_mynn_edmf 2, bl_mynn_edmf_dd, bl_mynn_mixnumcon, bl_mynn_mixaerosols 0, bl_mynn_output 2, other bl_mynn_closure values and the GFS surface-layer forms (sf_mynn_sfcflux_land 4, sf_mynn_sfcflux_water 5), Noah-MP options other than the defaults (and crop/irrigation/
 tile drainage), the adaptive time step with nests, sst_update or ideal cases, moving nests, ndown.exe (one-way nesting from a parent run's wrfout), I/O forms other than NetCDF
 (io_form 2) and auxiliary history / input streams other than sst_update's wrflowinp (WRF writes none by default),
 and parallel (MPI) runs. Options without a port are rejected by `tools/wrf2cppwrf.py` and by the model with an
