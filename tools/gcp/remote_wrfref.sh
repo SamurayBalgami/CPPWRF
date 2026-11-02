@@ -51,7 +51,6 @@ dirs=$(for n in $names; do for p in run rst rsm; do [ -d "$W/${p}_$n" ] && echo 
 # shellcheck disable=SC2086
 [ "$FETCH" = 0 ] || { tar cf $J/refs.tar -C $W $dirs && put $J/refs.tar; }
 if [ -n "$STAGE" ]; then  # the suite's tar of these references, straight to the bucket
-  for x in $J/data/runs/*; do [ -e "$W/${x##*/}" ] || ln -s "$x" "$W/"; done  # the base runs the cases read inputs of
   { CPPWRF_WRF_RUNS=$W python3 $J/src/tools/colab/stage_data.py --whole --only "${STAGE#*:}" $J/stage.tar \
       && gcloud storage cp $J/stage.tar "gs://$B/${STAGE%%:*}" && echo "STAGED gs://$B/${STAGE%%:*}"; } > $J/stage.log 2>&1
   put $J/stage.log
