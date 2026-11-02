@@ -7,7 +7,7 @@
 Each case's run directory (real.dir of its configuration or of its --set overrides) is written under its own
 name, so the remote side sets CPPWRF_WRF_RUNS to the unpacked directory and runs the same suite. Links are
 followed. Left out: other history and restart files, rsl/log files, met_em input, executables and the
-large tables no ported scheme reads; the Thompson .dat tables only for mp_physics = 8 (and not with
+large tables no ported scheme reads; the Thompson .dat tables only for mp_physics = 8 and 28 (and not with
 --no-thompson-tables: CPPWRF then computes them, close to but not bit-identical with WRF's files). The reference
 wrfout files keep only the frames the cases compare, and every variable for a tolerance-0 case (wrf_suite.py
 compares all of them) or else the variables tests/verify/compare_real.py compares. The ideal cases' references
@@ -42,7 +42,7 @@ WR = os.environ["CPPWRF_WRF_RUNS"]
 WREF = os.environ.get("CPPWRF_WRF_REF", os.path.expanduser("~/wrf_ref480"))
 SKIP = ["wrfout*", "wrfrst*", "rsl.*", "met_em*", "*.exe", "*.log", "namelist.output", "steps", "README*",
         "p3_lookup*", "ishmael*", "snicar*", "CAM_ABS_DATA", "CAM_AEROPT_DATA", "aerosol*.formatted",
-        "CLM_*", "BROADBAND*", "ETAMPNEW*", "CCN_ACTIVATE*", "kernels*", "*.f90*", "eclipse*", "HLC.TBL",
+        "CLM_*", "BROADBAND*", "ETAMPNEW*", "kernels*", "*.f90*", "eclipse*", "HLC.TBL",
         "tr*", "co2_trans", "grib*", "bulk*", "capacity.asc", "coeff_*", "constants.asc", "masses.asc",
         "termvels.asc", "*.nc"]
 THOMPSON = ["freezeH2O.dat", "qr_acr_qg_V4.dat", "qr_acr_qsV2.dat"]
@@ -155,13 +155,13 @@ def main():
                 dom = re.search(r"wrfout_(d\d\d)_", os.path.basename(r)).group(1)
                 restarts.update(os.path.join(os.path.dirname(r), f"wrfrst_{dom}_{x}") for x in at)
         d = dirs.setdefault(rd, [set(), False]) if not a.refs_only else [set(), False]
-        d[1] = d[1] or (mp.strip() == "8" and not a.no_thompson_tables)
+        d[1] = d[1] or (mp.strip() in ("8", "28") and not a.no_thompson_tables)
         log(f"{name}: {os.path.relpath(rd, WR)}")
     for tag, cfg, _ in wrf_suite.RESTARTS:  # restart_<tag>_*: the input directory of the configuration
         if not a.refs_only and any(o in n for n in wrf_suite.SPECIAL if n.startswith(f"restart_{tag}_") for o in want):
             rd = config_value(cfg, "real", "dir").replace("${CPPWRF_WRF_RUNS}", WR)
             d = dirs.setdefault(rd, [set(), False])
-            d[1] = d[1] or ((config_value(cfg, "phys", "mp_physics") or "0").strip() == "8" and not a.no_thompson_tables)
+            d[1] = d[1] or ((config_value(cfg, "phys", "mp_physics") or "0").strip() in ("8", "28") and not a.no_thompson_tables)
             log(f"restart_{tag}: {os.path.relpath(rd, WR)}")
     skel, whole = {}, {}  # files test references: skeletons, whole files (path in the tar -> file)
     fcases = files_cases()
@@ -170,7 +170,7 @@ def main():
         m = re.search(r"real\.dir=(\S+)", extra)
         rd = m.group(1) if m else config_value(cfg, "real", "dir").replace("${CPPWRF_WRF_RUNS}", WR)
         d = dirs.setdefault(rd, [set(), False])
-        d[1] = d[1] or ((config_value(cfg, "phys", "mp_physics") or "0").strip() == "8" and not a.no_thompson_tables)
+        d[1] = d[1] or ((config_value(cfg, "phys", "mp_physics") or "0").strip() in ("8", "28") and not a.no_thompson_tables)
         rsm = rst.replace("/rst_", "/rsm_") if rst else None
         for x in (ref, rst, rsm):
             if not x or not os.path.isdir(x):
