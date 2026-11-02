@@ -217,6 +217,18 @@ CASES = [
     ("real_kesskf_r8_fp64_cuda_1h", "cuda_dp", "configs/real_kesskf_r8.ini",  # G4: U 9.2e-5 W 1.2e-3 THM 1.2e-6 QV 6.2e-5
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_KESSKF_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 3e-4, "W": 4e-3, "THM": 4e-6, "QV": 2e-4}),
+    # DUD = V1 (Bay of Bengal, 00 UTC: sunrise over the domain) with the Dudhia shortwave (ra_sw_physics = 1) and
+    # RRTMG longwave: bit-identical for 3 steps and 1 h (P4's domain is in the night for the first hours)
+    ("real_dud_r8_fp64_cpu", "cpu_dp", "configs/real_dud_r8.ini", [],
+     f"{WR}/run_DUD_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "THM", "QV", "QCLOUD", "GSW", "SWDOWN", "GLW")}),
+    ("real_dud_r8_fp64_cpu_1h", "cpu_dp", "configs/real_dud_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_V1_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_DUD_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "GSW", "SWDOWN", "GLW")}),
+    ("real_dud_r8_fp64_cuda_1h", "cuda_dp", "configs/real_dud_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_V1_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_DUD_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 6e-3, "W": 3e-1, "THM": 5e-5, "QV": 1.5e-3}),
     # P6 = P5 with Thompson (mp_physics = 8; WRF r8 built with -fdefault-double-8, see PHYSICS_SUITE.md
     # section 11): bit-identical for 3 steps and 1 h
     ("real_p6_r8_fp64_cpu", "cpu_dp", "configs/real_p6_r8.ini", [], f"{WR}/run_P6_r8/steps/wrfout_d01_2026-10-12_00:00:00",
