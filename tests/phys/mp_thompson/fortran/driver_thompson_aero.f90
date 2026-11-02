@@ -99,12 +99,13 @@ PROGRAM driver_thompson_aero
   ! as WRF's: thompson_init writes qr_acr_qg_V4.dat, qr_acr_qsV2.dat and freezeH2O.dat, which the C++ driver reads
   ! as the model reads a run's table files
   CALL nl_set_write_thompson_tables(1, .TRUE.)
+  ! ite / jte as start_domain passes them (the staggered ends): MAXVAL(nwfa(its:ite-1,:,jts:jte-1)) covers the columns
   CALL thompson_init(hgt=hgt, orho=orho, nwfa2d=nwfa2d, nbca2d=nbca2d, &
                      nwfa=nwfa, nifa=nifa, nbca=nbca, wif_input_opt=1, frc_urb2d=nbca2d, &
                      dx=15000.0d0, dy=15000.0d0, is_start=.TRUE., &
                      ids=1, ide=ncols+1, jds=1, jde=2, kds=1, kde=nlevels, &
                      ims=1, ime=ncols, jms=1, jme=1, kms=1, kme=nlevels, &
-                     its=1, ite=ncols, jts=1, jte=1, kts=1, kte=nlevels)
+                     its=1, ite=ncols+1, jts=1, jte=2, kts=1, kte=nlevels)
 
   ! Run Thompson microphysics driver
   CALL mp_gt_driver(qv=qv, qc=qc, qr=qr, qi=qi, qs=qs, qg=qg, &
