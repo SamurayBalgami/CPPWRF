@@ -274,6 +274,8 @@ void init_real_physics(const io::Config& cfg, Model& m) {
     r.cldovrlp = int(cfg.get_int("phys.cldovrlp", 2));
     r.idcor = int(cfg.get_int("phys.idcor", 0));
     r.o3input = int(cfg.get_int("phys.o3input", 2));
+    // check_a_mundo: o3input = 0 for radiation schemes other than RRTMG (RRTM LW with the Dudhia SW)
+    if (r.ra_lw_physics != 4 && r.ra_sw_physics != 4) r.o3input = 0;
     r.oznini = !cfg.get_bool("real.nested", false);
     r.ghg_input = int(cfg.get_int("phys.ghg_input", 1));
     r.aer_opt = int(cfg.get_int("phys.aer_opt", 0));

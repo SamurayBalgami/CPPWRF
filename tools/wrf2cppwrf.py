@@ -337,11 +337,12 @@ SUPPORTED_OPTIONS = {
     },
     "ra_lw_physics": {
         0: "None / off",
+        1: "RRTM longwave radiation",
         4: "RRTMG longwave radiation",
     },
     "ra_sw_physics": {
         0: "None / off",
-        1: "Dudhia shortwave radiation (with RRTMG longwave)",
+        1: "Dudhia shortwave radiation",
         4: "RRTMG shortwave radiation",
     },
     "diff_opt": {
@@ -1570,13 +1571,13 @@ class WrfTranslator:
                 sections["phys"]["ra_sw_physics"] = ra_sw
 
                 # radiation_driver: a LW scheme needs a SW scheme and the reverse (wrf_error_fatal); CPPWRF ports
-                # RRTMG LW with RRTMG SW or with Dudhia SW
+                # RRTMG or RRTM LW with RRTMG or Dudhia SW
                 if (ra_lw == 0) != (ra_sw == 0):
                     self.error(f"WRF ra_lw_physics = {ra_lw} with ra_sw_physics = {ra_sw}: wrf.exe stops (a longwave "
                                f"scheme needs a shortwave scheme and the reverse).")
-                elif ra_lw != 0 and (ra_lw, ra_sw) not in ((4, 4), (4, 1)):
-                    self.error(f"CPPWRF supports ra_lw_physics = 4 (RRTMG) with ra_sw_physics = 4 (RRTMG) or 1 "
-                               f"(Dudhia) (got ra_lw_physics = {ra_lw}, ra_sw_physics = {ra_sw}).")
+                elif ra_lw != 0 and (ra_lw not in (1, 4) or ra_sw not in (1, 4)):
+                    self.error(f"CPPWRF supports ra_lw_physics = 4 (RRTMG) or 1 (RRTM) with ra_sw_physics = 4 (RRTMG) "
+                               f"or 1 (Dudhia) (got ra_lw_physics = {ra_lw}, ra_sw_physics = {ra_sw}).")
                 # swinit (Dudhia): CSSCA = swrad_scat * 1.e-5; the other schemes do not read it
                 swrad_scat = self.get_opt("physics", "swrad_scat", 1.0)
                 if ra_sw == 1 and float(swrad_scat) != 1.0:

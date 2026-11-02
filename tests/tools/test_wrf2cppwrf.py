@@ -919,6 +919,15 @@ class TestValidationAndWarnings(unittest.TestCase):
         self.assertEqual(t.errors, [])
         self.assertNotIn("swrad_scat", cfg["phys"])
 
+    def test_rrtm_longwave(self):
+        # RRTM LW (module_ra_rrtm.F) with RRTMG or Dudhia SW
+        for sw in (4, 1):
+            phys = f"&physics ra_lw_physics = 1, ra_sw_physics = {sw}, radt = 15, sf_sfclay_physics = 1 /"
+            t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n&domains time_step = 60 /\n{phys}\n")))
+            cfg = t.translate()
+            self.assertEqual(t.errors, [], sw)
+            self.assertEqual((cfg["phys"]["ra_lw_physics"], cfg["phys"]["ra_sw_physics"]), (1, sw))
+
     def test_unsupported_physics_and_dynamics_errors(self):
         cases = [
             # share/module_check_a_mundo.F: "bl_mynn_edmf > 0 requires both shcu_physics=0 & ishallow=0"
@@ -930,8 +939,9 @@ class TestValidationAndWarnings(unittest.TestCase):
             ("&physics sf_surface_physics = 4, opt_crop = 1 /", "opt_crop = 1"),
             ("&physics ra_lw_physics = 4, ra_sw_physics = 0 /", "a longwave scheme needs a shortwave scheme"),
             ("&physics ra_lw_physics = 0, ra_sw_physics = 1 /", "a longwave scheme needs a shortwave scheme"),
-            ("&physics ra_lw_physics = 1, ra_sw_physics = 1 /", "ra_lw_physics = 1 is not supported"),
-            ("&physics ra_lw_physics = 1, ra_sw_physics = 4 /", "ra_lw_physics = 1 is not supported"),
+            ("&physics ra_lw_physics = 1, ra_sw_physics = 0 /", "a longwave scheme needs a shortwave scheme"),
+            ("&physics ra_lw_physics = 1, ra_sw_physics = 2 /", "ra_sw_physics = 2 is not supported"),
+            ("&physics ra_lw_physics = 3, ra_sw_physics = 4 /", "ra_lw_physics = 3 is not supported"),
             ("&physics ra_lw_physics = 4, ra_sw_physics = 2 /", "ra_sw_physics = 2 is not supported"),
             ("&physics ra_lw_physics = 4, ra_sw_physics = 1, cu_physics = 3, cu_rad_feedback = .true. /",
              "cu_rad_feedback with Grell-Freitas cumulus and the Dudhia shortwave"),

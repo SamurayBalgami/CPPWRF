@@ -1,11 +1,12 @@
 #pragma once
-// WRF phys/module_radiation_driver.F radiation_driver for ra_lw_physics = 4 (RRTMG) with ra_sw_physics = 4
-// (RRTMG) or 1 (Dudhia, module_ra_sw.F) with o3input = 2 (CAM ozone), ghg_input = 1 (CAMtr_volume_mixing_ratio),
-// aer_opt = 0, swint_opt = 0, icloud = 1, cldovrlp, idcor, cu_rad_feedback, slope_rad = topo_shading = 0, single
-// domain.
-// CPU builds: one RRTMG column at a time per OpenMP thread (rrtmg_lw_column / rrtmg_sw_column).
+// WRF phys/module_radiation_driver.F radiation_driver for ra_lw_physics = 4 (RRTMG) or 1 (RRTM, module_ra_rrtm.F)
+// with ra_sw_physics = 4 (RRTMG) or 1 (Dudhia, module_ra_sw.F) with o3input = 2 (CAM ozone), ghg_input = 1
+// (CAMtr_volume_mixing_ratio), aer_opt = 0, swint_opt = 0, icloud = 1, cldovrlp, idcor, cu_rad_feedback,
+// slope_rad = topo_shading = 0, single domain.
+// CPU builds: one column at a time per OpenMP thread (rrtmg_lw_column / rrtm_lw_column / rrtmg_sw_column).
 // CUDA builds: everything on the device: inputs staged column-fastest, coszen, CAM ozone and
-// cal_cldfra1 per column, the RRTMG stages as kernels (RrtmgLwBatch / RrtmgSwBatch).
+// cal_cldfra1 per column, the RRTMG stages as kernels (RrtmgLwBatch / RrtmgSwBatch); RRTM LW on the host
+// (rrtm_lw_batch) from the staged columns.
 #include <algorithm>
 #include <cmath>
 #include <memory>

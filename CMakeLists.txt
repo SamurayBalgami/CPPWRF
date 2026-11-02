@@ -77,6 +77,8 @@ list(APPEND CPPWRF_SOURCES
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_sw/rrtmg_sw_tables.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/cam_gases.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/cam_ozone.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtm_lw/rrtm_lw.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtm_lw/rrtm_lw_tables.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/sf_sfclayrev/sfclayrev.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/sf_myjsfc/myjsfc.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/bl_ysu/ysu.cpp
@@ -158,12 +160,13 @@ endfunction()
 
 if(CPPWRF_ENABLE_CUDA)
   cppwrf_device_sources(${CPPWRF_SOURCES})
-  # RRTMG host code (tables, constants, the column drivers of the checks): C++; the device path is
-  # radiation.cpp + rrtmg_lw_batch.cpp + rrtmg_sw_batch.cpp
+  # RRTMG host code (tables, constants, the column drivers of the checks) and RRTM LW (host columns with OpenMP):
+  # C++; the device path is radiation.cpp + rrtmg_lw_batch.cpp + rrtmg_sw_batch.cpp
   set_source_files_properties(
     ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_lw/rrtmg_lw.cpp ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_lw/rrtmg_lw_tables.cpp
     ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_sw/rrtmg_sw.cpp ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_sw/rrtmg_sw_tables.cpp
     ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/cam_gases.cpp ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/cam_ozone.cpp
+    ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtm_lw/rrtm_lw.cpp ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtm_lw/rrtm_lw_tables.cpp
     PROPERTIES LANGUAGE CXX)
   # RRTMG on the device: no FMA contraction (WRF's x86 arithmetic; table indices int(tblint*x + 0.5)
   # are discontinuous, so contracted products move them)

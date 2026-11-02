@@ -2,9 +2,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 #include <stdexcept>
 
+#include "phys/phys_constants.hpp"
+#include "phys/ra_rrtm_lw/rrtm_lw.hpp"
+#include "phys/ra_rrtm_lw/rrtm_lw_tables.hpp"
 #include "phys/ra_rrtmg_common/cam_gases.hpp"
 #include "phys/ra_rrtmg_common/cam_ozone.hpp"
 #include "phys/ra_rrtmg_lw/rrtmg_lw.hpp"
@@ -244,6 +248,8 @@ struct KRadOut {
 
 struct RadiationDriver::Impl {
   std::unique_ptr<RrtmgLwTables> lw;
+  std::unique_ptr<RrtmLwTables> rrtm;  // RRTM longwave (ra_lw_physics = 1)
+  int rrtm_nlayers = 0;
   std::unique_ptr<RrtmgSwTables> sw;
   CamGases gases;
   CamOzone ozone;
@@ -273,9 +279,9 @@ struct RadiationDriver::Impl {
 RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const std::vector<double>& xlat,
                                  const std::vector<double>& xlong)
     : p_(std::make_unique<Impl>()), g_(g), o_(o) {
-  if (o.ra_lw_physics != 4 || (o.ra_sw_physics != 4 && o.ra_sw_physics != 1))
-    throw std::runtime_error("radiation: only ra_lw_physics = 4 (RRTMG) with ra_sw_physics = 4 (RRTMG) or 1 (Dudhia) "
-                             "are ported");
+  if ((o.ra_lw_physics != 4 && o.ra_lw_physics != 1) || (o.ra_sw_physics != 4 && o.ra_sw_physics != 1))
+    throw std::runtime_error("radiation: only ra_lw_physics = 4 (RRTMG) or 1 (RRTM) with ra_sw_physics = 4 (RRTMG) or "
+                             "1 (Dudhia) are ported");
   if (o.aer_opt != 0) throw std::runtime_error("radiation: aer_opt != 0 is not ported");
   if (o.o3input != 2 && o.o3input != 0) throw std::runtime_error("radiation: o3input must be 0 or 2");
   // cldovrlp 0 (clear sky only) and the McICA overlaps 1-5 (mcica_subcol_lw/_sw stop for any other icld)
@@ -284,7 +290,8 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
   // wrf.exe writes NaN cloud fractions with the Dudhia shortwave and the Grell clouds (V1 inputs): not ported
   if (o.ra_sw_physics == 1 && o.icloud_cu == 1)
     throw std::runtime_error("radiation: cu_rad_feedback with a Grell scheme and the Dudhia shortwave is not supported");
-  {  // the LW column arrays hold RRTMG_LW_SWEEP_MAX layers: the model's and the buffer layers up to 0 hPa
+  const bool rrtmg_lw = o.ra_lw_physics == 4;
+  if (rrtmg_lw) {  // the LW column arrays hold RRTMG_LW_SWEEP_MAX layers: the model's and the buffer layers up to 0 hPa
     RrtmgLwConfig lc;
     lc.p_top = o.p_top;
     if (rrtmg_lw_call_config(g.nz, lc, false, false, false).nlayers > RRTMG_LW_SWEEP_MAX)
@@ -292,7 +299,7 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
                                std::to_string(RRTMG_LW_SWEEP_MAX));
   }
   stepra_ = o.radt == 0 ? 1 : std::max(1, int(std::lround(o.radt * 60. / g.dt)));
-  p_->lw = std::make_unique<RrtmgLwTables>();
+  if (rrtmg_lw) p_->lw = std::make_unique<RrtmgLwTables>();
   const bool rrtmg_sw = o.ra_sw_physics == 4;
   if (rrtmg_sw) p_->sw = std::make_unique<RrtmgSwTables>();
   // RRTMG tables: phys.rrtmg_tables, then the copy in the source tree (data/rrtmg, CPPWRF_DATA_DIR)
@@ -305,8 +312,14 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
 #endif
     throw std::runtime_error("radiation: cannot find " + name + " in " + o.table_dir + " or the data directory");
   };
-  if (!load_rrtmg_lw_tables(table_file("rrtmg_lw_tables.bin"), *p_->lw))
+  if (rrtmg_lw && !load_rrtmg_lw_tables(table_file("rrtmg_lw_tables.bin"), *p_->lw))
     throw std::runtime_error("radiation: cannot read rrtmg_lw_tables.bin");
+  if (!rrtmg_lw) {  // rrtminit (phy_init): rrtm_lookuptable reads RRTM_DATA of the run directory
+    p_->rrtm = std::make_unique<RrtmLwTables>();
+    std::string err;
+    if (!load_rrtm_lw_tables(o.table_dir + "/RRTM_DATA", *p_->rrtm, err)) throw std::runtime_error("radiation: " + err);
+    p_->rrtm_nlayers = rrtm_lw_nlayers(g.nz, o.p_top);
+  }
   if (rrtmg_sw && !load_rrtmg_sw_tables(table_file("rrtmg_sw_tables.bin"), *p_->sw))
     throw std::runtime_error("radiation: cannot read rrtmg_sw_tables.bin");
   // the SW column arrays (CPU and GPU) hold RRTMG_SW_COL_MAX layers: the model's and the one above the top (WRF:
@@ -349,7 +362,8 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
     q.sws = q.dev(7 * nc);
     RrtmgLwConfig lc;
     lc.p_top = o.p_top;
-    q.lwb = std::make_unique<RrtmgLwBatch>(*q.lw, rrtmg_lw_call_config(g.nz, lc, false, false, false).nlayers, 2048);
+    if (rrtmg_lw)
+      q.lwb = std::make_unique<RrtmgLwBatch>(*q.lw, rrtmg_lw_call_config(g.nz, lc, false, false, false).nlayers, 2048);
     if (rrtmg_sw) q.swb = std::make_unique<RrtmgSwBatch>(*q.sw, g.nz + 1, 2048);
     for (double** a : {&q.qr, &q.qg}) *a = q.dev(n3);
     q.ht = q.dev(nc);
@@ -392,7 +406,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
     (void)per;
     Impl& q = *p_;
     const int nx = g_.nx, ny = g_.ny, nz = g_.nz, ncol = nx * ny;
-    const bool dudhia = o_.ra_sw_physics == 1;
+    const bool dudhia = o_.ra_sw_physics == 1, rrtm = o_.ra_lw_physics == 1;
     if (o_.icloud != 0 && o_.icloud != 1) throw std::runtime_error("radiation: only icloud = 0 or 1 are ported");
     if (in.qc && !in.qi && in.qs) throw std::runtime_error("radiation: F_QC, F_QS without F_QI is not ported");
     const bool clouds = o_.icloud != 0 && in.qc != nullptr;
@@ -411,8 +425,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
     add3(in.qc, q.qc); add3(in.qi, q.qi); add3(in.qs, q.qs);
     add3(in.re_cloud, q.rec); add3(in.re_ice, q.rei); add3(in.re_snow, q.res);
     add3(in.dz8w, q.dz);
+    if (dudhia || rrtm) add3(in.qr, q.qr);
     if (dudhia) {
-      add3(in.qr, q.qr);
       add3(in.qg, q.qg);
       ks.ht = in.ht->view();
       ks.dht = q.ht;
@@ -460,9 +474,42 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
     li.re_cloud = in.re_cloud ? q.rec : nullptr; li.re_ice = in.re_ice ? q.rei : nullptr;
     li.re_snow = in.re_snow ? q.res : nullptr;
     LwBatchOutput lo{q.rlw, q.glw, q.olr, q.lwd, q.rlwc, q.lwcf};
-    const bool o3lw = o_.o3input != 2 && out.o3rad != nullptr;  // O3RAD from RRTMG_LWRAD (o33d is not read)
+    // O3RAD from RRTMG_LWRAD (o33d is not read); RRTM leaves it to the driver's CAM ozone (o3input = 2)
+    const bool o3lw = !rrtm && o_.o3input != 2 && out.o3rad != nullptr;
     if (o3lw) lo.o3 = q.o3;
-    q.lwb->run(rrtmg_lw_call_config(nz, lc, in.re_cloud, in.re_ice, in.re_snow), li, lo);
+    if (rrtm) {
+      // RRTMLWRAD on the host from the staged columns (cloud fractions, BL and cumulus clouds included); no LW flux
+      // diagnostics and LWCF (RRTMG only): 0
+      const std::size_t n3 = std::size_t(ncol) * nz, n3w = std::size_t(ncol) * (nz + 1), nc = std::size_t(ncol);
+      auto host = [](const double* d, std::size_t n) {
+        std::vector<double> h(n);
+        copy_to_host(h.data(), d, n * sizeof(double));
+        return h;
+      };
+      const std::vector<double> hp8w = host(q.p8w, n3w), ht8w = host(q.t8w, n3w), hp = host(q.p3d, n3),
+                                ht3 = host(q.t3d, n3), hdz = host(q.dz, n3), hpi = host(q.pi3d, n3),
+                                hqv = host(q.qv, n3), hcf = host(q.cf, n3), htsk = host(q.tsk, nc),
+                                hem = host(q.emiss, nc);
+      const std::vector<double> hqc = in.qc ? host(q.qc, n3) : std::vector<double>(),
+                                hqr = in.qr ? host(q.qr, n3) : std::vector<double>(),
+                                hqi = in.qi ? host(q.qi, n3) : std::vector<double>(),
+                                hqs = in.qs ? host(q.qs, n3) : std::vector<double>();
+      const RrtmLwBatchInput bi{ncol, nz, hp8w.data(), ht8w.data(), hp.data(), ht3.data(), hdz.data(), hpi.data(),
+                                hqv.data(), in.qc ? hqc.data() : nullptr, in.qr ? hqr.data() : nullptr,
+                                in.qi ? hqi.data() : nullptr, in.qs ? hqs.data() : nullptr, hcf.data(), htsk.data(),
+                                hem.data(), in.qi != nullptr, lc.co2, lc.n2o, lc.ch4, cst::r_d, cst::g, o_.icloud,
+                                o_.warm_rain};
+      std::vector<double> hr(n3), hrc(n3), hg(nc), ho(nc), zero(8 * nc, 0.0);
+      rrtm_lw_batch(*q.rrtm, bi, q.rrtm_nlayers, hr.data(), hrc.data(), hg.data(), ho.data());
+      copy_to_dev(q.rlw, hr.data(), n3 * sizeof(double));
+      copy_to_dev(q.rlwc, hrc.data(), n3 * sizeof(double));
+      copy_to_dev(q.glw, hg.data(), nc * sizeof(double));
+      copy_to_dev(q.olr, ho.data(), nc * sizeof(double));
+      copy_to_dev(q.lwd, zero.data(), 8 * nc * sizeof(double));
+      copy_to_dev(q.lwcf, zero.data(), nc * sizeof(double));
+    } else {
+      q.lwb->run(rrtmg_lw_call_config(nz, lc, in.re_cloud, in.re_ice, in.re_snow), li, lo);
+    }
     if (dudhia) {
       KDudhia kd{nx, nz, ncol, q.t3d, q.p3d, q.dz, q.pi3d, q.qv, in.qc ? q.qc : nullptr, in.qr ? q.qr : nullptr,
                  in.qi ? q.qi : nullptr, in.qs ? q.qs : nullptr, in.qg ? q.qg : nullptr, q.cz, q.albedo, solcon,
@@ -514,9 +561,9 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
   if (in.qc) in.qc->download(qc);
   if (in.qi) in.qi->download(qi);
   if (in.qs) in.qs->download(qs);
-  const bool dudhia = o_.ra_sw_physics == 1;
+  const bool dudhia = o_.ra_sw_physics == 1, rrtm = o_.ra_lw_physics == 1;
+  if ((dudhia || rrtm) && in.qr) in.qr->download(qr);
   if (dudhia) {
-    if (in.qr) in.qr->download(qr);
     if (in.qg) in.qg->download(qg);
     in.ht->download(ht);
   }
@@ -556,6 +603,9 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
 #pragma omp parallel
   {
     auto lws = std::make_unique<RrtmgLwWorkspace>();
+    std::unique_ptr<RrtmLwWorkspace> rws;
+    if (rrtm) rws = std::make_unique<RrtmLwWorkspace>(nz, p_->rrtm_nlayers);
+    std::string rmsg;
     auto sws = std::make_unique<RrtmgSwWorkspace>();
     std::vector<double> cp8w(nz + 1), ct8w(nz + 1), cp(nz), cpi(nz), cdz(nz), ct(nz), crho(nz), cqv(nz),
         zero(nz, 0.0), ccf(nz, 0.0), co3(nz, 0.0), rlw(nz), rlwc(nz), rsw(nz), rswc(nz), cqc(nz, 0.0),
@@ -620,19 +670,34 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
       else if (o_.o3input == 2)
         ozone_column(&p_->ozmixm[c * per + nm * CamOzone::levsiz], &p_->ozmixm[c * per + np * CamOzone::levsiz], f1, f2,
                      p_->ozone.pin.data(), nz, sd(cp.data()), sd(co3.data()));
-      double g_lw, olr, lwcf, a1, a2, a3, a4, a5, a6, a7, a8;
-      rrtmg_lw_column(nz, lc, *p_->lw, tsk[q2], ems[q2], xland[q2], xice[q2], snow[q2], p_->xlat[c], cp8w.data(),
-                      ct8w.data(), cp.data(), cpi.data(), cdz.data(), ct.data(), crho.data(), cqv.data(), cqc.data(),
-                      zero.data(), cqi.data(), cqs.data(), zero.data(), ccf.data(), co3.data(), g_lw, olr, lwcf, a1,
-                      a2, a3, a4, a5, a6, a7, a8, rlw.data(), rlwc.data(), *lws, prc, pri, prs,
-                      o_.o3input != 2 && diag ? co3.data() : nullptr);
+      double g_lw, olr, lwcf = 0, a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, a6 = 0, a7 = 0, a8 = 0;
+      if (rrtm) {  // RRTMLWRAD: no LW flux diagnostics, LWCF untouched (0)
+        const RrtmLwColumn rc{cp8w.data(), ct8w.data(), cp.data(), ct.data(), cdz.data(), cpi.data(), cqv.data(),
+                              in.qc ? cqc.data() : nullptr, in.qr ? cqr.data() : nullptr,
+                              in.qi ? cqi.data() : nullptr, in.qs ? cqs.data() : nullptr, ccf.data(),
+                              in.qi != nullptr, double(tsk[q2]), double(ems[q2]), lc.co2, lc.n2o, lc.ch4, cst::r_d,
+                              cst::g, o_.icloud, o_.warm_rain};
+        rrtm_lw_column(*p_->rrtm, rc, *rws, g_lw, olr, rlw.data(), rlwc.data(), rmsg);
+        if (!rmsg.empty()) {
+#pragma omp critical(rrtm_lw_message)
+          std::fprintf(stderr, "%s\n", rmsg.c_str());
+        }
+      } else {
+        rrtmg_lw_column(nz, lc, *p_->lw, tsk[q2], ems[q2], xland[q2], xice[q2], snow[q2], p_->xlat[c], cp8w.data(),
+                        ct8w.data(), cp.data(), cpi.data(), cdz.data(), ct.data(), crho.data(), cqv.data(), cqc.data(),
+                        zero.data(), cqi.data(), cqs.data(), zero.data(), ccf.data(), co3.data(), g_lw, olr, lwcf, a1,
+                        a2, a3, a4, a5, a6, a7, a8, rlw.data(), rlwc.data(), *lws, prc, pri, prs,
+                        o_.o3input != 2 && diag ? co3.data() : nullptr);
+      }
       glw[o2i] = real(g_lw);
       if (diag) {
         const double d[9] = {a1, a2, a3, a4, a5, a6, a7, a8, olr};
         for (int q = 0; q < 9; ++q) lwd[std::size_t(q)][o2i] = real(d[q]);
         lwcf2[o2i] = real(lwcf);
-        // O3RAD: the CAM ozone (o3input = 2), else RRTMG_LWRAD's climatology ("output o3 for o3input=0")
-        for (int k = 0; k < nz; ++k) o3r[Lo3.index(i, j, k)] = real(co3[k]);
+        // O3RAD: the CAM ozone (o3input = 2), else RRTMG_LWRAD's climatology ("output o3 for o3input=0"); RRTM
+        // does not write it
+        if (!rrtm || o_.o3input == 2)
+          for (int k = 0; k < nz; ++k) o3r[Lo3.index(i, j, k)] = real(co3[k]);
       }
       double g_sw = 0;
       std::fill(rsw.begin(), rsw.end(), 0.0);
