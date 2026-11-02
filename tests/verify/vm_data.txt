@@ -20,6 +20,7 @@ port_a05_data.tar
 port_a08_data.tar
 port_c22_data.tar
 port_c25_data.tar
+port_c25b_data.tar
 port_a09_data.tar
 port_a10_data.tar
 # whole references (every frame and variable) of the tolerance-0 cases and the ideal namelists

@@ -285,6 +285,18 @@ CASES = [
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_V1_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_DUD_r8/wrfout_d01_2026-10-12_00:00:00", 3600,  # G4: U 5.0e-4 W 4.0e-2 THM 4.4e-6 QV 9.9e-5
      {"U": 1.5e-3, "W": 1.2e-1, "THM": 1.3e-5, "QV": 3e-4}),
+    # RRTM: V1 with the RRTM longwave (module_ra_rrtm.F) and RRTMG shortwave: 3 steps and 1 h bit-identical
+    ("real_rrtm_r8_fp64_cpu", "cpu_dp", "configs/real_rrtm_r8.ini", [],
+     f"{WR}/run_RRTM_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "THM", "QV", "QCLOUD", "GSW", "SWDOWN", "GLW", "OLR")}),
+    ("real_rrtm_r8_fp64_cpu_1h", "cpu_dp", "configs/real_rrtm_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_V1_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_RRTM_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "GSW", "GLW", "OLR")}),
+    ("real_rrtm_r8_fp64_cuda_1h", "cuda_dp", "configs/real_rrtm_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_V1_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_RRTM_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {"U": 1.5e-3, "W": 1.2e-1, "THM": 1.3e-5, "QV": 3e-4}),
     # P6 = P5 with Thompson (mp_physics = 8; WRF r8 built with -fdefault-double-8, see PHYSICS_SUITE.md
     # section 11): bit-identical for 3 steps and 1 h
     ("real_p6_r8_fp64_cpu", "cpu_dp", "configs/real_p6_r8.ini", [], f"{WR}/run_P6_r8/steps/wrfout_d01_2026-10-12_00:00:00",
