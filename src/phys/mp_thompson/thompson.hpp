@@ -996,8 +996,8 @@ struct ThompsonKernel {
                 Real max_wau = rc[k] * odts;
                 if (prr_wau[k] > max_wau) prr_wau[k] = max_wau;
                 pnr_wau[k] = prr_wau[k] / (Real(am_r) * Real(nu_c) * Real(10.0) * Real(D0r) * Real(D0r) * Real(D0r));
-                Real mvd_c3 = mvd_c[k] * mvd_c[k] * mvd_c[k];
-                Real pnc_calc = prr_wau[k] / (Real(am_r) * mvd_c3);
+                // WRF: prr_wau(k) / (am_r*mvd_c(k)*mvd_c(k)*mvd_c(k)), left to right
+                Real pnc_calc = prr_wau[k] / (Real(am_r) * mvd_c[k] * mvd_c[k] * mvd_c[k]);
                 Real max_pnc = nc[k] * odts;
                 pnc_wau[k] = (pnc_calc < max_pnc) ? pnc_calc : max_pnc;
             }
