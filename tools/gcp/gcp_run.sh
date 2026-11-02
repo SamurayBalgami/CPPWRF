@@ -15,7 +15,9 @@
 # tools/gcp/gcp_pick.py's cheapest now (spot price for 176 vCPUs over 2 hours plus the data transfer; Intel only:
 # glibc's libmvec log differs on AMD, so AMD runs are not bit-identical to Intel-made WRF references), the next
 # one tried while one has no capacity or quota; --machine fixes the type, --zones limits the zones. Without
-# --threads each of the --jobs suite jobs gets the machine's vCPUs / jobs threads. --slow: also wrf_suite.py's slow
+# --threads each of the --jobs suite jobs gets the machine's vCPUs / jobs threads.
+# With --cases the machine has 4 vCPUs per case (8 to 176) and one job per case (at most --jobs).
+# --slow: also wrf_suite.py's slow
 # cases (the 24 h and 72 h runs; their data long_data.tar, long72_data.tar, long72n3_data.tar in --data), with a 16 h limit instead of 8 h.
 # Exit status 0 only for a complete suite without FAIL or SKIP (wrf_suite.py's SUITE line and exit 0), passing
 # translator tests and comparator self-test (tests/verify/selftest.py), files, differential and ctest tests without
@@ -43,6 +45,14 @@ gcloud storage cp "$OUT/src.tar.gz" "gs://$BK/src/$STAMP.tar.gz" --project "$P" 
 cleanup() { [ -n "$ZONE" ] && gcloud compute instances delete "$VM" --zone "$ZONE" --project "$P" -q 2>/dev/null || true; }
 trap cleanup EXIT
 ZONE=
+# --cases: 4 vCPUs per case (at least 8, at most 176) and as many jobs as cases (at most 11), not the full
+# suite's 176 vCPUs for a handful of cases
+NEED=176 HRS=2
+if [ -n "$CASES" ]; then
+  NC=$(tr ',' '\n' <<< "$CASES" | grep -c .)
+  NEED=$(( NC * 4 < 8 ? 8 : (NC * 4 > 176 ? 176 : NC * 4) )) HRS=1
+  [ "$JOBS" -le "$NC" ] || JOBS=$NC
+fi
 while read -r -u 3 M z DISK; do
   [ -n "$THREADS_SET" ] || THREADS=$(( ${M##*-} / JOBS > 0 ? ${M##*-} / JOBS : 1 ))  # the machine's vCPUs over the jobs
   if gcloud compute instances create "$VM" --project "$P" --zone "$z" --machine-type "$M" \
@@ -54,7 +64,7 @@ while read -r -u 3 M z DISK; do
   why=$(grep -oE "stockout|ZONE_RESOURCE_POOL_EXHAUSTED|Quota '[A-Z0-9_]*'|does not exist|not available|not supported" "$OUT/create.log" | head -1)
   echo "[gcp_run] $M $z: ${why:-error}"
   [ -n "$why" ] || { cat "$OUT/create.log"; exit 1; }  # not a capacity or quota problem
-done 3< <(vm_candidates "$MACHINE" 176 2 "$DATA" "$ZONES")
+done 3< <(vm_candidates "$MACHINE" $NEED $HRS "$DATA" "$ZONES")
 [ -n "$ZONE" ] || { echo "[gcp_run] no machine and zone available now"; cat "$OUT/create.log"; exit 1; }
 echo "[gcp_run] $VM ($MACHINE spot, $ZONE): results to gs://$BK/$RES"
 gone=0
