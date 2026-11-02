@@ -87,7 +87,9 @@ grep . "$OUT/setup.out" 2>/dev/null && bad=1
 good=
 for n in $names; do
   steps=1; grep -E "^\s*$n\s.*\srun\.steps=0(\s|$)" "$REFS" > /dev/null && steps=0  # no 3-step and restart runs
-  if grep -qE "^$n SUCCESS( \(from .*\))?$" "$OUT/refs.out" 2>/dev/null && { [ $steps = 0 ] || grep -qx "$n/steps SUCCESS" "$OUT/refs.out"; }
+  # a reference from the cache holds both runs (cached only when all its runs succeeded): one line
+  if grep -qE "^$n SUCCESS( \(from .*\))?$" "$OUT/refs.out" 2>/dev/null && { [ $steps = 0 ] || grep -qx "$n/steps SUCCESS" "$OUT/refs.out" \
+       || grep -qE "^$n SUCCESS \(from .*\)$" "$OUT/refs.out"; }
   then good="$good run_$n"
   else echo "[gcp_wrfref] run_$n: $(grep -E "^$n(/steps)? (WRF|REAL)-FAILED" "$OUT/refs.out" 2>/dev/null | cut -c1-300 || echo "no result")"; bad=1; fi
   [ $steps = 1 ] || continue
