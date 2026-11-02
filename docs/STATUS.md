@@ -16,7 +16,7 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 | Radiation | RRTMG LW and SW (4), Dudhia SW (1, with RRTMG LW; swrad_scat), CAM ozone and greenhouse gases, cal_cldfra1, McICA (cldovrlp 1-5) and clear sky only (cldovrlp 0), cumulus clouds in the radiation (cu_rad_feedback: Kain-Fritsch, Grell-Freitas; no effect with Tiedtke / New Tiedtke as in WRF) |
 | Nesting | static one-way and two-way nests (interp_fcn_sint, bdy_interp1, copy_fcn feedback, sm121/smdsm smoothers, blend_terrain, adjust_tempqv) |
 | Namelist | physics_suite CONUS and tropical (the -1 options), in tools/wrf2cppwrf.py and in the WRF I/O schema |
-| Diagnostics | accumulation buckets bucket_mm and bucket_J (I_RAINC, I_RAINNC, I_ACSWUPT ... I_ACLWDNBC) and the precipitation windows prec_acc_dt (PREC_ACC_C, PREC_ACC_NC, SNOW_ACC_NC, per domain), with the column physics |
+| Diagnostics | accumulation buckets bucket_mm and bucket_J (I_RAINC, I_RAINNC, I_ACSWUPT ... I_ACLWDNBC) and the precipitation windows prec_acc_dt (PREC_ACC_C, PREC_ACC_NC, SNOW_ACC_NC, per domain), output_diagnostics = 1 (T2MIN ... RAINNCVSTD over auxhist3_interval, the auxhist3 files), with the column physics; nwp_diagnostics is not ported (needs do_radar_ref) |
 | I/O | reads wrfinput_d0N / wrfbdy_d01; writes WRF v4.8.0 wrfout_d0N and wrfrst_d0N files (WRF I/O schema, iofields_filename, history_outname / rst_outname, frames_per_outfile, use_netcdf_classic) and its own restart files; native binary output; cppwrf_real (real.exe) |
 | Ideal cases | WRF's ideal.exe for em_hill2d_x, em_quarter_ss, em_squall2d_x/y, em_grav2d_x; CPPWRF's own analytic tests (rest state, warm bubble, Straka, inertia-gravity wave, 2-D squall line) |
 
@@ -83,6 +83,7 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | A05 / A05C / A05G | P4 with cu_rad_feedback (Kain-Fritsch cloud fraction and water in RRTMG) / P4 with cldovrlp 0 (RRTMG without clouds) / P8 + WSM6 + RRTMG with cu_rad_feedback (Grell-Freitas QC_CU / QI_CU) | 1 h |
 | KESSKF | P4 with Kessler instead of WSM6 (Kain-Fritsch rain in Kessler's split sedimentation steps) | 1 h |
 | A08 | P4 with bucket_mm 0.05, bucket_J 1e4 and prec_acc_dt 2 min (RAINC / RAINNC and the LW accumulations tip at the first step: I_RAINC, I_ACLW*; PREC_ACC_C, PREC_ACC_NC, SNOW_ACC_NC) | 3 min, 1 h |
+| A09 | P4 with output_diagnostics = 1, auxhist3_interval 3 min (the auxhist3 files T2MIN ... RAINNCVSTD compared as wrfout) | 3 min, 1 h, 1 h restarted at 30 min |
 | DUD | V1 with the Dudhia shortwave and RRTMG longwave (00 UTC: sunrise over the Bay of Bengal, the whole domain sunlit within the hour) | 1 h |
 | P5 | P1 + WSM6 + diff_opt 1 / km_opt 4 | 1 h |
 | P6 | P5 with Thompson | 1 h |

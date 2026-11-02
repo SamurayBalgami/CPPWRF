@@ -205,6 +205,24 @@ CASES = [
     ("real_a08_r8_fp64_cuda_1h", "cuda_dp", "configs/real_a08_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
      f"{WR}/run_A08_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 5.4e-4, "W": 1.4e-2, "THM": 9.3e-6, "QV": 3e-4}),  # G4: U 1.8e-4 W 4.6e-3 THM 3.1e-6 QV 1.0e-4
+    # A09 = P4 with output_diagnostics = 1, auxhist3_interval = 3 min (clwrf_output_calc): the wrfout files and the
+    # auxhist3 files (T2MIN ... RAINNCVSTD) exact; the 1 h run also restarted at 30 min (wrfrst with the statistics)
+    ("real_a09_r8_fp64_cpu", "cpu_dp", "configs/real_a09_r8.ini", ["output.auxhist3=true"],
+     f"{WR}/run_A09_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "T2": 0.0, "Q2": 0.0, "U10": 0.0, "V10": 0.0, "RAINNCV": 0.0}),
+    ("real_a09_r8_fp64_cpu_1h", "cpu_dp", "configs/real_a09_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10",
+      "output.auxhist3=true"],
+     f"{WR}/run_A09_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "T2": 0.0, "Q2": 0.0, "U10": 0.0, "V10": 0.0, "RAINNCV": 0.0}),
+    ("real_a09_r8_fp64_cpu_1h_rst", "cpu_dp", "configs/real_a09_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10",
+      "output.auxhist3=true", "suite.restart_at=1800"],
+     f"{WR}/run_A09_r8/wrfout_d01_2026-10-12_00:00:00", 3600,
+     {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "T2": 0.0, "Q2": 0.0, "U10": 0.0, "V10": 0.0, "RAINNCV": 0.0}),
+    ("real_a09_r8_fp64_cuda_1h", "cuda_dp", "configs/real_a09_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_P4_r8", "output.out_interval=10", "output.diag_interval=10"],
+     f"{WR}/run_A09_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 5.4e-4, "W": 1.4e-2, "THM": 9.3e-6, "QV": 3e-4}),
     # C01 = P6 with the aerosol-aware Thompson (mp_physics = 28, aer_init_opt = 0; WRF r8d8): bit-identical for
     # 3 minutes (history every minute) and 1 h
     ("real_c01_r8_fp64_cpu", "cpu_dp", "configs/real_c01_r8.ini", [],
@@ -822,6 +840,17 @@ def exact_case(refs, out, t, sets):
                     dif.pop(v, None)
         frames += n
         bad += [f"{d}.{k}: {v}" for k, v in dif.items()]
+        # output_diagnostics: the auxhist3 files next to the reference wrfout, compared as the wrfout files
+        aux = sorted(glob.glob(os.path.join(os.path.dirname(w), f"auxhist3_{d}_*")))
+        if aux:
+            mine = [f for o in (out if isinstance(out, list) else [out])
+                    for f in glob.glob(os.path.join(o, f"auxhist3_{d}_*")) + glob.glob(os.path.join(o, d, f"auxhist3_{d}_*"))]
+            dif, n = exact.compare_stream(mine, aux, subset=True, until=final[0],
+                                          global_atts=os.path.exists(os.path.join(os.path.dirname(w), "namelist.input")))
+            if not n:
+                dif.setdefault("(times)", "no auxhist3 frame in common")
+            frames += n
+            bad += [f"{d}.auxhist3.{k}: {v}" for k, v in dif.items()]
     return bad, f"{frames} frames, {nvars} variables"
 
 

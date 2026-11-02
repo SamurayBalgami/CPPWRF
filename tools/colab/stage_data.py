@@ -16,7 +16,8 @@ come with their namelist.input (wrf_suite.py checks the configuration and the gl
 time; it needs no work, so OUT can be - for a tar on stdout, e.g. | gcloud storage cp - gs://BUCKET/X.tar, which
 writes nothing locally); --refs-only: only the reference files (and the ideal namelists), not the run directories;
 --no-steps: no reference in a steps/ directory (tools/gcp/stage_files_data.py packs those whole). A case restarted in
-the middle (suite.restart_at) also takes WRF's wrfrst files at the restart.
+the middle (suite.restart_at) also takes WRF's wrfrst files at the restart, a tolerance-0 case the auxhist3 files
+(output_diagnostics) next to its reference wrfout, whole.
 --files: the cases of tests/verify/run_wrf_files_test.sh run with CPPWRF_FILES_NO_VALUES=1 (a GPU build): their input
 directories, and their wrfout / wrfrst references (run, restart and resumed directories) as skeletons, with every
 variable, dimension, attribute and time but zero numbers; whole only the wrfrst files of minute 1, which the resumed
@@ -24,6 +25,7 @@ runs start from.
 """
 import argparse
 import fnmatch
+import glob
 import os
 import re
 import sys
@@ -154,6 +156,9 @@ def main():
                     at = [text(ds["Times"], i).decode() for i, x in enumerate(xt) if abs(x - mid) < 1e-6]
                 dom = re.search(r"wrfout_(d\d\d)_", os.path.basename(r)).group(1)
                 restarts.update(os.path.join(os.path.dirname(r), f"wrfrst_{dom}_{x}") for x in at)
+            if all(x == 0.0 for x in tol.values()):  # wrf_suite.py compares them as the wrfout files
+                dom = re.search(r"wrfout_(d\d\d)_", os.path.basename(r)).group(1)
+                restarts.update(glob.glob(os.path.join(os.path.dirname(r), f"auxhist3_{dom}_*")))
         d = dirs.setdefault(rd, [set(), False]) if not a.refs_only else [set(), False]
         d[1] = d[1] or (mp.strip() in ("8", "28") and not a.no_thompson_tables)
         log(f"{name}: {os.path.relpath(rd, WR)}")
