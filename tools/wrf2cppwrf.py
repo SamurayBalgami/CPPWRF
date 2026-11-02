@@ -448,7 +448,6 @@ DEFAULT_ONLY_OPTIONS = {
     ("physics", "windfarm_opt"): (0, "wind farm parameterisation"),
     ("physics", "sf_surf_irr_scheme"): (0, "irrigation"),
     ("physics", "distributed_ahe_opt"): (0, "anthropogenic heat (AHE of the urban canopy model)"),
-    ("physics", "do_radar_ref"): (0, "radar reflectivity diagnostic (REFL_10CM)"),
     ("physics", "kf_edrates"): (0, "KF entrainment / detrainment rate outputs (UDR_KF, DDR_KF, UER_KF, DER_KF, TIMEC_KF)"),
     ("physics", "ra_sw_eclipse"): (0, "solar eclipse in the shortwave radiation (ECOBSC, ECMASK)"),
     ("diags", "solar_diagnostics"): (0, "solar diagnostics (radiation_driver's Solar_step every step, SZA, CLRNIDX ...)"),
@@ -1875,6 +1874,15 @@ class WrfTranslator:
                 self.error(f"WRF use_mp_re = {use_mp_re} is not supported; CPPWRF supports 0 and 1.")
             elif use_mp_re != 1:
                 sections.setdefault("phys", {})["use_mp_re"] = use_mp_re
+
+        # do_radar_ref = 1: REFL_10CM from WSM6 / Thompson at the history steps (0 with Kessler or without
+        # microphysics); REFD_MAX stays 0 without nwp_diagnostics, as in WRF
+        if self.has_opt("physics", "do_radar_ref"):
+            do_radar_ref = self.get_opt("physics", "do_radar_ref", 0)
+            if do_radar_ref not in (0, 1):
+                self.error(f"WRF do_radar_ref = {do_radar_ref} is not supported; CPPWRF supports 0 and 1.")
+            elif do_radar_ref == 1:
+                sections.setdefault("phys", {})["do_radar_ref"] = 1
 
         # cu_rad_feedback (max_domains): phy_init's icloud_cu puts KF's (2) or the Grell schemes' (1) clouds into
         # the radiation; with Tiedtke / New Tiedtke icloud_cu = 0 (no effect). Nests: [d0N] phys_cu_rad_feedback

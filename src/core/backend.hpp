@@ -95,6 +95,7 @@ extern "C" __m128d _ZGVbN2v_exp(__m128d);
 extern "C" __m128d _ZGVbN2v_sin(__m128d);
 extern "C" __m128d _ZGVbN2v_atan(__m128d);
 extern "C" __m128d _ZGVbN2v_cos(__m128d);
+extern "C" __m128d _ZGVbN2v_log10(__m128d);
 #define CPPWRF_HAVE_LIBMVEC 1
 #endif
 namespace cppwrf {
@@ -169,6 +170,17 @@ CPPWRF_HD inline double cos(double a, int i, int n) {
   return ::cos(a);
 #else
   return std::cos(a);
+#endif
+}
+CPPWRF_HD inline double log10(double a, int i, int n) {
+#if defined(CPPWRF_HAVE_LIBMVEC)
+  if (lane(i, n)) return _mm_cvtsd_f64(_ZGVbN2v_log10(_mm_set1_pd(a)));
+#endif
+  (void)i; (void)n;
+#if defined(__CUDA_ARCH__)
+  return ::log10(a);
+#else
+  return std::log10(a);
 #endif
 }
 CPPWRF_HD inline float pow(float a, float b, int, int) { return rpow(a, b); }

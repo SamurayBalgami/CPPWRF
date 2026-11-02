@@ -161,6 +161,15 @@ void derive_config(WrfConfig& c, int max_dom, bool real_exe) {
       for (const char* o : {"nssl_2moment_on", "nssl_hail_on", "nssl_density_on", "nssl_3moment", "nssl_ccn_on"})
         c.set(o, "0");
   }
+  // check_a_mundo: nwp_diagnostics = 1 turns do_radar_ref on (module_check_a_mundo.F:2119); compute_radar_ref (the
+  // package radar_refl: REFL_10CM, REFD_MAX) with do_radar_ref = 1 or a domain with mp_physics MILBRANDT2MOM (9) or
+  // NSSL_2MOM (18) (module_check_a_mundo.F:3528-3536)
+  if (c.integer("nwp_diagnostics") == 1) c.set("do_radar_ref", "1");
+  {
+    bool on = c.integer("do_radar_ref") == 1;
+    for (int id = 1; id <= max_dom; ++id) on = on || c.integer("mp_physics", id) == 9 || c.integer("mp_physics", id) == 18;
+    c.set("compute_radar_ref", on ? "1" : "0");
+  }
   // check_nml_consistency (module_check_a_mundo.F:1124-1146): the bucket and prec_acc packages
   c.set("bucketr_opt", c.num("bucket_mm") > 0 ? "1" : "0");
   c.set("bucketf_opt", c.num("bucket_j") > 0 ? "1" : "0");

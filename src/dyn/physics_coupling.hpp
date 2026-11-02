@@ -10,6 +10,7 @@
 
 #include "core/field.hpp"
 #include "dyn/state.hpp"
+#include "phys/mp_radar/radar.hpp"
 #include "phys/mp_thompson/thompson_tables.hpp"
 #include "phys/mp_wsm6/wsm6.hpp"
 
@@ -23,6 +24,7 @@ struct PhysicsParams {
   bool force_read_thompson = false;  // WRF namelist force_read_thompson: those files must be there
   bool microp_re = false;    // WSM6 / Thompson effective radii for RRTMG (WRF has_reqc = has_reqi = has_reqs = 1:
                              // use_mp_re = 1 with RRTMG LW and SW)
+  int do_radar_ref = 0;      // WRF namelist do_radar_ref: REFL_10CM from WSM6 / Thompson at history steps
 };
 
 class PhysicsCoupling {
@@ -41,6 +43,11 @@ class PhysicsCoupling {
   Field2 snownc, snowncv, graupelnc, graupelncv, sr;  // WSM6/Thompson: snow, graupel [mm]; sr = frozen fraction
   Field3 re_cloud, re_ice, re_snow;  // microp_re: effective radii [m] (RE_QC_BG ... before the first call)
   Field2 qnwfa2d, qnifa2d;  // mp_physics = 28: surface emission of water- / ice-friendly aerosols [#/kg/s]
+  // do_radar_ref = 1 with WSM6 / Thompson: 10-cm radar reflectivity [dBZ], 0 until the first history step and
+  // outside the microphysics columns (Kessler and no microphysics: 0 throughout, as in WRF)
+  Field3 refl_10cm;
+  // solve_em's diag_flag: the history alarm rings at the end of this step (set before each step)
+  bool diagflag = false;
 
  private:
   Grid g_;
@@ -50,6 +57,7 @@ class PhysicsCoupling {
   phys::wsm6::Wsm6Params<real> wp_{};  // WSM6 constants (wsm6init), computed once
   // Thompson lookup tables (thompson_init), device-resident: one set shared by all domains, as WRF's
   std::shared_ptr<const phys::mp_thompson::ThompsonDeviceTables<real>> tp_;
+  std::shared_ptr<const phys::radar::RadarDeviceTables<real>> radar_;  // radar_init of WSM6 / Thompson
 };
 
 }  // namespace cppwrf::dyn

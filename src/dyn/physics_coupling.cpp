@@ -4,6 +4,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -100,6 +101,7 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
   if (p_.mp_physics != 0 && p_.mp_physics != 1 && p_.mp_physics != 6 && p_.mp_physics != 8 && p_.mp_physics != 28)
     throw std::runtime_error("phys.mp_physics must be 0, 1, 6, 8 or 28");
   if (p_.mp_physics == 1 && g.nz > phys::kessler::kMaxLevels) throw std::runtime_error("Kessler: nz > kMaxLevels");
+  if (p_.do_radar_ref != 0 && p_.do_radar_ref != 1) throw std::runtime_error("phys.do_radar_ref must be 0 or 1");
   if (p_.microp_re) {  // phy_init: background values RE_QC_BG, RE_QI_BG, RE_QS_BG
     re_cloud = Field3(g, Stagger::M, "re_cloud");
     re_ice = Field3(g, Stagger::M, "re_ice");
@@ -123,12 +125,17 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
     // wsm6init (WRF microphysics_driver arguments); once, not every step
     wp_.init(real(pc::rhoair0), real(pc::rhowater), real(pc::rhosnow), real(pc::cliq), real(4.0 * pc::r_v),
              p_.hail_opt);
+    if (p_.do_radar_ref == 1)  // mp_wsm6_init: m(D) = pi*den/6 D**3 of rain, snow and graupel (hail), mu = 0
+      radar_ = std::make_shared<const phys::radar::RadarDeviceTables<real>>(phys::radar::radar_init<real>(
+          wp_.pi * wp_.denr / real(6.), real(3.), real(0.), wp_.pi * wp_.dens / real(6.), real(3.), real(0.),
+          wp_.pi * wp_.deng / real(6.), real(3.), real(0.)));
 #if defined(CPPWRF_USE_CUDA)
     // the WSM6 column kernel keeps ~11 columns of kMaxLevels in per-thread local memory
     if (cudaDeviceSetLimit(cudaLimitStackSize, 64 * 1024) != cudaSuccess)
       throw std::runtime_error("WSM6: cudaDeviceSetLimit(cudaLimitStackSize, 64 KB) failed");
 #endif
   }
+  if (p_.do_radar_ref == 1 && (p_.mp_physics == 6 || thompson())) refl_10cm = Field3(g, Stagger::M, "refl_10cm");
   if (thompson()) {
     if (g.nz > phys::mp_thompson::kMaxLevels) throw std::runtime_error("Thompson: nz > kMaxLevels");
     snownc = Field2(g, Stagger::M, "snownc");
@@ -141,6 +148,12 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
       qnifa2d = Field2(g, Stagger::M, "qnifa2d");
     }
     tp_ = thompson_tables(p_.table_dir, p_.force_read_thompson, p_.mp_physics == 28);
+    if (p_.do_radar_ref == 1) {  // thompson_init (calc_refl10cm reads only the bins, K_w, PI5, lamda4, m_w_0, m_i_0)
+      namespace mt = phys::mp_thompson;
+      radar_ = std::make_shared<const phys::radar::RadarDeviceTables<real>>(phys::radar::radar_init<real>(
+          real(mt::am_r), real(mt::bm_r), real(mt::mu_r), real(mt::am_s), real(mt::bm_s), real(mt::mu_s),
+          real(mt::am_g5), real(mt::bm_g), real(mt::mu_g)));
+    }
 #if defined(CPPWRF_USE_CUDA)
     if (cudaDeviceSetLimit(cudaLimitStackSize, 64 * 1024) != cudaSuccess)
       throw std::runtime_error("Thompson: cudaDeviceSetLimit(cudaLimitStackSize, 64 KB) failed");
@@ -189,6 +202,16 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
                        real(4.99E-6), real(9.99E-6), real(50.E-6), real(125.E-6), real(999.E-6), th_phy.cview(),
                        pii.cview(), s.q_2[s.P_QC].cview(), s.q_2[s.P_QI].cview(), s.q_2[s.P_QS].cview(), rho.cview(),
                        re_cloud.view(), re_ice.view(), re_snow.view()});
+    if (radar_ && diagflag) {  // module_mp_wsm6.F: refl10cm_wsm6 after the scheme (diagflag, do_radar_ref = 1)
+      auto refl = [&](auto nl) {
+        column_for(mp_cols, phys::wsm6::Wsm6ReflKernel<real, decltype(nl)::value>{
+                                radar_->get(), wp_.n0r, wp_.n0s, wp_.n0smax, wp_.alpha, wp_.n0g, wp_.pi, g.nz,
+                                th_phy.cview(), pii.cview(), p_phy.cview(), qv.cview(), s.q_2[s.P_QR].cview(),
+                                s.q_2[s.P_QS].cview(), s.q_2[s.P_QG].cview(), refl_10cm.view()});
+      };
+      if (g.nz <= 48) refl(std::integral_constant<int, 48>{});
+      else refl(std::integral_constant<int, phys::wsm6::kMaxLevels>{});
+    }
     vmdump::dump("vm_mp_out", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS],
                                   &s.q_2[s.P_QG]},
                  {&rainnc, &rainncv, &snownc, &snowncv, &graupelnc, &graupelncv, &sr});
@@ -209,7 +232,8 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
         snowncv.view(), graupelnc.view(), graupelncv.view(), sr.view(),
         dt, mp_cols, g.nz, tp_->view(), p_.microp_re ? re_cloud.view() : View3<real>{},
         p_.microp_re ? re_ice.view() : View3<real>{}, p_.microp_re ? re_snow.view() : View3<real>{},
-        p_.mp_physics == 28 ? &aero : nullptr);
+        p_.mp_physics == 28 ? &aero : nullptr, radar_ && diagflag ? refl_10cm.view() : View3<real>{},
+        radar_ ? radar_->get() : nullptr);
     vmdump::dump("vm_mp_out", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS],
                                   &s.q_2[s.P_QG], &s.q_2[s.P_QNI], &s.q_2[s.P_QNR]},
                  {&rainnc, &rainncv, &snownc, &snowncv, &graupelnc, &graupelncv, &sr});
@@ -286,6 +310,10 @@ void PhysicsCoupling::init_aerosols(State& s, const BaseState& b) {
   profile(s.P_QNIFA, phys::mp_thompson::naIN0, phys::mp_thompson::naIN1, lin, false);
 }
 
-std::vector<const Field3*> PhysicsCoupling::fields() const { return {&rho, &qv_diabatic, &qc_diabatic}; }
+std::vector<const Field3*> PhysicsCoupling::fields() const {
+  std::vector<const Field3*> f{&rho, &qv_diabatic, &qc_diabatic};
+  if (refl_10cm.layout().total > 0) f.push_back(&refl_10cm);
+  return f;
+}
 
 }  // namespace cppwrf::dyn

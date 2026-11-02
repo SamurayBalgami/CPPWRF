@@ -329,6 +329,9 @@ Model Model::build(const io::Config& cfg) {
     pp.hail_opt = int(cfg.get_int("phys.hail_opt", 0));
     pp.table_dir = cfg.get_string("phys.table_dir", cfg.get_string("real.dir", ""));
     pp.force_read_thompson = cfg.get_bool("phys.force_read_thompson", false);
+    // REFL_10CM (WSM6, Thompson; Kessler and no microphysics leave it 0)
+    pp.do_radar_ref = int(cfg.get_int("phys.do_radar_ref", 0));
+    if (pp.do_radar_ref != 0 && pp.do_radar_ref != 1) throw std::runtime_error("phys.do_radar_ref must be 0 or 1");
     // phy_init: has_reqc = has_reqi = has_reqs = 1 with use_mp_re = 1, RRTMG LW + SW and WSM6 or Thompson
     pp.microp_re = cfg.get_int("phys.use_mp_re", 1) == 1 && cfg.get_int("phys.ra_lw_physics", 0) == 4 &&
                    cfg.get_int("phys.ra_sw_physics", 0) == 4 &&

@@ -33,7 +33,9 @@ void run_thompson(
     View3<Real> re_cloud,
     View3<Real> re_ice,
     View3<Real> re_snow,
-    const ThompsonAeroFields<Real>* aero) {
+    const ThompsonAeroFields<Real>* aero,
+    View3<Real> refl,
+    const radar::RadarTables<Real>* radar) {
     assert(nz <= kMaxLevels);
     // the column arrays sized to the next tier above nz: FP64 with 128 levels needs ~160 KB of local
     // memory per thread, which the GPU reserves for every resident thread
@@ -76,6 +78,10 @@ void run_thompson(
             kernel.nwfa2d = aero->nwfa2d;
             kernel.nifa2d = aero->nifa2d;
         }
+        if (refl.p) {
+            kernel.refl = refl;
+            kernel.rtab = radar;
+        }
         column_for(range, kernel);
     };
     if (nz <= 48) launch(std::integral_constant<int, 48>{});
@@ -90,7 +96,7 @@ template void run_thompson<double>(
     View2<double>, View2<double>, View2<double>, View2<double>,
     View2<double>, View2<double>, View2<double>,
     double, const Range2D&, int, const ThompsonTablesView<double>&, View3<double>, View3<double>, View3<double>,
-    const ThompsonAeroFields<double>*);
+    const ThompsonAeroFields<double>*, View3<double>, const radar::RadarTables<double>*);
 
 template void run_thompson<float>(
     View3<float>, View3<float>, View3<float>, View3<float>, View3<float>,
@@ -99,6 +105,6 @@ template void run_thompson<float>(
     View2<float>, View2<float>, View2<float>, View2<float>,
     View2<float>, View2<float>, View2<float>,
     float, const Range2D&, int, const ThompsonTablesView<float>&, View3<float>, View3<float>, View3<float>,
-    const ThompsonAeroFields<float>*);
+    const ThompsonAeroFields<float>*, View3<float>, const radar::RadarTables<float>*);
 
 } // namespace cppwrf::phys::mp_thompson

@@ -796,6 +796,8 @@ void DomainRunner::before_step(long n) {
   // solve_em: restart_flag = Is_alarm_tstep(restart alarm) (PrevRingTime + interval <= CurrTime + dt), i.e. the
   // alarm rings at the end of step n
   if (m_.suite) m_.suite->restart_flag = rst_due(n);
+  // solve_em: diag_flag = Is_alarm_tstep(history alarm): the microphysics computes REFL_10CM in this step
+  if (m_.rk && m_.rk->physics()) m_.rk->physics()->diagflag = hist_due(n);
   if (m_.before_step) m_.before_step(n);
 #ifdef CPPWRF_HAVE_NETCDF
   // sst_update: med_before_solve_io reads auxinput4 after the history output when its alarm rings

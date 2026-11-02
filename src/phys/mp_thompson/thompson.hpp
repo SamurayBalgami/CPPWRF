@@ -9,6 +9,7 @@
 
 #include "core/backend.hpp"
 #include "core/field.hpp"
+#include "phys/mp_radar/radar.hpp"
 #include "phys/mp_thompson/thompson_tables.hpp"
 
 namespace cppwrf::phys::mp_thompson {
@@ -355,6 +356,11 @@ struct ThompsonKernel {
     View3<Real> nc_f, nwfa_f, nifa_f, nbca_f;
     View2<const Real> nwfa2d, nifa2d;
 
+    // do_radar_ref = 1 at a history step (diagflag): REFL_10CM from calc_refl10cm (refl.p set), with the radar
+    // tables of module_mp_radar.F's radar_init
+    const radar::RadarTables<Real>* rtab = nullptr;
+    View3<Real> refl;
+
     // module_mp_thompson.F calc_effectRad and the driver's limits; t1d, p1d and the moist arrays are the column
     // after mp_thompson, nc1d its droplet number (not aerosol aware: nc = Nt_c)
     CPPWRF_HD void effect_rad(int i, int j, const Real* t1d, const Real* p1d, const Real* nc1d) const {
@@ -442,6 +448,139 @@ struct ThompsonKernel {
             nwfa_f(i, j, k) = nwfa1d[k];
             nifa_f(i, j, k) = nifa1d[k];
             nbca_f(i, j, k) = Real(0.0);
+        }
+    }
+
+    // module_mp_thompson.F calc_refl10cm (ke_diag = kte: the reflectivity at every level), called by mp_gt_driver
+    // after mp_thompson with the column of its final update: qv, qr, nr, qs, qg as written back, t1d, p1d and the
+    // graupel number ng1d; REFL_10CM = MAX(-35., dBZ). Not hail aware: idx_bg = idx_bg1 everywhere (qb1d unused).
+    CPPWRF_HD void refl10cm(int i, int j, const Real* t1d, const Real* p1d, const Real* ng1d) const {
+        const radar::RadarTables<Real>& rt = *rtab;
+        Real temp[NL], rr[NL], rs[NL], rg[NL], ng[NL], smob[NL], smoc[NL], smoz[NL];
+        Real ze_rain[NL], ze_snow[NL], ze_graupel[NL];
+        double ilamr[NL], ilamg[NL], N0_r[NL], N0_g[NL];
+        bool L_qr[NL], L_qs[NL], L_qg[NL];
+        bool any_qs = false, any_qg = false;
+        for (int k = 0; k < nz; ++k) {
+            temp[k] = t1d[k];
+            const Real qvk = c_max(Real(1.E-10), qv(i, j, k));
+            const Real pres = p1d[k];
+            const Real rho = Real(0.622) * pres / (Real(R_d) * temp[k] * (qvk + Real(0.622)));
+            ilamr[k] = N0_r[k] = 0.0;
+            if (qr(i, j, k) > Real(R1)) {
+                rr[k] = qr(i, j, k) * rho;
+                const Real nrk = c_max(Real(R2), nr(i, j, k) * rho);
+                const double lamr = std::pow(Real(am_r) * tables.crg[2] * tables.org2 * nrk / rr[k], tables.obmr);
+                ilamr[k] = 1. / lamr;
+                N0_r[k] = double(nrk * tables.org2) * std::pow(lamr, double(tables.cre[1]));
+                L_qr[k] = true;
+            } else {
+                rr[k] = Real(R1);
+                L_qr[k] = false;
+            }
+            if (qs(i, j, k) > Real(R2)) {
+                rs[k] = qs(i, j, k) * rho;
+                L_qs[k] = true;
+                any_qs = true;
+            } else {
+                rs[k] = Real(R1);
+                L_qs[k] = false;
+            }
+            if (qg(i, j, k) > Real(R2)) {
+                rg[k] = qg(i, j, k) * rho;
+                ng[k] = c_max(Real(R2), ng1d[k] * rho);
+                L_qg[k] = true;
+                any_qg = true;
+            } else {
+                rg[k] = Real(R1);
+                ng[k] = Real(R2);
+                L_qg[k] = false;
+            }
+        }
+        // snow moments (bm_s = 2: smo2 = smob)
+        for (int k = 0; k < nz; ++k) smob[k] = smoc[k] = smoz[k] = Real(0.);
+        if (any_qs) {
+            for (int k = 0; k < nz; ++k) {
+                if (!L_qs[k]) continue;
+                const Real tc0 = c_min(Real(-0.1), temp[k] - Real(273.15));
+                smob[k] = rs[k] * tables.oams;
+                const Real smo2 = smob[k];
+                auto moment = [&](Real c) {
+                    const Real loga_ = tables.sa[0] + tables.sa[1] * tc0 + tables.sa[2] * c + tables.sa[3] * tc0 * c +
+                                       tables.sa[4] * tc0 * tc0 + tables.sa[5] * c * c + tables.sa[6] * tc0 * tc0 * c +
+                                       tables.sa[7] * tc0 * c * c + tables.sa[8] * tc0 * tc0 * tc0 +
+                                       tables.sa[9] * c * c * c;
+                    const Real a_ = std::pow(Real(10.0), loga_);
+                    const Real b_ = tables.sb[0] + tables.sb[1] * tc0 + tables.sb[2] * c + tables.sb[3] * tc0 * c +
+                                    tables.sb[4] * tc0 * tc0 + tables.sb[5] * c * c + tables.sb[6] * tc0 * tc0 * c +
+                                    tables.sb[7] * tc0 * c * c + tables.sb[8] * tc0 * tc0 * tc0 +
+                                    tables.sb[9] * c * c * c;
+                    return a_ * std::pow(smo2, b_);
+                };
+                smoc[k] = moment(tables.cse[0]);
+                smoz[k] = moment(tables.cse[2]);
+            }
+        }
+        // graupel intercept and slope (every level once any level has graupel)
+        for (int k = nz - 1; k >= 0; --k) {
+            if (any_qg) {
+                const double lamg = std::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * ng[k] / rg[k], tables.obmg);
+                ilamg[k] = 1. / lamg;
+                N0_g[k] = double(ng[k] * tables.ogg2) * std::pow(lamg, double(tables.cge[1]));
+            } else {
+                ilamg[k] = 0.;
+                N0_g[k] = 0.;
+            }
+        }
+        // the level of the start of melting (k_0 the level above)
+        bool melti = false;
+        int k_0 = 0;
+        for (int k = nz - 2; k >= 0; --k)
+            if (temp[k] > Real(273.15) && L_qr[k] && (L_qs[k + 1] || L_qg[k + 1])) {
+                k_0 = k + 1 > k_0 ? k + 1 : k_0;
+                melti = true;
+                break;
+            }
+        const Real cs = Real(0.176) / Real(0.93) * (Real(6.0) / Real(PI_CONST)) * (Real(6.0) / Real(PI_CONST)) *
+                        (Real(am_s) / Real(900.0)) * (Real(am_s) / Real(900.0));
+        const Real cg = Real(0.176) / Real(0.93) * (Real(6.0) / Real(PI_CONST)) * (Real(6.0) / Real(PI_CONST)) *
+                        (Real(am_g5) / Real(900.0)) * (Real(am_g5) / Real(900.0));
+        for (int k = 0; k < nz; ++k) {
+            ze_rain[k] = Real(1.e-22);
+            ze_snow[k] = Real(1.e-22);
+            ze_graupel[k] = Real(1.e-22);
+            if (L_qr[k]) ze_rain[k] = Real(N0_r[k] * double(tables.crg[3]) * std::pow(ilamr[k], double(tables.cre[3])));
+            if (L_qs[k]) ze_snow[k] = cs * smoz[k];
+            if (L_qg[k])
+                ze_graupel[k] = Real(double(cg) * N0_g[k] * double(tables.cgg[3]) * std::pow(ilamg[k], double(tables.cge[3])));
+        }
+        // melting snow (the graupel branch is commented out in WRF)
+        if (melti && k_0 >= 1) {
+            for (int k = k_0 - 1; k >= 0; --k) {
+                if (!(L_qs[k] && L_qs[k_0])) continue;
+                const double fmelt_s = c_max(0.05, c_min(1.0 - double(rs[k] / rs[k_0]), 0.99));
+                double eta = 0.;
+                const Real oM3 = Real(1.) / smoc[k];
+                const Real M0 = smob[k] * oM3;
+                const Real Mrat = smob[k] * M0 * M0 * M0;
+                const Real slam1 = M0 * Real(Lam0);
+                const Real slam2 = M0 * Real(Lam1);
+                for (int n = 0; n < radar::nrbins; ++n) {
+                    const double x = double(Real(am_s)) * (rt.xxDs[n] * rt.xxDs[n]);  // xxDs**bm_s, bm_s = 2.0
+                    const double cback = radar::rayleigh_soak_wetgraupel(x, double(tables.ocms), double(tables.obms),
+                                                                         fmelt_s, rt.m_w_0, rt.m_i_0, rt.pi5, rt.lamda4);
+                    const double f_d = double(Mrat) * (double(Real(Kap0)) * std::exp(-double(slam1) * rt.xxDs[n]) +
+                                                       double(Real(Kap1)) * std::pow(double(M0) * rt.xxDs[n], double(Real(mu_s))) *
+                                                           std::exp(-double(slam2) * rt.xxDs[n]));
+                    eta = eta + f_d * cback * rt.simpson[n] * rt.xdts[n];
+                }
+                ze_snow[k] = Real(rt.lamda4 / (rt.pi5 * rt.k_w) * eta);
+            }
+        }
+        for (int k = nz - 1; k >= 0; --k) {
+            const double ze = double(ze_rain[k] + ze_snow[k] + ze_graupel[k]) * 1.e18;
+            const Real dbz = Real(double(Real(10.)) * vm::log10(ze, nz - 1 - k, nz));
+            refl(i, j, k) = c_max(Real(-35.), dbz);
         }
     }
 
@@ -2437,6 +2576,23 @@ struct ThompsonKernel {
             } else {
                 qg(i, j, k) = qg_final;
             }
+            if (refl.p) {  // ng1d of the update (not hail aware: am_g(idx_bg1)); only calc_refl10cm reads it
+                ng1d[k] = c_max(Real(R2) / rho[k], ng1d[k] + ngten[k] * dt);
+                if (qg_final <= Real(R1)) {
+                    ng1d[k] = Real(0.0);
+                } else {
+                    const double lamg = std::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * ng1d[k] / qg_final, tables.obmg);
+                    Real mvd_g = Real(double(Real(3.0) + Real(mu_g) + Real(0.672)) / lamg);
+                    if (mvd_g > Real(25.4E-3)) {
+                        mvd_g = Real(25.4E-3);
+                    } else if (mvd_g < Real(D0r)) {
+                        mvd_g = Real(D0r);
+                    }
+                    const double lamg2 = double(Real(3.0) + Real(mu_g) + Real(0.672)) / double(mvd_g);
+                    ng1d[k] = Real(double(tables.cgg[1] * tables.ogg3 * qg_final) * std::pow(lamg2, double(Real(bm_g))) /
+                                   double(Real(am_g5)));
+                }
+            }
         }
 
         // Precipitation totals
@@ -2450,6 +2606,7 @@ struct ThompsonKernel {
         graupelnc(i, j) += pptgraul;
         sr(i, j) = (pptsnow + pptgraul + pptice) / (rain_step + Real(1.0e-12));
         if (aero) aero_out(i, j, nc1d, nwfa1d, nifa1d);
+        if (refl.p) refl10cm(i, j, twet, pres, ng1d);
         if (has_re) effect_rad(i, j, twet, pres, nc1d);
     }
 };
@@ -2491,6 +2648,8 @@ void run_thompson(
     View3<Real> re_cloud = {},  // all three or none (has_reqc, has_reqi, has_reqs)
     View3<Real> re_ice = {},
     View3<Real> re_snow = {},
-    const ThompsonAeroFields<Real>* aero = nullptr);
+    const ThompsonAeroFields<Real>* aero = nullptr,
+    View3<Real> refl = {},  // REFL_10CM at a history step with do_radar_ref = 1 (with radar's tables)
+    const radar::RadarTables<Real>* radar = nullptr);
 
 } // namespace cppwrf::phys::mp_thompson

@@ -6,6 +6,7 @@
 
 #include "core/backend.hpp"
 #include "core/field.hpp"
+#include "phys/mp_radar/radar.hpp"
 #include "phys/phys_constants.hpp"
 
 namespace cppwrf::phys::wsm6 {
@@ -1524,6 +1525,126 @@ struct Wsm6EffRadKernel {
         re_qc(i, j, k) = std::max(re_qc_bg, std::min(rc, re_qc_max));
         re_qi(i, j, k) = std::max(re_qi_bg, std::min(ri, re_qi_max));
         re_qs(i, j, k) = std::max(re_qs_bg, std::min(rs, re_qs_max));
+    }
+};
+
+// WRF physics_mmm/mp_wsm6.F90 refl10cm_wsm6, called by module_mp_wsm6.F:234-249 at history steps (diagflag) with
+// do_radar_ref = 1 after the scheme: t1d = th*pii, p, qv, qr, qs, qg of the updated column, REFL_10CM =
+// MAX(-35., dBZ). Rayleigh scattering at 10 cm; melting snow / graupel below the melting level as water-coated
+// ice spheres (rayleigh_soak_wetgraupel). The final dBZ loop is vectorised in WRF (libmvec log10 on the pairs
+// kte, kte-1, ...; the odd last level kts with the scalar log10).
+template <typename Real, int NL = kMaxLevels>
+struct Wsm6ReflKernel {
+    const radar::RadarTables<Real>* rt;
+    Real n0r, n0s, n0smax, alpha, n0g, pi;
+    int nz;
+    View3<const Real> th, pii, p, qv, qr, qs, qg;
+    View3<Real> refl;
+    CPPWRF_HD void operator()(int i, int j) const {
+        const radar::RadarTables<Real>& t = *rt;
+        constexpr Real R = Real(287.);
+        bool l_qr[NL], l_qs[NL], l_qg[NL];
+        Real temp[NL], rr[NL], rs[NL], rg[NL], ze_rain[NL], ze_snow[NL], ze_graupel[NL];
+        double ilamr[NL], ilams[NL], ilamg[NL], n0_r[NL], n0_s[NL], n0_g[NL];
+        for (int k = 0; k < nz; ++k) {
+            temp[k] = th(i, j, k) * pii(i, j, k);
+            const Real temp_c = c_min(Real(-0.001), temp[k] - Real(273.15));
+            const Real qvk = c_max(Real(1.e-10), qv(i, j, k));
+            const Real pres = p(i, j, k);
+            const Real rho = Real(0.622) * pres / (R * temp[k] * (qvk + Real(0.622)));
+            n0_r[k] = n0_s[k] = n0_g[k] = ilamr[k] = ilams[k] = ilamg[k] = 0.0;
+            if (qr(i, j, k) > Real(1.e-9)) {
+                rr[k] = qr(i, j, k) * rho;
+                n0_r[k] = double(n0r);
+                const double lamr = std::pow(double(t.xam_r * t.xcrg[2]) * n0_r[k] / double(rr[k]),
+                                             double(Real(1.) / t.xcre[0]));
+                ilamr[k] = 1. / lamr;
+                l_qr[k] = true;
+            } else {
+                rr[k] = Real(1.e-12);
+                l_qr[k] = false;
+            }
+            if (qs(i, j, k) > Real(1.e-9)) {
+                rs[k] = qs(i, j, k) * rho;
+                n0_s[k] = double(c_min(n0smax, n0s * std::exp(-alpha * temp_c)));
+                const double lams = std::pow(double(t.xam_s * t.xcsg[2]) * n0_s[k] / double(rs[k]),
+                                             double(Real(1.) / t.xcse[0]));
+                ilams[k] = 1. / lams;
+                l_qs[k] = true;
+            } else {
+                rs[k] = Real(1.e-12);
+                l_qs[k] = false;
+            }
+            if (qg(i, j, k) > Real(1.e-9)) {
+                rg[k] = qg(i, j, k) * rho;
+                n0_g[k] = double(n0g);
+                const double lamg = std::pow(double(t.xam_g * t.xcgg[2]) * n0_g[k] / double(rg[k]),
+                                             double(Real(1.) / t.xcge[0]));
+                ilamg[k] = 1. / lamg;
+                l_qg[k] = true;
+            } else {
+                rg[k] = Real(1.e-12);
+                l_qg[k] = false;
+            }
+        }
+        // the level of the start of melting (k_0 the level above)
+        bool melti = false;
+        int k_0 = 0;
+        for (int k = nz - 2; k >= 0; --k)
+            if (temp[k] > Real(273.15) && l_qr[k] && (l_qs[k + 1] || l_qg[k + 1])) {
+                k_0 = k + 1 > k_0 ? k + 1 : k_0;
+                melti = true;
+                break;
+            }
+        // Rayleigh: rain at all temperatures, dry snow and graupel
+        const Real cs = Real(0.176) / Real(0.93) * (Real(6.0) / pi) * (Real(6.0) / pi) * (t.xam_s / Real(900.0)) *
+                        (t.xam_s / Real(900.0));
+        const Real cg = Real(0.176) / Real(0.93) * (Real(6.0) / pi) * (Real(6.0) / pi) * (t.xam_g / Real(900.0)) *
+                        (t.xam_g / Real(900.0));
+        for (int k = 0; k < nz; ++k) {
+            ze_rain[k] = Real(1.e-22);
+            ze_snow[k] = Real(1.e-22);
+            ze_graupel[k] = Real(1.e-22);
+            if (l_qr[k]) ze_rain[k] = Real(n0_r[k] * double(t.xcrg[3]) * std::pow(ilamr[k], double(t.xcre[3])));
+            if (l_qs[k]) ze_snow[k] = Real(double(cs) * n0_s[k] * double(t.xcsg[3]) * std::pow(ilams[k], double(t.xcse[3])));
+            if (l_qg[k]) ze_graupel[k] = Real(double(cg) * n0_g[k] * double(t.xcgg[3]) * std::pow(ilamg[k], double(t.xcge[3])));
+        }
+        // melting snow and graupel: the meltwater fraction from the amount at the melting level
+        if (melti && k_0 >= 1) {
+            for (int k = k_0 - 1; k >= 0; --k) {
+                if (l_qs[k] && l_qs[k_0]) {
+                    const double fmelt_s = c_max(0.005, c_min(1.0 - double(rs[k] / rs[k_0]), 0.99));
+                    double eta = 0.0;
+                    const double lams = 1. / ilams[k];
+                    for (int n = 0; n < radar::nrbins; ++n) {
+                        const double x = double(t.xam_s) * std::pow(t.xxDs[n], double(t.xbm_s));
+                        const double cback = radar::rayleigh_soak_wetgraupel(x, double(t.xocms), double(t.xobms), fmelt_s,
+                                                                             t.m_w_0, t.m_i_0, t.pi5, t.lamda4);
+                        const double f_d = n0_s[k] * std::pow(t.xxDs[n], double(t.xmu_s)) * std::exp(-lams * t.xxDs[n]);
+                        eta = eta + f_d * cback * t.simpson[n] * t.xdts[n];
+                    }
+                    ze_snow[k] = Real(t.lamda4 / (t.pi5 * t.k_w) * eta);
+                }
+                if (l_qg[k] && l_qg[k_0]) {
+                    const double fmelt_g = c_max(0.005, c_min(1.0 - double(rg[k] / rg[k_0]), 0.99));
+                    double eta = 0.0;
+                    const double lamg = 1. / ilamg[k];
+                    for (int n = 0; n < radar::nrbins; ++n) {
+                        const double x = double(t.xam_g) * std::pow(t.xxDg[n], double(t.xbm_g));
+                        const double cback = radar::rayleigh_soak_wetgraupel(x, double(t.xocmg), double(t.xobmg), fmelt_g,
+                                                                             t.m_w_0, t.m_i_0, t.pi5, t.lamda4);
+                        const double f_d = n0_g[k] * std::pow(t.xxDg[n], double(t.xmu_g)) * std::exp(-lamg * t.xxDg[n]);
+                        eta = eta + f_d * cback * t.simpson[n] * t.xdtg[n];
+                    }
+                    ze_graupel[k] = Real(t.lamda4 / (t.pi5 * t.k_w) * eta);
+                }
+            }
+        }
+        for (int k = nz - 1; k >= 0; --k) {
+            const double ze = double(ze_rain[k] + ze_snow[k] + ze_graupel[k]) * 1.e18;
+            const Real dbz = Real(double(Real(10.)) * vm::log10(ze, nz - 1 - k, nz));
+            refl(i, j, k) = c_max(Real(-35.), dbz);
+        }
     }
 };
 
