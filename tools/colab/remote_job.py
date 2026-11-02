@@ -15,8 +15,8 @@ Profiling (colab_run.sh --env / --nsys / --ncu):
 - CPPWRF_JOB_NSYS=1: each bench case also runs under nsys for its whole time and for half of it; the difference
   of the two gives the time loop per step (kernel launches and time, copies, synchronisations, allocations), the
   whole run the top kernels (profile/NAME.txt).
-- CPPWRF_JOB_NCU=REGEX (demangled kernel names) or "top" (the nsys top kernels): ncu on those kernels' launches
-  in the first 3 steps (achieved occupancy, local-memory traffic, DRAM bytes), joined with the registers and stack
+- CPPWRF_JOB_NCU=REGEX (searched in the mangled kernel names, e.g. KTendU|YSURunner) or "top" (the nsys top 15):
+  ncu on those kernels' launches in the first 2 steps (at most 500) (achieved occupancy, local-memory traffic, DRAM bytes), joined with the registers and stack
   of every kernel (cuobjdump -res-usage).
 The bench run without the extra variables also samples the GPU's used memory (nvidia-smi every 0.2 s): the peak
 minus the idle value is the device memory the run reserves (cudaMemGetInfo's total - free of the only process).
@@ -85,27 +85,40 @@ class GpuMemory:
 
 
 def base(name):
-    """A demangled kernel name without "void " and its parameter list (templates kept)."""
+    """A demangled kernel name without "void " and its parameter list (templates kept); anonymous namespaces
+    (nsys and cu++filt: <unnamed>, c++filt: (anonymous namespace)) as "anon"."""
+    name = name.replace("(anonymous namespace)", "anon").replace("<unnamed>", "anon")
     name = name[5:] if name.startswith("void ") else name
     depth = 0
     for i, ch in enumerate(name):
         depth += (ch == "<") - (ch == ">")
-        if ch == "(" and depth == 0 and not name.startswith("(anonymous", i):
+        if ch == "(" and depth == 0:
             return name[:i]
     return name
 
 
-def key(name):  # nsys, ncu and cu++filt space template arguments and print integer arguments differently
-    k = re.sub(r"\s+", "", base(name).replace("anonymous namespace", "anonymous_namespace"))
-    k = k.replace("(bool)1", "true").replace("(bool)0", "false")
+def key(name):  # the demanglers space template arguments and print integer arguments differently
+    k = re.sub(r"\s+", "", base(name)).replace("(bool)1", "true").replace("(bool)0", "false")
     return re.sub(r"\((unsigned)?(int|long|short|char)\)(-?\d+)", r"\3", k)
 
 
 def key_regex(k):
-    """An ncu -k regex for key k: its launcher and functor, whatever the spelling of the template arguments."""
-    m = re.match(r"(.*?<)([^<>,]+)", k)
-    rx = re.escape(m.group(1)) + re.escape(m.group(2)) + r"\s*[<>,]" if m else re.escape(k)
-    return rx.replace("anonymous_namespace", r"anonymous\snamespace")
+    """An ncu -k regex on the mangled names for key k: its launcher and the functor's unqualified name."""
+    m = re.match(r"[^<]*?(\w+)<(.*)>$", k)
+    if not m:
+        return re.escape(k.split("::")[-1])
+    f = re.split(r"[<,]", m.group(2))[0].split("::")[-1]
+    return f"{len(m.group(1))}{m.group(1)}I.*{len(f)}{f}[IE]"
+
+
+def demangle(names):
+    """cu++filt of mangled names (ncu prints its own shortened demangling; cuobjdump only mangled names)."""
+    try:
+        dem = subprocess.run(["cu++filt"], input="\n".join(names) + "\n", capture_output=True,
+                             text=True).stdout.splitlines()
+    except OSError:
+        dem = []
+    return dem if len(dem) == len(names) else list(names)
 
 
 def short(name):
@@ -125,13 +138,7 @@ def res_usage(binary):
             raw[cur] = tuple(max(o, int(v.get(f, 0))) for o, f in zip(old, ("REG", "STACK", "LOCAL", "SHARED")))
             cur = None
     names = list(raw)
-    try:
-        dem = subprocess.run(["cu++filt"], input="\n".join(names) + "\n", capture_output=True,
-                             text=True).stdout.splitlines()
-    except OSError:
-        dem = []
-    if len(dem) != len(names):
-        dem = names
+    dem = demangle(names)
     res = {key(d): raw[n] for n, d in zip(names, dem)}
     with open(os.path.join(JOB, f"res-usage-{os.path.basename(os.path.dirname(binary))}.txt"), "w") as f:
         f.write("REG STACK LOCAL SHARED kernel\n")
@@ -249,14 +256,14 @@ def profile_ncu(tag, cmd, run_time, env, ncu, top, res, note):
     for metrics in (NCU_METRICS, NCU_METRICS[:4]):  # the smaller set when a metric is unknown to this GPU
         for f in glob.glob(rep + ".*"):
             os.remove(f)
-        sh(f"rm -rf {d} && ncu --kernel-name-base demangled -k {shlex.quote('regex:' + rx)} --launch-count 300 "
+        sh(f"rm -rf {d} && ncu --kernel-name-base mangled -k {shlex.quote('regex:' + rx)} --launch-count 500 "
            f"--metrics {','.join(metrics)} -f -o {rep} {shlex.join(cmd(d, max(1, int(run_time))))}",
            f"ncu-{tag}.log", cwd=SRC, env=env)
         if os.path.exists(rep + ".ncu-rep"):
             break
     raw = os.path.join(JOB, "profile", f"{tag}_ncu.csv")
     os.makedirs(os.path.dirname(raw), exist_ok=True)
-    sh(f"ncu --import {rep}.ncu-rep --csv --page raw --print-units base --print-kernel-base demangled > {raw}",
+    sh(f"ncu --import {rep}.ncu-rep --csv --page raw --print-units base --print-kernel-base mangled > {raw}",
        f"ncu-{tag}.log")
     rows = list(csv.reader(open(raw))) if os.path.exists(raw) else []
     if len(rows) < 3 or "Kernel Name" not in rows[0]:
@@ -264,9 +271,12 @@ def profile_ncu(tag, cmd, run_time, env, ncu, top, res, note):
         return
     hd = rows[0]
     agg = {}
+    mangled = sorted({r[hd.index("Kernel Name")] for r in rows[2:]})
+    dem = dict(zip(mangled, demangle(mangled)))
     for r in rows[2:]:  # rows[1]: units
         d = dict(zip(hd, r))
-        e = agg.setdefault(key(d["Kernel Name"]), {"name": d["Kernel Name"], "n": 0})
+        n = dem[d["Kernel Name"]]
+        e = agg.setdefault(key(n), {"name": n, "n": 0})
         e["n"] += 1
         for m in NCU_METRICS:
             try:
@@ -396,7 +406,7 @@ def job(note):
                 continue
             top = profile_nsys(tag, cmd, t, prof, note) if nsys else []
             if ncu:
-                profile_ncu(tag, cmd, 3 * t / done[0][0], prof, ncu, top, res[key], note)
+                profile_ncu(tag, cmd, 2 * t / done[0][0], prof, ncu, top, res[key], note)
 
 
 if __name__ == "__main__":

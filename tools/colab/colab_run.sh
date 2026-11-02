@@ -15,8 +15,9 @@
 #            with it, each bench case once without it (the stepping time) and once with it
 #   --nsys   each bench case also under nsys, for its time and for half of it: per step of the time loop the
 #            kernel launches and time, copies, synchronisations, allocations; the top 15 kernels (job/profile/)
-#   --ncu    ncu on the bench cases' kernels whose demangled names match REGEX ("top": the nsys top 15) in their
-#            first 3 steps: achieved occupancy, local-memory traffic, DRAM bytes, registers and stack
+#   --ncu    ncu on the bench cases' kernels whose mangled names match REGEX (e.g. 'KTendU|YSURunner'; "top": the
+#            nsys top 15) in their first 2 steps (at most 500 launches): achieved occupancy, local-memory traffic,
+#            DRAM bytes, registers and stack
 #   --keep   leave the VM running (stop it later with `colab stop -s <session>`)
 #   --out    local results directory (default: ${CPPWRF_SCRATCH:-~/cppwrf_scratch}/colab/<date>_<gpu>)
 #   MAX_UPLOAD_MIN (environment, default 20): stop when the upload would take longer (slow regions)
@@ -44,7 +45,7 @@ while [ $# -gt 0 ]; do
     --ncu) NCU=$2; shift 2 ;;
     --keep) KEEP=1; shift ;;
     --out) OUT=$2; shift 2 ;;
-    *) sed -n '2,26p' "$0"; exit 2 ;;
+    *) sed -n '2,27p' "$0"; exit 2 ;;
   esac
 done
 case $GPU in T4|L4|G4|A100|H100) ;; *) echo "unknown --gpu $GPU (the CLI would silently take an A100)"; exit 2 ;; esac
