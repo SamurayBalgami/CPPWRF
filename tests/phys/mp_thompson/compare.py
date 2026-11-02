@@ -60,6 +60,7 @@ def compare_thompson(f_file="output_fortran.bin", cpp_file="output_cpp.bin", tol
         ("re_cloud", "Cloud water effective radius (m)", True, 1e-6),
         ("re_ice", "Cloud ice effective radius (m)", True, 1e-6),
         ("re_snow", "Snow effective radius (m)", True, 1e-6),
+        ("refl_10cm", "10-cm radar reflectivity (dBZ, diagflag = .true.)", True, 1.0),
     ]
     if aero:  # mp_physics = 28: the predicted numbers after the emissions
         var_meta += [("nc", "Cloud droplet number (#/kg)", True, 1.0),
@@ -119,7 +120,7 @@ if __name__ == "__main__":
     parser.add_argument("fort_file", nargs="?", default="output_fortran.bin", help="Path to Fortran binary output")
     parser.add_argument("cpp_file", nargs="?", default="output_cpp.bin", help="Path to C++ binary output")
     parser.add_argument("--tol", type=float, default=1e-12, help="Relative difference tolerance")
-    parser.add_argument("--aero", action="store_true", help="mp_physics = 28 outputs (nc, nwfa, nifa, nbca after re_snow)")
+    parser.add_argument("--aero", action="store_true", help="mp_physics = 28 outputs (nc, nwfa, nifa, nbca after refl_10cm)")
     args, unknown = parser.parse_known_args()
     if unknown and len(unknown) == 1:
         try:

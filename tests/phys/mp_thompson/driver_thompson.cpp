@@ -219,7 +219,12 @@ int main(int argc, char** argv) {
     // Device buffers for 2D state
     DevBuffer<real> d_rainnc(n2d), d_rainncv(n2d), d_snownc(n2d), d_snowncv(n2d);
     DevBuffer<real> d_graupelnc(n2d), d_graupelncv(n2d), d_sr(n2d);
-    DevBuffer<real> d_re_cloud(n3d), d_re_ice(n3d), d_re_snow(n3d);
+    DevBuffer<real> d_re_cloud(n3d), d_re_ice(n3d), d_re_snow(n3d), d_refl(n3d);
+    // REFL_10CM: mp_gt_driver with diagflag = .true., do_radar_ref = 1 (thompson_init's radar_init tables)
+    namespace mt = phys::mp_thompson;
+    phys::radar::RadarDeviceTables<real> radar(phys::radar::radar_init<real>(
+        real(mt::am_r), real(mt::bm_r), real(mt::mu_r), real(mt::am_s), real(mt::bm_s), real(mt::mu_s),
+        real(mt::am_g5), real(mt::bm_g), real(mt::mu_g)));
     const std::size_t na3 = aero ? n3d : 0, na2 = aero ? n2d : 0;
     DevBuffer<real> d_nc(na3), d_nwfa(na3), d_nifa(na3), d_nbca(na3), d_nwfa2d(na2), d_nifa2d(na2);
 
@@ -279,7 +284,7 @@ int main(int argc, char** argv) {
             v2(d_rainnc), v2(d_rainncv), v2(d_snownc), v2(d_snowncv),
             v2(d_graupelnc), v2(d_graupelncv), v2(d_sr),
             static_cast<real>(dt_in), range, nlevels, d_tables_view,
-            v3(d_re_cloud), v3(d_re_ice), v3(d_re_snow), aero ? &aero_fields : nullptr
+            v3(d_re_cloud), v3(d_re_ice), v3(d_re_snow), aero ? &aero_fields : nullptr, v3(d_refl), radar.get()
         );
     };
 
@@ -340,6 +345,8 @@ int main(int argc, char** argv) {
     copy_from_d(d_re_cloud, out_re_cloud, n3d);
     copy_from_d(d_re_ice, out_re_ice, n3d);
     copy_from_d(d_re_snow, out_re_snow, n3d);
+    std::vector<double> out_refl(n3d);
+    copy_from_d(d_refl, out_refl, n3d);
 
     FILE* fo = std::fopen(outfile.c_str(), "wb");
     if (!fo) {
@@ -375,6 +382,7 @@ int main(int argc, char** argv) {
     write_buf(out_re_cloud);
     write_buf(out_re_ice);
     write_buf(out_re_snow);
+    write_buf(out_refl);
     if (aero) {  // nc, nwfa, nifa, nbca (0)
         for (DevBuffer<real>* b : {&d_nc, &d_nwfa, &d_nifa, &d_nbca}) {
             std::vector<double> o(n3d);

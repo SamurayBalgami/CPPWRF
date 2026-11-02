@@ -118,7 +118,7 @@ PROGRAM driver_thompson_aero
                     SNOWNC=snownc, SNOWNCV=snowncv, &
                     GRAUPELNC=graupelnc, GRAUPELNCV=graupelncv, &
                     SR=sr, &
-                    refl_10cm=refl_10cm, &
+                    refl_10cm=refl_10cm, diagflag=.TRUE., ke_diag=nlevels, do_radar_ref=1, &
                     re_cloud=re_cloud, re_ice=re_ice, re_snow=re_snow, &
                     has_reqc=1, has_reqi=1, has_reqs=1, &
                     ids=1, ide=ncols+1, jds=1, jde=2, kds=1, kde=nlevels, &
@@ -152,6 +152,7 @@ PROGRAM driver_thompson_aero
   WRITE(u_out) re_cloud(:, 1:nlevels, 1)
   WRITE(u_out) re_ice(:, 1:nlevels, 1)
   WRITE(u_out) re_snow(:, 1:nlevels, 1)
+  WRITE(u_out) refl_10cm(:, 1:nlevels, 1)  ! diagflag = .true., do_radar_ref = 1
   WRITE(u_out) nc(:, 1:nlevels, 1)
   WRITE(u_out) nwfa(:, 1:nlevels, 1)
   WRITE(u_out) nifa(:, 1:nlevels, 1)

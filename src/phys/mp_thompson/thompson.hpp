@@ -995,6 +995,9 @@ struct ThompsonKernel {
             graupelncv(i, j) = Real(0.0);
             sr(i, j) = Real(0.0);
             if (aero) aero_out(i, j, nc1d, nwfa1d, nifa1d);  // mp_thompson returned with nc1d = 0 where qc <= R1
+            // mp_gt_driver's calc_refl10cm of the unchanged column (t1d = th*pii; no qr, qs, qg above its
+            // thresholds: the replaced qv above does not enter)
+            if (refl.p) refl10cm(i, j, temp, pres, ng1d);
             if (has_re) effect_rad(i, j, temp, pres, nc1d);
             return;
         }

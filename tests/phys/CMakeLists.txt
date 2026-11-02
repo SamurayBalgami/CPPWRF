@@ -16,9 +16,10 @@ endif()
 # the model's references (tests/phys/wrf_fortran.sh: WRF_DIR = -r8, WRF_R8D8_DIR = -r8 -fdefault-double-8). Without
 # that build a test exits 77 (skipped). No WRF source is compiled by a test.
 
-# C++ drivers of Kessler, WSM6, the revised MM5 surface layer and YSU (CPU FP64)
+# C++ drivers of Kessler, WSM6 (and its radar reflectivity), the revised MM5 surface layer and YSU (CPU FP64)
 foreach(t "mp_kessler;driver_kessler_cpu;driver_kessler.cpp;mp_kessler/kessler.cpp"
           "mp_wsm6;driver_wsm6_cpu;driver_wsm6.cpp;mp_wsm6/wsm6.cpp"
+          "mp_radar;driver_radar_cpu;driver_radar.cpp;mp_wsm6/wsm6.cpp"
           "sf_sfclayrev;driver_sfclayrev_cpu;driver_sfclayrev.cpp;sf_sfclayrev/sfclayrev.cpp"
           "bl_ysu;driver_ysu_cpu;driver_ysu.cpp;bl_ysu/ysu.cpp")
   list(GET t 0 dir)
@@ -42,6 +43,7 @@ endforeach()
 set(PHYS_BIN ${CMAKE_CURRENT_BINARY_DIR})
 foreach(t "kessler;mp_kessler;${PHYS_BIN}"
           "wsm6;mp_wsm6;${PHYS_BIN}"
+          "radar;mp_radar;${PHYS_BIN}"
           "sfclayrev;sf_sfclayrev;${PHYS_BIN}"
           "ysu;bl_ysu;${PHYS_BIN}"
           "bl_myj;bl_myj;${PHYS_BIN}/bl_myj_test"
