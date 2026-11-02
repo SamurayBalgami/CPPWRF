@@ -179,6 +179,7 @@ CUDA (relative L2 at 1 h unless noted):
 | A05 / A05C / A05G (G4) | FP64 | 6.4e-4 / 1.6e-5 / 5.4e-4 | 2.5e-2 / 5.5e-4 / 1.3e-2 | 9.9e-6 / 2.7e-7 / 7.7e-6 | 5.8e-4 / 1.9e-5 / 2.7e-4 |
 | P5 (WSM6) | FP64 | 8.4e-5 | 1.1e-3 | 2.6e-6 | 5.1e-4 |
 | P6 (Thompson) | FP64 | 3.2e-5 | 9.0e-4 | 4.0e-7 | 8.5e-6 |
+| C01 (aerosol-aware Thompson, G4) | FP64 | 3.6e-7 | 7.3e-5 | 1.1e-8 | 1.6e-7 |
 | MYNN | FP64 | 2.6e-4 | 5.8e-3 | 5.5e-6 | 1.1e-4 |
 | MYNNSF1 / MYNNSF2 | FP64 | 2.5e-4 / 2.6e-4 | 5.3e-3 / 5.4e-3 | 5.3e-6 / 5.6e-6 | 2.9e-4 / 1.1e-4 |
 | MYNNX1 / MYNNX2 (largest of L4 and G4) | FP64 | 3.2e-4 / 2.1e-4 | 8.6e-3 / 7.3e-3 | 9.0e-6 / 4.8e-6 | 1.4e-4 / 6.7e-5 |
