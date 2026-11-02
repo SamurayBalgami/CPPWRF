@@ -880,6 +880,8 @@ class TestValidationAndWarnings(unittest.TestCase):
             ("&physics ra_lw_physics = 1, ra_sw_physics = 1 /", "ra_lw_physics = 1 is not supported"),
             ("&physics ra_lw_physics = 1, ra_sw_physics = 4 /", "ra_lw_physics = 1 is not supported"),
             ("&physics ra_lw_physics = 4, ra_sw_physics = 2 /", "ra_sw_physics = 2 is not supported"),
+            ("&physics ra_lw_physics = 4, ra_sw_physics = 1, cu_physics = 3, cu_rad_feedback = .true. /",
+             "cu_rad_feedback with Grell-Freitas cumulus and the Dudhia shortwave"),
             ("&physics ra_lw_physics = 4, ra_sw_physics = 4, aer_opt = 1 /", "aer_opt = 1"),
             ("&physics ra_lw_physics = 4, ra_sw_physics = 4, cldovrlp = 9 /", "cldovrlp = 9"),
             ("&physics ra_lw_physics = 4, ra_sw_physics = 4, cldovrlp = -1 /", "cldovrlp = -1"),

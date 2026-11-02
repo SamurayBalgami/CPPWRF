@@ -281,6 +281,9 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
   // cldovrlp 0 (clear sky only) and the McICA overlaps 1-5 (mcica_subcol_lw/_sw stop for any other icld)
   if (o.cldovrlp < 0 || o.cldovrlp > 5) throw std::runtime_error("radiation: cldovrlp must be 0 to 5");
   if (o.icloud_cu < 0 || o.icloud_cu > 2) throw std::runtime_error("radiation: icloud_cu must be 0, 1 or 2");
+  // wrf.exe writes NaN cloud fractions with the Dudhia shortwave and the Grell clouds (V1 inputs): not ported
+  if (o.ra_sw_physics == 1 && o.icloud_cu == 1)
+    throw std::runtime_error("radiation: cu_rad_feedback with a Grell scheme and the Dudhia shortwave is not supported");
   {  // the LW column arrays hold RRTMG_LW_SWEEP_MAX layers: the model's and the buffer layers up to 0 hPa
     RrtmgLwConfig lc;
     lc.p_top = o.p_top;

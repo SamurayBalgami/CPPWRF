@@ -1803,6 +1803,15 @@ class WrfTranslator:
         # the radiation; with Tiedtke / New Tiedtke icloud_cu = 0 (no effect). Nests: [d0N] phys_cu_rad_feedback
         if bool(self.get_dom_opt("physics", "cu_rad_feedback", 0, False)):
             sections.setdefault("phys", {})["cu_rad_feedback"] = True
+        # the Dudhia shortwave with the Grell-Freitas clouds (icloud_cu = 1): wrf.exe writes NaN cloud fractions
+        # (V1 inputs, 20 min); not reproducible, so not supported
+        if self.get_opt("physics", "ra_sw_physics", 0) == 1:
+            for d in range(max(1, self._max_dom)):
+                if (bool(self.get_dom_opt("physics", "cu_rad_feedback", d, False))
+                        and self.get_dom_opt("physics", "cu_physics", d, 0) == 3):
+                    self.error(f"WRF cu_rad_feedback with Grell-Freitas cumulus and the Dudhia shortwave (ra_sw_physics = "
+                               f"1) on domain {d + 1} is not supported (wrf.exe writes NaN cloud fractions there).")
+                    break
 
         if self.has_opt("physics", "ishallow"):
             # module_cu_gfl_wrf: the shallow plume runs for ishallow == 1 only; the other ported schemes ignore it
