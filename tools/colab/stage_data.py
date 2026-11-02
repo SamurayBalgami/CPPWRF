@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Pack the WRF reference data that the selected wrf_suite.py cases read, for a run on another machine.
 
-  stage_data.py --only NAME[,NAME] [--files NAME[,NAME]] [--no-thompson-tables] [--whole] [--refs-only] [--no-steps]
-                OUT.tar|-
+  stage_data.py --only NAME[,NAME] [--files NAME[,NAME]] [--no-thompson-tables] [--whole] [--refs-only] [--no-refs]
+                [--no-steps] OUT.tar|-
 
 Each case's run directory (real.dir of its configuration or of its --set overrides) is written under its own
 name, so the remote side sets CPPWRF_WRF_RUNS to the unpacked directory and runs the same suite. Links are
@@ -15,9 +15,10 @@ come with their namelist.input (wrf_suite.py checks the configuration and the gl
 --whole: the reference files whole (every frame and variable: wrf_suite.py then compares every frame up to the case's
 time; it needs no work, so OUT can be - for a tar on stdout, e.g. | gcloud storage cp - gs://BUCKET/X.tar, which
 writes nothing locally); --refs-only: only the reference files (and the ideal namelists), not the run directories;
---no-steps: no reference in a steps/ directory (tools/gcp/stage_files_data.py packs those whole). A case restarted in
-the middle (suite.restart_at) also takes WRF's wrfrst files at the restart, a tolerance-0 case the auxhist3 files
-(output_diagnostics) next to its reference wrfout, whole.
+--no-refs: only the run directories, no reference file (timing runs: tools/colab/colab_run.sh --bench without
+--cases); --no-steps: no reference in a steps/ directory (tools/gcp/stage_files_data.py packs those whole). A case
+restarted in the middle (suite.restart_at) also takes WRF's wrfrst files at the restart, a tolerance-0 case the
+auxhist3 files (output_diagnostics) next to its reference wrfout, whole.
 --files: the cases of tests/verify/run_wrf_files_test.sh run with CPPWRF_FILES_NO_VALUES=1 (a GPU build): their input
 directories, and their wrfout / wrfrst references (run, restart and resumed directories) as skeletons, with every
 variable, dimension, attribute and time but zero numbers; whole only the wrfrst files of minute 1, which the resumed
@@ -110,6 +111,7 @@ def main():
     ap.add_argument("--no-thompson-tables", action="store_true")
     ap.add_argument("--whole", action="store_true")
     ap.add_argument("--refs-only", action="store_true")
+    ap.add_argument("--no-refs", action="store_true")
     ap.add_argument("--no-steps", action="store_true")
     ap.add_argument("out")
     a = ap.parse_args()
@@ -142,7 +144,8 @@ def main():
         rd = rd.replace("${CPPWRF_WRF_RUNS}", WR)
         mp = next((s.split("=", 1)[1] for s in sets if s.startswith("phys.mp_physics=")), None)
         mp = mp or config_value(cfg, "phys", "mp_physics") or "0"
-        refs = [r for r in (wo.values() if isinstance(wo, dict) else [wo]) if not (a.no_steps and "/steps/" in r)]
+        refs = [r for r in (wo.values() if isinstance(wo, dict) else [wo])
+                if not (a.no_steps and "/steps/" in r) and not a.no_refs]
         for r in refs:
             d = dirs.setdefault(os.path.dirname(r), [set(), False])
             d[0].add(os.path.basename(r))

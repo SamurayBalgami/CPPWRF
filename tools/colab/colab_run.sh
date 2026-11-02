@@ -3,23 +3,33 @@
 # (google-colab-cli, authorised once with `colab usage`). The VM is always released at the end.
 #
 #   tools/colab/colab_run.sh [--gpu T4|L4|G4|A100|H100] (default G4: RTX PRO 6000, the fastest per credit)
-#                            [--cases NAME,...] [--files NAME,...] [--bench NAME,...] [--keep] [--out DIR]
+#                            [--cases NAME,...] [--files NAME,...] [--bench NAME[@cuda|@cuda_dp],...]
+#                            [--env K=V]... [--nsys] [--ncu REGEX|top] [--keep] [--out DIR]
 #
-#   --cases  wrf_suite.py cases to run on the VM against the WRF references (default: the GPU core set below)
+#   --cases  wrf_suite.py cases to run on the VM against the WRF references (default: the GPU core set below;
+#            '' for none: the data then have no reference files)
 #   --files  run_wrf_files_test.sh cases to run with the CUDA FP64 build (files' structure and times; default none)
-#   --bench  suite cases to run again without history output for the stepping time (default: P1 and D0)
+#   --bench  suite cases to run again without history output for the stepping time (default: P1 and D0);
+#            NAME@cuda / NAME@cuda_dp: with the FP32 / FP64 build instead of the case's own
+#   --env    an environment variable for the model runs (repeatable, e.g. CPPWRF_KTIME=1): the suite cases run
+#            with it, each bench case once without it (the stepping time) and once with it
+#   --nsys   each bench case also under nsys, for its time and for half of it: per step of the time loop the
+#            kernel launches and time, copies, synchronisations, allocations; the top 15 kernels (job/profile/)
+#   --ncu    ncu on the bench cases' kernels whose demangled names match REGEX ("top": the nsys top 15) in their
+#            first 3 steps: achieved occupancy, local-memory traffic, DRAM bytes, registers and stack
 #   --keep   leave the VM running (stop it later with `colab stop -s <session>`)
 #   --out    local results directory (default: ${CPPWRF_SCRATCH:-~/cppwrf_scratch}/colab/<date>_<gpu>)
 #   MAX_UPLOAD_MIN (environment, default 20): stop when the upload would take longer (slow regions)
 #
 # The source is the committed HEAD (git archive); the data come from ${CPPWRF_WRF_RUNS} through
 # tools/colab/stage_data.py (cached per case list). Results: summary.txt (GPU, build times, PASS/FAIL lines
-# with the relative L2 differences, ns/cell/step) and the logs.
+# with the relative L2 differences, ns/cell/step, device memory, the nsys / ncu lines), the logs, profile/ (per
+# bench case the nsys tables per step and the ncu kernel table) and nsys/ (nsys stats as CSV).
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_WRF_RUNS:?set CPPWRF_WRF_RUNS}"
 SCRATCH=${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}
-GPU=G4 KEEP=0 OUT= FILES= MAX_UPLOAD_MIN=${MAX_UPLOAD_MIN:-20}
+GPU=G4 KEEP=0 OUT= FILES= NSYS= NCU= ENVS=() KEYS= MAX_UPLOAD_MIN=${MAX_UPLOAD_MIN:-20}
 CASES=real_r1_fp64_cuda,real_p1_r8_fp64_cuda_1h,real_p1_fp32_1h,real_p4_r8_fp64_cuda_1h,real_p8_r8_fp64_cuda_1h,real_t6_r8_fp64_cuda_1h,real_d0_r8_fp64_cuda_1h,real_nmp1_r8_fp64_cuda_1h
 BENCH=real_p1_r8_fp64_cuda_1h,real_p1_fp32_1h,real_d0_r8_fp64_cuda_1h
 while [ $# -gt 0 ]; do
@@ -28,12 +38,17 @@ while [ $# -gt 0 ]; do
     --cases) CASES=$2; shift 2 ;;
     --files) FILES=$2; shift 2 ;;
     --bench) BENCH=$2; shift 2 ;;
+    --env) case $2 in [A-Za-z_]*=*) ;; *) echo "--env needs K=V, not '$2'"; exit 2 ;; esac
+           ENVS+=(--env "$2"); KEYS=${KEYS:+$KEYS,}${2%%=*}; shift 2 ;;
+    --nsys) NSYS=1; shift ;;
+    --ncu) NCU=$2; shift 2 ;;
     --keep) KEEP=1; shift ;;
     --out) OUT=$2; shift 2 ;;
-    *) sed -n '2,17p' "$0"; exit 2 ;;
+    *) sed -n '2,26p' "$0"; exit 2 ;;
   esac
 done
 case $GPU in T4|L4|G4|A100|H100) ;; *) echo "unknown --gpu $GPU (the CLI would silently take an A100)"; exit 2 ;; esac
+[ "$NCU" != top ] || [ -n "$NSYS" ] || { echo "--ncu top needs --nsys"; exit 2; }
 STAMP=$(date +%Y%m%d_%H%M%S)
 OUT=${OUT:-$SCRATCH/colab/${STAMP}_$GPU}
 S=cppwrf-$(echo "$GPU" | tr A-Z a-z)-$STAMP
@@ -43,10 +58,14 @@ mkdir -p "$OUT" "$SCRATCH/colab/cache"
 [ -z "$(git -C "$REPO" status --porcelain --untracked-files=no)" ] || echo "note: uncommitted changes are not sent (HEAD only)"
 git -C "$REPO" archive --format=tar.gz -o "$OUT/src.tar.gz" HEAD
 git -C "$REPO" rev-parse --short HEAD > "$OUT/commit.txt"
-key=$( (echo "$CASES,$BENCH" | tr ',' '\n' | sort -u; echo "files:$FILES") | tr '\n' ',' | md5sum | cut -c1-12)
+STAGE=$(echo "$CASES,$BENCH" | sed 's/@cuda[a-z_]*//g')
+# no --cases and no --files: the bench cases need no reference files
+NOREFS=; [ -n "$CASES$FILES" ] || NOREFS=--no-refs
+key=$( (echo "$STAGE" | tr ',' '\n' | sort -u; echo "files:$FILES$NOREFS") | tr '\n' ',' | md5sum | cut -c1-12)
 DATA=$SCRATCH/colab/cache/data_$key.tar
 # GPU runs only: CPPWRF computes the Thompson tables on the VM instead of uploading WRF's 370 MB
-[ -f "$DATA" ] || python3 "$REPO/tools/colab/stage_data.py" --only "$CASES,$BENCH" --files "$FILES" --no-thompson-tables "$DATA"
+[ -f "$DATA" ] || python3 "$REPO/tools/colab/stage_data.py" --only "$STAGE" --files "$FILES" --no-thompson-tables $NOREFS \
+  "$DATA"
 
 # ---- remote
 timeout 120 colab usage | tail -3 || true
@@ -99,7 +118,10 @@ upload "$OUT/src.tar.gz" /content/src.tar.gz || exit 1
 upload "$DATA" /content/data.tar || exit 1
 upload "$OUT/commit.txt" /content/commit.txt || exit 1
 upload "$REPO/tools/colab/remote_job.py" /content/remote_job.py || exit 1
-fenv=(); [ -z "$FILES" ] || fenv=(--env CPPWRF_JOB_FILES="$FILES")
+fenv=("${ENVS[@]}"); [ -z "$FILES" ] || fenv+=(--env CPPWRF_JOB_FILES="$FILES")
+[ -z "$KEYS" ] || fenv+=(--env CPPWRF_JOB_ENV_KEYS="$KEYS")
+[ -z "$NSYS" ] || fenv+=(--env CPPWRF_JOB_NSYS=1)
+[ -z "$NCU" ] || fenv+=(--env CPPWRF_JOB_NCU="$NCU")
 timeout 300 colab exec -s "$S" --timeout 120 --env CPPWRF_JOB_CASES="$CASES" --env CPPWRF_JOB_BENCH="$BENCH" "${fenv[@]}" <<'EOF'
 import os, subprocess
 env = dict(os.environ)
