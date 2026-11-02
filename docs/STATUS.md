@@ -88,6 +88,7 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | P5 | P1 + WSM6 + diff_opt 1 / km_opt 4 | 1 h |
 | P6 | P5 with Thompson | 1 h |
 | C01 | P6 with the aerosol-aware Thompson (mp_physics 28, aer_init_opt 0: thompson_init's QNWFA / QNIFA profiles and QNWFA2D emission) | 1 h |
+| RADW / RADT | P4 (WSM6) / P6 (Thompson) with do_radar_ref 1 (REFL_10CM at the history times: radar_init's bins, Rayleigh scattering of rain, snow and graupel, melting snow and graupel as Maxwell-Garnett water-ice spheroids) | 3 min, 1 h |
 | P7 | P2 with New Tiedtke | 1 h |
 | P8 | P2 with Grell-Freitas-Li (deep and shallow) | 1 h |
 | P9 | P1 with MYJ PBL and the Eta surface layer | 1 h |
@@ -115,8 +116,8 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 
 V1-V3, T6, G2, F1, F2, D0, D0V, SU1 and SU2 are compared in every wrfout variable over the whole run; V1-V3 start from the
 global GFS of 2026-10-12 00 UTC through WPS, so the domains, projections and surface types differ from the P
-cases. The Thompson and MYNN references (P6, MYNN, MYNNSF1, MYNNSF2, MYNNX1, MYNNX2, mp8, V3, D0, D0V, SU1, SU2) come from WRF built with -r8 -double-8: with -r8 alone
-gfortran makes Thompson's DOUBLE PRECISION variables 16-byte.
+cases. The Thompson, MYNN and radar reflectivity references (P6, RADW, RADT, MYNN, MYNNSF1, MYNNSF2, MYNNX1, MYNNX2, mp8, V3, D0, D0V, SU1, SU2) come from WRF built with -r8 -double-8: with -r8 alone
+gfortran makes Thompson's DOUBLE PRECISION variables 16-byte (and the reflectivity code of WSM6 and Thompson).
 
 The long runs compare every 3-hourly frame of both halves (the run stopped one step after 12 h / 36 h and the run
 resumed from its wrfrst files) and the wrfrst files at the restart with WRF's uninterrupted run, every variable at

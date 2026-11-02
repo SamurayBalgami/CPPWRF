@@ -587,6 +587,26 @@ class TestValidationAndWarnings(unittest.TestCase):
         self.assertEqual(p["kim_tofd"], True)
         self.assertEqual(p["tofd_factor"], 0.005)
 
+    def test_do_radar_ref(self):
+        # do_radar_ref 1: REFL_10CM of WSM6 and Thompson at history steps; 0 (default) is not written; other values
+        # are rejected
+        def translate(value):
+            t = WrfTranslator(parse_namelist(real_case(f"""
+            &time_control /
+            &domains time_step = 60 /
+            &physics mp_physics = 6, do_radar_ref = {value} /
+            &dynamics /
+            """)))
+            return t, t.translate()
+        t, gen = translate(1)
+        self.assertEqual(t.errors, [])
+        self.assertEqual(gen["phys"]["do_radar_ref"], 1)
+        t, gen = translate(0)
+        self.assertEqual(t.errors, [])
+        self.assertNotIn("do_radar_ref", gen["phys"])
+        t, _ = translate(2)
+        self.assertTrue(any("do_radar_ref = 2 is not supported" in e for e in t.errors), t.errors)
+
     def test_usemonalb_rdlai2d(self):
         # usemonalb: landuse_init for every LSM; rdlai2d: Noah only (Noah-MP and no LSM ignore it)
         def phys(extra):
