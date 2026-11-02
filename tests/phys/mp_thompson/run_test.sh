@@ -52,6 +52,12 @@ wrf_fortran "${WORK_DIR}/aero/fortran_driver_thompson_aero" "${SCRIPT_DIR}/fortr
 cd "${WORK_DIR}/aero"
 rm -f qr_acr_qg_V4.dat qr_acr_qsV2.dat freezeH2O.dat
 ln -sf "$W/run/CCN_ACTIVATE.BIN" CCN_ACTIVATE.BIN
+echo "=== Aerosol functions (activ_ncloud, Eff_aero, iceDeMott, iceKoop) ==="
+wrf_fortran "${WORK_DIR}/aero/fortran_aero_funcs" "${SCRIPT_DIR}/fortran/aero_funcs.f90" $byteswap
+python3 "${SCRIPT_DIR}/aero_funcs.py" gen aero_funcs_in.bin 200000
+"${REPO_ROOT}/tools/heavy.sh" ./fortran_aero_funcs aero_funcs_in.bin aero_funcs_fortran.bin
+"${REPO_ROOT}/tools/heavy.sh" "${WORK_DIR}/aero_funcs" aero_funcs_in.bin aero_funcs_cpp.bin
+python3 "${SCRIPT_DIR}/aero_funcs.py" cmp aero_funcs_fortran.bin aero_funcs_cpp.bin 200000 || aero_fail=1
 for cfg in "2500 50" "201 41"; do
   set -- $cfg
   echo "=== Aerosol-aware Thompson Differential Test ($1 cols x $2 levels) ==="
@@ -61,5 +67,6 @@ for cfg in "2500 50" "201 41"; do
   python3 "${SCRIPT_DIR}/compare.py" output_fortran.bin output_cpp.bin --tol 0 --aero
 done
 cd "${WORK_DIR}"
+[ -z "${aero_fail:-}" ] || { echo "aerosol functions differ"; exit 1; }
 ls qr_acr_qg_V4.dat qr_acr_qsV2.dat freezeH2O.dat > /dev/null  # the C++ driver read WRF's table files
 echo "=== Thompson Microphysics Differential Test PASSED ==="

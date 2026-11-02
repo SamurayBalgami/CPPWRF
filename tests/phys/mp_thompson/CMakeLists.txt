@@ -49,6 +49,16 @@ target_link_libraries(driver_thompson_cpu PRIVATE
   OpenMP::OpenMP_CXX
 )
 
+# 2b. The aerosol functions (mp_physics = 28) against WRF's (aero_funcs.f90)
+add_executable(aero_funcs
+  aero_funcs.cpp
+  ${CPPWRF_ROOT}/src/phys/mp_thompson/thompson_tables.cpp
+)
+target_include_directories(aero_funcs PRIVATE ${CPPWRF_ROOT}/src ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(aero_funcs PRIVATE CPPWRF_DOUBLE)
+target_compile_options(aero_funcs PRIVATE -O3 -march=native -fopenmp -ffp-contract=off -fno-tree-vectorize)
+target_link_libraries(aero_funcs PRIVATE OpenMP::OpenMP_CXX)
+
 # 3. CUDA Drivers (if CUDA enabled)
 if(THOMPSON_TEST_CUDA)
   file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/driver_thompson_cuda.cu "#include \"${CMAKE_CURRENT_SOURCE_DIR}/driver_thompson.cpp\"\n")
