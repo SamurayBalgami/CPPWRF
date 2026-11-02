@@ -4,7 +4,7 @@
   compare_real.py <wrfout> <cppwrf_out_dir> [--interior N]
 
 Per output time: max abs / relative L2 difference of U, V, W, PH (full), MU (full), P (full),
-THM (theta_m), QVAPOR, over the whole domain and over the interior (N points away from the
+THM (theta_m), QVAPOR (and the hydrometeors, RAINNC, REFL_10CM when present), over the whole domain and over the interior (N points away from the
 lateral boundaries, default 6). Exit 0 always (a report, the tolerances are set by the caller).
 """
 import os
@@ -39,6 +39,8 @@ def main(wrfout, d, inner):
                        ("QNICE", "qni"), ("QNRAIN", "qnr"), ("TKE", "tke")):
             if wn in ds.variables and cn in sn:
                 pairs[wn] = (g(wn), sn[cn])
+        if "REFL_10CM" in ds.variables and "refl_10cm" in sn:  # do_radar_ref = 1
+            pairs["REFL_10CM"] = (g("REFL_10CM"), sn["refl_10cm"])
         if "RAINNC" in ds.variables and "rainnc" in sn:
             pairs["RAINNC"] = (g("RAINNC"), sn["rainnc"][0])
         if "THM" in ds.variables and "theta_m" in sn:

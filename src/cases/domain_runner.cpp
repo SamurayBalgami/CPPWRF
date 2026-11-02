@@ -492,6 +492,7 @@ void DomainRunner::prepare_output() {
     }
     if (m_.rk->physics()->params().mp_physics == 28)
       for (const Field2* f : {&m_.rk->physics()->qnwfa2d, &m_.rk->physics()->qnifa2d}) extra_2d_.push_back(f);
+    if (m_.rk->physics()->refl_10cm.layout().total > 0) extra_3d_.push_back(&m_.rk->physics()->refl_10cm);
   }
   if (m_.suite) {  // column physics surface and cumulus fields (WRF names in lower case)
     const phys::driver::PhysicsSuite& su = *m_.suite;

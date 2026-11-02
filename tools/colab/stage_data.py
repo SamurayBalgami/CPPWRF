@@ -49,7 +49,7 @@ SKIP = ["wrfout*", "wrfrst*", "rsl.*", "met_em*", "*.exe", "*.log", "namelist.ou
         "termvels.asc", "*.nc"]
 THOMPSON = ["freezeH2O.dat", "qr_acr_qg_V4.dat", "qr_acr_qsV2.dat"]
 COMPARED = ["Times", "XTIME", "U", "V", "W", "PH", "PHB", "MU", "MUB", "P", "PB", "QVAPOR", "QCLOUD", "QRAIN", "QICE",
-            "QSNOW", "QGRAUP", "QNICE", "QNRAIN", "TKE", "RAINNC", "THM"]
+            "QSNOW", "QGRAUP", "QNICE", "QNRAIN", "TKE", "RAINNC", "THM", "REFL_10CM"]
 
 
 def trimmed(src, times, dst, every_variable):
