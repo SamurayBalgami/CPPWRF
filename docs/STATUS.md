@@ -2,7 +2,8 @@
 
 CPPWRF reproduces WRF-ARW v4.8.0 statement by statement. This page lists what is implemented, how it
 is verified against WRF, and the current results. All numbers come from `tests/verify/wrf_suite.py`
-(171 cases and 33 restart / Straka checks, all passing) and `tests/verify/run_wrf_files_test.sh` (WRF output files).
+(192 cases, 8 of them the slow 24 h and 72 h runs of `--slow`, and 33 restart / Straka checks, all passing) and
+`tests/verify/run_wrf_files_test.sh` (WRF output files).
 
 ## Implemented
 
