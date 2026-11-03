@@ -29,7 +29,7 @@ cj_start() {
     S=cppwrf-cpu-$(echo "$gpu" | tr A-Z a-z)-$(date +%Y%m%d_%H%M%S)
     echo "[$TAG] new session $S ($gpu)"; timeout 900 colab new -s "$S" --gpu "$gpu"
   fi
-  cpu=$(echo 'print(open("/proc/cpuinfo").read().split("model name")[1].split("\n")[0].strip(" \t:"), "|", __import__("os").cpu_count())' | rx 60 || true)
+  cpu=$(echo 'print(open("/proc/cpuinfo").read().split("model name")[1].split("\n")[0].strip(" \t:"), "|", __import__("os").cpu_count())' | rx 60 | grep . || true)
   echo "[$TAG] CPU: $cpu"
   case $cpu in *Intel*) ;; *) echo "[$TAG] not an Intel runtime: the references cannot be reproduced here"; return 1 ;; esac
   NPROC=${cpu##*| }

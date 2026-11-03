@@ -8,7 +8,8 @@
 # --gpu: the runtime type (default L4: Intel Cascade Lake, 12 vCPUs, 52 GB; the GPU is not used). G4 and the CPU-only
 # runtime are AMD: AMD's glibc vector log / atan differ, so they cannot reproduce the Intel-made references; the job
 # stops with NOT_INTEL on a runtime that is not Intel. --cases, --data, --slow as gcp_run.sh (the tars of
-# tests/verify/vm_data.txt); --jobs suite jobs (default 6; with --cases at most one per case) with --threads each
+# tests/verify/vm_data.txt); --jobs suite jobs (default 4: 6 ran out of the L4's 52 GB next to the differential
+# tests' build; with --cases at most one per case) with --threads each
 # (default the runtime's vCPUs / jobs); --hours: the longest wait for the job (default 10; 20 with --slow); --rev: the
 # commit to test (default HEAD; the tools are always this checkout's). --session: an existing runtime of an earlier
 # --keep run (its Debian chroot and tars are reused); --keep: leave the runtime running (`colab stop -s NAME` later).
@@ -24,7 +25,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_GCP_BUCKET:?set CPPWRF_GCP_BUCKET}"
 BK=$CPPWRF_GCP_BUCKET
-GPU=L4 CASES= DATA=suite_data.tar,ideal_data.tar OUT= JOBS=6 THREADS= SLOW= HOURS= REV=HEAD S= KEEP=0 NPROC=
+GPU=L4 CASES= DATA=suite_data.tar,ideal_data.tar OUT= JOBS=4 THREADS= SLOW= HOURS= REV=HEAD S= KEEP=0 NPROC=
 while [ $# -gt 0 ]; do
   case $1 in
     --gpu) GPU=$2; shift 2 ;; --cases) CASES=$2; shift 2 ;; --data) DATA=$2; shift 2 ;; --out) OUT=$2; shift 2 ;;

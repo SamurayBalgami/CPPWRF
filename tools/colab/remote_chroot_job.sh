@@ -11,11 +11,12 @@
 # chroot /content/deb13 and the data tars in /content/tars. A tar comes from Drive (cppwrf-drive:cppwrf-data), else
 # from the bucket, and is then put on Drive for the next runs. The tars are unpacked into /opt/job/data in DATA's order
 # (a later one replaces an earlier one's files), in/ is copied to /opt/job, and `bash /opt/job/body.sh /opt/job ARG...`
-# runs in the chroot, as the GCP VMs' jobs in /opt/job. Logs: /content/cpu/job.log, versions.txt (packages, CPU, RAM,
-# disk), data.txt ("TAR name bytes seconds source"), setup.out (not Intel, a missing tar, a failed setup; the job's own
-# setup.out is appended); the job's *.log, *.out and *.txt and these in /content/cpu/results.tar.gz; the job's
-# /opt/job/fetch/ (large results) moves to /content/cpu/fetch/, the files of /opt/job/drive/ go to the Drive folder
-# (data.txt: "DRIVE name bytes"). gcs.tok is deleted when the data are in place, rclone.conf at the end.
+# runs in the chroot, as the GCP VMs' jobs in /opt/job. Logs: /content/cpu/job.log, versions.txt (packages, CPU,
+# RAM, disk), mem.log (used RAM and the largest processes every minute), data.txt ("TAR name bytes seconds source"),
+# setup.out (not Intel, a missing tar, a failed setup; the job's own setup.out is appended); the job's *.log, *.out
+# and *.txt and these in /content/cpu/results.tar.gz; the job's /opt/job/fetch/ (large results) moves to
+# /content/cpu/fetch/, the files of /opt/job/drive/ go to the Drive folder (data.txt: "DRIVE name bytes").
+# gcs.tok is deleted when the data are in place, rclone.conf at the end.
 B=$1 DATA=$2; shift 2
 C=/content/cpu R=/content/deb13 T=/content/tars
 J=$R/opt/job
@@ -105,8 +106,13 @@ for f in $T/*.todrive; do  # the tars that came from the bucket, to Drive next t
 done > /dev/null 2>&1 &
 TODRIVE=$!
 df -h / | awk 'NR == 2 {print "disk", $2, "used", $3}' >> $C/versions.txt
+# memory every minute (the runtime has no swap: the kernel kills the largest process when RAM runs out)
+(while sleep 60; do echo "$(date +%H:%M) $(free -m | awk 'NR == 2 {print $3 "/" $2 " MB"}')" \
+   "$(ps -eo rss,comm --sort=-rss | awk 'NR > 1 && NR < 5 {printf "%s %d MB, ", $2, $1 / 1024}')"; done) > $C/mem.log 2>&1 &
+MEM=$!
 chroot $R env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin HOME=/root \
   bash /opt/job/body.sh /opt/job "$@" > $C/body.log 2>&1
+kill $MEM
 wait $TODRIVE
 for f in $J/drive/*; do  # the job's tars for the next runs (wrfref_body.sh STAGE)
   [ -f "$f" ] || continue
