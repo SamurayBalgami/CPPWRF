@@ -110,9 +110,11 @@ enforce them:
   `FCOPTIM = -O2 -ftree-vectorize -funroll-loops`, `-fdefault-real-8` (`-fdefault-real-8 -fdefault-double-8`
   for Thompson and MYNN), no `-march`, no OpenMP, with gfortran 14.2 and glibc 2.41 (Debian 13). Another
   gfortran version vectorises other loops (glibc libmvec), and `-march=native` lets gfortran contract FMAs.
-- **Machine:** Intel x86-64 (the suite runs on Google Cloud c3 and n2 machines and on the reference
-  workstation); on AMD EPYC glibc's vector `log` rounds differently, so WRF and CPPWRF differ from
-  Intel-made references there.
+- **Machine:** any x86-64 CPU with SSE4.1, FMA and AVX2. glibc's vector `log` / `log10` round differently on AMD
+  EPYC than on Intel (an approximate reciprocal, `rcpps`), so WRF differs between the two; the references are
+  Intel-made, and CPPWRF computes these two functions as libmvec does on Intel on every CPU (CMake option
+  `CPPWRF_PORTABLE_LIBMVEC`, default ON; OFF calls the machine's libmvec, which reproduces Intel-made references
+  only on Intel).
 - **Threads:** the CPU result does not depend on `OMP_NUM_THREADS`. Every kernel writes its own grid
   points, the radiation columns are independent (McICA seeds from each column's pressures), and the solution
   has no floating-point sums over the domain: the w_damping CFL maxima of the adaptive time step and the
@@ -427,14 +429,14 @@ python3 tests/tools/test_wrf2cppwrf.py -v
 
 ### The CPU Suite on Google Cloud or Colab
 The full CPU FP64 suite (wrf_suite.py, the output files tests, the differential and ctest tests, the translator
-tests and the comparators' self-test) runs on a remote machine with an Intel CPU: AMD CPUs give different results
-in glibc's vector `log` / `atan`, so they cannot reproduce the Intel-made WRF references.
+tests and the comparators' self-test) runs on a remote machine with an Intel CPU (the references are Intel-made;
+on AMD a build with `CPPWRF_PORTABLE_LIBMVEC` gives the same CPU results, see below).
 
 - `tools/gcp/gcp_run.sh` runs it on a Google Compute Engine spot VM (Debian 13), with the data tars of
   `tests/verify/vm_data.txt` from the bucket.
 - `tools/colab/colab_suite.sh` runs the same steps (`tools/gcp/suite_body.sh`) on a Colab runtime with an Intel CPU
   (default `--gpu L4`: Intel Xeon Cascade Lake, 12 vCPUs, 52 GB; the GPU is not used; G4 and the CPU-only runtime
-  are AMD and are refused) inside a Debian 13 chroot, so that gcc, glibc, libmvec, NetCDF and Python are the GCP
+  `--gpu CPU` are AMD and are refused unless `--any-cpu`) inside a Debian 13 chroot, so that gcc, glibc, libmvec, NetCDF and Python are the GCP
   VMs' packages. The data tars come from Google Drive (`cppwrf-drive:cppwrf-data`), where
   `tools/colab/drive_sync.sh` copies them from the bucket on a Colab runtime; a tar not yet on Drive is read from
   the bucket with a read-only token (`tools/colab/gcs_token.py`) and then put on Drive. Same options as
@@ -445,6 +447,12 @@ in glibc's vector `log` / `atan`, so they cannot reproduce the Intel-made WRF re
   SKIP lists as the GCP VM.
 - `tools/colab/colab_wrfref.sh REFS.txt` makes WRF references on such a runtime as `tools/gcp/gcp_wrfref.sh`
   (`--check-only`, `--files`, `--cases`; `--stage OBJ:CASE,...` puts the suite's tar of the new references on Drive).
+- `tools/colab/colab_mvec.sh [--gpu L4|G4|CPU] [--n N]` proves the portable vector log / log10 on a runtime of any
+  CPU (`tools/colab/mvec_body.sh`): `tests/unit/test_libmvec` (the results hash to Intel libmvec's on any CPU), the
+  table against the CPU's `rcpps` (`tools/libmvec_tables.py --check`), on Intel the table made again from glibc
+  2.41's source and `tools/libmvec_proof.cpp` (N random inputs, default 10^10, every rcpps input class at every
+  exponent and the edge values equal to libmvec bit for bit), and two deliberate faults that the unit test must
+  catch.
 
 ```bash
 # once: the Drive remote (browser login; scope drive.file), then the tars of vm_data.txt to Drive

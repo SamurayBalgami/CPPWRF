@@ -131,12 +131,16 @@ from tools/gcp/gcp_wrfref.sh (real.exe inputs, run.real), the met_em files beyon
 are slow (`wrf_suite.py --slow`, `tools/gcp/gcp_run.sh --slow` with long_data.tar, long72_data.tar and long72n3_data.tar
 in `--data`): the 24 h ones alone made the default VM suite 65 instead of 43 minutes.
 
-Bit identity holds for references made with gfortran 14.2 on the CPU family the references were made on
-(Intel x86-64, glibc 2.41; another gfortran version vectorises other loops, e.g. in Thompson): WRF's
-vectorised loops and CPPWRF call the same glibc libmvec functions, and glibc's `_ZGVbN2v_log` gives
-different last bits on AMD EPYC (all scalar libm functions and the other libmvec functions tested agree).
-WRF itself therefore differs between the two; on AMD, CPPWRF differs from Intel-made references by
-about 1e-14 after one step. The suite runs on Intel machines (`tools/gcp/gcp_run.sh`).
+Bit identity holds for references made with gfortran 14.2 and glibc 2.41 on x86-64 (another gfortran version
+vectorises other loops, e.g. in Thompson): WRF's vectorised loops and CPPWRF call the same glibc libmvec
+functions. glibc's vector log and log10 (`_ZGVbN2v_log`, `_ZGVbN2v_log10`, their SSE4 variants on every CPU with
+SSE4.1) take an approximate reciprocal with `rcpps`, which Intel and AMD compute differently, so WRF itself
+differs between Intel and AMD EPYC (about 1e-14 after one step); the references are made on Intel. CPPWRF
+computes these two as libmvec does on Intel on every x86-64 CPU (src/core/libmvec_x86.hpp: glibc's SSE4
+algorithms statement by statement with Intel's rcpps from a table, src/core/libmvec_tables.hpp made by
+tools/libmvec_tables.py; CMake option `CPPWRF_PORTABLE_LIBMVEC`, default ON), so its CPU result is the Intel one
+on AMD too. The other libmvec functions it calls (exp, pow, sin, cos, atan) and glibc's scalar libm use no
+approximate instructions (the scalar ifunc variants depend only on FMA / AVX2, which both vendors have).
 The CPU result does not depend on the OpenMP thread count or on the Intel machine: P4, P6, P8, P9, MYNN,
 P1 with Noah-MP and the two-way nest N3s (1 h, both domains) and em_quarter_ss (30 min) with 1, 16 and 44
 threads are bit-identical to serial WRF on c3 (Sapphire Rapids) and n2 machines (`run.threads` in
