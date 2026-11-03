@@ -3,11 +3,12 @@
 # instead of GCP VMs).
 #
 #   CPPWRF_GCP_BUCKET=... tools/colab/colab_suite.sh [--gpu L4|A100|T4] [--cases NAME,...] [--data OBJECT,...]
-#       [--out DIR] [--jobs N] [--threads N] [--slow] [--hours H] [--rev REV] [--session NAME] [--keep]
+#       [--out DIR] [--jobs N] [--threads N] [--slow] [--hours H] [--rev REV] [--session NAME] [--keep] [--any-cpu]
 #
 # --gpu: the runtime type (default L4: Intel Cascade Lake, 12 vCPUs, 52 GB; the GPU is not used). G4 and the CPU-only
-# runtime are AMD: AMD's glibc vector log / atan differ, so they cannot reproduce the Intel-made references; the job
-# stops with NOT_INTEL on a runtime that is not Intel. --cases, --data, --slow as gcp_run.sh (the tars of
+# runtime (--gpu CPU) are AMD: glibc's vector log / log10 differ there (rcpps), so the job stops with NOT_INTEL on a
+# runtime that is not Intel unless --any-cpu (a build with CPPWRF_PORTABLE_LIBMVEC, the default since it exists,
+# computes them as on Intel: src/core/libmvec_x86.hpp). --cases, --data, --slow as gcp_run.sh (the tars of
 # tests/verify/vm_data.txt); --jobs suite jobs (default 4: 6 ran out of the L4's 52 GB next to the differential
 # tests' build; with --cases at most one per case) with --threads each
 # (default the runtime's vCPUs / jobs); --hours: the longest wait for the job (default 10; 20 with --slow); --rev: the
@@ -25,16 +26,17 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_GCP_BUCKET:?set CPPWRF_GCP_BUCKET}"
 BK=$CPPWRF_GCP_BUCKET
-GPU=L4 CASES= DATA=suite_data.tar,ideal_data.tar OUT= JOBS=4 THREADS= SLOW= HOURS= REV=HEAD S= KEEP=0 NPROC=
+GPU=L4 CASES= DATA=suite_data.tar,ideal_data.tar OUT= JOBS=4 THREADS= SLOW= HOURS= REV=HEAD S= KEEP=0 NPROC= ANY_CPU=0
 while [ $# -gt 0 ]; do
   case $1 in
     --gpu) GPU=$2; shift 2 ;; --cases) CASES=$2; shift 2 ;; --data) DATA=$2; shift 2 ;; --out) OUT=$2; shift 2 ;;
     --jobs) JOBS=$2; shift 2 ;; --threads) THREADS=$2; shift 2 ;; --slow) SLOW=1; shift ;; --hours) HOURS=$2; shift 2 ;;
-    --rev) REV=$2; shift 2 ;; --session) S=$2; shift 2 ;; --keep) KEEP=1; shift ;;
-    *) sed -n '2,22p' "$0"; exit 2 ;;
+    --rev) REV=$2; shift 2 ;; --session) S=$2; shift 2 ;; --keep) KEEP=1; shift ;; --any-cpu) ANY_CPU=1; shift ;;
+    *) sed -n '2,24p' "$0"; exit 2 ;;
   esac
 done
-case $GPU in L4|A100|T4) ;; *) echo "--gpu $GPU: only the Intel runtimes L4, A100, T4"; exit 2 ;; esac
+case $GPU in L4|A100|T4) ;; G4|CPU) [ "${ANY_CPU:-0}" = 1 ] || { echo "--gpu $GPU: an AMD runtime, needs --any-cpu"; exit 2; } ;;
+  *) echo "--gpu $GPU: L4, A100, T4 (Intel), G4 or CPU (AMD, with --any-cpu)"; exit 2 ;; esac
 HOURS=${HOURS:-$([ "$SLOW" = 1 ] && echo 20 || echo 10)}
 if [ -n "$CASES" ]; then NC=$(tr ',' '\n' <<< "$CASES" | grep -c .); [ "$JOBS" -le "$NC" ] || JOBS=$NC; fi
 STAMP=$(date +%Y%m%d_%H%M%S)

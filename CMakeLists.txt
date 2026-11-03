@@ -34,6 +34,13 @@ endif()
 # gfortran build on x86-64 (no -march: no FMA instructions); with -march=native or skylake g++ would
 # otherwise fuse a*b+c (its default is -ffp-contract=fast). CUDA builds: the same for nvcc's host code.
 add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-ffp-contract=off> $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-ffp-contract=off>)
+# glibc libmvec's vector log / log10 take an approximate reciprocal (rcpps) whose result differs between Intel and
+# AMD; ON: CPPWRF computes them as libmvec does on Intel (src/core/libmvec_x86.hpp), the same on every x86-64 CPU.
+# OFF: libmvec's own (the machine's rcpps).
+option(CPPWRF_PORTABLE_LIBMVEC "Vector log / log10 as glibc libmvec on Intel, on any x86-64 CPU" ON)
+if(NOT CPPWRF_PORTABLE_LIBMVEC)
+  add_compile_definitions(CPPWRF_LIBMVEC_HW_LOG)
+endif()
 option(CPPWRF_NATIVE "Tune for the build machine's CPU (-march=native); OFF for portable binaries" ON)
 if(CPPWRF_NATIVE)
   set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native")

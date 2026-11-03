@@ -98,6 +98,8 @@ extern "C" __m128d _ZGVbN2v_cos(__m128d);
 extern "C" __m128d _ZGVbN2v_log10(__m128d);
 #define CPPWRF_HAVE_LIBMVEC 1
 #endif
+// log and log10: glibc's SSE4 variants with Intel's rcpps (core/libmvec_x86.hpp), the same on any x86-64 CPU
+#include "core/libmvec_x86.hpp"
 namespace cppwrf {
 // x**n for a variable INTEGER n as gfortran computes it: libgcc's __powidf2 (square-and-multiply,
 // 1/y for n < 0); differs from pow(x, double(n)) in the last bit for some arguments.
@@ -122,7 +124,9 @@ CPPWRF_HD inline double pow(double a, double b, int i, int n) {
   return rpow(a, b);
 }
 CPPWRF_HD inline double log(double a, int i, int n) {
-#if defined(CPPWRF_HAVE_LIBMVEC)
+#if defined(CPPWRF_HAVE_LIBMVEC) && defined(CPPWRF_PORTABLE_LOG)
+  if (lane(i, n)) return mvec::log(a);
+#elif defined(CPPWRF_HAVE_LIBMVEC)
   if (lane(i, n)) return _mm_cvtsd_f64(_ZGVbN2v_log(_mm_set1_pd(a)));
 #endif
   (void)i; (void)n;
@@ -173,7 +177,9 @@ CPPWRF_HD inline double cos(double a, int i, int n) {
 #endif
 }
 CPPWRF_HD inline double log10(double a, int i, int n) {
-#if defined(CPPWRF_HAVE_LIBMVEC)
+#if defined(CPPWRF_HAVE_LIBMVEC) && defined(CPPWRF_PORTABLE_LOG)
+  if (lane(i, n)) return mvec::log10(a);
+#elif defined(CPPWRF_HAVE_LIBMVEC)
   if (lane(i, n)) return _mm_cvtsd_f64(_ZGVbN2v_log10(_mm_set1_pd(a)));
 #endif
   (void)i; (void)n;

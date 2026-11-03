@@ -36,8 +36,10 @@ finish() {
 }
 trap finish EXIT
 set -x
-# the CPU: the references are Intel-made, and glibc's vector log / atan (rcpps) differ on AMD
-grep -q GenuineIntel /proc/cpuinfo || { echo "NOT_INTEL $(grep -m1 'model name' /proc/cpuinfo)" >> $C/setup.out; exit 1; }
+# the CPU: the references are Intel-made; glibc's vector log / log10 (rcpps) differ on AMD unless the build has
+# CPPWRF_PORTABLE_LIBMVEC (default ON). CPPWRF_ANY_CPU=1 (colab_suite.sh --any-cpu, colab_mvec.sh) runs on any CPU.
+[ "${CPPWRF_ANY_CPU:-0}" = 1 ] || grep -q GenuineIntel /proc/cpuinfo ||
+  { echo "NOT_INTEL $(grep -m1 'model name' /proc/cpuinfo)" >> $C/setup.out; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
 command -v rclone > /dev/null && command -v debootstrap > /dev/null ||
   { apt-get -qq update && apt-get -qq install -y debootstrap rclone > /dev/null; } || { echo "SETUP_FAILED apt" >> $C/setup.out; exit 1; }

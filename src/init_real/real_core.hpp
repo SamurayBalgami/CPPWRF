@@ -19,6 +19,7 @@ extern "C" __m128 _ZGVbN4v_logf(__m128);
 extern "C" __m128 _ZGVbN4v_expf(__m128);
 #define CPPWRF_INIT_LIBMVEC 1
 #endif
+#include "core/libmvec_x86.hpp"  // the double log as Intel's libmvec on any x86-64 CPU (CPPWRF_PORTABLE_LOG)
 
 namespace cppwrf::init_real {
 
@@ -47,7 +48,9 @@ inline bool vec_lane(int i, int n) {
   return i < n - n % vl;
 }
 inline double vlog(double x, int i, int n) {
-#if defined(CPPWRF_INIT_LIBMVEC)
+#if defined(CPPWRF_INIT_LIBMVEC) && defined(CPPWRF_PORTABLE_LOG)
+  if (vec_lane<double>(i, n)) return mvec::log(x);
+#elif defined(CPPWRF_INIT_LIBMVEC)
   if (vec_lane<double>(i, n)) return _mm_cvtsd_f64(_ZGVbN2v_log(_mm_set1_pd(x)));
 #endif
   (void)i; (void)n;

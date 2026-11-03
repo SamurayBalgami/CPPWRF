@@ -2,7 +2,8 @@
 # (tools/colab/remote_chroot_job.sh), sourced by tools/colab/colab_suite.sh and colab_wrfref.sh. They set REPO, BK
 # (the bucket), OUT (local results; OUT/src.tar.gz is the source to send), TAG (log prefix), S (session; empty: a new
 # one) and KEEP (1: leave the session running), then call:
-#   cj_start GPU          new session (or S), stop it on exit; fails unless the CPU is Intel; sets NPROC
+#   cj_start GPU          new session (or S; GPU CPU: a CPU-only runtime), stop it on exit; fails unless the CPU is
+#                         Intel or ANY_CPU=1 (then the job runs with CPPWRF_ANY_CPU=1); sets NPROC
 #   cj_send FILE NAME     local FILE -> /content/cpu/NAME (in/NAME: an input of the job, copied to /opt/job)
 #   cj_launch BODY DATA ARG...   the job: `bash BODY /opt/job ARG...` in the chroot after DATA's tars are unpacked
 #   cj_wait HOURS LOG     poll every 5 min (LOG: the job's log under /opt/job shown with the progress), a new bucket
@@ -27,11 +28,12 @@ cj_start() {
   trap cj_cleanup EXIT
   if [ -z "$S" ]; then
     S=cppwrf-cpu-$(echo "$gpu" | tr A-Z a-z)-$(date +%Y%m%d_%H%M%S)
-    echo "[$TAG] new session $S ($gpu)"; timeout 900 colab new -s "$S" --gpu "$gpu"
+    echo "[$TAG] new session $S ($gpu)"
+    if [ "$gpu" = CPU ]; then timeout 900 colab new -s "$S"; else timeout 900 colab new -s "$S" --gpu "$gpu"; fi
   fi
   cpu=$(echo 'print(open("/proc/cpuinfo").read().split("model name")[1].split("\n")[0].strip(" \t:"), "|", __import__("os").cpu_count())' | rx 60 | grep . || true)
   echo "[$TAG] CPU: $cpu"
-  case $cpu in *Intel*) ;; *) echo "[$TAG] not an Intel runtime: the references cannot be reproduced here"; return 1 ;; esac
+  case $cpu in *Intel*) ;; *) [ "${ANY_CPU:-0}" = 1 ] || { echo "[$TAG] not an Intel runtime: the references cannot be reproduced here"; return 1; } ;; esac
   NPROC=${cpu##*| }
   echo 'import os; os.makedirs("/content/cpu/in", exist_ok=True); print("OK")' | rx 60 | grep OK > /dev/null || { echo "[$TAG] session not answering"; return 1; }
 }
@@ -55,7 +57,8 @@ cj_launch() {
   cj_token || { echo "[$TAG] token upload failed"; return 1; }
   echo "[$TAG] uploaded $(( $(stat -c %s "$OUT/src.tar.gz") / 1024 )) KiB of source and tools in $((SECONDS - t0)) s"
   for a in "$BK" "$data" "$@"; do args="$args '${a//\'/}'"; done
-  echo "import subprocess; subprocess.Popen(\"chmod 600 /content/cpu/rclone.conf /content/cpu/gcs.tok; nohup bash /content/cpu/remote_chroot_job.sh$args > /dev/null 2>&1 &\", shell=True); print('started')" |
+  local env=; [ "${ANY_CPU:-0}" = 1 ] && env="CPPWRF_ANY_CPU=1 "
+  echo "import subprocess; subprocess.Popen(\"chmod 600 /content/cpu/rclone.conf /content/cpu/gcs.tok; ${env}nohup bash /content/cpu/remote_chroot_job.sh$args > /dev/null 2>&1 &\", shell=True); print('started')" |
     rx 60 | grep started > /dev/null || { echo "[$TAG] the job did not start"; return 1; }
 }
 
