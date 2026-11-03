@@ -55,6 +55,20 @@ CPPWRF_GM std::uint64_t asu(double v) {
   return b;
 #endif
 }
+// a + k for a double's bits a and a constant k. CUDA 13.0's ptxas for sm_120 (-O1 and above) compiles an integer add of
+// an immediate to bits moved from a double register (mov.b64; add.s64) as a DADD of the immediate read as a double;
+// two 32-bit adds with carry on the device keep the integer add
+CPPWRF_GM std::uint64_t addk(std::uint64_t a, std::uint64_t k) {
+#if defined(__CUDA_ARCH__)
+  unsigned lo, hi;
+  asm("{\n\t.reg .u32 al, ah;\n\tmov.b64 {al, ah}, %2;\n\tadd.cc.u32 %0, al, %3;\n\taddc.u32 %1, ah, %4;\n\t}"
+      : "=r"(lo), "=r"(hi)
+      : "l"(a), "r"(unsigned(k)), "r"(unsigned(k >> 32)));
+  return (std::uint64_t(hi) << 32) | lo;
+#else
+  return a + k;
+#endif
+}
 CPPWRF_GM double fma(double a, double b, double c) {
 #if defined(__CUDA_ARCH__)
   return __fma_rn(a, b, c);
@@ -153,7 +167,7 @@ CPPWRF_GM double exp(double x) {
 CPPWRF_GM double log(double x) {
   using namespace detail;
   std::uint64_t ix = asu(x);
-  if (ix + 0xc012000000000000ull <= 0x308ffffffffffull) {  // |x - 1| small: ix - LO < HI - LO
+  if (addk(ix, 0xc012000000000000ull) <= 0x308ffffffffffull) {  // |x - 1| small: ix - LO < HI - LO
     if (ix == 0x3ff0000000000000ull) return 0.0;
     const double r = x - 1.0;
     double b12 = fma(r, CPPWRF_GD(kLogData, 0x48), CPPWRF_GD(kLogData, 0x40));   // B1 + r B2
@@ -185,9 +199,9 @@ CPPWRF_GM double log(double x) {
     if (2 * ix == 0) return math_divzero(1);
     if (ix == 0x7ff0000000000000ull) return x;
     if ((top & 0x8000u) || (~top & 0x7ff0u) == 0) return math_invalid(x);
-    ix = asu(x * 0x1p52) + 0xfcc0000000000000ull;  // subnormal: normalise, - 52 << 52
+    ix = addk(asu(x * 0x1p52), 0xfcc0000000000000ull);  // subnormal: normalise, - 52 << 52
   }
-  const std::uint64_t tmp = ix + 0xc01a000000000000ull;  // ix - OFF
+  const std::uint64_t tmp = addk(ix, 0xc01a000000000000ull);  // ix - OFF
   const int i = int((tmp >> 45) & 0x7f);
   const std::int64_t k = std::int64_t(tmp) >> 52;
   const std::uint64_t iz = ix - (tmp & 0xfff0000000000000ull);
@@ -292,11 +306,11 @@ CPPWRF_GM double pow(double x, double y) {
     if (topx == 0) {  // subnormal x
       ix = asu(x * 0x1p52);
       ix &= 0x7fffffffffffffffull;
-      ix -= 52ull << 52;
+      ix = addk(ix, 0ull - (52ull << 52));
     }
   }
   // log_inline
-  const std::uint64_t tmp = ix + 0xc0196aab00000000ull;  // ix - OFF
+  const std::uint64_t tmp = addk(ix, 0xc0196aab00000000ull);  // ix - OFF
   const int i = int((tmp >> 45) & 0x7f);
   const double kd = double(std::int32_t(std::int64_t(tmp) >> 52));
   const int e = 0x48 + 32 * i;
