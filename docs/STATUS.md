@@ -192,6 +192,7 @@ CUDA (relative L2 at 1 h unless noted):
 | KESSKF | FP64 | 6.9e-5 (L4), 9.2e-5 (G4) | 1.2e-3 | 1.1e-6 / 1.2e-6 | 4.4e-5 / 6.2e-5 |
 | SLAB1 / SLAB4 (G4) | FP64 | 4.4e-13 / 3.4e-4 | 7.9e-12 / 4.8e-3 | 7.8e-16 / 5.3e-6 | 2.8e-14 / 2.9e-4 |
 | DUD (Dudhia SW, V1 domain) | FP64 | 5.0e-4 (G4) | 4.0e-2 | 4.4e-6 | 9.9e-5 |
+| RRTM (RRTM LW, V1 domain, G4) | FP64 | 1.5e-4 | 9.8e-3 | 1.6e-6 | 3.6e-5 |
 | A01V (Arctic, V2 domain) | FP64 | 7.8e-5 | 3.2e-3 | 2.4e-6 | 1.8e-4 |
 | V1 / V2 (2 h) | FP64 | 1.8e-3 / 1.1e-4 | 9.4e-2 / 3.8e-3 | 1.6e-5 / 3.6e-6 | 4.7e-4 / 3.5e-4 |
 | V3 (30 min) | FP64 | 2.5e-7 | 5.4e-6 | 7.7e-8 | 1.7e-6 |

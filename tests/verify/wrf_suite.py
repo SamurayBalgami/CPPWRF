@@ -295,8 +295,8 @@ CASES = [
      {v: 0.0 for v in ("U", "V", "W", "PH", "MU", "THM", "QV", "QCLOUD", "QRAIN", "QICE", "GSW", "GLW", "OLR")}),
     ("real_rrtm_r8_fp64_cuda_1h", "cuda_dp", "configs/real_rrtm_r8.ini",
      ["run.run_time=3600", "real.dir=" + f"{WR}/run_V1_r8", "output.out_interval=10", "output.diag_interval=10"],
-     f"{WR}/run_RRTM_r8/wrfout_d01_2026-10-12_00:00:00", 3600,  # DUD's tolerances until a G4 run measures RRTM
-     {"U": 1.5e-3, "W": 1.2e-1, "THM": 1.3e-5, "QV": 3e-4}),
+     f"{WR}/run_RRTM_r8/wrfout_d01_2026-10-12_00:00:00", 3600,  # G4: U 1.5e-4 W 9.8e-3 THM 1.6e-6 QV 3.6e-5
+     {"U": 4.5e-4, "W": 3e-2, "THM": 4.8e-6, "QV": 1.1e-4}),
     # P6 = P5 with Thompson (mp_physics = 8; WRF r8 built with -fdefault-double-8, see PHYSICS_SUITE.md
     # section 11): bit-identical for 3 steps and 1 h
     ("real_p6_r8_fp64_cpu", "cpu_dp", "configs/real_p6_r8.ini", [], f"{WR}/run_P6_r8/steps/wrfout_d01_2026-10-12_00:00:00",
