@@ -30,7 +30,7 @@ done
 STAMP=$(date +%Y%m%d_%H%M%S)
 OUT=${OUT:-${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}/colab/drive_sync_$STAMP}
 mkdir -p "$OUT"
-rclone listremotes | grep -qx "cppwrf-drive:" || { echo "no rclone remote cppwrf-drive (see the header)"; exit 1; }
+rclone listremotes | grep -x "cppwrf-drive:" > /dev/null || { echo "no rclone remote cppwrf-drive (see the header)"; exit 1; }
 
 # sizes in the bucket and on Drive: only the tars whose Drive copy is missing or has another size, largest first
 gcloud storage ls -l "gs://$BK/" | awk '$1 ~ /^[0-9]+$/ {n = $3; sub(".*/", "", n); print n, $1}' > "$OUT/bucket.txt"
@@ -49,12 +49,12 @@ if [ ${#todo[@]} -gt 0 ]; then
     <(printf '%s\n' "${todo[@]}") "$OUT/bucket.txt"))"
   S=cppwrf-sync-$STAMP
   token() { (umask 077; python3 "$REPO/tools/colab/gcs_token.py" "$BK" > "$OUT/gcs.tok") &&
-            timeout 300 colab upload -s "$S" "$OUT/gcs.tok" /content/sync/gcs.tok.new 2>&1 | grep -q Uploaded &&
+            timeout 300 colab upload -s "$S" "$OUT/gcs.tok" /content/sync/gcs.tok.new 2>&1 | grep Uploaded > /dev/null &&
             echo 'import os; os.replace("/content/sync/gcs.tok.new", "/content/sync/gcs.tok"); print("TOKEN")' |
-              timeout 120 colab exec -s "$S" --timeout 60 2>/dev/null | grep -q TOKEN; local r=$?; rm -f "$OUT/gcs.tok"; return $r; }
+              timeout 120 colab exec -s "$S" --timeout 60 2>/dev/null | grep TOKEN > /dev/null; local r=$?; rm -f "$OUT/gcs.tok"; return $r; }
   cleanup() {
     echo 'import subprocess; subprocess.run("rm -f /content/sync/gcs.tok* /content/sync/rclone.conf", shell=True); print("CLEAN")' |
-      timeout 120 colab exec -s "$S" --timeout 60 2>/dev/null | grep -q CLEAN || echo "[drive_sync] WARNING: credentials not removed (the session stop deletes the VM)"
+      timeout 120 colab exec -s "$S" --timeout 60 2>/dev/null | grep CLEAN > /dev/null || echo "[drive_sync] WARNING: credentials not removed (the session stop deletes the VM)"
     timeout 300 colab stop -s "$S" || echo "[drive_sync] WARNING: could not stop $S, check: colab sessions"
     rm -f "$OUT/gcs.tok" "$OUT/rclone.conf"
   }
@@ -63,7 +63,7 @@ if [ ${#todo[@]} -gt 0 ]; then
   echo 'import os; os.makedirs("/content/sync", exist_ok=True); print("OK")' | timeout 120 colab exec -s "$S" --timeout 60
   (umask 077; rclone config show cppwrf-drive > "$OUT/rclone.conf")
   for f in "$OUT/rclone.conf" "$REPO/tools/colab/remote_drive_sync.sh"; do
-    timeout 300 colab upload -s "$S" "$f" "/content/sync/$(basename "$f")" 2>&1 | grep -q Uploaded || { echo "[drive_sync] upload of $f failed"; exit 1; }
+    timeout 300 colab upload -s "$S" "$f" "/content/sync/$(basename "$f")" 2>&1 | grep Uploaded > /dev/null || { echo "[drive_sync] upload of $f failed"; exit 1; }
   done
   rm -f "$OUT/rclone.conf"
   token || { echo "[drive_sync] token upload failed"; exit 1; }
@@ -89,7 +89,7 @@ EOF
         echo "[drive_sync] $(date +%H:%M) FAILED $t"
     done | tee -a "$OUT/sync.txt"
     seen=$(printf '%s\n' "$log" | grep -cE '^(TAR|FAILED) ' || true)
-    printf '%s\n' "$log" | grep -qx done && break
+    printf '%s\n' "$log" | grep -x done > /dev/null && break
   done
 fi
 # every tar on Drive with the bucket's size and MD5 (a composite object without MD5: size only)

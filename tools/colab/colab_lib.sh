@@ -23,7 +23,7 @@ cj_cleanup() {
 
 cj_start() {
   local gpu=$1 cpu
-  rclone listremotes | grep -qx "cppwrf-drive:" || { echo "[$TAG] no rclone remote cppwrf-drive (tools/colab/drive_sync.sh)"; return 1; }
+  rclone listremotes | grep -x "cppwrf-drive:" > /dev/null || { echo "[$TAG] no rclone remote cppwrf-drive (tools/colab/drive_sync.sh)"; return 1; }
   trap cj_cleanup EXIT
   if [ -z "$S" ]; then
     S=cppwrf-cpu-$(echo "$gpu" | tr A-Z a-z)-$(date +%Y%m%d_%H%M%S)
@@ -33,16 +33,16 @@ cj_start() {
   echo "[$TAG] CPU: $cpu"
   case $cpu in *Intel*) ;; *) echo "[$TAG] not an Intel runtime: the references cannot be reproduced here"; return 1 ;; esac
   NPROC=${cpu##*| }
-  echo 'import os; os.makedirs("/content/cpu/in", exist_ok=True); print("OK")' | rx 60 | grep -q OK || { echo "[$TAG] session not answering"; return 1; }
+  echo 'import os; os.makedirs("/content/cpu/in", exist_ok=True); print("OK")' | rx 60 | grep OK > /dev/null || { echo "[$TAG] session not answering"; return 1; }
 }
 
 cj_send() {  # the contents API takes files up to ~100 MB (the source and the inputs are a few MB)
-  timeout 900 colab upload -s "$S" "$1" "/content/cpu/$2" 2>&1 | grep -q Uploaded || { echo "[$TAG] upload of $1 failed"; return 1; }
+  timeout 900 colab upload -s "$S" "$1" "/content/cpu/$2" 2>&1 | grep Uploaded > /dev/null || { echo "[$TAG] upload of $1 failed"; return 1; }
 }
 
 cj_token() {  # a new read-only bucket token (at most 1 h)
   (umask 077; python3 "$REPO/tools/colab/gcs_token.py" "$BK" > "$OUT/gcs.tok") && cj_send "$OUT/gcs.tok" gcs.tok.new &&
-    echo 'import os; os.replace("/content/cpu/gcs.tok.new", "/content/cpu/gcs.tok"); print("TOKEN")' | rx 60 | grep -q TOKEN
+    echo 'import os; os.replace("/content/cpu/gcs.tok.new", "/content/cpu/gcs.tok"); print("TOKEN")' | rx 60 | grep TOKEN > /dev/null
   local r=$?; rm -f "$OUT/gcs.tok"; return $r
 }
 
@@ -56,7 +56,7 @@ cj_launch() {
   echo "[$TAG] uploaded $(( $(stat -c %s "$OUT/src.tar.gz") / 1024 )) KiB of source and tools in $((SECONDS - t0)) s"
   for a in "$BK" "$data" "$@"; do args="$args '${a//\'/}'"; done
   echo "import subprocess; subprocess.Popen(\"chmod 600 /content/cpu/rclone.conf /content/cpu/gcs.tok; nohup bash /content/cpu/remote_chroot_job.sh$args > /dev/null 2>&1 &\", shell=True); print('started')" |
-    rx 60 | grep -q started || { echo "[$TAG] the job did not start"; return 1; }
+    rx 60 | grep started > /dev/null || { echo "[$TAG] the job did not start"; return 1; }
 }
 
 cj_wait() {
