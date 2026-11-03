@@ -390,13 +390,13 @@ struct KWSolve {
     for (int k = 1; k <= nz; ++k) w(i, j, k) = (w(i, j, k) - a(i, j, k) * w(i, j, k - 1)) * alpha(i, j, k);
     for (int k = nz - 1; k >= 1; --k) w(i, j, k) = w(i, j, k) - gamma(i, j, k) * w(i, j, k + 1);
     if (dampmag != real(0)) {  // damp_opt = 3: implicit Rayleigh damping toward w = 0 near the top
-      const real pi = real(4) * atan(real(1));
+      const real pi = real(4) * libm::atan(real(1));
       const real htop = (phs(i, j, nz) + phb(i, j, nz)) / Gr, hbot = htop - hdepth;
       for (int k = nz; k >= 1; --k) {
         const real hk = (phs(i, j, k) + phb(i, j, k)) / Gr;
         real dampwt = 0;
         if (hk >= hbot) {
-          const real sn = sin(H * pi * (hk - hbot) / hdepth);
+          const real sn = libm::sin(H * pi * (hk - hbot) / hdepth);
           dampwt = dampmag * sn * sn;
         }
         w(i, j, k) = (w(i, j, k) - dampwt * mf(k, m) * ws(i, j, k)) / (real(1) + dampwt);

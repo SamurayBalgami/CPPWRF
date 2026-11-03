@@ -118,8 +118,8 @@ CPPWRF_HD inline void li_etal_2010(real& zl, real rib, real zaz0, real z0zt) {
   real z0zt2 = z0zt;
   if (z0zt < real(0.5)) z0zt2 = real(0.5);
   if (z0zt > real(100.0)) z0zt2 = real(100.);
-  const real alfa = std::log(zaz02);
-  const real beta = std::log(z0zt2);
+  const real alfa = libm::log(zaz02);
+  const real beta = libm::log(z0zt2);
   if (rib <= real(0.0)) {
     zl = au11 * alfa * (rib * rib) +
          ((bu11 * beta + bu12) * (alfa * alfa) + (bu21 * beta + bu22) * alfa + (bu31 * (beta * beta) + bu32 * beta + bu33)) * rib;

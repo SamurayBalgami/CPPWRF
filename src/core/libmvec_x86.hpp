@@ -9,17 +9,27 @@
 // Lanes outside the normal range (x < DBL_MIN incl. 0 and negatives, x > DBL_MAX, NaN) call the scalar libm, as
 // the assembly does. CPPWRF_PORTABLE_LOG: cppwrf::vm::log / log10 and cppwrf_real use these instead of libmvec's
 // log / log10 (CMake option CPPWRF_PORTABLE_LIBMVEC, default ON; OFF defines CPPWRF_LIBMVEC_HW_LOG).
-// Host functions (also declared in nvcc's device pass; the device could use the same statements with the tables in
-// device memory).
+// Host and device functions (the device reads copies of the tables; the CUDA FP64 build computes the lanes of WRF's
+// vectorised log / log10 with them, core/backend.hpp CPPWRF_GLIBC_MATH, and the scalar fallback with glibc's log /
+// log10 of core/glibc_math.hpp).
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 
 #include "core/libmvec_tables.hpp"
+#if defined(CPPWRF_GLIBC_MATH)
+#include "core/glibc_math.hpp"
+#endif
 
 #if defined(__x86_64__) && !defined(CPPWRF_NO_LIBMVEC) && !defined(CPPWRF_LIBMVEC_HW_LOG)
 #define CPPWRF_PORTABLE_LOG 1
+#endif
+
+#if defined(__CUDACC__)
+#define CPPWRF_MV __host__ __device__ __forceinline__
+#else
+#define CPPWRF_MV inline
 #endif
 
 namespace cppwrf::mvec {
@@ -34,31 +44,85 @@ inline constexpr std::array<double, 2049> kRcp = [] {
   }
   return a;
 }();
+#if defined(__CUDACC__)
+// device copies of the tables (constant-initialised from the host ones)
+template <class T, int N>
+struct DevTable {
+  T v[N];
+};
+template <class T, std::size_t N>
+constexpr DevTable<T, int(N)> dev_table(const std::array<T, N>& a) {
+  DevTable<T, int(N)> t{};
+  for (std::size_t i = 0; i < N; ++i) t.v[i] = a[i];
+  return t;
+}
+template <class T, int N>
+constexpr DevTable<T, N> dev_table(const T (&a)[N]) {
+  DevTable<T, N> t{};
+  for (int i = 0; i < N; ++i) t.v[i] = a[i];
+  return t;
+}
+static __device__ const DevTable<double, 2049> kRcpDev = dev_table(kRcp);
+static __device__ const DevTable<std::uint64_t, 513> kLogLADev = dev_table(mvec_tables::kLogLA);
+static __device__ const DevTable<std::uint64_t, 513> kLog10LADev = dev_table(mvec_tables::kLog10LA);
+#endif
+#if defined(__CUDA_ARCH__)
+#define CPPWRF_MVT(host, dev) ::cppwrf::mvec::detail::dev.v
+#else
+#define CPPWRF_MVT(host, dev) host
+#endif
 // bit casts (memcpy: std::bit_cast is not available to every nvcc host pass)
-inline double d(std::uint64_t bits) {
+CPPWRF_MV double d(std::uint64_t bits) {
+#if defined(__CUDA_ARCH__)
+  return __longlong_as_double(static_cast<long long>(bits));
+#else
   double v;
   std::memcpy(&v, &bits, sizeof v);
   return v;
+#endif
 }
-inline std::uint64_t bits(double v) {
+CPPWRF_MV std::uint64_t bits(double v) {
+#if defined(__CUDA_ARCH__)
+  return static_cast<std::uint64_t>(__double_as_longlong(v));
+#else
   std::uint64_t b;
   std::memcpy(&b, &v, sizeof b);
   return b;
+#endif
+}
+// the scalar log / log10 of the lanes outside the normal range
+CPPWRF_MV double scalar_log(double x) {
+#if defined(CPPWRF_GLIBC_MATH)
+  return ::cppwrf::glibc::log(x);
+#else
+  return std::log(x);
+#endif
+}
+CPPWRF_MV double scalar_log10(double x) {
+#if defined(CPPWRF_GLIBC_MATH)
+  return ::cppwrf::glibc::log10(x);
+#else
+  return std::log10(x);
+#endif
 }
 // cvtpd2ps m; rcpps; cvtps2pd; roundpd $0 (log) or + / - 1.5*2^52 (log10): m in [2^-10, 2^-9)
-inline double rcp_rounded(double m) {
+CPPWRF_MV double rcp_rounded(double m) {
   const float f = static_cast<float>(m);
+#if defined(__CUDA_ARCH__)
+  const std::uint32_t fb = static_cast<std::uint32_t>(__float_as_uint(f));
+#else
   std::uint32_t fb;
   std::memcpy(&fb, &f, sizeof fb);
-  return kRcp[(fb >> 12) - (117u << 11)];
+#endif
+  return CPPWRF_MVT(kRcp, kRcpDev)[(fb >> 12) - (117u << 11)];
 }
 }  // namespace detail
 
 // _ZGVbN2v_log_sse4 (svml_d_log2_core_sse4.S, data svml_d_log_data.S)
-inline double log(double x) {
+CPPWRF_MV double log(double x) {
   using namespace mvec_tables;
   using detail::d;
-  if (x < d(kLog_MinNorm) || !(x <= d(kLog_MaxNorm))) return std::log(x);  // range mask: scalar log
+  if (x < d(kLog_MinNorm) || !(x <= d(kLog_MaxNorm))) return detail::scalar_log(x);  // range mask: scalar log
   const std::uint64_t xb = detail::bits(x);
   // preserve mantissa, set input exponent to 2^(-10)
   double m = d((xb & kLog_ExpMask) | kLog_Two10);
@@ -84,15 +148,15 @@ inline double log(double x) {
   r2 = r2 * q;
   const double rp = r + r2;
   // reconstruction: (exponent*log(2)) + (LogRcp + (R+poly)); LogRcp index = Rcp - 512
-  const double l = d(kLogLA[int(rcp) - 512]) + rp;
+  const double l = d(CPPWRF_MVT(kLogLA, kLogLADev)[int(rcp) - 512]) + rp;
   return e + l;
 }
 
 // _ZGVbN2v_log10_sse4 (svml_d_log102_core_sse4.S)
-inline double log10(double x) {
+CPPWRF_MV double log10(double x) {
   using namespace mvec_tables;
   using detail::d;
-  if (x < d(kLog10_MinNorm) || !(x <= d(kLog10_MaxNorm))) return std::log10(x);
+  if (x < d(kLog10_MinNorm) || !(x <= d(kLog10_MaxNorm))) return detail::scalar_log10(x);
   const std::uint64_t xb = detail::bits(x);
   double m = d((xb & kLog10_ExpMask) | kLog10_Two10);
   const double rcp = detail::rcp_rounded(m);
@@ -116,7 +180,7 @@ inline double log10(double x) {
   e = e - (big ? d(kLog10_Bias) : d(kLog10_Bias1));
   p11 = p11 + r2;
   e = e * d(kLog10_L2);
-  const double l = d(kLog10LA[int(rcp) - 512]) + p11;
+  const double l = d(CPPWRF_MVT(kLog10LA, kLog10LADev)[int(rcp) - 512]) + p11;
   return e + l;
 }
 }  // namespace cppwrf::mvec

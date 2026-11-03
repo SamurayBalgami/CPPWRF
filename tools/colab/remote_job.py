@@ -9,6 +9,9 @@ binaries for the VM's GPU, runs the suite cases against the WRF references, the 
 (CPPWRF_FILES_NO_VALUES=1), times the bench cases, and leaves everything in /content/job (summary.txt, logs) and
 /content/results.tar.gz.
 
+CPPWRF_JOB_GLIBC_PROOF (default 10^7, 0: none): random inputs per function of tools/glibc_math_proof_cuda.cu, the
+device's glibc math functions (the CUDA FP64 build's libm) against the host's ("glibc device math" in summary.txt).
+
 Profiling (colab_run.sh --env / --nsys / --ncu):
 - CPPWRF_JOB_ENV_KEYS: the variables of the environment that colab_run.sh --env set (e.g. CPPWRF_KTIME). The suite
   runs with them; each bench case runs once without them (the stepping time) and once more with them.
@@ -343,6 +346,16 @@ def job(note):
         note(f"build {name}: exit {rc}, {time.time() - t:.0f} s")
         if rc == 0:
             bins[name] = f"{b}/cppwrf"
+
+    # glibc's math functions on this GPU (src/core/glibc_math.hpp, the CUDA FP64 build's libm) against the same code
+    # on the host: CPPWRF_JOB_GLIBC_PROOF random inputs per function (default 10^7; 0: none)
+    n_proof = int(os.environ.get("CPPWRF_JOB_GLIBC_PROOF", "10000000"))
+    if n_proof > 0:
+        rc = sh(f"nvcc -std=c++20 -O3 --fmad=false -arch=native -DCPPWRF_GLIBC_MATH -Isrc -Itools "
+                f"-Xcompiler -fopenmp,-ffp-contract=off tools/glibc_math_proof_cuda.cu -o /content/glibc_math_proof_cuda "
+                f"&& /content/glibc_math_proof_cuda {n_proof}", "glibc_proof.log", cwd=SRC)
+        lines = [l for l in open(os.path.join(JOB, "glibc_proof.log")) if l.startswith("glibc_math_proof_cuda:")]
+        note(f"glibc device math: exit {rc}, {lines[-1].strip() if lines else 'no result'}")
 
     env = dict(os.environ, CPPWRF_WRF_RUNS=WR, CPPWRF_WRF_REF="/content/data/wrf_ref", OMP_NUM_THREADS="4")
     if cases and bins:

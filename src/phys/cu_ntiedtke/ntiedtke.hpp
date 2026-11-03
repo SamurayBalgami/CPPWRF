@@ -60,8 +60,8 @@ CPPWRF_HD inline T foelhm(const NtConst<T>& c, T tt) {
 template <typename T>
 CPPWRF_HD inline T foeewm(const NtConst<T>& c, T tt) {
   using C = NtConst<T>;
-  return c.c2es * (foealfa(tt) * std::exp(T(C::c3les) * (tt - T(C::tmelt)) / (tt - T(C::c4les))) +
-                   (T(1.) - foealfa(tt)) * std::exp(T(C::c3ies) * (tt - T(C::tmelt)) / (tt - T(C::c4ies))));
+  return c.c2es * (foealfa(tt) * libm::exp(T(C::c3les) * (tt - T(C::tmelt)) / (tt - T(C::c4les))) +
+                   (T(1.) - foealfa(tt)) * libm::exp(T(C::c3ies) * (tt - T(C::tmelt)) / (tt - T(C::c4ies))));
 }
 template <typename T>
 CPPWRF_HD inline T foedem(const NtConst<T>& c, T tt) {
@@ -84,8 +84,8 @@ CPPWRF_HD inline void cuadjtqn(const NtConst<T>& c, int kk, T psp, T* pt, T* pq,
       const T zqp = T(1.) / psp;
       T zl = T(1.) / (pt[kk] - c4les);
       T zi = T(1.) / (pt[kk] - c4ies);
-      T zqsat = c.c2es * (foealfa(pt[kk]) * std::exp(c3les * (pt[kk] - tmelt) * zl) +
-                          (T(1.) - foealfa(pt[kk])) * std::exp(c3ies * (pt[kk] - tmelt) * zi));
+      T zqsat = c.c2es * (foealfa(pt[kk]) * libm::exp(c3les * (pt[kk] - tmelt) * zl) +
+                          (T(1.) - foealfa(pt[kk])) * libm::exp(c3ies * (pt[kk] - tmelt) * zi));
       zqsat = zqsat * zqp;
       zqsat = std::fmin(T(0.5), zqsat);
       T zcor = T(1.) - c.vtmpc1 * zqsat;
@@ -96,8 +96,8 @@ CPPWRF_HD inline void cuadjtqn(const NtConst<T>& c, int kk, T psp, T* pt, T* pq,
         pq[kk] = pq[kk] - zcond;
         zl = T(1.) / (pt[kk] - c4les);
         zi = T(1.) / (pt[kk] - c4ies);
-        zqsat = c.c2es * (foealfa(pt[kk]) * std::exp(c3les * (pt[kk] - tmelt) * zl) +
-                          (T(1.) - foealfa(pt[kk])) * std::exp(c3ies * (pt[kk] - tmelt) * zi));
+        zqsat = c.c2es * (foealfa(pt[kk]) * libm::exp(c3les * (pt[kk] - tmelt) * zl) +
+                          (T(1.) - foealfa(pt[kk])) * libm::exp(c3ies * (pt[kk] - tmelt) * zi));
         zqsat = zqsat * zqp;
         zqsat = std::fmin(T(0.5), zqsat);
         zcor = T(1.) - c.vtmpc1 * zqsat;
@@ -354,7 +354,7 @@ CPPWRF_HD inline void cutypen(const NtConst<T>& c, int klev, const T* pqen, cons
       const T part2 = -hfx * c.rcpd - c.vtmpc1 * pten[klev] * qfx;
       const T root = T(0.001) - part1 * part2;
       if (part2 < T(0.)) {
-        const T conw = T(1.2) * std::pow(root, T(C::t13));
+        const T conw = T(1.2) * libm::pow(root, T(C::t13));
         const T deltt = std::fmax(T(1.5) * hfx / (rho * c.cpd * conw), T(0.));
         const T deltq = std::fmax(T(1.5) * qfx / (rho * conw), T(0.));
         kup[klev] = T(0.5) * (conw * conw);
@@ -764,9 +764,9 @@ CPPWRF_HD inline void cuascn(const NtConst<T>& c, int klev, T* ptenh, T* pqenh, 
           const T q = plu[jk] / zlcrit;
           const T zarg = q * q;
           T zd;
-          if (zarg < T(25.0)) zd = zzco * (T(1.) - std::exp(-zarg)) * zdfi;
+          if (zarg < T(25.0)) zd = zzco * (T(1.) - libm::exp(-zarg)) * zdfi;
           else zd = zzco * zdfi;
-          const T zint = std::exp(-zd);
+          const T zint = libm::exp(-zd);
           T zlnew = zluold * zint + zc / zd * (T(1.) - zint);
           zlnew = std::fmax(T(0.), std::fmin(plu[jk], zlnew));
           zlnew = std::fmin(z_cldmax, zlnew);
@@ -778,7 +778,7 @@ CPPWRF_HD inline void cuascn(const NtConst<T>& c, int klev, T* ptenh, T* pqenh, 
       }
       if (llo1) {
         if (zlrain[jk] > T(0.)) {
-          const T zvw = T(21.18) * std::pow(zlrain[jk], T(0.2));
+          const T zvw = T(21.18) * libm::pow(zlrain[jk], T(0.2));
           const T zvi = z_cwifrac * zvw;
           const T zalfaw = foealfa(ptu[jk]);
           const T zvv = zalfaw * zvw + (T(1.) - zalfaw) * zvi;
@@ -786,7 +786,7 @@ CPPWRF_HD inline void cuascn(const NtConst<T>& c, int klev, T* ptenh, T* pqenh, 
           const T zc = zprecip;
           const T zwu = std::fmin(T(15.0), std::sqrt(T(2.) * std::fmax(T(0.1), kup[jk])));
           const T zd = zvv / zwu;
-          const T zint = std::exp(-zd);
+          const T zint = libm::exp(-zd);
           T zrnew = zrold * zint + zc / zd * (T(1.) - zint);
           zrnew = std::fmax(T(0.), std::fmin(zlrain[jk], zrnew));
           zlrain[jk] = zrnew;
@@ -1054,7 +1054,7 @@ CPPWRF_HD inline void cuflxn(const NtConst<T>& c, int klev, T ztmst, const T* pt
       const T zrfl = pmflxr[jk] + pmflxs[jk];
       if (zrfl > T(1.e-20)) {
         const T zdrfl1 = zcpecons * std::fmax(T(0.), pqsen[jk] - pqen[jk]) * zcucov *
-                         std::pow(std::sqrt(paph[jk] / paph[klev + 1]) / T(5.09e-3) * zrfl / zcucov, T(0.5777)) *
+                         libm::pow(std::sqrt(paph[jk] / paph[klev + 1]) / T(5.09e-3) * zrfl / zcucov, T(0.5777)) *
                          (paph[jk + 1] - paph[jk]);
         T zrnew = zrfl - zdrfl1;
         const T zrmin = zrfl - zcucov * std::fmax(T(0.), rhevap * pqsen[jk] - pqen[jk]) * zcons2 *
@@ -1563,9 +1563,9 @@ CPPWRF_HD inline void cu_ntiedtke_run(const NtConst<T>& c, int km, T* pu, T* pv,
   const T dxref = T(15000.);
   T scale_fac, scale_fac2;
   if (dx < dxref) {
-    const T a = T(1.06133) + std::log(dxref / dx);
+    const T a = T(1.06133) + libm::log(dxref / dx);
     scale_fac = (a * a) * a;
-    scale_fac2 = std::pow(scale_fac, T(0.5));
+    scale_fac2 = libm::pow(scale_fac, T(0.5));
   } else {
     scale_fac = T(1.) + T(1.33e-5) * dx;
     scale_fac2 = T(1.);

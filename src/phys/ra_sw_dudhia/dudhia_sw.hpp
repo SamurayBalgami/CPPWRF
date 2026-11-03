@@ -62,14 +62,14 @@ CPPWRF_HD inline double dudhia_swpara(int nz, CSD t, CSD p, CSD dz, CSD qv, CSD 
     const double WGM = WW / XMU;
     const double UGCM = UV * 0.0001 / XMU;
     const double OLDABS = TOTABS;
-    TOTABS = 2.9 * UGCM / (std::pow(1. + 141.5 * UGCM, 0.635) + 5.925 * UGCM);
+    TOTABS = 2.9 * UGCM / (libm::pow(1. + 141.5 * UGCM, 0.635) + 5.925 * UGCM);
     const double beta = 0.4 * (1.0 - XMU) + 0.1;
     const double aer_dry1 = 0., aer_water1 = 0.;
     double XSCA = (cssca * XATP + beta * aer_dry1 * bext340 * DZ + beta * aer_water1 * bexth2o * DZ) / XMU;
     double XABS = (TOTABS - OLDABS) * (SDOWN1 - DSCLD - DSCA - DABSA) / SDOWN;
     double XABSA = 0.;
     if (XABS < 0.) XABS = 0.;
-    double ALW = std::log10(WGM + 1.);
+    double ALW = libm::log10(WGM + 1.);
     if (ALW > 3.999) ALW = 3.999;
     int IIL = 0, IU = 0;
     double XI = 0.;
@@ -125,9 +125,9 @@ CPPWRF_HD inline bool sw_diffuse_backup(double coszen, double swdown, double sol
   const double ioh = solcon * coszen;
   double kt = swdown / std::max(ioh, 1e-3);
   const double airmass =
-      std::exp(-ht / 8434.5) / (coszen + 0.50572 * std::pow(std::asin(coszen) * 57.295779513082323 + 6.07995, -1.6364));
-  kt = kt / (0.1 + 1.031 * std::exp(-1.4 / (0.9 + (9.4 / std::max(airmass, 1e-3)))));
-  const double kd = 0.952 - 1.041 * std::exp(-std::exp(2.300 - 4.702 * kt));
+      libm::exp(-ht / 8434.5) / (coszen + 0.50572 * libm::pow(libm::asin(coszen) * 57.295779513082323 + 6.07995, -1.6364));
+  kt = kt / (0.1 + 1.031 * libm::exp(-1.4 / (0.9 + (9.4 / std::max(airmass, 1e-3)))));
+  const double kd = 0.952 - 1.041 * libm::exp(-libm::exp(2.300 - 4.702 * kt));
   swddif = kd * swdown;
   swddir = (1. - kd) * swdown;
   return true;

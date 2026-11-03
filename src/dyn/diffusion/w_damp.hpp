@@ -57,7 +57,7 @@ inline void w_damp(
   const real w_damp_on = (params.zadvect_implicit > 0) ? w_crit_cfl : params.w_beta;
   constexpr double pi = 3.1415926535897932384626433;
   constexpr double degrad = pi / 180.0;
-  const real msfxffl = params.polar ? real(1.0 / std::cos(params.fft_filter_lat * degrad)) : real(0.0);
+  const real msfxffl = params.polar ? real(1.0 / libm::cos(params.fft_filter_lat * degrad)) : real(0.0);
 
   // Kernel for tendency update: WRF loops i=1..nx, j=1..ny, k=2..kde-1 (0-based: i=0..nx-1, j=0..ny-1, k=1..nz-1)
   if (params.w_damping == 1) {

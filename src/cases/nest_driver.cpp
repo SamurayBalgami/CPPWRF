@@ -86,14 +86,14 @@ void recompute_start_domain(const io::Config& cfg, Model& m, const BaseField2* h
         const std::size_t ij = std::size_t(j) * nx + i;
         const double ht = ht_2d[ij];
         const double p_surf =
-            p00 * std::exp(-t00 / a + std::pow((t00 / a) * (t00 / a) - 2. * cst::g * ht / a / cst::r_d, 0.5));  // **0.5
+            p00 * libm::exp(-t00 / a + libm::pow((t00 / a) * (t00 / a) - 2. * cst::g * ht / a / cst::r_d, 0.5));  // **0.5
         for (int k = 0; k < nz; ++k) {
           const std::size_t n = (std::size_t(k) * ny + j) * nx + i;
           pb[n] = double(b.c3h[k]) * (p_surf - b.p_top) + double(b.c4h[k]) + b.p_top;
-          double temp = std::max(tiso, t00 + a * std::log(pb[n] / p00));
-          if (pb[n] < p_strat) temp = tiso + a_strat * std::log(pb[n] / p_strat);
-          t_init[n] = temp * std::pow(p00 / pb[n], cst::r_d / cst::cp) - cst::t0;
-          alb[n] = (cst::r_d / cst::p1000mb) * (t_init[n] + cst::t0) * std::pow(pb[n] / cst::p1000mb, cst::cvpm);
+          double temp = std::max(tiso, t00 + a * libm::log(pb[n] / p00));
+          if (pb[n] < p_strat) temp = tiso + a_strat * libm::log(pb[n] / p_strat);
+          t_init[n] = temp * libm::pow(p00 / pb[n], cst::r_d / cst::cp) - cst::t0;
+          alb[n] = (cst::r_d / cst::p1000mb) * (t_init[n] + cst::t0) * libm::pow(pb[n] / cst::p1000mb, cst::cvpm);
         }
         mub[ij] = p_surf - b.p_top;
         phb[ij] = ht * cst::g;
@@ -106,13 +106,13 @@ void recompute_start_domain(const io::Config& cfg, Model& m, const BaseField2* h
             const double pfu = double(b.c3f[k]) * mub[ij] + double(b.c4f[k]) + b.p_top;
             const double pfd = double(b.c3f[k - 1]) * mub[ij] + double(b.c4f[k - 1]) + b.p_top;
             const double phm = double(b.c3h[k - 1]) * mub[ij] + double(b.c4h[k - 1]) + b.p_top;
-            phb[n] = phb[nm] + alb[nm] * phm * std::log(pfd / pfu);
+            phb[n] = phb[nm] + alb[nm] * phm * libm::log(pfd / pfu);
           }
         }
         for (int k = 0; k < nz; ++k) {
           const std::size_t n = (std::size_t(k) * ny + j) * nx + i;
           pb[n] = double(b.c3h[k]) * mub[ij] + double(b.c4h[k]) + b.p_top;
-          alb[n] = (cst::r_d / cst::p1000mb) * (t_init[n] + cst::t0) * std::pow(pb[n] / cst::p1000mb, cst::cvpm);
+          alb[n] = (cst::r_d / cst::p1000mb) * (t_init[n] + cst::t0) * libm::pow(pb[n] / cst::p1000mb, cst::cvpm);
         }
       }
   }
@@ -158,7 +158,7 @@ void recompute_start_domain(const io::Config& cfg, Model& m, const BaseField2* h
           const double pfu = double(b.c3f[k + 1]) * mt + double(b.c4f[k + 1]) + b.p_top;
           const double pfd = double(b.c3f[k]) * mt + double(b.c4f[k]) + b.p_top;
           const double phm = double(b.c3h[k]) * mt + double(b.c4h[k]) + b.p_top;
-          a = (ph1 - ph0 + phb[n1] - phb[n]) / phm / std::log(pfd / pfu) - alb[n];
+          a = (ph1 - ph0 + phb[n1] - phb[n]) / phm / libm::log(pfd / pfu) - alb[n];
         } else {
           // start_em.F:812: (c1h mub + c2h) + c1h mu_1, not c1h (mub + mu_1) + c2h
           const double mb = mub[std::size_t(j) * nx + i];
@@ -166,7 +166,7 @@ void recompute_start_domain(const io::Config& cfg, Model& m, const BaseField2* h
               (alb[n] * (double(b.c1h[k]) * mu) + double(b.rdnw[k]) * (ph1 - ph0));
         }
         al[n] = a;
-        p[n] = cst::p1000mb * std::pow((cst::r_d * (cst::t0 + thm)) / (cst::p1000mb * (a + alb[n])), cst::cpovcv) -
+        p[n] = cst::p1000mb * libm::pow((cst::r_d * (cst::t0 + thm)) / (cst::p1000mb * (a + alb[n])), cst::cpovcv) -
                pb[n];
       }
 

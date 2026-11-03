@@ -148,8 +148,8 @@ CPPWRF_HD inline real phim(real zet) {
   } else {
     real dummy_0 = rpow(one - cphm_unst * zet, real(0.25));
     phi_m = one / dummy_0;
-    const real dummy_psi = two * std::log(p5 * (one + dummy_0)) + std::log(p5 * (one + dummy_0 * dummy_0)) -
-                           two * std::atan(dummy_0) + real(1.570796);
+    const real dummy_psi = two * libm::log(p5 * (one + dummy_0)) + libm::log(p5 * (one + dummy_0 * dummy_0)) -
+                           two * libm::atan(dummy_0) + real(1.570796);
     dummy_0 = (one - am_unst * zet);
     real dummy_1 = rpow(dummy_0, p333);
     real dummy_11 = -p333 * am_unst * rpow(dummy_0, -p666);
@@ -157,7 +157,7 @@ CPPWRF_HD inline real phim(real zet) {
     real dummy_22 = p333 * dummy_11 * (two * dummy_1 + one);
     const real dummy_3 = real(0.57735) * (two * dummy_1 + one);
     const real dummy_33 = real(1.1547) * dummy_11;
-    const real dummy_4 = real(1.5) * std::log(dummy_2) - real(1.73205) * std::atan(dummy_3) + real(1.813799364);
+    const real dummy_4 = real(1.5) * libm::log(dummy_2) - real(1.73205) * libm::atan(dummy_3) + real(1.813799364);
     const real dummy_44 =
         (real(1.5) / dummy_2) * dummy_22 - real(1.73205) * dummy_33 / (one + dummy_3 * dummy_3);
     dummy_0 = zet * zet;
@@ -210,12 +210,12 @@ CPPWRF_HD inline void get_pblh(int kte, real& pblh, const real* thv1, const real
     if (k == kte - 1) pblh = zw1[kts + 1];  // exit safeguard
     if (pblh > zero) break;
   }
-  real wt = p5 * std::tanh((pblh - hundred) / hundred) + p5;
+  real wt = p5 * libm::tanh((pblh - hundred) / hundred) + p5;
   const real cpblh = real(400.) * (one - wt) + real(700.) * wt;
   real pblh_stable = c_max(ust * cpblh, ten);
   pblh_stable = c_max(pblh_stable, pblh - sbl_lim);
   pblh_stable = c_min(pblh_stable, pblh + sbl_lim);
-  wt = p5 * std::tanh((pblh - sbl_lim) / sbl_damp) + p5;
+  wt = p5 * libm::tanh((pblh - sbl_lim) / sbl_damp) + p5;
   pblh = pblh_stable * (one - wt) + pblh * wt;
   for (k = kts + 1; k <= kte - 1; ++k) {
     if (zw1[k] >= pblh) {

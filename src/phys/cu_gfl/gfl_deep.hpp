@@ -226,9 +226,9 @@ CPPWRF_HOST_DEVICE inline void cup_dd_edt(
       constexpr real beta3 = R(-0.15);
       pefb = (xland1 == 1) ? R(0.3) : R(0.5);
       if (psumh > R(0.0) && psum2 > R(0.0)) {
-        real aeroadd = pow(ccnclean, beta3) * pow(psumh, alpha3 - R(1.0));
+        real aeroadd = libm::pow(ccnclean, beta3) * libm::pow(psumh, alpha3 - R(1.0));
         real prop_c = pefb / aeroadd;
-        aeroadd = pow(ccn, beta3) * pow(psum2, alpha3 - R(1.0));
+        aeroadd = libm::pow(ccn, beta3) * libm::pow(psum2, alpha3 - R(1.0));
         aeroadd = prop_c * aeroadd;
         pefc = aeroadd;
         if (pefc > R(0.9)) pefc = R(0.9);
@@ -674,13 +674,13 @@ CPPWRF_HOST_DEVICE inline GflDeepOut<real> cu_gfl_deep_run(
     zws = max(R(0.0), flux_tun * R(0.41) * buo_flux * zo[2] * C::g / t[1]);
     if (zws > std::numeric_limits<real>::min()) {
       (void)pgeoh;
-      zws = R(1.2) * pow(zws, R(0.3333));
+      zws = R(1.2) * libm::pow(zws, R(0.3333));
       ztexec = max(flux_tun * in.hfx / (rho[1] * zws * C::cp), R(0.0));
       zqexec = max(flux_tun * in.qfx / C::xlv / (rho[1] * zws), R(0.0));
     }
     zws = max(R(0.0),
               R(0.001) - flux_tun * R(0.41) * buo_flux * zo[kpbl] * C::g / t[kpbl]);
-    zws = R(1.2) * pow(zws, R(0.3333));
+    zws = R(1.2) * libm::pow(zws, R(0.3333));
     zws = zws * rho[kpbl];
   }
 
@@ -1449,7 +1449,7 @@ CPPWRF_HOST_DEVICE inline GflDeepOut<real> cu_gfl_deep_run(
                        (R(1.0) + el2orc * qeso[k] / (t1 * t1));
           real dp = -R(100.0) * (p_cup[k + 1] - p_cup[k]);
           if (rn > R(0.0) && qcond < R(0.0)) {
-            qevap = -qcond * (R(1.0) - exp(R(-0.32) * sqrt(dtime * rn)));
+            qevap = -qcond * (R(1.0) - libm::exp(R(-0.32) * sqrt(dtime * rn)));
             qevap = min(qevap, rn * R(1000.0) * C::g / dp);
             delq2 = delqev + R(0.001) * qevap * dp / C::g;
           }

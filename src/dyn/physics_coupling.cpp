@@ -289,9 +289,9 @@ void PhysicsCoupling::init_aerosols(State& s, const BaseState& b) {
         double h_01;
         if (h1 <= 1000.0) h_01 = 0.8;
         else if (h1 >= 2500.0) h_01 = 0.01;
-        else h_01 = 0.8 * std::cos(h1 * 0.001 - 1.0);
+        else h_01 = 0.8 * libm::cos(h1 * 0.001 - 1.0);
         const double ni3 = -1.0 * lna / h_01;
-        nw[LM.index(i, j, 0)] = real(na1 + na0 * std::exp(-((hgt(i, 1, j) - h1) / 1000.) * ni3));
+        nw[LM.index(i, j, 0)] = real(na1 + na0 * libm::exp(-((hgt(i, 1, j) - h1) / 1000.) * ni3));
         if (emission) {
           const double z1 = hgt(i, 1, j) - h1;
           w2d[L2.index(i, j, 0)] = real(double(nw[LM.index(i, j, 0)]) * 0.000196 * (50. / z1));

@@ -55,8 +55,8 @@ static void init_tracer(const io::Config& cfg, const std::string& n, const Grid&
     const double r = cfg.get_double(pre + "radius", 2000.0), amp = cfg.get_double(pre + "amp", 1.0);
     f = [=](int i, int j, int k) {
       const double x = (i + 0.5) * G.dx, z = zm(i, j, k);
-      const double d = std::sqrt(std::pow((x - xc) / r, 2) + std::pow((z - zc) / r, 2));
-      return d <= 1.0 ? amp * std::pow(std::cos(0.5 * std::numbers::pi * d), 2) : 0.0;
+      const double d = std::sqrt(libm::pow((x - xc) / r, 2) + libm::pow((z - zc) / r, 2));
+      return d <= 1.0 ? amp * libm::pow(libm::cos(0.5 * std::numbers::pi * d), 2) : 0.0;
     };
   } else {
     throw std::runtime_error(pre + "init must be const or blob");

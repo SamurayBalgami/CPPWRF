@@ -34,24 +34,24 @@ MYJSFCTableManager::MYJSFCTableManager() {
   for (int k = 1; k <= KZTM; ++k) {
     if (zeta1 < real(0.)) {
       real x = std::sqrt(std::sqrt(real(1.) - real(16.) * zeta1));
-      host_psim1[k - 1] = real(-2.) * std::log((x + real(1.)) / real(2.)) -
-                          std::log((x * x + real(1.)) / real(2.)) +
-                          real(2.) * std::atan(x) - pihf;
-      host_psih1[k - 1] = real(-2.) * std::log((x * x + real(1.)) / real(2.));
+      host_psim1[k - 1] = real(-2.) * libm::log((x + real(1.)) / real(2.)) -
+                          libm::log((x * x + real(1.)) / real(2.)) +
+                          real(2.) * libm::atan(x) - pihf;
+      host_psih1[k - 1] = real(-2.) * libm::log((x * x + real(1.)) / real(2.));
     } else {
-      host_psim1[k - 1] = real(0.7) * zeta1 + real(0.75) * zeta1 * (real(6.) - real(0.35) * zeta1) * std::exp(real(-0.35) * zeta1);
-      host_psih1[k - 1] = real(0.7) * zeta1 + real(0.75) * zeta1 * (real(6.) - real(0.35) * zeta1) * std::exp(real(-0.35) * zeta1);
+      host_psim1[k - 1] = real(0.7) * zeta1 + real(0.75) * zeta1 * (real(6.) - real(0.35) * zeta1) * libm::exp(real(-0.35) * zeta1);
+      host_psih1[k - 1] = real(0.7) * zeta1 + real(0.75) * zeta1 * (real(6.) - real(0.35) * zeta1) * libm::exp(real(-0.35) * zeta1);
     }
 
     if (zeta2 < real(0.)) {
       real x = std::sqrt(std::sqrt(real(1.) - real(16.) * zeta2));
-      host_psim2[k - 1] = real(-2.) * std::log((x + real(1.)) / real(2.)) -
-                          std::log((x * x + real(1.)) / real(2.)) +
-                          real(2.) * std::atan(x) - pihf;
-      host_psih2[k - 1] = real(-2.) * std::log((x * x + real(1.)) / real(2.));
+      host_psim2[k - 1] = real(-2.) * libm::log((x + real(1.)) / real(2.)) -
+                          libm::log((x * x + real(1.)) / real(2.)) +
+                          real(2.) * libm::atan(x) - pihf;
+      host_psih2[k - 1] = real(-2.) * libm::log((x * x + real(1.)) / real(2.));
     } else {
-      host_psim2[k - 1] = real(0.7) * zeta2 + real(0.75) * zeta2 * (real(6.) - real(0.35) * zeta2) * std::exp(real(-0.35) * zeta2);
-      host_psih2[k - 1] = real(0.7) * zeta2 + real(0.75) * zeta2 * (real(6.) - real(0.35) * zeta2) * std::exp(real(-0.35) * zeta2);
+      host_psim2[k - 1] = real(0.7) * zeta2 + real(0.75) * zeta2 * (real(6.) - real(0.35) * zeta2) * libm::exp(real(-0.35) * zeta2);
+      host_psih2[k - 1] = real(0.7) * zeta2 + real(0.75) * zeta2 * (real(6.) - real(0.35) * zeta2) * libm::exp(real(-0.35) * zeta2);
     }
 
     if (k == KZTM) {

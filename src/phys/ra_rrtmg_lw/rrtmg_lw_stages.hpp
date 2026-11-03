@@ -392,7 +392,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumn
     auto cldf_of = [&](int l) { const double cf = CSD(v.cldfrac)[l]; return cf < 1.0e-20 ? 0.0 : cf; };
     auto alpha_of = [&](int l) {
       if (c.icld == 5 && cldf_of(l) == 0.0 && cldf_of(l - 1) > 0.0) return 0.0;
-      return exp(-(hgt[l] - hgt[l - 1]) * zo_inv);
+      return libm::exp(-(hgt[l] - hgt[l - 1]) * zo_inv);
     };
     // cloudy subcolumns get the layer's in-cloud paths (cldprmc reads them through cldfmc)
     mcica_subcolumns(c.icld, rng, 140, nlayers, cldf_of, alpha_of, [&](int isubcol, int ilev, bool cld) {

@@ -16,24 +16,24 @@ CPPWRF_HD inline void andreas_2002(real z_0, real bvisc, real ustar, real& zt, r
   constexpr real bq2_s = real(0.0), bq2_t = real(0.0), bq2_r = real(-0.180);
   const real zntsno = real(0.135) * bvisc / ustar +
                       (real(0.035) * (ustar * ustar) * g_inv) *
-                          (real(5.) * std::exp(-(((ustar - real(0.18)) / p1) * ((ustar - real(0.18)) / p1))) + one);
+                          (real(5.) * libm::exp(-(((ustar - real(0.18)) / p1) * ((ustar - real(0.18)) / p1))) + one);
   real ren2 = ustar * zntsno / bvisc;
   if (ren2 > real(1000.)) ren2 = real(1000.);
-  const real l = std::log(ren2);
+  const real l = libm::log(ren2);
   if (ren2 <= real(0.135)) {
-    zt = zntsno * std::exp(bt0_s + bt1_s * l + bt2_s * (l * l));
-    zq = zntsno * std::exp(bq0_s + bq1_s * l + bq2_s * (l * l));
+    zt = zntsno * libm::exp(bt0_s + bt1_s * l + bt2_s * (l * l));
+    zq = zntsno * libm::exp(bq0_s + bq1_s * l + bq2_s * (l * l));
   } else if (ren2 > real(0.135) && ren2 < real(2.5)) {
-    zt = zntsno * std::exp(bt0_t + bt1_t * l + bt2_t * (l * l));
-    zq = zntsno * std::exp(bq0_t + bq1_t * l + bq2_t * (l * l));
+    zt = zntsno * libm::exp(bt0_t + bt1_t * l + bt2_t * (l * l));
+    zq = zntsno * libm::exp(bq0_t + bq1_t * l + bq2_t * (l * l));
   } else {
-    zt = zntsno * std::exp(bt0_r + bt1_r * l + bt2_r * (l * l));
-    zq = zntsno * std::exp(bq0_r + bq1_r * l + bq2_r * (l * l));
+    zt = zntsno * libm::exp(bt0_r + bt1_r * l + bt2_r * (l * l));
+    zq = zntsno * libm::exp(bq0_r + bq1_r * l + bq2_r * (l * l));
   }
 }
 
 CPPWRF_HD inline real esat_ice(real t) {  // the module's saturation vapour pressure over ice (kPa)
-  return svp1 * std::exp(real(4648.) * (one / real(273.15) - one / t) - real(11.64) * std::log(real(273.15) / t) +
+  return svp1 * libm::exp(real(4648.) * (one / real(273.15) - one / t) - real(11.64) * libm::log(real(273.15) / t) +
                          real(0.02265) * (real(273.15) - t));
 }
 
@@ -51,11 +51,11 @@ CPPWRF_HD inline void mynnsfc_ice(const SfcIn& in, SfcPoint& o, const PsiTables&
     const real pl = in.p_1 / real(1000.);
     o.qgh = ep2 * e1 / (pl - e1);
   }
-  const real thcon = std::pow(real(100000.) / in.psfcpa, rovcp);
+  const real thcon = libm::pow(real(100000.) / in.psfcpa, rovcp);
   const real thsk = tsk * thcon;
   const real thvsk = thsk * (one + ep1 * o.qsfc);
 
-  const real th_1 = in.t_1 * std::pow(real(100000.) / in.p_1, rovcp);
+  const real th_1 = in.t_1 * libm::pow(real(100000.) / in.p_1, rovcp);
   const real tc_1 = in.t_1 - real(273.15);
   const real thv_1 = th_1 * (one + ep1 * in.qv_1);
   const real tv_1 = in.t_1 * (one + ep1 * in.qv_1);
@@ -68,8 +68,8 @@ CPPWRF_HD inline void mynnsfc_ice(const SfcIn& in, SfcPoint& o, const PsiTables&
   o.wspd = std::sqrt(in.u_1 * in.u_1 + in.v_1 * in.v_1);
   const real dthvdz = (thv_1 - thvsk);
   const real fluxc = c_max(o.hfx / rho_1 / cp + ep1 * thvsk * o.qfx / rho_1, zero);
-  o.wstar = vconvc * std::pow(grav / tsk * c_min(real(1.5) * in.pblh, real(4000.)) * fluxc, p333);
-  const real vsgd = c_min(real(0.32) * std::pow(c_max(in.dx / real(5000.) - one, zero), p333), p5);
+  o.wstar = vconvc * libm::pow(grav / tsk * c_min(real(1.5) * in.pblh, real(4000.)) * fluxc, p333);
+  const real vsgd = c_min(real(0.32) * libm::pow(c_max(in.dx / real(5000.) - one, zero), p333), p5);
   o.wspd = std::sqrt(o.wspd * o.wspd + o.wstar * o.wstar + vsgd * vsgd);
   o.wspd = c_max(o.wspd, wmin);
   o.rb = govrth * za * dthvdz / (o.wspd * o.wspd);
@@ -82,11 +82,11 @@ CPPWRF_HD inline void mynnsfc_ice(const SfcIn& in, SfcPoint& o, const PsiTables&
   real zt, zq;
   andreas_2002(zntstoch, visc, o.ust, zt, zq);
 
-  o.gz1oz0 = std::log((za + zntstoch) / zntstoch);
-  const real gz1ozt = std::log((za + zntstoch) / zt);
-  const real gz2ozt = std::log((two + zntstoch) / zt);
-  const real gz10oz0 = std::log((ten + zntstoch) / zntstoch);
-  const real gz10ozt = std::log((ten + zntstoch) / zt);
+  o.gz1oz0 = libm::log((za + zntstoch) / zntstoch);
+  const real gz1ozt = libm::log((za + zntstoch) / zt);
+  const real gz2ozt = libm::log((two + zntstoch) / zt);
+  const real gz10oz0 = libm::log((ten + zntstoch) / zntstoch);
+  const real gz10ozt = libm::log((ten + zntstoch) / zt);
   const real zratio = zntstoch / zt;
 
   real psim10, psih10, psih2;
@@ -149,9 +149,9 @@ CPPWRF_HD inline void mynnsfc_ice(const SfcIn& in, SfcPoint& o, const PsiTables&
   o.psix10 = c_max(gz10oz0 - psim10, one);
   o.psit = c_max(gz1ozt - o.psih, one);
   o.psit2 = c_max(gz2ozt - psih2, one);
-  const real psiq = c_max(std::log((za + zq) / zq) - o.psih, one);
-  const real psiq2 = c_max(std::log((two + zq) / zq) - psih2, one);
-  const real psiq10 = c_max(std::log((ten + zq) / zq) - psih10, one);
+  const real psiq = c_max(libm::log((za + zq) / zq) - o.psih, one);
+  const real psiq2 = c_max(libm::log((two + zq) / zq) - psih2, one);
+  const real psiq10 = c_max(libm::log((ten + zq) / zq) - psih10, one);
 
   o.ust = p5 * o.ust + p5 * karman * o.wspd / o.psix;
   o.ust = c_max(o.ust, real(0.005));
@@ -191,12 +191,12 @@ CPPWRF_HD inline void mynnsfc_ice(const SfcIn& in, SfcPoint& o, const PsiTables&
       o.u10 = in.u_2;
       o.v10 = in.v_2;
     } else {
-      o.u10 = in.u_1 * std::log(ten / zntstoch) / std::log(za / zntstoch);
-      o.v10 = in.v_1 * std::log(ten / zntstoch) / std::log(za / zntstoch);
+      o.u10 = in.u_1 * libm::log(ten / zntstoch) / libm::log(za / zntstoch);
+      o.v10 = in.v_1 * libm::log(ten / zntstoch) / libm::log(za / zntstoch);
     }
   } else if (za > real(7.0) && za < real(13.0)) {
-    o.u10 = in.u_1 * std::log(ten / zntstoch) / std::log(za / zntstoch);
-    o.v10 = in.v_1 * std::log(ten / zntstoch) / std::log(za / zntstoch);
+    o.u10 = in.u_1 * libm::log(ten / zntstoch) / libm::log(za / zntstoch);
+    o.v10 = in.v_1 * libm::log(ten / zntstoch) / libm::log(za / zntstoch);
   } else {
     o.u10 = in.u_1 * o.psix10 / o.psix;
     o.v10 = in.v_1 * o.psix10 / o.psix;
@@ -205,7 +205,7 @@ CPPWRF_HD inline void mynnsfc_ice(const SfcIn& in, SfcPoint& o, const PsiTables&
   o.th2 = thsk + dtg * o.psit2 / o.psit;
   if ((th_1 > thsk && (o.th2 < thsk || o.th2 > th_1)) || (th_1 < thsk && (o.th2 > thsk || o.th2 < th_1)))
     o.th2 = thsk + two * (th_1 - thsk) / za;
-  o.t2 = o.th2 * std::pow(in.psfcpa / real(100000.), rovcp);
+  o.t2 = o.th2 * libm::pow(in.psfcpa / real(100000.), rovcp);
   o.q2 = o.qsfc + (in.qv_1 - o.qsfc) * psiq2 / psiq;
   o.q2 = c_max(o.q2, c_min(o.qsfc, in.qv_1));
   o.q2 = c_min(o.q2, real(1.05) * in.qv_1);

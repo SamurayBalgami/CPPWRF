@@ -128,14 +128,14 @@ CPPWRF_HD inline double calc_coszen(double julian, double xtime, double gmt, dou
   constexpr double piconst = 3.1415926535897932384626433;
   constexpr double degrad = piconst / 180.;
   const double da = 6.2831853071795862 * (julian - 0.5) / 365.;
-  const double eot = (0.000075 + 0.001868 * std::cos(da) - 0.032077 * std::sin(da) - 0.014615 * std::cos(2 * da) -
-                      0.040849 * std::sin(2 * da)) * (229.18);
+  const double eot = (0.000075 + 0.001868 * libm::cos(da) - 0.032077 * libm::sin(da) - 0.014615 * libm::cos(2 * da) -
+                      0.040849 * libm::sin(2 * da)) * (229.18);
   const double xt24 = std::fmod(xtime, 1440.) + eot;
   const double tloctm = gmt + xt24 / 60. + xlon / 15.;
   const double hrang = 15. * (tloctm - 12.) * degrad;
   if (hrang_out) *hrang_out = hrang;
   const double xxlat = xlat * degrad;
-  double c = vm::sin(xxlat, li, ln) * std::sin(declin) + vm::cos(xxlat, li, ln) * std::cos(declin) * vm::cos(hrang, li, ln);
+  double c = vm::sin(xxlat, li, ln) * libm::sin(declin) + vm::cos(xxlat, li, ln) * libm::cos(declin) * vm::cos(hrang, li, ln);
   return std::min(std::max(c, -1.0), 1.0);
 }
 
@@ -149,8 +149,8 @@ CPPWRF_HD inline void cal_cldfra1(int nz, SD qv, SD qc, SD qi, SD qs, SD t, SD p
   for (int k = 0; k < nz; ++k) {
     const double tk = t[k], pk = p[k];
     const double tc = tk - SVPT0;
-    const double esw = 1000.0 * SVP1 * std::exp(SVP2 * tc / (tk - SVP3));
-    const double esi = 1000.0 * SVP1 * std::exp(SVPI2 * tc / (tk - SVPI3));
+    const double esw = 1000.0 * SVP1 * libm::exp(SVP2 * tc / (tk - SVP3));
+    const double esi = 1000.0 * SVP1 * libm::exp(SVPI2 * tc / (tk - SVPI3));
     const double QVSW = ep_2 * esw / (pk - esw);
     const double QVSI = ep_2 * esi / (pk - esi);
     double QCLD = 0, weight = 0;
@@ -174,10 +174,10 @@ CPPWRF_HD inline void cal_cldfra1(int nz, SD qv, SD qc, SD qi, SD qs, SD t, SD p
       cf = 1.;
     } else {
       const double SUBSAT = std::max(1.E-10, RHGRID * QVS_WEIGHT - qv[k]);
-      const double DENOM = std::pow(SUBSAT, GAMMA);
+      const double DENOM = libm::pow(SUBSAT, GAMMA);
       const double ARG = std::max(-6.9, -ALPHA0 * QCLD / DENOM);
       RHUM = std::max(1.E-10, RHUM);
-      cf = std::pow(RHUM / RHGRID, PEXP) * (1. - std::exp(ARG));
+      cf = libm::pow(RHUM / RHGRID, PEXP) * (1. - libm::exp(ARG));
       if (cf < .01) cf = 0.;
     }
     cldfra[k] = cf;

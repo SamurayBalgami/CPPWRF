@@ -48,6 +48,17 @@ else()
   set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 endif()
 set(CMAKE_CUDA_FLAGS_RELEASE "-O3")
+# CUDA FP64: the arithmetic of WRF's real*8 build bit for bit. --fmad=false: no fused multiply-add contraction
+# (gfortran on x86-64 without -march emits none; nvcc fuses a*b+c by default), every kernel; division and sqrt are
+# correctly rounded (-prec-div / -prec-sqrt true, the default; checked below). CPPWRF_CUDA_GLIBC_MATH: glibc's
+# libm and libmvec algorithms on the device and the host (src/core/glibc_math.hpp) instead of CUDA's math library.
+option(CPPWRF_CUDA_GLIBC_MATH "CUDA FP64 build: glibc's math functions on the device (bit-identical to WRF / CPU)" ON)
+if(CPPWRF_ENABLE_CUDA AND CPPWRF_DOUBLE)
+  string(APPEND CMAKE_CUDA_FLAGS " --fmad=false")
+  if(NOT CPPWRF_CUDA_GLIBC_MATH)
+    add_compile_definitions(CPPWRF_CUDA_LIBM)
+  endif()
+endif()
 # flags that change results: reassociation, reciprocals, flush-to-zero, approximate division / sqrt
 string(TOUPPER "${CMAKE_BUILD_TYPE}" _cppwrf_bt)
 if("${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_cppwrf_bt}}" MATCHES

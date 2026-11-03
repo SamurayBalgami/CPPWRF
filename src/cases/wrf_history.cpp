@@ -341,16 +341,16 @@ void WrfHistory::start_em_slopes() {  // start_em: slope-radiation arrays and th
       sx[q] = double(hx);
       sy[q] = double(hy);
       lap[q] = double((H(ip1, j) + H(im1, j) + H(i, jp1) + H(i, jm1) - H(i, j) * real(4.)) / real(4.));
-      const real pi = real(4.) * std::atan(real(1.));
-      real sl = std::atan(std::pow(hx * hx + hy * hy, real(.5)));
+      const real pi = real(4.) * libm::atan(real(1.));
+      real sl = libm::atan(libm::pow(hx * hx + hy * hy, real(.5)));
       real az = 0;
       if (sl < real(1.e-4)) {
         sl = 0;
       } else {
-        az = std::atan2(hx, hy) + pi;
+        az = libm::atan2(hx, hy) + pi;
         const real sina = mapped ? real(sa[q]) : real(0), cosa = mapped ? real(ca[q]) : real(1);
-        if (cosa >= 0) az = az - std::asin(sina);
-        else az = az - (pi - std::asin(sina));
+        if (cosa >= 0) az = az - libm::asin(sina);
+        else az = az - (pi - libm::asin(sina));
       }
       slope[q] = double(sl);
       azi[q] = double(az);

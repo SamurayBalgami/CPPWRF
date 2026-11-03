@@ -41,7 +41,7 @@ CPPWRF_HD inline void slab1d(const SlabParams& p, real t1d, real qv1d, real p1d,
     const real xinet = emiss * (glw - upflux);
     const real rnet = gsw + xinet;
     // moisture flux calculated here (overwrites the surface layer's value for land)
-    real esg = p.svp1 * std::exp(p.svp2 * (tg0 - p.svpt0) / (tg0 - p.svp3));
+    real esg = p.svp1 * libm::exp(p.svp2 * (tg0 - p.svpt0) / (tg0 - p.svp3));
     real qsg = p.ep2 * esg / (psfc - esg);
     real thg = tsk * rpow(real(100.) / psfc, p.rovcp);
     hfx = flhc * (thg - thx);
@@ -58,7 +58,7 @@ CPPWRF_HD inline void slab1d(const SlabParams& p, real t1d, real qv1d, real p1d,
           const real ps1 = rpow(psfcpa / p.p1000mb, p.rovcp);
           const real ps = psfc;
           thg = tslb[0] / ps1;
-          esg = p.svp1 * std::exp(p.svp2 * (tslb[0] - p.svpt0) / (tslb[0] - p.svp3));
+          esg = p.svp1 * libm::exp(p.svp2 * (tslb[0] - p.svpt0) / (tslb[0] - p.svp3));
           qsg = p.ep2 * esg / (ps - esg);
           // update the fluxes for the new ground temperature and sum them over the soil time steps
           const real hfxt = flhc * (thg - thx);

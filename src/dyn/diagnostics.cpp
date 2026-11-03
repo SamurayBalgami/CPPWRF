@@ -43,7 +43,7 @@ struct FEnergy {
     double uc = 0.5 * (double(u(i, j, k)) + double(u(i + 1, j, k)));
     double vc = 0.5 * (double(v(i, j, k)) + double(v(i, j + 1, k)));
     double wc = 0.5 * (double(w(i, j, k)) + double(w(i, j, k + 1)));
-    double T = (double(t(i, j, k)) + cst::t0) * pow((double(p(i, j, k)) + double(pb(i, j, k))) / cst::p1000mb, cst::rcp);
+    double T = (double(t(i, j, k)) + cst::t0) * libm::pow((double(p(i, j, k)) + double(pb(i, j, k))) / cst::p1000mb, cst::rcp);
     double phm = 0.5 * (double(ph(i, j, k)) + double(ph(i, j, k + 1)) + double(phb(i, j, k)) + double(phb(i, j, k + 1)));
     return -double(c.dnw(k)) * m * (0.5 * (uc * uc + vc * vc + wc * wc) + cst::cv * T + phm);
   }

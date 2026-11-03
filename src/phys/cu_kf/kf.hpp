@@ -37,8 +37,8 @@ CPPWRF_HD inline void envirtht(const KFTables<T>& tables, T p1, T t1, T q1, T& t
     T tdpt = (cliq - dliq * tlog) / (bliq - tlog);
     T tsat = tdpt - (static_cast<T>(0.212) + static_cast<T>(1.571e-3) * (tdpt - t00) -
                      static_cast<T>(4.36e-4) * (t1 - t00)) * (t1 - tdpt);
-    T tht = t1 * pow(p00 / p1, static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * q1));
-    tht1 = tht * exp((c1 / tsat - c2) * q1 * (static_cast<T>(1.0) + static_cast<T>(0.81) * q1));
+    T tht = t1 * libm::pow(p00 / p1, static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * q1));
+    tht1 = tht * libm::exp((c1 / tsat - c2) * q1 * (static_cast<T>(1.0) + static_cast<T>(0.81) * q1));
 }
 
 template <typename T>
@@ -145,14 +145,14 @@ CPPWRF_HD inline void dtfrznew(T& tu, T p, T& thteu, T& qu, T qfrz, T& qice,
     T dtfrz = rlf * qfrz / (cpp + rls * qu * a);
     tu = tu + dtfrz;
 
-    T es = aliq * exp((bliq * tu - cliq) / (tu - dliq));
+    T es = aliq * libm::exp((bliq * tu - cliq) / (tu - dliq));
     T qs = es * static_cast<T>(0.622) / (p - es);
 
     T dqevap = qs - qu;
     qice = qice - dqevap;
     qu = qu + dqevap;
-    T pii = pow(static_cast<T>(1.0e5) / p, static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qu));
-    thteu = tu * pii * exp((static_cast<T>(3374.6525) / tu - static_cast<T>(2.5403)) * qu * (static_cast<T>(1.0) + static_cast<T>(0.81) * qu));
+    T pii = libm::pow(static_cast<T>(1.0e5) / p, static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qu));
+    thteu = tu * pii * libm::exp((static_cast<T>(3374.6525) / tu - static_cast<T>(2.5403)) * qu * (static_cast<T>(1.0) + static_cast<T>(0.81) * qu));
 }
 
 template <typename T>
@@ -174,7 +174,7 @@ CPPWRF_HD inline void condload(T& qliq, T& qice, T& wtw, T dz, T boterm, T enter
     qtot = qtot + static_cast<T>(0.6) * qnew;
     T oldq = qtot;
     T ratio4 = (static_cast<T>(0.6) * qnewlq + qliq) / (qtot + static_cast<T>(1.0e-8));
-    qtot = qtot * exp(-conv);
+    qtot = qtot * libm::exp(-conv);
 
     T dq = oldq - qtot;
     qlqout = ratio4 * dq;
@@ -204,8 +204,8 @@ CPPWRF_HD inline void prof5(T eq, T& ee, T& ud) {
     const T fe = static_cast<T>(0.202765151);
 
     T y = static_cast<T>(6.0) * eq - static_cast<T>(3.0);
-    T ey = exp(y * y / static_cast<T>(-2.0));
-    T e45 = exp(static_cast<T>(-4.5));
+    T ey = libm::exp(y * y / static_cast<T>(-2.0));
+    T e45 = libm::exp(static_cast<T>(-4.5));
     T t2 = static_cast<T>(1.0) / (static_cast<T>(1.0) + p * abs(y));
     T t1 = static_cast<T>(0.500498);
     T c1 = a1 * t1 + a2 * t1 * t1 + a3 * t1 * t1 * t1;
@@ -579,7 +579,7 @@ struct KFKernel {
             const T w0_klclm1 = w0avg(i, j, k_lcl);
             const T w0_klcl = w0avg(i, j, klcl);
             wkl = (w0_klclm1 + (w0_klcl - w0_klclm1) * dlp) * dx / static_cast<T>(25.0e3) - wklcl;
-            T dtlcl = (wkl < static_cast<T>(0.0001)) ? static_cast<T>(0.0) : static_cast<T>(4.64) * pow(wkl, static_cast<T>(0.33));
+            T dtlcl = (wkl < static_cast<T>(0.0001)) ? static_cast<T>(0.0) : static_cast<T>(4.64) * libm::pow(wkl, static_cast<T>(0.33));
             T dtrh = static_cast<T>(0.0);
             if (trigger == 3) {
                 T qslcl = qes[k_lcl] + (qes[klcl] - qes[k_lcl]) * dlp;
@@ -1054,7 +1054,7 @@ struct KFKernel {
                 qd[lfs] = q0[lfs];
                 T qss;
                 tpmix2dd(*tables, p0[lfs], theted[lfs], tz[lfs], qss);
-                thtad[lfs] = tz[lfs] * pow(p00 / p0[lfs], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qss));
+                thtad[lfs] = tz[lfs] * libm::pow(p00 / p0[lfs], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qss));
                 tvd[lfs] = tz[lfs] * (static_cast<T>(1.0) + static_cast<T>(0.608) * qss);
                 T rdd = p0[lfs] / (r * tvd[lfs]);
                 T a1 = (static_cast<T>(1.0) - peff) * au0;
@@ -1087,10 +1087,10 @@ struct KFKernel {
                 ldt = (lfs - 1 < kstart - 1) ? (lfs - 1) : (kstart - 1);
                 tpmix2dd(*tables, p0[kstart], theted[kstart], tz[kstart], qss);
                 tz[kstart] -= dtmelt;
-                T es = aliq * exp((bliq * tz[kstart] - cliq) / (tz[kstart] - dliq));
+                T es = aliq * libm::exp((bliq * tz[kstart] - cliq) / (tz[kstart] - dliq));
                 qss = static_cast<T>(0.622) * es / (p0[kstart] - es);
-                theted[kstart] = tz[kstart] * pow(static_cast<T>(1.0e5) / p0[kstart], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qss)) *
-                                exp((static_cast<T>(3374.6525) / tz[kstart] - static_cast<T>(2.5403)) * qss * (static_cast<T>(1.0) + static_cast<T>(0.81) * qss));
+                theted[kstart] = tz[kstart] * libm::pow(static_cast<T>(1.0e5) / p0[kstart], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qss)) *
+                                libm::exp((static_cast<T>(3374.6525) / tz[kstart] - static_cast<T>(2.5403)) * qss * (static_cast<T>(1.0) + static_cast<T>(0.81) * qss));
 
                 ldt = (lfs - 1 < kstart - 1) ? (lfs - 1) : (kstart - 1);
                 ldb = 0;
@@ -1106,7 +1106,7 @@ struct KFKernel {
                         T rl = xlv0 - xlv1 * tz[nd];
                         T dtmp = rl * qss * (static_cast<T>(1.0) - rhh) / (cp + rl * rhh * qss * dssdt);
                         T t1rh = tz[nd] + dtmp;
-                        es = rhh * aliq * exp((bliq * t1rh - cliq) / (t1rh - dliq));
+                        es = rhh * aliq * libm::exp((bliq * t1rh - cliq) / (t1rh - dliq));
                         T qsrh = static_cast<T>(0.622) * es / (p0[nd] - es);
                         if (qsrh < qd[nd]) {
                             qsrh = qd[nd];
@@ -1130,7 +1130,7 @@ struct KFKernel {
                         dmf[nd] = dmf[nd1] + ddr[nd];
                         tder += (qsd[nd] - qd[nd]) * ddr[nd];
                         qd[nd] = qsd[nd];
-                        thtad[nd] = tz[nd] * pow(p00 / p0[nd], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qd[nd]));
+                        thtad[nd] = tz[nd] * libm::pow(p00 / p0[nd], static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qd[nd]));
                     }
                 }
             }
@@ -1346,7 +1346,7 @@ struct KFKernel {
             }
             tmix /= dpthmx;
             qmix /= dpthmx;
-            T es = aliq * exp((tmix * bliq - cliq) / (tmix - dliq));
+            T es = aliq * libm::exp((tmix * bliq - cliq) / (tmix - dliq));
             T qss = static_cast<T>(0.622) * es / (pmix - es);
             if (qmix > qss) {
                 T rl = xlv0 - xlv1 * tmix;
@@ -1385,8 +1385,8 @@ struct KFKernel {
             T tenv = tg[k_lcl_adj] + (tg[klcl] - tg[k_lcl_adj]) * dlp;
             T qenv = qg[k_lcl_adj] + (qg[klcl] - qg[k_lcl_adj]) * dlp;
             T tven = tenv * (static_cast<T>(1.0) + static_cast<T>(0.608) * qenv);
-            theteu[k_lcl_adj] = tmix * pow(static_cast<T>(1.0e5) / pmix, static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qmix)) *
-                               exp((static_cast<T>(3374.6525) / tlcl - static_cast<T>(2.5403)) * qmix * (static_cast<T>(1.0) + static_cast<T>(0.81) * qmix));
+            theteu[k_lcl_adj] = tmix * libm::pow(static_cast<T>(1.0e5) / pmix, static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qmix)) *
+                               libm::exp((static_cast<T>(3374.6525) / tlcl - static_cast<T>(2.5403)) * qmix * (static_cast<T>(1.0) + static_cast<T>(0.81) * qmix));
 
             T abeg = static_cast<T>(0.0);
             for (int nk = k_lcl_adj; nk <= ltopm1; ++nk) {

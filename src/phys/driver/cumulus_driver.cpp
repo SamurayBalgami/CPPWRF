@@ -127,13 +127,13 @@ struct KConvtransPrep {
       for (int k = 0; k < nz; ++k) {
         gd_cldfr(i, j, k) = real(0.);
         if (flag_qc && !flag_qi) {
-          real satvp = real(3.80) * std::exp(real(17.27) * (t_phy(i, j, k) - real(273.)) /
+          real satvp = real(3.80) * libm::exp(real(17.27) * (t_phy(i, j, k) - real(273.)) /
                                              (t_phy(i, j, k) - real(36.))) /
                        (real(.01) * p_phy(i, j, k));
           real rhgrid = std::max(real(.1), std::min(real(.95), qv(i, j, k) / satvp));
           real h2oliq = real(1000.) * (qc_cu(i, j, k) + qc(i, j, k));
           satvp = real(1000.) * satvp;
-          real c = (real(1.) - std::exp((-real(100.) * h2oliq) /
+          real c = (real(1.) - libm::exp((-real(100.) * h2oliq) /
                                         rpow((real(1.) - rhgrid) * satvp, real(0.49)))) *
                    rpow(rhgrid, real(0.25));
           c = std::max(real(0.), std::min(real(1.), c));
@@ -141,13 +141,13 @@ struct KConvtransPrep {
           gd_cldfr(i, j, k) = c;
         }
         if (flag_qc && flag_qi) {
-          real satvp = real(3.80) * std::exp(real(17.27) * (t_phy(i, j, k) - real(273.)) /
+          real satvp = real(3.80) * libm::exp(real(17.27) * (t_phy(i, j, k) - real(273.)) /
                                              (t_phy(i, j, k) - real(36.))) /
                        (real(.01) * p_phy(i, j, k));
           real rhgrid = std::max(real(.1), std::min(real(.95), qv(i, j, k) / satvp));
           real h2oliq = real(1000.) * (qc_cu(i, j, k) + qc(i, j, k) + qi_cu(i, j, k) + qi(i, j, k));
           satvp = real(1000.) * satvp;
-          real c = (real(1.) - std::exp((-real(100.) * h2oliq) /
+          real c = (real(1.) - libm::exp((-real(100.) * h2oliq) /
                                         rpow((real(1.) - rhgrid) * satvp, real(0.49)))) *
                    rpow(rhgrid, real(0.25));
           c = std::max(real(0.), std::min(real(1.), c));

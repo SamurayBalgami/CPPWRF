@@ -28,7 +28,7 @@ CPPWRF_HD inline void rrtmg_lw_secdiff(double pwvcm, SD secdiff) {
     if (ibnd == 0 || ibnd == 3 || ibnd >= 9) {
       secdiff[ibnd] = 1.66;
     } else {
-      double s = a0[ibnd] + a1[ibnd] * std::exp(a2[ibnd] * pwvcm);
+      double s = a0[ibnd] + a1[ibnd] * libm::exp(a2[ibnd] * pwvcm);
       if (s > 1.80) s = 1.80;
       if (s < 1.50) s = 1.50;
       secdiff[ibnd] = s;
@@ -137,7 +137,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_band_impl(int nlayers, int iband, CSD secdiff, 
           const double cf = cldfmc[igc][lay];
           if (cf == 1.0) {
             odcld = secdiff[tables.ngb[igc] - 1] * taucmc[igc][lay];
-            double transcld = std::exp(-odcld);
+            double transcld = libm::exp(-odcld);
             double abscld = 1.0 - transcld;
             efcl_lay = abscld * cf;
           }

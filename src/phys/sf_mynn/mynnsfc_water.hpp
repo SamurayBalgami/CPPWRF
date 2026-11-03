@@ -12,7 +12,7 @@ inline constexpr real g_inv = real(1.) / grav;
 
 CPPWRF_HD inline void edson_etal_2013(real& z_0, real ustar, real wsp10, real visc, real zu) {
   constexpr real m = real(0.0017), b = real(-0.005);
-  real wsp10m = wsp10 * std::log(ten / real(1e-4)) / std::log(zu / real(1e-4));
+  real wsp10m = wsp10 * libm::log(ten / real(1e-4)) / libm::log(zu / real(1e-4));
   wsp10m = c_min(real(19.), wsp10m);
   real czc = m * wsp10m + b;
   czc = c_max(czc, zero);
@@ -23,7 +23,7 @@ CPPWRF_HD inline void edson_etal_2013(real& z_0, real ustar, real wsp10, real vi
 
 CPPWRF_HD inline void coare30_znt(real& z_0, real ustar, real wsp10, real visc, real zu) {
   constexpr real czo2 = real(0.011);
-  const real wsp10m = wsp10 * std::log(ten / real(1e-4)) / std::log(zu / real(1e-4));
+  const real wsp10m = wsp10 * libm::log(ten / real(1e-4)) / libm::log(zu / real(1e-4));
   const real czc = czo2 + real(0.007) * c_min(c_max((wsp10m - ten) / real(8.), zero), one);
   z_0 = czc * ustar * ustar * g_inv + (real(0.11) * visc / c_max(ustar, real(0.05)));
   z_0 = c_max(z_0, real(1.27e-7));
@@ -32,9 +32,9 @@ CPPWRF_HD inline void coare30_znt(real& z_0, real ustar, real wsp10, real visc, 
 
 CPPWRF_HD inline void davis_etal_2008(real& z_0, real ustar) {
   constexpr real ozo = real(1.59e-5);
-  const real zw = c_min(std::pow(ustar / real(1.06), real(0.3)), one);
+  const real zw = c_min(libm::pow(ustar / real(1.06), real(0.3)), one);
   const real zn1 = real(0.011) * ustar * ustar * g_inv + ozo;
-  const real zn2 = ten * std::exp(-(real(9.5) * std::pow(ustar, -p333))) +
+  const real zn2 = ten * libm::exp(-(real(9.5) * libm::pow(ustar, -p333))) +
                    real(0.11) * real(1.5e-5) / c_max(ustar, real(0.01));
   z_0 = (one - zw) * zn1 + zw * zn2;
   z_0 = c_max(z_0, real(1.27e-7));
@@ -47,15 +47,15 @@ CPPWRF_HD inline void taylor_yelland_2001(real& z_0, real ustar, real wsp10) {
   const real hs = real(0.0248) * (wsp10 * wsp10);
   const real tp = real(0.729) * c_max(wsp10, real(0.1));
   const real lp = grav * (tp * tp) / (two * pi);
-  z_0 = real(1200.) * hs * std::pow(hs / lp, real(4.5));
+  z_0 = real(1200.) * hs * libm::pow(hs / lp, real(4.5));
   z_0 = c_max(z_0, real(1.27e-7));
   z_0 = c_min(z_0, real(2.85e-3));
 }
 
 // garratt_1992 of the water module with landsea = 2 (the water branch)
 CPPWRF_HD inline void garratt_1992_water(real& zt, real& zq, real z_0, real ren) {
-  zt = z_0 * std::exp(two - (real(2.48) * std::pow(ren, real(0.25))));
-  zq = z_0 * std::exp(two - (real(2.28) * std::pow(ren, real(0.25))));
+  zt = z_0 * libm::exp(two - (real(2.48) * libm::pow(ren, real(0.25))));
+  zq = z_0 * libm::exp(two - (real(2.28) * libm::pow(ren, real(0.25))));
   zq = c_min(zq, real(5.5e-5));
   zq = c_max(zq, real(2.0e-9));
   zt = c_min(zt, real(5.5e-5));
@@ -63,7 +63,7 @@ CPPWRF_HD inline void garratt_1992_water(real& zt, real& zq, real z_0, real ren)
 }
 
 CPPWRF_HD inline void fairall_etal_2003(real& zt, real& zq, real ren) {
-  zt = (real(5.5e-5)) * std::pow(ren, real(-0.60));  // both branches of WRF's ren <= 2 test are the same
+  zt = (real(5.5e-5)) * libm::pow(ren, real(-0.60));  // both branches of WRF's ren <= 2 test are the same
   zq = zt;
   zt = c_min(zt, real(1.0e-4));
   zt = c_max(zt, real(2.0e-9));
@@ -72,7 +72,7 @@ CPPWRF_HD inline void fairall_etal_2003(real& zt, real& zq, real ren) {
 }
 
 CPPWRF_HD inline void fairall_etal_2014(real& zt, real& zq, real ren) {
-  zt = c_min(real(1.6e-4), real(5.8e-5) / std::pow(ren, real(0.72)));
+  zt = c_min(real(1.6e-4), real(5.8e-5) / libm::pow(ren, real(0.72)));
   zq = zt;
   zt = c_min(zt, real(1.0e-4));
   zt = c_max(zt, real(2.0e-9));
@@ -86,20 +86,20 @@ CPPWRF_HD inline void mynnsfc_water(const SfcIn& in, real lakemask, SfcPoint& o,
   const real psfc = in.psfcpa / real(1000.);
   const real tsk = in.tskin;
   {
-    real e1 = svp1 * std::exp(svp2 * (tsk - svpt0) / (tsk - svp3));
+    real e1 = svp1 * libm::exp(svp2 * (tsk - svpt0) / (tsk - svp3));
     if (lakemask < p5) e1 = e1 * real(0.9812);
     o.qsfc = ep2 * e1 / (psfc - ep3 * e1);
   }
   {
-    const real e1 = svp1 * std::exp(svp2 * (in.t_1 - svpt0) / (in.t_1 - svp3));
+    const real e1 = svp1 * libm::exp(svp2 * (in.t_1 - svpt0) / (in.t_1 - svp3));
     const real pl = in.p_1 / real(1000.);
     o.qgh = ep2 * e1 / (pl - e1);
   }
-  const real thcon = std::pow(real(100000.) / in.psfcpa, rovcp);
+  const real thcon = libm::pow(real(100000.) / in.psfcpa, rovcp);
   const real thsk = tsk * thcon;
   const real thvsk = thsk * (one + ep1 * o.qsfc);
 
-  const real th_1 = in.t_1 * std::pow(real(100000.) / in.p_1, rovcp);
+  const real th_1 = in.t_1 * libm::pow(real(100000.) / in.p_1, rovcp);
   const real tc_1 = in.t_1 - real(273.15);
   const real thv_1 = th_1 * (one + ep1 * in.qv_1);
   const real tv_1 = in.t_1 * (one + ep1 * in.qv_1);
@@ -112,8 +112,8 @@ CPPWRF_HD inline void mynnsfc_water(const SfcIn& in, real lakemask, SfcPoint& o,
   o.wspd = std::sqrt(in.u_1 * in.u_1 + in.v_1 * in.v_1);
   const real dthvdz = (thv_1 - thvsk);
   const real fluxc = c_max(o.hfx / rho_1 / cp + ep1 * thvsk * o.qfx / rho_1, zero);
-  o.wstar = vconvc * std::pow(grav / tsk * in.pblh * fluxc, p333);
-  const real vsgd = c_min(p25 * std::pow(c_max(in.dx / real(5000.) - one, zero), p333), p5);
+  o.wstar = vconvc * libm::pow(grav / tsk * in.pblh * fluxc, p333);
+  const real vsgd = c_min(p25 * libm::pow(c_max(in.dx / real(5000.) - one, zero), p333), p5);
   o.wspd = std::sqrt(o.wspd * o.wspd + o.wstar * o.wstar + vsgd * vsgd);
   o.wspd = c_max(o.wspd, wmin);
   o.rb = govrth * za * dthvdz / (o.wspd * o.wspd);
@@ -134,11 +134,11 @@ CPPWRF_HD inline void mynnsfc_water(const SfcIn& in, real lakemask, SfcPoint& o,
   else if (in.sfcflux_water == 3) garratt_1992_water(zt, zq, zntstoch, restar);
   else fairall_etal_2014(zt, zq, restar);  // 1, 2, 4
 
-  o.gz1oz0 = std::log((za + zntstoch) / zntstoch);
-  const real gz1ozt = std::log((za + zntstoch) / zt);
-  const real gz2ozt = std::log((two + zntstoch) / zt);
-  const real gz10oz0 = std::log((ten + zntstoch) / zntstoch);
-  const real gz10ozt = std::log((ten + zntstoch) / zt);
+  o.gz1oz0 = libm::log((za + zntstoch) / zntstoch);
+  const real gz1ozt = libm::log((za + zntstoch) / zt);
+  const real gz2ozt = libm::log((two + zntstoch) / zt);
+  const real gz10oz0 = libm::log((ten + zntstoch) / zntstoch);
+  const real gz10ozt = libm::log((ten + zntstoch) / zt);
   const real zratio = zntstoch / zt;
 
   real psim10, psih10, psih2;
@@ -201,9 +201,9 @@ CPPWRF_HD inline void mynnsfc_water(const SfcIn& in, real lakemask, SfcPoint& o,
   o.psix10 = c_max(gz10oz0 - psim10, one);
   o.psit = c_max(gz1ozt - o.psih, one);
   o.psit2 = c_max(gz2ozt - psih2, one);
-  const real psiq = c_max(std::log((za + zq) / zq) - o.psih, one);
-  const real psiq2 = c_max(std::log((two + zq) / zq) - psih2, one);
-  const real psiq10 = c_max(std::log((ten + zq) / zq) - psih10, one);
+  const real psiq = c_max(libm::log((za + zq) / zq) - o.psih, one);
+  const real psiq2 = c_max(libm::log((two + zq) / zq) - psih2, one);
+  const real psiq10 = c_max(libm::log((ten + zq) / zq) - psih10, one);
 
   o.ust = p5 * o.ust + p5 * karman * o.wspd / o.psix;
   o.stress = o.ust * o.ust;
@@ -243,12 +243,12 @@ CPPWRF_HD inline void mynnsfc_water(const SfcIn& in, real lakemask, SfcPoint& o,
       o.u10 = in.u_2;
       o.v10 = in.v_2;
     } else {
-      o.u10 = in.u_1 * std::log(ten / zntstoch) / std::log(za / zntstoch);
-      o.v10 = in.v_1 * std::log(ten / zntstoch) / std::log(za / zntstoch);
+      o.u10 = in.u_1 * libm::log(ten / zntstoch) / libm::log(za / zntstoch);
+      o.v10 = in.v_1 * libm::log(ten / zntstoch) / libm::log(za / zntstoch);
     }
   } else if (za > real(7.0) && za < real(13.0)) {
-    o.u10 = in.u_1 * std::log(ten / zntstoch) / std::log(za / zntstoch);
-    o.v10 = in.v_1 * std::log(ten / zntstoch) / std::log(za / zntstoch);
+    o.u10 = in.u_1 * libm::log(ten / zntstoch) / libm::log(za / zntstoch);
+    o.v10 = in.v_1 * libm::log(ten / zntstoch) / libm::log(za / zntstoch);
   } else {
     o.u10 = in.u_1 * o.psix10 / o.psix;
     o.v10 = in.v_1 * o.psix10 / o.psix;
@@ -257,7 +257,7 @@ CPPWRF_HD inline void mynnsfc_water(const SfcIn& in, real lakemask, SfcPoint& o,
   o.th2 = thsk + dtg * o.psit2 / o.psit;
   if ((th_1 > thsk && (o.th2 < thsk || o.th2 > th_1)) || (th_1 < thsk && (o.th2 > thsk || o.th2 < th_1)))
     o.th2 = thsk + two * (th_1 - thsk) / za;
-  o.t2 = o.th2 * std::pow(in.psfcpa / real(100000.), rovcp);
+  o.t2 = o.th2 * libm::pow(in.psfcpa / real(100000.), rovcp);
   o.q2 = o.qsfc + (in.qv_1 - o.qsfc) * psiq2 / psiq;
   o.q2 = c_max(o.q2, c_min(o.qsfc, in.qv_1));
   o.q2 = c_min(o.q2, real(1.05) * in.qv_1);

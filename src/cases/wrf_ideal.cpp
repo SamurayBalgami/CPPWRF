@@ -153,7 +153,7 @@ WrfSounding get_sounding(const std::string& path, bool dry) {
   p_surf = 100. * p_surf;
   const double r = r_d;
   double qvf = 1. + rvovrd * qv_input(1);
-  const double rho_surf = 1. / ((r / p1000mb) * th_surf * qvf * std::pow(p_surf / p1000mb, cvpm));
+  const double rho_surf = 1. / ((r / p1000mb) * th_surf * qvf * libm::pow(p_surf / p1000mb, cvpm));
   F1 rho_input(nl), pm_input(nl), p_input(nl);
   qvf = 1. + rvovrd * qv_input(1);
   double qvf1 = 1. + qv_input(1);
@@ -161,7 +161,7 @@ WrfSounding get_sounding(const std::string& path, bool dry) {
   double dz = h_input(1);
   for (int it = 1; it <= 10; ++it) {
     pm_input(1) = p_surf - 0.5 * dz * (rho_surf + rho_input(1)) * g * qvf1;
-    rho_input(1) = 1. / ((r / p1000mb) * th_input(1) * qvf * std::pow(pm_input(1) / p1000mb, cvpm));
+    rho_input(1) = 1. / ((r / p1000mb) * th_input(1) * qvf * libm::pow(pm_input(1) / p1000mb, cvpm));
   }
   for (int k = 2; k <= nl; ++k) {
     rho_input(k) = rho_input(k - 1);
@@ -171,7 +171,7 @@ WrfSounding get_sounding(const std::string& path, bool dry) {
     for (int it = 1; it <= 10; ++it) {
       pm_input(k) = pm_input(k - 1) - 0.5 * dz * (rho_input(k) + rho_input(k - 1)) * g * qvf1;
       if (pm_input(k) <= 0.) throw std::runtime_error("Integrated pressure has gone negative - too cold for chosen height");
-      rho_input(k) = 1. / ((r / p1000mb) * th_input(k) * qvf * std::pow(pm_input(k) / p1000mb, cvpm));
+      rho_input(k) = 1. / ((r / p1000mb) * th_input(k) * qvf * libm::pow(pm_input(k) / p1000mb, cvpm));
     }
   }
   p_input(nl) = pm_input(nl);
@@ -226,7 +226,7 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
   double delt = 0., z_scale = 8000. / gr.ztop, hm = 0., xa = 0.;
   int icm = 0, nxc = (ide - ids) / 2, nyc = (jde - jds) / 2;
   const bool stretch_grid = true;
-  const double pi = 2. * std::asin(1.0);
+  const double pi = 2. * libm::asin(1.0);
   switch (ic) {
     case Ideal::hill2d_x: hm = 100.; xa = 5.0; icm = ide / 2; delt = 0.; break;
     case Ideal::quarter_ss: case Ideal::squall2d_x: case Ideal::squall2d_y: delt = 3.; break;
@@ -239,8 +239,8 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
   F1 znw(kde), dnw(kde), rdnw(kde), znu(kde), dn(kde), rdn(kde), fnp(kde), fnm(kde);
   for (int k = 1; k <= kde; ++k) {
     if (stretch_grid)
-      znw(k) = (vm::exp(-double(k - 1) / double(kde - 1) / z_scale, k - 1, kde) - std::exp(-1. / z_scale)) /
-               (1. - std::exp(-1. / z_scale));
+      znw(k) = (vm::exp(-double(k - 1) / double(kde - 1) / z_scale, k - 1, kde) - libm::exp(-1. / z_scale)) /
+               (1. - libm::exp(-1. / z_scale));
     else
       znw(k) = 1. - double(k - 1) / double(kde - 1);
   }
@@ -331,7 +331,7 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
         const double p_level = c3h(k) * (p_surf - p_top) + c4h(k) + p_top;
         pb[c3(i, k, j)] = p_level;
         t_init[c3(i, k, j)] = interp_0(snd.theta, snd.p, p_level, nl_in) - t0;
-        alb[c3(i, k, j)] = (r_d / p1000mb) * (t_init[c3(i, k, j)] + t0) * std::pow(pb[c3(i, k, j)] / p1000mb, cvpm);
+        alb[c3(i, k, j)] = (r_d / p1000mb) * (t_init[c3(i, k, j)] + t0) * libm::pow(pb[c3(i, k, j)] / p1000mb, cvpm);
       }
       for (int kk = 2; kk <= kte; ++kk) {
         const int k = kk - 1;
@@ -361,7 +361,7 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
       p[c3(i, kk, j)] = -0.5 * ((c1f(k) * mu1) + qvf1 * (c1f(k) * mb + c2f(k))) / rdnw(kk) / qvf2;
       double qvf = 1. + rvovrd * qv[c3(i, kk, j)];
       alt[c3(i, kk, j)] = (r_d / p1000mb) * (t_1[c3(i, kk, j)] + t0) * qvf *
-                          std::pow((p[c3(i, kk, j)] + pb[c3(i, kk, j)]) / p1000mb, cvpm);
+                          libm::pow((p[c3(i, kk, j)] + pb[c3(i, kk, j)]) / p1000mb, cvpm);
       al[c3(i, kk, j)] = alt[c3(i, kk, j)] - alb[c3(i, kk, j)];
       for (kk = kte - 2; kk >= 1; --kk) {
         k = kk + 1;
@@ -371,7 +371,7 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
         p[c3(i, kk, j)] = p[c3(i, kk + 1, j)] - ((c1f(k) * mu1) + qvf1 * (c1f(k) * mb + c2f(k))) / qvf2 / rdn(kk + 1);
         qvf = 1. + rvovrd * qv[c3(i, kk, j)];
         alt[c3(i, kk, j)] = (r_d / p1000mb) * (t_1[c3(i, kk, j)] + t0) * qvf *
-                            std::pow((p[c3(i, kk, j)] + pb[c3(i, kk, j)]) / p1000mb, cvpm);
+                            libm::pow((p[c3(i, kk, j)] + pb[c3(i, kk, j)]) / p1000mb, cvpm);
         al[c3(i, kk, j)] = alt[c3(i, kk, j)] - alb[c3(i, kk, j)];
       }
       ph_1[c3(i, 1, j)] = 0.;
@@ -394,7 +394,7 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
   auto set_alt = [&](int i, int k, int j) {
     const double qvf = 1. + rvovrd * qv[c3(i, k, j)];
     alt[c3(i, k, j)] = (r_d / p1000mb) * (t_1[c3(i, k, j)] + t0) * qvf *
-                       std::pow((p[c3(i, k, j)] + pb[c3(i, k, j)]) / p1000mb, cvpm);
+                       libm::pow((p[c3(i, k, j)] + pb[c3(i, k, j)]) / p1000mb, cvpm);
     al[c3(i, k, j)] = alt[c3(i, k, j)] - alb[c3(i, k, j)];
   };
   auto zrad_of = [&](int i, int k, int j) {
@@ -414,7 +414,7 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
           zrad = (zrad - 1500.) / 1500.;
           const double rad = std::sqrt(xrad * xrad + yrad * yrad + zrad * zrad);
           if (rad <= 1.) {
-            const double c = std::cos(.5 * pi * rad);
+            const double c = libm::cos(.5 * pi * rad);
             t_1[c3(i, k, j)] = t_1[c3(i, k, j)] + delt * (c * c);
             set_alt(i, k, j);
           }
@@ -436,8 +436,8 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
           zrad = (zrad - 3000.) / 2000.;
           const double rad = std::sqrt(xrad * xrad + zrad * zrad);
           if (rad <= 1.) {
-            const double dlt = -15.0 / std::pow((p[c3(i, k, j)] + pb[c3(i, k, j)]) / p1000mb, rcp);
-            t_1[c3(i, k, j)] = t_1[c3(i, k, j)] + dlt * (std::cos(pi * rad) + 1.0) / 2.;
+            const double dlt = -15.0 / libm::pow((p[c3(i, k, j)] + pb[c3(i, k, j)]) / p1000mb, rcp);
+            t_1[c3(i, k, j)] = t_1[c3(i, k, j)] + dlt * (libm::cos(pi * rad) + 1.0) / 2.;
             set_alt(i, k, j);
           }
         }
@@ -497,7 +497,7 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
       for (int i = 1; i <= im; ++i) {
         double temp[3];
         for (int k = 1; k <= 3; ++k)
-          temp[k - 1] = (t_1[c3(i, k, j)] + t0) * std::pow((p[c3(i, k, j)] + pb[c3(i, k, j)]) / p1000mb, rcp);
+          temp[k - 1] = (t_1[c3(i, k, j)] + t0) * libm::pow((p[c3(i, k, j)] + pb[c3(i, k, j)]) / p1000mb, rcp);
         const std::size_t ij = std::size_t(j - 1) * im + (i - 1);
         tsk[ij] = cf1 * temp[0] + cf2 * temp[1] + cf3 * temp[2];
         tmn[ij] = tsk[ij] - 0.5;
@@ -520,7 +520,7 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
     for (int k = 1; k <= kte - 1; ++k)
       for (int i = 1; i <= im; ++i) {
         pb[c3(i, k, j)] = c3h(k) * mub[c2(i, j)] + c4h(k) + p_top;
-        alb[c3(i, k, j)] = (r_d / p1000mb) * (t_init[c3(i, k, j)] + t0) * std::pow(pb[c3(i, k, j)] / p1000mb, cvpm);
+        alb[c3(i, k, j)] = (r_d / p1000mb) * (t_init[c3(i, k, j)] + t0) * libm::pow(pb[c3(i, k, j)] / p1000mb, cvpm);
       }
   for (int j = 1; j <= jm; ++j)
     for (int k = 1; k <= kte - 1; ++k)
@@ -534,11 +534,11 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
           const double pfd = c3f(k) * (mb + mu) + c4f(k) + p_top;
           const double phm = c3h(k) * (mb + mu) + c4h(k) + p_top;
           al[c3(i, k, j)] = (ph_1[c3(i, k + 1, j)] - ph_1[c3(i, k, j)] + phb[c3(i, k + 1, j)] - phb[c3(i, k, j)]) / phm /
-                                std::log(pfd / pfu) -
+                                libm::log(pfd / pfu) -
                             alb[c3(i, k, j)];
         }
         const double qvf = 1.;
-        p[c3(i, k, j)] = p1000mb * std::pow((r_d * (t0 + t_2[c3(i, k, j)]) * qvf) /
+        p[c3(i, k, j)] = p1000mb * libm::pow((r_d * (t0 + t_2[c3(i, k, j)]) * qvf) /
                                                 (p1000mb * (al[c3(i, k, j)] + alb[c3(i, k, j)])),
                                             cst::cpovcv) -
                          pb[c3(i, k, j)];

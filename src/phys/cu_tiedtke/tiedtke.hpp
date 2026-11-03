@@ -320,7 +320,7 @@ CPPWRF_HD inline void cuentr_new(const TdConst<T>& c, int kk, const T* ptenh, co
       const T zzmzk = -(pgeoh[ikh] - pgeoh[kk]) * c.zrg;
       const T ztmzk = -(pgeoh[ikh] - pgeoh[ikt]) * c.zrg;
       const T arg = T(3.1415) * (zzmzk / ztmzk) * T(0.5);
-      const T zorgde = std::tan(arg) * T(3.1415) * T(0.5) / ztmzk;
+      const T zorgde = libm::tan(arg) * T(3.1415) * T(0.5) / ztmzk;
       zdprho = (paph[kk + 1] - paph[kk]) * (c.zrg * zrrho);
       zodetr[kk] = c_min(zorgde, T(1.e-3)) * pmfu[kk + 1] * zdprho;
     }
@@ -377,7 +377,7 @@ CPPWRF_HD inline void cuasc_new(const TdConst<T>& c, int klev, const T* ptenh, c
     zbuoy = c.g * ((ptu[ikb] - ptenh[ikb]) / ptenh[ikb] + T(0.608) * (pqu[ikb] - pqenh[ikb]));
     if (zbuoy > T(0.)) {
       const T zdz = (pgeo[ikb - 1] - pgeo[ikb]) * c.zrg;
-      const T zdrodz = -std::log(pten[ikb - 1] / pten[ikb]) / zdz - c.g / (c.rd * ptenh[ikb]);
+      const T zdrodz = -libm::log(pten[ikb - 1] / pten[ikb]) / zdz - c.g / (c.rd * ptenh[ikb]);
       zoentr[ikb - 1] = zbuoy * T(0.5) / (T(1.) + zbuoy * zdz) + zdrodz;
       zoentr[ikb - 1] = c_min(zoentr[ikb - 1], T(1.e-3));
       zoentr[ikb - 1] = c_max(zoentr[ikb - 1], T(0.));
@@ -512,7 +512,7 @@ CPPWRF_HD inline void cuasc_new(const TdConst<T>& c, int klev, const T* ptenh, c
       T zbuoyz = c.g * ((ptu[jk] - ptenh[jk]) / ptenh[jk] + T(0.608) * (pqu[jk] - pqenh[jk]) - plu[jk]);
       zbuoyz = c_max(zbuoyz, T(0.0));
       const T zdz = (pgeo[jk - 1] - pgeo[jk]) * c.zrg;
-      const T zdrodz = -std::log(pten[jk - 1] / pten[jk]) / zdz - c.g / (c.rd * ptenh[jk]);
+      const T zdrodz = -libm::log(pten[jk - 1] / pten[jk]) / zdz - c.g / (c.rd * ptenh[jk]);
       zbuoy = zbuoy + zbuoyz * zdz;
       zoentr[jk - 1] = zbuoyz * T(0.5) / (T(1.) + zbuoy) + zdrodz;
       zoentr[jk - 1] = c_min(zoentr[jk - 1], T(1.e-3));
@@ -1102,7 +1102,7 @@ CPPWRF_HD inline T tiecnv(const TdConst<T>& c, int km, const TdInput<T>& in, T* 
           zalf = c.alf;
         } else {
           const T ztc = ztpp1 - T(C::t000);
-          fliq = T(0.0059) + T(0.9941) * std::exp(-T(0.003102) * ztc * ztc);
+          fliq = T(0.0059) + T(0.9941) * libm::exp(-T(0.003102) * ztc * ztc);
           zalf = c.alf;
         }
         const T fice = T(1.0) - fliq;

@@ -234,14 +234,14 @@ void init_real_case(const io::Config& cfg, Model& m) {
       for (int i = 0; i < nx; ++i) {
         const std::size_t ij = std::size_t(j) * nx + i;
         const double ht = d.hgt[ij];
-        const double p_surf = p00 * std::exp(-t00 / a + std::pow((t00 / a) * (t00 / a) - 2. * cst::g * ht / a / cst::r_d, 0.5));  // WRF **0.5 is pow, not sqrt
+        const double p_surf = p00 * libm::exp(-t00 / a + libm::pow((t00 / a) * (t00 / a) - 2. * cst::g * ht / a / cst::r_d, 0.5));  // WRF **0.5 is pow, not sqrt
         for (int k = 0; k < nz; ++k) {
           const std::size_t n = (std::size_t(k) * ny + j) * nx + i;
           pb[n] = d.c3h[k] * (p_surf - d.p_top) + d.c4h[k] + d.p_top;
-          double temp = std::max(tiso, t00 + a * std::log(pb[n] / p00));
-          if (pb[n] < p_strat) temp = tiso + a_strat * std::log(pb[n] / p_strat);
-          t_init[n] = temp * std::pow(p00 / pb[n], cst::r_d / cst::cp) - cst::t0;
-          alb[n] = (cst::r_d / cst::p1000mb) * (t_init[n] + cst::t0) * std::pow(pb[n] / cst::p1000mb, cst::cvpm);
+          double temp = std::max(tiso, t00 + a * libm::log(pb[n] / p00));
+          if (pb[n] < p_strat) temp = tiso + a_strat * libm::log(pb[n] / p_strat);
+          t_init[n] = temp * libm::pow(p00 / pb[n], cst::r_d / cst::cp) - cst::t0;
+          alb[n] = (cst::r_d / cst::p1000mb) * (t_init[n] + cst::t0) * libm::pow(pb[n] / cst::p1000mb, cst::cvpm);
         }
         mub[ij] = p_surf - d.p_top;
         phb[ij] = ht * cst::g;
@@ -253,13 +253,13 @@ void init_real_case(const io::Config& cfg, Model& m) {
             const double pfu = d.c3f[k] * mub[ij] + d.c4f[k] + d.p_top;
             const double pfd = d.c3f[k - 1] * mub[ij] + d.c4f[k - 1] + d.p_top;
             const double phm = d.c3h[k - 1] * mub[ij] + d.c4h[k - 1] + d.p_top;
-            phb[n] = phb[nm] + alb[nm] * phm * std::log(pfd / pfu);
+            phb[n] = phb[nm] + alb[nm] * phm * libm::log(pfd / pfu);
           }
         }
         for (int k = 0; k < nz; ++k) {  // max_dom = 1: pb, alb from mub and t_init
           const std::size_t n = (std::size_t(k) * ny + j) * nx + i;
           pb[n] = d.c3h[k] * mub[ij] + d.c4h[k] + d.p_top;
-          alb[n] = (cst::r_d / cst::p1000mb) * (t_init[n] + cst::t0) * std::pow(pb[n] / cst::p1000mb, cst::cvpm);
+          alb[n] = (cst::r_d / cst::p1000mb) * (t_init[n] + cst::t0) * libm::pow(pb[n] / cst::p1000mb, cst::cvpm);
         }
       }
   }
@@ -335,14 +335,14 @@ void init_real_case(const io::Config& cfg, Model& m) {
         if (hypso == 2) {
           const double pfu = d.c3f[k + 1] * mt + d.c4f[k + 1] + d.p_top, pfd = d.c3f[k] * mt + d.c4f[k] + d.p_top;
           const double phm = d.c3h[k] * mt + d.c4h[k] + d.p_top;
-          a = (d.ph[n1] - d.ph[n] + phb[n1] - phb[n]) / phm / std::log(pfd / pfu) - alb[n];
+          a = (d.ph[n1] - d.ph[n] + phb[n1] - phb[n]) / phm / libm::log(pfd / pfu) - alb[n];
         } else {
           // start_em.F:812: (c1h mub + c2h) + c1h mu_1, not c1h (mub + mu_1) + c2h
           const double mb = mub[std::size_t(j) * nx + i];
           a = -1.0 / ((d.c1h[k] * mb + d.c2h[k]) + d.c1h[k] * mu) * (alb[n] * (d.c1h[k] * mu) + d.rdnw[k] * (d.ph[n1] - d.ph[n]));
         }
         al[n] = a;
-        p[n] = cst::p1000mb * std::pow((cst::r_d * (cst::t0 + thm[n])) / (cst::p1000mb * (a + alb[n])), cst::cpovcv) - pb[n];
+        p[n] = cst::p1000mb * libm::pow((cst::r_d * (cst::t0 + thm[n])) / (cst::p1000mb * (a + alb[n])), cst::cpovcv) - pb[n];
       }
   s.al.fill_host([&](int i, int j, int k) { return al[idx3(i, j, k, nx, ny)]; });
   s.p.fill_host([&](int i, int j, int k) { return p[idx3(i, j, k, nx, ny)]; });

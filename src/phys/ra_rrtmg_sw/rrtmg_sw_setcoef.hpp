@@ -47,7 +47,7 @@ CPPWRF_HD inline void setcoef_sw(
   laylow = 0;
 
   for (int lay = 0; lay < nlayers; ++lay) {
-    double plog = std::log(pavel[lay]);
+    double plog = libm::log(pavel[lay]);
     jp[lay] = static_cast<int>(36.0 - 5.0 * (plog + 0.04));
     if (jp[lay] < 1) {
       jp[lay] = 1;
@@ -90,7 +90,7 @@ CPPWRF_HD inline void setcoef_sw(
     if (colo2[lay] == 0.0)  colo2[lay]  = 1.0e-32 * coldry[lay];
 
     double co2reg = 3.55e-24 * coldry[lay];
-    co2mult[lay] = (colco2[lay] - co2reg) * 272.63 * std::exp(-1919.4 / tavel[lay]) / (8.7604e-4 * tavel[lay]);
+    co2mult[lay] = (colco2[lay] - co2reg) * 272.63 * libm::exp(-1919.4 / tavel[lay]) / (8.7604e-4 * tavel[lay]);
 
     if (plog > 4.56) {
       // Lower atmosphere

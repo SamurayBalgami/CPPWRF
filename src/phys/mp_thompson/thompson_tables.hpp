@@ -187,7 +187,7 @@ struct ThompsonTablesView {
     Real xm0g;
 
     CPPWRF_HD inline int get_table_index(Real val, int ni_ref, int ntb_max) const {
-        int ni_val = static_cast<int>(std::round(std::log10(val)));
+        int ni_val = static_cast<int>(std::round(libm::log10(val)));
         int n = ni_val;
         for (int nn = ni_val - 1; nn <= ni_val + 1; ++nn) {
             n = nn;

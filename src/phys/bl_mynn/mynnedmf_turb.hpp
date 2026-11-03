@@ -283,7 +283,7 @@ CPPWRF_HD inline void mym_length1(int kte, real xland, const real* dz, real dx, 
       els = karman * zwk * rpow(one - alp4 * zwk * rmol, p2);
       els1 = karman * z_m * rpow(one - alp4 * zwk * rmol, p2);
     }
-    const real wt = p5 * std::tanh((zwk - (pblh2 + h1)) / h2) + p5;
+    const real wt = p5 * libm::tanh((zwk - (pblh2 + h1)) / h2) + p5;
     const real el_unstab = els / (one + (els1 / elt));
     el[k] = c_min(el_unstab, elb);
     el[k] = c_min(el[k], elf);
@@ -396,13 +396,13 @@ CPPWRF_HD inline void mym_length2(int kte, const real* dz, const real* zw, real 
       elb = c_min(c_max(alp5 * qkw[k], alp6 * qkw_mf) / bv, zwk);
       const real wstar = real(1.25) * rpow(gtr * pblh * c_max(vflx, real(1.0e-4)), p333);
       real tau_cloud = c_min(c_max(ctau * wstar / grav, real(30.)), real(150.));
-      const real wt = p5 * std::tanh((zwk - (pblh2 + h1)) / h2) + p5;
+      const real wt = p5 * libm::tanh((zwk - (pblh2 + h1)) / h2) + p5;
       tau_cloud = tau_cloud * (real(1.) - wt) + fifty * wt;
       elf = c_min(c_max(tau_cloud * std::sqrt(c_min(qtke[k], forty)), alp6 * qkw_mf / bv), zwk);
     } else {
       const real wstar = real(1.25) * rpow(gtr * pblh * c_max(vflx, real(1.0e-4)), p333);
       real tau_cloud = c_min(c_max(ctau * wstar / grav, fifty), real(200.));
-      const real wt = p5 * std::tanh((zwk - (pblh2 + h1)) / h2) + p5;
+      const real wt = p5 * libm::tanh((zwk - (pblh2 + h1)) / h2) + p5;
       tau_cloud = tau_cloud * (one - wt) + c_max(hundred, dzk * p25) * wt;
       elb = c_min(tau_cloud * std::sqrt(c_min(qtke[k], real(40.))), zwk);
       elf = elb;
@@ -413,7 +413,7 @@ CPPWRF_HD inline void mym_length2(int kte, const real* dz, const real* zw, real 
     real els;
     if (rmol > real(0.0)) els = karman * zwk / (one + cns * c_min(zwk * rmol, zmax));
     else els = karman * zwk * rpow(one - alp4 * zwk * rmol, p2);
-    const real wt = p5 * std::tanh((zwk - (pblh2 + h1)) / h2) + p5;
+    const real wt = p5 * libm::tanh((zwk - (pblh2 + h1)) / h2) + p5;
     el[k] = std::sqrt((els * els) / (one + ((els * els) / (elt * elt)) + ((els * els) / (elb_mf * elb_mf))));
     el[k] = el[k] * (one - wt) + elf * wt;
   }
@@ -932,9 +932,9 @@ CPPWRF_HD inline void mym_condensation(int kte, const real* dz, const real* zw, 
       }
       const real qmq = qw[k] - qsl;
       q1[k] = qmq / sgm[k];
-      cldfra_bl1[k] = real(0.5) * (one + std::erf(q1[k] * rr2));
+      cldfra_bl1[k] = real(0.5) * (one + libm::erf(q1[k] * rr2));
       const real q1k = q1[k];
-      const real eq1 = rrp * std::exp(real(-0.5) * q1k * q1k);
+      const real eq1 = rrp * libm::exp(real(-0.5) * q1k * q1k);
       const real qll = c_max(cldfra_bl1[k] * q1k + eq1, zero);
       const real ql = alp[k] * sgm[k] * qll;
       const real liq_frac = c_min(one, c_max(zero, (t - real(240.0)) / real(29.0)));
@@ -988,21 +988,21 @@ CPPWRF_HD inline void mym_condensation(int kte, const real* dz, const real* zw, 
     q1[k] = qmq / sgmc;
     real wt2 = c_min(one, c_max(zero, zagl - pblh2) / real(300.));
     if ((qi[k] + qs[k]) > real(1.e-10) && (zagl > pblh2)) {
-      real rh_adj = c_min(rhmax, rhcrit + wt2 * real(0.037) * (c_max(zero, ten + std::log10(qi[k] + qs[k]))));
+      real rh_adj = c_min(rhmax, rhcrit + wt2 * real(0.037) * (c_max(zero, ten + libm::log10(qi[k] + qs[k]))));
       rh_adj = c_max(rh[k], rh_adj);
       const real q1_rh = real(-3.) + three * (rh_adj - rhcrit) / (one - rhcrit);
       q1[k] = c_max(q1_rh, q1[k]);
     }
     if (qc[k] > real(1.e-5) && (zagl > pblh2)) {
-      real rh_adj = c_min(rhmax, rhcrit + wt2 * real(0.07) * (c_max(zero, five + std::log10(qc[k]))));
+      real rh_adj = c_min(rhmax, rhcrit + wt2 * real(0.07) * (c_max(zero, five + libm::log10(qc[k]))));
       rh_adj = c_max(rh[k], rh_adj);
       const real q1_rh = real(-3.) + three * (rh_adj - rhcrit) / (one - rhcrit);
       q1[k] = c_max(q1_rh, q1[k]);
     }
     real q1k = q1[k];
     wt2 = c_min(one, c_max(zero, (zagl - (pblh1 - real(100.))) / real(200.)));
-    const real cldfra_qsq0 = c_max(zero, c_min(one, p5 + real(0.35) * std::atan(real(3.6) * (q1k + real(0.05)))));
-    const real cldfra_qsq1 = c_max(zero, c_min(one, p5 + real(0.39) * std::atan(real(1.6) * (q1k + real(0.55)))));
+    const real cldfra_qsq0 = c_max(zero, c_min(one, p5 + real(0.35) * libm::atan(real(3.6) * (q1k + real(0.05)))));
+    const real cldfra_qsq1 = c_max(zero, c_min(one, p5 + real(0.39) * libm::atan(real(1.6) * (q1k + real(0.55)))));
     const real cldfra_qsq = cldfra_qsq0 * (one - wt2) + cldfra_qsq1 * wt2;
     const real cldfra_rh = zero;
     cldfra_bl1[k] = c_max(cldfra_qsq, cldfra_rh);

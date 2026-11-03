@@ -338,7 +338,7 @@ CPPWRF_HD inline void prodq2(
       real rden1 = real(1.) / (aden * eloq41 + bden * eloq21 + cden);
       real rhsp1 = (arhs * eloq51 + brhs * eloq31 + crhs * eloq11) * rden1 * rden1;
 
-      real eloq12 = eloq11 + (dloq1 - eloq11) * std::exp(rhsp1 * dtturbl);
+      real eloq12 = eloq11 + (dloq1 - eloq11) * libm::exp(rhsp1 * dtturbl);
       eloq12 = c_max(eloq12, EPS1);
 
       real eloq22 = eloq12 * eloq12;
@@ -351,7 +351,7 @@ CPPWRF_HD inline void prodq2(
       real rhsp2 = (arhs * eloq52 + brhs * eloq32 + crhs * eloq12) * rden2 * rden2;
       real rhst2 = rhs2 / rhsp2;
 
-      real eloq13 = eloq12 - rhst2 + (rhst2 + dloq1 - eloq12) * std::exp(rhsp2 * dtturbl);
+      real eloq13 = eloq12 - rhst2 + (rhst2 + dloq1 - eloq12) * libm::exp(rhsp2 * dtturbl);
       eloq13 = c_max(eloq13, EPS1);
 
       real eloqn = eloq13;
@@ -772,7 +772,7 @@ struct MYJPBLKernel {
       }
     } else {
       real exnsfc = rpow(real(1.e5) / psfc, CAPA);
-      qsfc_val = PQ0SEA / psfc * std::exp(A2 * (thsk_val - A3 * exnsfc) / (thsk_val - A4 * exnsfc));
+      qsfc_val = PQ0SEA / psfc * libm::exp(A2 * (thsk_val - A3 * exnsfc) / (thsk_val - A4 * exnsfc));
     }
     qsfc(i, j) = qsfc_val;
 

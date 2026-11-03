@@ -427,7 +427,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
             bx = nt.bb[st - 1];
             if (bx > real(5.5)) bx = real(5.5);
             const real t = real(tslb[q]);
-            real fk = std::pow((real(3.335e5) / (real(9.81) * (-psisat))) * ((t - real(273.15)) / t), real(-1) / bx) * smcmax;
+            real fk = libm::pow((real(3.335e5) / (real(9.81) * (-psisat))) * ((t - real(273.15)) / t), real(-1) / bx) * smcmax;
             if (fk < real(0.02)) fk = real(0.02);
             real s = std::min(fk, real(smois[q]));
             real free_w = 0;

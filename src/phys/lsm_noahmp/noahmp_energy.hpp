@@ -137,7 +137,7 @@ CPPWRF_HD inline void ResistanceCanopyStomataJarvis(NoahmpType& noahmp, int Inde
   ResistanceSolar = std::max(ResistanceSolar, real(0.0001));
 
   real ResistanceTemp =
-      real(1.0) - real(0.0016) * rpow(energy.param.AirTempOptimTransp - energy.state.TemperatureCanopy, real(2.0));
+      real(1.0) - real(0.0016) * rpow2c(energy.param.AirTempOptimTransp - energy.state.TemperatureCanopy);
   ResistanceTemp = std::max(ResistanceTemp, real(0.0001));
 
   real ResistanceVapDef =
@@ -215,13 +215,13 @@ CPPWRF_HD inline void ResistanceAboveCanopyMOST(NoahmpType& noahmp,
     real TMP1 = rpow(real(1.0) - real(16.0) * energy.state.MoStabParaAbvCan, real(0.25));
     real TMP2 = rlog((real(1.0) + TMP1 * TMP1) / real(2.0));
     real TMP3 = rlog((real(1.0) + TMP1) / real(2.0));
-    FMNEW = real(2.0) * TMP3 + TMP2 - real(2.0) * std::atan(TMP1) + real(1.5707963);
+    FMNEW = real(2.0) * TMP3 + TMP2 - real(2.0) * libm::atan(TMP1) + real(1.5707963);
     FHNEW = real(2.0) * TMP2;
 
     real TMP12 = rpow(real(1.0) - real(16.0) * energy.state.MoStabParaVeg2m, real(0.25));
     real TMP22 = rlog((real(1.0) + TMP12 * TMP12) / real(2.0));
     real TMP32 = rlog((real(1.0) + TMP12) / real(2.0));
-    FM2NEW = real(2.0) * TMP32 + TMP22 - real(2.0) * std::atan(TMP12) + real(1.5707963);
+    FM2NEW = real(2.0) * TMP32 + TMP22 - real(2.0) * libm::atan(TMP12) + real(1.5707963);
     FH2NEW = real(2.0) * TMP22;
   } else {
     FMNEW = real(-5.0) * energy.state.MoStabParaAbvCan;
@@ -300,7 +300,7 @@ CPPWRF_HD inline void ResistanceAboveCanopyChen97(NoahmpType& noahmp, int Iterat
   auto PSLHS = [&](real ZZ) -> real { return ZZ * RFAC - real(2.076) * (real(1.0) - rexp(real(-1.2) * ZZ)); };
   auto PSPMU = [&](real XX) -> real {
     return real(-2.0) * rlog((XX + real(1.0)) * real(0.5)) -
-           rlog((XX * XX + real(1.0)) * real(0.5)) + real(2.0) * std::atan(XX) - PIHF;
+           rlog((XX * XX + real(1.0)) * real(0.5)) + real(2.0) * libm::atan(XX) - PIHF;
   };
   auto PSPMS = [](real YY) -> real { return real(5.0) * YY; };
   auto PSPHU = [](real XX) -> real { return real(-2.0) * rlog((XX * XX + real(1.0)) * real(0.5)); };
@@ -479,13 +479,13 @@ CPPWRF_HD inline void ResistanceBareGroundMOST(NoahmpType& noahmp,
     real TMP1 = rpow(real(1.0) - real(16.0) * energy.state.MoStabParaBare, real(0.25));
     real TMP2 = rlog((real(1.0) + TMP1 * TMP1) / real(2.0));
     real TMP3 = rlog((real(1.0) + TMP1) / real(2.0));
-    FMNEW = real(2.0) * TMP3 + TMP2 - real(2.0) * std::atan(TMP1) + real(1.5707963);
+    FMNEW = real(2.0) * TMP3 + TMP2 - real(2.0) * libm::atan(TMP1) + real(1.5707963);
     FHNEW = real(2.0) * TMP2;
 
     real TMP12 = rpow(real(1.0) - real(16.0) * energy.state.MoStabParaBare2m, real(0.25));
     real TMP22 = rlog((real(1.0) + TMP12 * TMP12) / real(2.0));
     real TMP32 = rlog((real(1.0) + TMP12) / real(2.0));
-    FM2NEW = real(2.0) * TMP32 + TMP22 - real(2.0) * std::atan(TMP12) + real(1.5707963);
+    FM2NEW = real(2.0) * TMP32 + TMP22 - real(2.0) * libm::atan(TMP12) + real(1.5707963);
     FH2NEW = real(2.0) * TMP22;
   } else {
     FMNEW = real(-5.0) * energy.state.MoStabParaBare;
@@ -565,7 +565,7 @@ CPPWRF_HD inline void ResistanceBareGroundChen97(NoahmpType& noahmp, int IndIter
   auto PSLHS = [&](real ZZ) -> real { return ZZ * RFAC - real(2.076) * (real(1.0) - rexp(real(-1.2) * ZZ)); };
   auto PSPMU = [&](real XX) -> real {
     return real(-2.0) * rlog((XX + real(1.0)) * real(0.5)) -
-           rlog((XX * XX + real(1.0)) * real(0.5)) + real(2.0) * std::atan(XX) - PIHF;
+           rlog((XX * XX + real(1.0)) * real(0.5)) + real(2.0) * libm::atan(XX) - PIHF;
   };
   auto PSPMS = [](real YY) -> real { return real(5.0) * YY; };
   auto PSPHU = [](real XX) -> real { return real(-2.0) * rlog((XX * XX + real(1.0)) * real(0.5)); };
@@ -1364,7 +1364,7 @@ CPPWRF_HD inline void SoilWaterSupercoolKoren99(NoahmpType& noahmp,
       while (NumIter < 10 && IndCnt == 0) {
         NumIter = NumIter + 1;
         real DF = rlog((water.param.SoilMatPotentialSat(IndSoil) * ConstGravityAcc / ConstLatHeatFusion) *
-                       rpow(real(1.0) + CK * SoilIce, real(2.0)) *
+                       rpow2c(real(1.0) + CK * SoilIce) *
                        rpow(water.param.SoilMoistureSat(IndSoil) / (SoilMoisture - SoilIce), SoilExpB)) -
                   rlog(-(SoilTemperature - ConstFreezePoint) / SoilTemperature);
         real Denom = real(2.0) * CK / (real(1.0) + CK * SoilIce) + SoilExpB / (SoilMoisture - SoilIce);

@@ -169,7 +169,7 @@ CPPWRF_HD inline void snowpack(real sneqv, real dtsec, real& snowh, real& sndens
   real tsoilc = tsoil - real(273.15);
   real tavgc = real(0.5) * (tsnowc + tsoilc);
   real esdcx = esdc > real(1.e-2) ? esdc : real(1.e-2);
-  real bfac = dthr * c1 * std::exp(real(0.08) * tavgc - c2 * sndens);
+  real bfac = dthr * c1 * libm::exp(real(0.08) * tavgc - c2 * sndens);
   real pexp = real(0.);
   for (int j = 4; j >= 1; --j) pexp = (real(1.) + pexp) * bfac * esdcx / real(j + 1);
   pexp = pexp + real(1.);
@@ -498,7 +498,7 @@ CPPWRF_HD inline void snowpack(real esd, real dtsec, real& snowh, real& sndens, 
   real tsoilc = tsoil - real(273.15);
   real tavgc = real(0.5) * (tsnowc + tsoilc);
   real esdcx = esdc > real(1.e-2) ? esdc : real(1.e-2);
-  real bfac = dthr * c1 * std::exp(real(0.08) * tavgc - c2 * sndens);
+  real bfac = dthr * c1 * libm::exp(real(0.08) * tavgc - c2 * sndens);
   real pexp = real(0.);
   for (int j = 4; j >= 1; --j) pexp = (real(1.) + pexp) * bfac * esdcx / real(j + 1);
   pexp = pexp + real(1.);

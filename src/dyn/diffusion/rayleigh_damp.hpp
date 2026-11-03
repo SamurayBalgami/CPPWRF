@@ -13,14 +13,14 @@ namespace cppwrf::dyn::diffusion {
 //   rk_rayleigh_damp (lines 5836-6110, damp_opt = 2)
 
 CPPWRF_HD inline real vsin_rayleigh(real x, int lane_k, int nk) {
-#if defined(CPPWRF_HAVE_LIBMVEC)
+#if defined(CPPWRF_HAVE_LIBMVEC) || defined(CPPWRF_GLIBC_MATH)
   if constexpr (std::is_same_v<real, double>) {
     return cppwrf::vm::sin(x, lane_k, nk);
   }
 #endif
   (void)lane_k;
   (void)nk;
-  return std::sin(x);
+  return libm::sin(x);
 }
 
 struct KRayleighDampU {
@@ -168,7 +168,7 @@ struct KRayleighDampWT {
         real ratio = (ztop - z) / zdamp;
         real m     = ratio < real(1.0) ? ratio : real(1.0);
         real dcoef = real(1.0) - m;
-        real s     = std::sin(real(0.5) * pii * dcoef);
+        real s     = libm::sin(real(0.5) * pii * dcoef);
         dcoef      = s * s;
         rw_tendf(i, j, k) = rw_tendf(i, j, k) -
                             (c1f(k) * mut(i, j) + c2f(k)) * (dcoef * dampcoef) * w(i, j, k);
@@ -240,7 +240,7 @@ inline void rk_rayleigh_damp(const DiffusionParams& p,
                              View3<real> rw_tendf,
                              View3<real> t_tendf,
                              int nx, int ny, int nz) {
-  real pii = real(2.0) * std::asin(real(1.0));
+  real pii = real(2.0) * libm::asin(real(1.0));
 
   column_for(Range2D{0, nx + 1, 0, ny},
              KRayleighDampU{u, ph, phb, muu, c1h, c2h, u_base, z_base,

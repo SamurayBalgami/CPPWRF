@@ -331,7 +331,7 @@ CPPWRF_HD inline void rrtmg_sw_prep(const RrtmgSwCallConfig& c, const SwColumnIn
     auto cldf_of = [&](int l) { const double cf = CSD(v.cldfrac)[l]; return cf < 1.0e-20 ? 0.0 : cf; };
     auto alpha_of = [&](int l) {
       if (c.icld == 5 && cldf_of(l) == 0.0 && cldf_of(l - 1) > 0.0) return 0.0;
-      return exp(-(hgt[l] - hgt[l - 1]) * zo_inv);
+      return libm::exp(-(hgt[l] - hgt[l - 1]) * zo_inv);
     };
     mcica_subcolumns(c.icld, rng, 112, nlayers, cldf_of, alpha_of, [&](int isubcol, int ilev, bool cld) {
       v.cldfmc[ilev][isubcol] = cld ? 1.0 : 0.0;

@@ -266,7 +266,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb03(
   chi_n2o = coln2o[lay]/coldry[lay];
   ratn2o = 1.e20*chi_n2o/get_chi_mls(tables, 4, jp[lay]+1);
   if (ratn2o  >  1.5) {
-  adjfac = 0.5+std::pow((ratn2o-0.5), 0.65);
+  adjfac = 0.5+libm::pow((ratn2o-0.5), 0.65);
   adjcoln2o = adjfac*get_chi_mls(tables, 4, jp[lay]+1)*coldry[lay]*1.e-20;
   } else {
   adjcoln2o = coln2o[lay];
@@ -397,7 +397,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb03(
   chi_n2o = coln2o[lay]/coldry[lay];
   ratn2o = 1.e20*chi_n2o/get_chi_mls(tables, 4, jp[lay]+1);
   if (ratn2o  >  1.5) {
-  adjfac = 0.5+std::pow((ratn2o-0.5), 0.65);
+  adjfac = 0.5+libm::pow((ratn2o-0.5), 0.65);
   adjcoln2o = adjfac*get_chi_mls(tables, 4, jp[lay]+1)*coldry[lay]*1.e-20;
   } else {
   adjcoln2o = coln2o[lay];
@@ -909,7 +909,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb06(
   chi_co2 = colco2[lay]/(coldry[lay]);
   ratco2 = 1.e20*chi_co2/get_chi_mls(tables, 2, jp[lay]+1);
   if (ratco2  >  3.0) {
-  adjfac = 2.0+std::pow((ratco2-2.0), 0.77);
+  adjfac = 2.0+libm::pow((ratco2-2.0), 0.77);
   adjcolco2 = adjfac*get_chi_mls(tables, 2, jp[lay]+1)*coldry[lay]*1.e-20;
   } else {
   adjcolco2 = colco2[lay];
@@ -1024,7 +1024,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb07(
   chi_co2 = colco2[lay]/(coldry[lay]);
   ratco2 = 1.e20*chi_co2/get_chi_mls(tables, 2, jp[lay]+1);
   if (ratco2  >  3.0) {
-  adjfac = 3.0+std::pow((ratco2-3.0), 0.79);
+  adjfac = 3.0+libm::pow((ratco2-3.0), 0.79);
   adjcolco2 = adjfac*get_chi_mls(tables, 2, jp[lay]+1)*coldry[lay]*1.e-20;
   } else {
   adjcolco2 = colco2[lay];
@@ -1129,7 +1129,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb07(
   chi_co2 = colco2[lay]/(coldry[lay]);
   ratco2 = 1.e20*chi_co2/get_chi_mls(tables, 2, jp[lay]+1);
   if (ratco2  >  3.0) {
-  adjfac = 2.0+std::pow((ratco2-2.0), 0.79);
+  adjfac = 2.0+libm::pow((ratco2-2.0), 0.79);
   adjcolco2 = adjfac*get_chi_mls(tables, 2, jp[lay]+1)*coldry[lay]*1.e-20;
   } else {
   adjcolco2 = colco2[lay];
@@ -1208,7 +1208,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb08(
   chi_co2 = colco2[lay]/(coldry[lay]);
   ratco2 = 1.e20*chi_co2/get_chi_mls(tables, 2, jp[lay]+1);
   if (ratco2  >  3.0) {
-  adjfac = 2.0+std::pow((ratco2-2.0), 0.65);
+  adjfac = 2.0+libm::pow((ratco2-2.0), 0.65);
   adjcolco2 = adjfac*get_chi_mls(tables, 2, jp[lay]+1)*coldry[lay]*1.e-20;
   } else {
   adjcolco2 = colco2[lay];
@@ -1233,7 +1233,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb08(
   chi_co2 = colco2[lay]/coldry[lay];
   ratco2 = 1.e20*chi_co2/get_chi_mls(tables, 2, jp[lay]+1);
   if (ratco2  >  3.0) {
-  adjfac = 2.0+std::pow((ratco2-2.0), 0.65);
+  adjfac = 2.0+libm::pow((ratco2-2.0), 0.65);
   adjcolco2 = adjfac*get_chi_mls(tables, 2, jp[lay]+1) * coldry[lay]*1.e-20;
   } else {
   adjcolco2 = colco2[lay];
@@ -1338,7 +1338,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb09(
   chi_n2o = coln2o[lay]/(coldry[lay]);
   ratn2o = 1.e20*chi_n2o/get_chi_mls(tables, 4, jp[lay]+1);
   if (ratn2o  >  1.5) {
-  adjfac = 0.5+std::pow((ratn2o-0.5), 0.65);
+  adjfac = 0.5+libm::pow((ratn2o-0.5), 0.65);
   adjcoln2o = adjfac*get_chi_mls(tables, 4, jp[lay]+1)*coldry[lay]*1.e-20;
   } else {
   adjcoln2o = coln2o[lay];
@@ -1443,7 +1443,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb09(
   chi_n2o = coln2o[lay]/(coldry[lay]);
   ratn2o = 1.e20*chi_n2o/get_chi_mls(tables, 4, jp[lay]+1);
   if (ratn2o  >  1.5) {
-  adjfac = 0.5+std::pow((ratn2o-0.5), 0.65);
+  adjfac = 0.5+libm::pow((ratn2o-0.5), 0.65);
   adjcoln2o = adjfac*get_chi_mls(tables, 4, jp[lay]+1)*coldry[lay]*1.e-20;
   } else {
   adjcoln2o = coln2o[lay];
@@ -1886,7 +1886,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_taugb13(
   chi_co2 = colco2[lay]/(coldry[lay]);
   ratco2 = 1.e20*chi_co2/3.55e-4;
   if (ratco2  >  3.0) {
-  adjfac = 2.0+std::pow((ratco2-2.0), 0.68);
+  adjfac = 2.0+libm::pow((ratco2-2.0), 0.68);
   adjcolco2 = adjfac*3.55e-4*coldry[lay]*1.e-20;
   } else {
   adjcolco2 = colco2[lay];

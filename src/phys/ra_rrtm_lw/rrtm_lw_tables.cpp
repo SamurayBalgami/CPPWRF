@@ -6,6 +6,7 @@
 #include <fstream>
 #include <vector>
 
+#include "core/libm.hpp"
 #include "phys/ra_rrtm_lw/rrtm_lw_data.hpp"
 
 namespace cppwrf::phys {
@@ -136,7 +137,7 @@ bool load_rrtm_lw_tables(const std::string& path, RrtmLwTables& t, std::string& 
   for (int itre = 1; itre <= 4999; ++itre) {
     const double tfn = double(itre) / 5.E3;
     t.tau[itre] = t.bpade * tfn / (1. - tfn);
-    t.trans[itre] = std::exp(-t.tau[itre]);
+    t.trans[itre] = libm::exp(-t.tau[itre]);
     if (t.tau[itre] < 0.1)
       t.tf[itre] = t.tau[itre] / 6.;
     else
@@ -250,7 +251,7 @@ bool load_rrtm_lw_tables(const std::string& path, RrtmLwTables& t, std::string& 
   c.fractions(16, rd::FRACREFA16, 9, t.fracrefac16);
 
   // rrtminit: FLUXFAC = PI * 2.D4 with PI = 2.*ASIN(1.); the DATA the column routines read
-  const double pi = 2. * std::asin(1.);
+  const double pi = 2. * libm::asin(1.);
   t.fluxfac = pi * 2.E4;
   t.heatfac = rd::HEATFAC;
   copy(t.nspa, rd::NSPA);

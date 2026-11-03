@@ -136,7 +136,7 @@ CPPWRF_HD inline void rrtmg_lw_setcoef(
     }
 
     // Pressure and temperature interpolation factors
-    double plog = std::log(pavel[lay]);
+    double plog = libm::log(pavel[lay]);
     jp[lay] = static_cast<int>(36.0 - 5.0 * (plog + 0.04));
     if (jp[lay] < 1) jp[lay] = 1;
     else if (jp[lay] > 58) jp[lay] = 58;

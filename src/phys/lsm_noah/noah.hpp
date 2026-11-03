@@ -113,7 +113,7 @@ struct NoahKernel {
   // Helper static functions mirroring module_sf_noahlsm.F
   CPPWRF_HD static void csnow(real& sncond, real dsnow) {
     constexpr real unit = real(0.11631);
-    real c = real(0.328) * std::pow(real(10.0), real(2.25) * dsnow);
+    real c = real(0.328) * libm::pow(real(10.0), real(2.25) * dsnow);
     sncond = real(2.0) * unit * c;
   }
 
@@ -125,7 +125,7 @@ struct NoahKernel {
     if (tempc <= real(-15.0)) {
       dsnew = real(0.05);
     } else {
-      dsnew = real(0.05) + real(0.0017) * std::pow(tempc + real(15.0), real(1.5));
+      dsnew = real(0.05) + real(0.0017) * libm::pow(tempc + real(15.0), real(1.5));
     }
     real hnewc = newsnc / dsnew;
     if (snowhc + hnewc < real(1.0e-3)) {
@@ -140,7 +140,7 @@ struct NoahKernel {
   CPPWRF_HD static void snfrac(real sneqv, real snup, real salp, real snowh, real& sncovr) {
     if (sneqv < snup) {
       real rsnow = sneqv / snup;
-      sncovr = real(1.0) - (std::exp(-salp * rsnow) - rsnow * std::exp(-salp));
+      sncovr = real(1.0) - (libm::exp(-salp * rsnow) - rsnow * libm::exp(-salp));
     } else {
       sncovr = real(1.0);
     }
@@ -160,7 +160,7 @@ struct NoahKernel {
       snotime1 = real(0.0);
     } else {
       snotime1 += dt;
-      snoalb2 = snoalb1 * std::pow(snacca, std::pow(snotime1 / real(86400.0), snaccb));
+      snoalb2 = snoalb1 * libm::pow(snacca, libm::pow(snotime1 / real(86400.0), snaccb));
     }
     snoalb2 = std::max(snoalb2, alb);
     albedo = alb + sncovr * (snoalb2 - alb);
@@ -183,10 +183,10 @@ struct NoahKernel {
                                real bexp, real psisat, int soiltyp, int opt_thcnd) {
     if (opt_thcnd == 2 && (soiltyp == 4 || soiltyp == 3)) {
       // McCumber and Pielke for silt loam (4) and sandy loam (3); PSIF in cm
-      real psif = psisat * real(100.) * std::pow(smcmax / smc, bexp);
-      real pf = std::log10(std::fabs(psif));
+      real psif = psisat * real(100.) * libm::pow(smcmax / smc, bexp);
+      real pf = libm::log10(std::fabs(psif));
       if (pf <= real(5.1)) {
-        df = real(420.) * std::exp(-(pf + real(2.7)));
+        df = real(420.) * libm::exp(-(pf + real(2.7)));
       } else {
         df = real(0.1744);
       }
@@ -198,18 +198,18 @@ struct NoahKernel {
     constexpr real thko = real(2.0);
     constexpr real thkqtz = real(7.7);
 
-    real thks = std::pow(thkqtz, qz) * std::pow(thko, real(1.0) - qz);
+    real thks = libm::pow(thkqtz, qz) * libm::pow(thko, real(1.0) - qz);
     real xunfroz = sh2o / smc;
     real xu = xunfroz * smcmax;
-    real thksat = std::pow(thks, real(1.0) - smcmax) *
-                  std::pow(thkice, smcmax - xu) *
-                  std::pow(thkw, xu);
+    real thksat = libm::pow(thks, real(1.0) - smcmax) *
+                  libm::pow(thkice, smcmax - xu) *
+                  libm::pow(thkw, xu);
     real gammd = (real(1.0) - smcmax) * real(2700.0);
     real thkdry = (real(0.135) * gammd + real(64.7)) / (real(2700.0) - real(0.947) * gammd);
     real akei = satratio;
     real akel;
     if (satratio > real(0.1)) {
-      akel = std::log10(satratio) + real(1.0);
+      akel = libm::log10(satratio) + real(1.0);
     } else {
       akel = real(0.0);
     }
@@ -296,7 +296,7 @@ struct NoahKernel {
 
     rc = rsmin / (xlai * rcs * rct * rcq * rcsoil);
     real rr = (real(4.0) * emissi * sigma * rd_val / cp_val) *
-              std::pow(sfctmp, real(4.0)) / (sfcprs * ch) + real(1.0);
+              libm::pow(sfctmp, real(4.0)) / (sfcprs * ch) + real(1.0);
     real delta = (slv / cp_val) * dqsdt2;
     pc = (rr + delta) / (rr * (real(1.0) + rc * ch) + delta);
   }
@@ -307,7 +307,7 @@ struct NoahKernel {
     real sratio = (smc - smcdry) / (smcmax - smcdry);
     real fx;
     if (sratio > real(0.0)) {
-      fx = std::pow(sratio, fxexp);
+      fx = libm::pow(sratio, fxexp);
       fx = std::max(std::min(fx, real(1.0)), real(0.0));
     } else {
       fx = real(0.0);
@@ -322,7 +322,7 @@ struct NoahKernel {
     for (int k = 0; k < nsoil; ++k) et[k] = real(0.0);
     real etp1a;
     if (cmc != real(0.0)) {
-      etp1a = shdfac * pc * etp1 * (real(1.0) - std::pow(cmc / cmcmax, cfactr));
+      etp1a = shdfac * pc * etp1 * (real(1.0) - libm::pow(cmc / cmcmax, cfactr));
     } else {
       etp1a = shdfac * pc * etp1;
     }
@@ -365,7 +365,7 @@ struct NoahKernel {
         transp(et, nsoil, etp1, sh2o, cmc, zsoil, shdfac, smcwlt, cmcmax, pc, cfactr, smcref, sfctmp, q2, nroot, rtdis);
         for (int k = 0; k < nsoil; ++k) ett += et[k];
         if (cmc > real(0.0)) {
-          ec = shdfac * std::pow(cmc / cmcmax, cfactr) * etp1;
+          ec = shdfac * libm::pow(cmc / cmcmax, cfactr) * etp1;
         } else {
           ec = real(0.0);
         }
@@ -398,14 +398,14 @@ struct NoahKernel {
     real factr2 = smc / smcmax;
     factr1 = std::min(factr1, factr2);
     real expon = bexp + real(2.0);
-    wdf = dwsat * std::pow(factr2, expon);
+    wdf = dwsat * libm::pow(factr2, expon);
     if (sicemax > real(0.0)) {
       real term = real(500.0) * sicemax;
-      real vkwgt = real(1.0) / (real(1.0) + std::pow(term, real(3.0)));  // WRF: (500.*SICEMAX)**3. (libm pow)
-      wdf = vkwgt * wdf + (real(1.0) - vkwgt) * dwsat * std::pow(factr1, expon);
+      real vkwgt = real(1.0) / (real(1.0) + libm::pow(term, real(3.0)));  // WRF: (500.*SICEMAX)**3. (libm pow)
+      wdf = vkwgt * wdf + (real(1.0) - vkwgt) * dwsat * libm::pow(factr1, expon);
     }
     expon = real(2.0) * bexp + real(3.0);
-    wcnd = dksat * std::pow(factr2, expon);
+    wcnd = dksat * libm::pow(factr2, expon);
   }
 
   CPPWRF_HD static void srt(real* rhstt, real edir, const real* et, const real* sh2o,
@@ -436,7 +436,7 @@ struct NoahKernel {
         dmax[ks] = dmax[ks] * (real(1.0) - (sh2oa[ks] + sice[ks] - smcwlt) / smcav);
         dd += dmax[ks];
       }
-      real val = real(1.0) - std::exp(- kdt * dt1);
+      real val = real(1.0) - libm::exp(- kdt * dt1);
       real ddt = dd * val;
       real px = pcpdrp * dt;
       if (px < real(0.0)) px = real(0.0);
@@ -451,7 +451,7 @@ struct NoahKernel {
           for (int jj = j + 1; jj <= ialp1; ++jj) k *= jj;
           sum += powi(acrt, cvfrz - j) / real(k);  // ACRT**(CVFRZ-J): integer exponent
         }
-        fcr = real(1.0) - std::exp(- acrt) * sum;
+        fcr = real(1.0) - libm::exp(- acrt) * sum;
       }
       infmax *= fcr;
       real mxsmc = sh2oa[0];
@@ -625,9 +625,9 @@ struct NoahKernel {
       while (nlog < 10 && kcount == 0) {
         nlog++;
         real term1 = (psis * gs / hlice) * ((real(1.0) + ck * swl) * (real(1.0) + ck * swl)) *
-                     std::pow(smcmax / (smc - swl), bx);
+                     libm::pow(smcmax / (smc - swl), bx);
         real term2 = - (tkelv - t0) / tkelv;
-        real df = std::log(term1) - std::log(term2);
+        real df = libm::log(term1) - libm::log(term2);
         real denom = real(2.0) * ck / (real(1.0) + ck * swl) + bx / (smc - swl);
         real swlk = swl - df / denom;
         if (swlk > (smc - real(0.02))) swlk = smc - real(0.02);
@@ -639,7 +639,7 @@ struct NoahKernel {
       if (kcount != 0) {
         free_w = smc - swl;
       } else {
-        real fk = std::pow((hlice / (gs * (- psis))) * ((tkelv - t0) / tkelv), - real(1.0) / bx) * smcmax;
+        real fk = libm::pow((hlice / (gs * (- psis))) * ((tkelv - t0) / tkelv), - real(1.0) / bx) * smcmax;
         if (fk < real(0.02)) fk = real(0.02);
         free_w = std::min(fk, smc);
       }
@@ -843,7 +843,7 @@ struct NoahKernel {
     real tsoilc = tsoil - real(273.15);
     real tavgc = real(0.5) * (tsnowc + tsoilc);
     real esdcx = (esdc > real(1.0e-2)) ? esdc : real(1.0e-2);
-    real bfac = dthr * c1 * std::exp(real(0.08) * tavgc - c2 * sndens);
+    real bfac = dthr * c1 * libm::exp(real(0.08) * tavgc - c2 * sndens);
     real pexp = real(0.0);
     for (int j = 4; j >= 1; --j) {
       pexp = (real(1.0) + pexp) * bfac * esdcx / real(j + 1);
@@ -914,7 +914,7 @@ struct NoahKernel {
     real df1;
     tdfcnd(df1, smc[0], quartz, smcmax, sh2o[0], bexp, psisat, soiltyp, opt_thcnd);
     if (vegtyp == isurban) df1 = real(3.24);
-    df1 = df1 * std::exp(sbeta * shdfac);
+    df1 = df1 * libm::exp(sbeta * shdfac);
 
     real yynum = fdown - emissi * sigma * t24;
     real yy = sfctmp + (yynum / rch + th2 - sfctmp - beta * epsca) / rr;
@@ -1299,7 +1299,7 @@ struct NoahKernel {
     real df1;
     tdfcnd(df1, smc_col[0], quartz, smcmax, sh2o_col[0], bexp, psisat, styp, opt_thcnd);
     if (vtyp == isurban) df1 = real(3.24);
-    df1 = df1 * std::exp(sbeta * cur_shdfac);
+    df1 = df1 * libm::exp(sbeta * cur_shdfac);
     if (cur_sncovr > real(0.97)) df1 = sncond;
 
     real dsoil = - (real(0.5) * zsoil[0]);

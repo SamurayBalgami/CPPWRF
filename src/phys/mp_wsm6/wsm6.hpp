@@ -17,10 +17,10 @@ template <typename Real>
 inline Real rgmma_calc(Real x) {
     if (x == static_cast<Real>(1.0)) return static_cast<Real>(0.0);
     constexpr double euler = 0.577215664901532;
-    double r = static_cast<double>(x) * std::exp(euler * static_cast<double>(x));
+    double r = static_cast<double>(x) * libm::exp(euler * static_cast<double>(x));
     for (int i = 1; i <= 10000; ++i) {
         double y = static_cast<double>(i);
-        r = r * (1.000 + static_cast<double>(x) / y) * std::exp(-static_cast<double>(x) / y);
+        r = r * (1.000 + static_cast<double>(x) / y) * libm::exp(-static_cast<double>(x) / y);
     }
     return static_cast<Real>(1.0 / r);
 }
@@ -121,11 +121,11 @@ struct Wsm6Params {
             lamdagmax = 6.0e4;
         }
 
-        pi = 4.0 * std::atan(1.0);
+        pi = 4.0 * libm::atan(1.0);
         xlv1 = cliq - cpv;
 
         qc0 = (4.0 / 3.0) * pi * denr * (r0 * r0 * r0) * xncr / den0;
-        qck1 = 0.104 * 9.8 * peaut / std::pow(xncr * denr, 1.0 / 3.0) / xmyu * std::pow(den0, 4.0 / 3.0);
+        qck1 = 0.104 * 9.8 * peaut / libm::pow(xncr * denr, 1.0 / 3.0) / xmyu * libm::pow(den0, 4.0 / 3.0);
         pidnc = pi * denr / 6.0;
 
         bvtr1 = 1.0 + bvtr;
@@ -143,7 +143,7 @@ struct Wsm6Params {
         pacrr = pi * n0r * avtr * g3pbr * 0.25 * eacrr;
         precr1 = 2.0 * pi * n0r * 0.78;
         precr2 = 2.0 * pi * n0r * 0.31 * std::sqrt(avtr) * g5pbro2;
-        roqimax = 2.08e22 * std::pow(dimax, 8.0);
+        roqimax = 2.08e22 * libm::pow(dimax, 8.0);
 
         bvts1 = 1.0 + bvts;
         bvts2 = 2.5 + 0.5 * bvts;
@@ -178,9 +178,9 @@ struct Wsm6Params {
         rslopermax = 1.0 / lamdarmax;
         rslopesmax = 1.0 / lamdasmax;
         rslopegmax = 1.0 / lamdagmax;
-        rsloperbmax = std::pow(rslopermax, bvtr);
-        rslopesbmax = std::pow(rslopesmax, bvts);
-        rslopegbmax = std::pow(rslopegmax, bvtg);
+        rsloperbmax = libm::pow(rslopermax, bvtr);
+        rslopesbmax = libm::pow(rslopesmax, bvts);
+        rslopegbmax = libm::pow(rslopegmax, bvtg);
         rsloper2max = rslopermax * rslopermax;
         rslopes2max = rslopesmax * rslopesmax;
         rslopeg2max = rslopegmax * rslopegmax;
@@ -198,7 +198,7 @@ struct Wsm6Params {
     }
 
     CPPWRF_HD inline Real diffus(Real x, Real y) const {
-        return 8.794e-5 * std::exp(std::log(x) * 1.81) / y;
+        return 8.794e-5 * libm::exp(libm::log(x) * 1.81) / y;
     }
 
     CPPWRF_HD inline Real viscos(Real x, Real y) const {
@@ -215,7 +215,7 @@ struct Wsm6Params {
 
     CPPWRF_HD inline Real venfac(Real a, Real b, Real c) const {
         Real v = viscos(b, c);
-        return std::exp(std::log(v / diffus(b, a)) * 0.3333333) / std::sqrt(v) * std::sqrt(std::sqrt(den0 / c));
+        return libm::exp(libm::log(v / diffus(b, a)) * 0.3333333) / std::sqrt(v) * std::sqrt(std::sqrt(den0 / c));
     }
 
     CPPWRF_HD inline Real conden(Real a, Real b, Real c, Real d, Real e) const {
@@ -228,7 +228,7 @@ struct Wsm6Params {
                                     Real rslope3[][3], Real vt[][3]) const {
         for (int k = 0; k < km; ++k) {
             Real supcol = t0c - t[k];
-            Real n0sfac = std::max(std::min(std::exp(alpha * supcol), n0smax / n0s), static_cast<Real>(1.0));
+            Real n0sfac = std::max(std::min(libm::exp(alpha * supcol), n0smax / n0s), static_cast<Real>(1.0));
 
             // Rain
             if (qr[k] <= qcrmin) {
@@ -239,7 +239,7 @@ struct Wsm6Params {
             } else {
                 Real lamdar = std::sqrt(std::sqrt(pidn0r / (qr[k] * den[k])));
                 rslope[k][0] = 1.0 / lamdar;
-                rslopeb[k][0] = std::pow(rslope[k][0], bvtr);
+                rslopeb[k][0] = libm::pow(rslope[k][0], bvtr);
                 rslope2[k][0] = rslope[k][0] * rslope[k][0];
                 rslope3[k][0] = rslope2[k][0] * rslope[k][0];
             }
@@ -253,7 +253,7 @@ struct Wsm6Params {
             } else {
                 Real lamdas = std::sqrt(std::sqrt(pidn0s * n0sfac / (qs[k] * den[k])));
                 rslope[k][1] = 1.0 / lamdas;
-                rslopeb[k][1] = std::pow(rslope[k][1], bvts);
+                rslopeb[k][1] = libm::pow(rslope[k][1], bvts);
                 rslope2[k][1] = rslope[k][1] * rslope[k][1];
                 rslope3[k][1] = rslope2[k][1] * rslope[k][1];
             }
@@ -267,7 +267,7 @@ struct Wsm6Params {
             } else {
                 Real lamdag = std::sqrt(std::sqrt(pidn0g / (qg[k] * den[k])));
                 rslope[k][2] = 1.0 / lamdag;
-                rslopeb[k][2] = std::pow(rslope[k][2], bvtg);
+                rslopeb[k][2] = libm::pow(rslope[k][2], bvtg);
                 rslope2[k][2] = rslope[k][2] * rslope[k][2];
                 rslope3[k][2] = rslope2[k][2] * rslope[k][2];
             }
@@ -370,7 +370,7 @@ struct Wsm6Params {
                     } else {
                         Real lamdar = std::sqrt(std::sqrt(pidn0r / (qr_k * den[k])));
                         rslope = 1.0 / lamdar;
-                        rslopeb = std::pow(rslope, bvtr);
+                        rslopeb = libm::pow(rslope, bvtr);
                     }
                     wa[k] = pvtr * rslopeb * denfac[k];
                     if (qr_k <= 0.0) wa[k] = 0.0;
@@ -572,7 +572,7 @@ struct Wsm6Params {
                     Real qr_k = qa[k] / den[k];
                     Real qr2_k = qa2[k] / den[k];
                     Real supcol = t0c - t[k];
-                    Real n0sfac = std::max(std::min(std::exp(alpha * supcol), n0smax / n0s), static_cast<Real>(1.0));
+                    Real n0sfac = std::max(std::min(libm::exp(alpha * supcol), n0smax / n0s), static_cast<Real>(1.0));
                     Real rslope_s, rslopeb_s;
                     if (qr_k <= qcrmin) {
                         rslope_s = rslopesmax;
@@ -580,7 +580,7 @@ struct Wsm6Params {
                     } else {
                         Real lamdas = std::sqrt(std::sqrt(pidn0s * n0sfac / (qr_k * den[k])));
                         rslope_s = 1.0 / lamdas;
-                        rslopeb_s = std::pow(rslope_s, bvts);
+                        rslopeb_s = libm::pow(rslope_s, bvts);
                     }
                     Real wa_s = pvts * rslopeb_s * denfac[k];
                     if (qr_k <= 0.0) wa_s = 0.0;
@@ -592,7 +592,7 @@ struct Wsm6Params {
                     } else {
                         Real lamdag = std::sqrt(std::sqrt(pidn0g / (qr2_k * den[k])));
                         rslope_g = 1.0 / lamdag;
-                        rslopeb_g = std::pow(rslope_g, bvtg);
+                        rslopeb_g = libm::pow(rslope_g, bvtg);
                     }
                     Real wa_g = pvtg * rslopeb_g * denfac[k];
                     if (qr2_k <= 0.0) wa_g = 0.0;
@@ -783,7 +783,7 @@ struct Wsm6Params {
 
             for (int k = 0; k < nz; ++k) {
                 Real tr = ttp / t[k];
-                Real qs1 = psat * std::exp(std::log(tr) * xa) * std::exp(xb * (1.0 - tr));
+                Real qs1 = psat * libm::exp(libm::log(tr) * xa) * libm::exp(xb * (1.0 - tr));
                 qs1 = std::min(qs1, static_cast<Real>(0.99) * p[k]);
                 qs1 = ep2 * qs1 / (p[k] - qs1);
                 qsat[k][0] = std::max(qs1, qmin);
@@ -791,9 +791,9 @@ struct Wsm6Params {
 
                 Real qs2;
                 if (t[k] < ttp) {
-                    qs2 = psat * std::exp(std::log(tr) * xai) * std::exp(xbi * (1.0 - tr));
+                    qs2 = psat * libm::exp(libm::log(tr) * xai) * libm::exp(xbi * (1.0 - tr));
                 } else {
-                    qs2 = psat * std::exp(std::log(tr) * xa) * std::exp(xb * (1.0 - tr));
+                    qs2 = psat * libm::exp(libm::log(tr) * xa) * libm::exp(xb * (1.0 - tr));
                 }
                 qs2 = std::min(qs2, static_cast<Real>(0.99) * p[k]);
                 qs2 = ep2 * qs2 / (p[k] - qs2);
@@ -863,7 +863,7 @@ struct Wsm6Params {
 
             for (int k = nz - 1; k >= 0; --k) {
                 Real supcol = t0c - t[k];
-                Real n0sfac_val = std::max(std::min(std::exp(alpha * supcol), n0smax / n0s), static_cast<Real>(1.0));
+                Real n0sfac_val = std::max(std::min(libm::exp(alpha * supcol), n0smax / n0s), static_cast<Real>(1.0));
                 if (t[k] > t0c) {
                     Real xlf = xlf0;
                     Real work2_val = venfac(p[k], t[k], den[k]);
@@ -896,7 +896,7 @@ struct Wsm6Params {
                 } else {
                     Real xmi = den[k] * qi[k] / xni[k];
                     Real diameter = std::max(std::min(dicon * std::sqrt(xmi), dimax), static_cast<Real>(1.0e-25));
-                    work1c[k] = 1.49e4 * std::exp(std::log(diameter) * 1.31);
+                    work1c[k] = 1.49e4 * libm::exp(libm::log(diameter) * 1.31);
                 }
                 denqci[k] = den[k] * qi[k];
             }
@@ -951,7 +951,7 @@ struct Wsm6Params {
                 // pihtf
                 if (supcol > 0.0 && qc[k] > qmin) {
                     Real supcolt = std::min(supcol, static_cast<Real>(50.0));
-                    Real pfrzdtc = std::min(pfrz1 * (std::exp(pfrz2 * supcolt) - static_cast<Real>(1.0))
+                    Real pfrzdtc = std::min(pfrz1 * (libm::exp(pfrz2 * supcolt) - static_cast<Real>(1.0))
                         * den[k] / denr / xncr * qc[k] * qc[k] * dtcld, qc[k]);
                     qi[k] += pfrzdtc;
                     t[k] += (xlf / cpm[k]) * pfrzdtc;
@@ -963,7 +963,7 @@ struct Wsm6Params {
                     temp = temp * temp * rslope[k][0];
                     Real supcolt = std::min(supcol, static_cast<Real>(50.0));
                     Real pfrzdtr = std::min(static_cast<Real>(20.0) * (pi * pi) * pfrz1 * n0r * denr / den[k]
-                        * (std::exp(pfrz2 * supcolt) - static_cast<Real>(1.0)) * temp * dtcld, qr[k]);
+                        * (libm::exp(pfrz2 * supcolt) - static_cast<Real>(1.0)) * temp * dtcld, qr[k]);
                     qg[k] += pfrzdtr;
                     t[k] += (xlf / cpm[k]) * pfrzdtr;
                     qr[k] -= pfrzdtr;
@@ -986,7 +986,7 @@ struct Wsm6Params {
 
                 // praut
                 if (qc[k] > qc0) {
-                    praut = qck1 * std::pow(qc[k], static_cast<Real>(7.0 / 3.0));
+                    praut = qck1 * libm::pow(qc[k], static_cast<Real>(7.0 / 3.0));
                     praut = std::min(praut, qc[k] / dtcld);
                 }
                 // pracw
@@ -1006,7 +1006,7 @@ struct Wsm6Params {
                 }
 
                 Real supcol = t0c - t[k];
-                Real n0sfac_val = std::max(std::min(std::exp(alpha * supcol), n0smax / n0s), static_cast<Real>(1.0));
+                Real n0sfac_val = std::max(std::min(libm::exp(alpha * supcol), n0smax / n0s), static_cast<Real>(1.0));
                 Real supsat_ice = std::max(q[k], qmin) - qsat[k][1];
                 Real satdt_ice = supsat_ice / dtcld;
                 int ifsat = 0;
@@ -1014,11 +1014,11 @@ struct Wsm6Params {
                 Real temp = den[k] * std::max(qi[k], qmin);
                 temp = std::sqrt(std::sqrt(temp * temp * temp));
                 xni[k] = std::min(std::max(static_cast<Real>(5.38e7) * temp, static_cast<Real>(1.0e3)), static_cast<Real>(1.0e6));
-                Real eacrs = std::exp(0.07 * (-supcol));
+                Real eacrs = libm::exp(0.07 * (-supcol));
 
                 Real xmi = den[k] * qi[k] / xni[k];
                 Real diameter = std::min(dicon * std::sqrt(xmi), dimax);
-                Real vt2i = 1.49e4 * std::pow(diameter, static_cast<Real>(1.31));
+                Real vt2i = 1.49e4 * libm::pow(diameter, static_cast<Real>(1.31));
                 Real vt2r = pvtr * rslopeb[k][0] * denfac[k];
                 Real vt2s = pvts * rslopeb[k][1] * denfac[k];
                 Real vt2g = pvtg * rslopeb[k][2] * denfac[k];
@@ -1055,7 +1055,7 @@ struct Wsm6Params {
                         psaci = std::min(psaci, qi[k] / dtcld);
                     }
                     if (qg[k] > qcrmin) {
-                        Real egi = std::exp(0.07 * (-supcol));
+                        Real egi = libm::exp(0.07 * (-supcol));
                         Real acrfac = 2.0 * rslope3[k][2] + 2.0 * diameter * rslope2[k][2]
                             + diameter * diameter * rslope[k][2];
                         pgaci = pi * egi * qi[k] * n0g * std::abs(vt2ave - vt2i) * acrfac / 4.0;
@@ -1179,8 +1179,8 @@ struct Wsm6Params {
 
                     if (supsat_ice > 0.0 && ifsat != 1) {
                         Real supice = satdt_ice - prevp - pidep - psdep - pgdep;
-                        Real xni0 = 1.0e3 * std::exp(0.1 * supcol);
-                        Real roqi0 = 4.92e-11 * std::pow(xni0, static_cast<Real>(1.33));
+                        Real xni0 = 1.0e3 * libm::exp(0.1 * supcol);
+                        Real roqi0 = 4.92e-11 * libm::pow(xni0, static_cast<Real>(1.33));
                         pigen = std::max(static_cast<Real>(0.0), (roqi0 / den[k] - std::max(qi[k], static_cast<Real>(0.0))) / dtcld);
                         pigen = std::min(std::min(pigen, satdt_ice), supice);
                     }
@@ -1191,7 +1191,7 @@ struct Wsm6Params {
                     }
 
                     if (qs[k] > 0.0) {
-                        Real alpha2 = 1.0e-3 * std::exp(0.09 * (-supcol));
+                        Real alpha2 = 1.0e-3 * libm::exp(0.09 * (-supcol));
                         pgaut = std::min(std::max(static_cast<Real>(0.0), alpha2 * (qs[k] - qs0)), qs[k] / dtcld);
                     }
                 }
@@ -1369,7 +1369,7 @@ struct Wsm6Params {
             // Saturation adjustment (conden)
             for (int k = 0; k < nz; ++k) {
                 Real tr = ttp / t[k];
-                Real qs1 = psat * std::exp(std::log(tr) * xa) * std::exp(xb * (1.0 - tr));
+                Real qs1 = psat * libm::exp(libm::log(tr) * xa) * libm::exp(xb * (1.0 - tr));
                 qs1 = std::min(qs1, static_cast<Real>(0.99) * p[k]);
                 qs1 = ep2 * qs1 / (p[k] - qs1);
                 qs1 = std::max(qs1, qmin);
@@ -1509,7 +1509,7 @@ struct Wsm6EffRadKernel {
         const Real rni = std::max(R2, ni * rho);
         const Real rqs = std::max(R1, qs(i, j, k) * rho);
         if (rqc > R1) {
-            const Real lamdac = std::pow(pidnc * nc0 / rqc, obmr);
+            const Real lamdac = libm::pow(pidnc * nc0 / rqc, obmr);
             rc = std::max(Real(2.51E-6), std::min(Real(1.5) * (Real(1.0) / lamdac), re_qc_max));
         }
         if (rqi > R1 && rni > R2) {
@@ -1518,7 +1518,7 @@ struct Wsm6EffRadKernel {
         }
         if (rqs > R1) {
             const Real supcol = t0c - t;
-            const Real n0sfac = std::max(std::min(std::exp(alpha * supcol), n0smax / n0s), Real(1.));
+            const Real n0sfac = std::max(std::min(libm::exp(alpha * supcol), n0smax / n0s), Real(1.));
             const Real lamdas = std::sqrt(std::sqrt(pidn0s * n0sfac / rqs));
             rs = std::max(Real(25.E-6), std::min(Real(0.5) * (Real(1.) / lamdas), re_qs_max));
         }
@@ -1556,7 +1556,7 @@ struct Wsm6ReflKernel {
             if (qr(i, j, k) > Real(1.e-9)) {
                 rr[k] = qr(i, j, k) * rho;
                 n0_r[k] = double(n0r);
-                const double lamr = std::pow(double(t.xam_r * t.xcrg[2]) * n0_r[k] / double(rr[k]),
+                const double lamr = libm::pow(double(t.xam_r * t.xcrg[2]) * n0_r[k] / double(rr[k]),
                                              double(Real(1.) / t.xcre[0]));
                 ilamr[k] = 1. / lamr;
                 l_qr[k] = true;
@@ -1566,8 +1566,8 @@ struct Wsm6ReflKernel {
             }
             if (qs(i, j, k) > Real(1.e-9)) {
                 rs[k] = qs(i, j, k) * rho;
-                n0_s[k] = double(c_min(n0smax, n0s * std::exp(-alpha * temp_c)));
-                const double lams = std::pow(double(t.xam_s * t.xcsg[2]) * n0_s[k] / double(rs[k]),
+                n0_s[k] = double(c_min(n0smax, n0s * libm::exp(-alpha * temp_c)));
+                const double lams = libm::pow(double(t.xam_s * t.xcsg[2]) * n0_s[k] / double(rs[k]),
                                              double(Real(1.) / t.xcse[0]));
                 ilams[k] = 1. / lams;
                 l_qs[k] = true;
@@ -1578,7 +1578,7 @@ struct Wsm6ReflKernel {
             if (qg(i, j, k) > Real(1.e-9)) {
                 rg[k] = qg(i, j, k) * rho;
                 n0_g[k] = double(n0g);
-                const double lamg = std::pow(double(t.xam_g * t.xcgg[2]) * n0_g[k] / double(rg[k]),
+                const double lamg = libm::pow(double(t.xam_g * t.xcgg[2]) * n0_g[k] / double(rg[k]),
                                              double(Real(1.) / t.xcge[0]));
                 ilamg[k] = 1. / lamg;
                 l_qg[k] = true;
@@ -1605,9 +1605,9 @@ struct Wsm6ReflKernel {
             ze_rain[k] = Real(1.e-22);
             ze_snow[k] = Real(1.e-22);
             ze_graupel[k] = Real(1.e-22);
-            if (l_qr[k]) ze_rain[k] = Real(n0_r[k] * double(t.xcrg[3]) * std::pow(ilamr[k], double(t.xcre[3])));
-            if (l_qs[k]) ze_snow[k] = Real(double(cs) * n0_s[k] * double(t.xcsg[3]) * std::pow(ilams[k], double(t.xcse[3])));
-            if (l_qg[k]) ze_graupel[k] = Real(double(cg) * n0_g[k] * double(t.xcgg[3]) * std::pow(ilamg[k], double(t.xcge[3])));
+            if (l_qr[k]) ze_rain[k] = Real(n0_r[k] * double(t.xcrg[3]) * libm::pow(ilamr[k], double(t.xcre[3])));
+            if (l_qs[k]) ze_snow[k] = Real(double(cs) * n0_s[k] * double(t.xcsg[3]) * libm::pow(ilams[k], double(t.xcse[3])));
+            if (l_qg[k]) ze_graupel[k] = Real(double(cg) * n0_g[k] * double(t.xcgg[3]) * libm::pow(ilamg[k], double(t.xcge[3])));
         }
         // melting snow and graupel: the meltwater fraction from the amount at the melting level
         if (melti && k_0 >= 1) {
@@ -1617,10 +1617,10 @@ struct Wsm6ReflKernel {
                     double eta = 0.0;
                     const double lams = 1. / ilams[k];
                     for (int n = 0; n < radar::nrbins; ++n) {
-                        const double x = double(t.xam_s) * std::pow(t.xxDs[n], double(t.xbm_s));
+                        const double x = double(t.xam_s) * libm::pow(t.xxDs[n], double(t.xbm_s));
                         const double cback = radar::rayleigh_soak_wetgraupel(x, double(t.xocms), double(t.xobms), fmelt_s,
                                                                              t.m_w_0, t.m_i_0, t.pi5, t.lamda4);
-                        const double f_d = n0_s[k] * std::pow(t.xxDs[n], double(t.xmu_s)) * std::exp(-lams * t.xxDs[n]);
+                        const double f_d = n0_s[k] * libm::pow(t.xxDs[n], double(t.xmu_s)) * libm::exp(-lams * t.xxDs[n]);
                         eta = eta + f_d * cback * t.simpson[n] * t.xdts[n];
                     }
                     ze_snow[k] = Real(t.lamda4 / (t.pi5 * t.k_w) * eta);
@@ -1630,10 +1630,10 @@ struct Wsm6ReflKernel {
                     double eta = 0.0;
                     const double lamg = 1. / ilamg[k];
                     for (int n = 0; n < radar::nrbins; ++n) {
-                        const double x = double(t.xam_g) * std::pow(t.xxDg[n], double(t.xbm_g));
+                        const double x = double(t.xam_g) * libm::pow(t.xxDg[n], double(t.xbm_g));
                         const double cback = radar::rayleigh_soak_wetgraupel(x, double(t.xocmg), double(t.xobmg), fmelt_g,
                                                                              t.m_w_0, t.m_i_0, t.pi5, t.lamda4);
-                        const double f_d = n0_g[k] * std::pow(t.xxDg[n], double(t.xmu_g)) * std::exp(-lamg * t.xxDg[n]);
+                        const double f_d = n0_g[k] * libm::pow(t.xxDg[n], double(t.xmu_g)) * libm::exp(-lamg * t.xxDg[n]);
                         eta = eta + f_d * cback * t.simpson[n] * t.xdtg[n];
                     }
                     ze_graupel[k] = Real(t.lamda4 / (t.pi5 * t.k_w) * eta);

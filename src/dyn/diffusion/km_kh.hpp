@@ -21,14 +21,14 @@ namespace cppwrf::dyn::diffusion {
 //   calc_l_scale    (lines 2341-2406)
 
 CPPWRF_HD inline real vcos_diff(real x, int lane_i, int ni) {
-#if defined(CPPWRF_HAVE_LIBMVEC)
+#if defined(CPPWRF_HAVE_LIBMVEC) || defined(CPPWRF_GLIBC_MATH)
   if constexpr (std::is_same_v<real, double>) {
     return cppwrf::vm::cos(x, lane_i, ni);
   }
 #endif
   (void)lane_i;
   (void)ni;
-  return std::cos(x);
+  return libm::cos(x);
 }
 
 struct KIsotropicKm {

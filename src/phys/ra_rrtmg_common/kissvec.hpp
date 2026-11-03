@@ -87,7 +87,7 @@ CPPWRF_HD inline double mcica_decorr_len(int idcor, int juldat, double lat) {
   constexpr double am1 = 1.4315, am2 = 2.1219, am4 = -25.584, amr = 7.0;
   const double am3 = juldat > 181 ? -4.0 * amr / 365.0 * double(juldat - 272) : 4.0 * amr / 365.0 * double(juldat - 91);
   const double d = lat - am3;
-  return (am1 + am2 * exp(-(d * d) / (am4 * am4))) * 1.e3;
+  return (am1 + am2 * libm::exp(-(d * d) / (am4 * am4))) * 1.e3;
 }
 
 }  // namespace cppwrf::phys

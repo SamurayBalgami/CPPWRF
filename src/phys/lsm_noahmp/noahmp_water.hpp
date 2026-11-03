@@ -173,7 +173,7 @@ CPPWRF_HD inline void ProcessAtmosForcing(NoahmpType& noahmp) {
   SnowfallRefHeight = PrecipTotRefHeight * FrozenPrecipFrac;
 
   // wind speed at reference height for turbulence calculation
-  WindSpdRefHeight = std::max(std::sqrt(rpow(WindEastwardRefHeight, real(2.0)) + rpow(WindNorthwardRefHeight, real(2.0))), real(1.0));
+  WindSpdRefHeight = std::max(std::sqrt(rpow2c(WindEastwardRefHeight) + rpow2c(WindNorthwardRefHeight)), real(1.0));
 }
 
 // ============================================================================
@@ -467,7 +467,7 @@ CPPWRF_HD inline void CanopyWaterIntercept(NoahmpType& noahmp) {
                                    (real(1.0) - rexp(-SnowfallRefHeight * MainTimeStep / CanopyIceMax)));
     InterceptCanopySnow = std::max(InterceptCanopySnow, real(0.0));
     IceDripFacTemp      = std::max(real(0.0), (TemperatureCanopy - real(270.15)) / real(1.87e5));
-    IceDripFacWind      = std::sqrt(rpow(WindEastwardRefHeight, real(2.0)) + rpow(WindNorthwardRefHeight, real(2.0))) / real(1.56e5);
+    IceDripFacWind      = std::sqrt(rpow2c(WindEastwardRefHeight) + rpow2c(WindNorthwardRefHeight)) / real(1.56e5);
     CanopySnowDrip      = std::max(real(0.0), CanopyIce) * (IceDripFacWind + IceDripFacTemp);
     CanopySnowDrip      = std::min(CanopyIce / MainTimeStep + InterceptCanopySnow, CanopySnowDrip);
     DripCanopySnow      = (VegFrac * SnowfallRefHeight - InterceptCanopySnow) + CanopySnowDrip;

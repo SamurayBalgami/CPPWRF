@@ -18,7 +18,7 @@ Sounding::Sounding(std::function<double(double)> theta, double p_surf, double zm
     : th_(std::move(theta)), qv_(std::move(qv)), dz_(dz) {
   int n = int(std::ceil(zmax / dz)) + 2;
   pi_.resize(n);
-  pi_[0] = std::pow(p_surf / p1000mb, rcp);
+  pi_[0] = libm::pow(p_surf / p1000mb, rcp);
   // d(pi)/dz = -g / (cp theta_rho), integrated with Simpson's rule on each interval.
   for (int m = 1; m < n; ++m) {
     double z0 = (m - 1) * dz, z1 = m * dz;
@@ -27,7 +27,7 @@ Sounding::Sounding(std::function<double(double)> theta, double p_surf, double zm
   }
   if (qv_) {  // vapour load, trapezoid from the top: rho_d = p / (R_d theta_m pi)
     auto rq = [&](int m) {
-      const double z = m * dz, pi = pi_[m], pp = p1000mb * std::pow(pi, 1.0 / rcp);
+      const double z = m * dz, pi = pi_[m], pp = p1000mb * libm::pow(pi, 1.0 / rcp);
       return pp / (r_d * th_(z) * (1.0 + rvovrd * qv_(z)) * pi) * qv_(z);
     };
     w_.assign(n, 0.0);
@@ -49,7 +49,7 @@ double Sounding::p(double z) const {
   double z0 = m * dz_, h = z - z0;
   double f = (1.0 / theta_rho(z0) + 4.0 / theta_rho(z0 + 0.5 * h) + 1.0 / theta_rho(z)) / 6.0;
   double pi = pi_[m] - g / cp * f * h;
-  return p1000mb * std::pow(pi, 1.0 / rcp);
+  return p1000mb * libm::pow(pi, 1.0 / rcp);
 }
 
 double Sounding::vapour_load(double z) const {
@@ -95,7 +95,7 @@ CaseDef make_case(const std::string& name, const io::Config& cfg, const Grid& G)
   if (name == "rest_state") {
     // Stably stratified atmosphere at rest: constant N.
     double th0 = cfg.get_double("case.theta0", 300.0), N = cfg.get_double("case.n_bv", 0.01);
-    c.theta_env = [=](double z) { return th0 * std::exp(N * N * z / g); };
+    c.theta_env = [=](double z) { return th0 * libm::exp(N * N * z / g); };
     const double u0 = cfg.get_double("case.u0", 0.0);  // uniform wind (inertial-oscillation test)
     c.u_env = [=](double) { return u0; };
     c.params = {{"theta0", th0}, {"n_bv", N}, {"u0", u0}};
@@ -106,8 +106,8 @@ CaseDef make_case(const std::string& name, const io::Config& cfg, const Grid& G)
     double dT = cfg.get_double("case.dt_bubble", -15.0);
     c.theta_env = [](double) { return 300.0; };
     c.theta_pert = [=](double x, double, double z, double exner) {
-      double L = std::sqrt(std::pow((x - xc) / xr, 2) + std::pow((z - zc) / zr, 2));
-      return L <= 1.0 ? dT * 0.5 * (std::cos(pi * L) + 1.0) / exner : 0.0;
+      double L = std::sqrt(libm::pow((x - xc) / xr, 2) + libm::pow((z - zc) / zr, 2));
+      return L <= 1.0 ? dT * 0.5 * (libm::cos(pi * L) + 1.0) / exner : 0.0;
     };
     c.params = {{"xc", xc}, {"zc", zc}, {"xr", xr}, {"zr", zr}, {"dt_bubble", dT}};
   } else if (name == "warm_bubble") {
@@ -116,8 +116,8 @@ CaseDef make_case(const std::string& name, const io::Config& cfg, const Grid& G)
     double r = cfg.get_double("case.radius", 2000.0), dth = cfg.get_double("case.dtheta", 2.0);
     c.theta_env = [](double) { return 300.0; };
     c.theta_pert = [=](double x, double, double z, double) {
-      double L = std::sqrt(std::pow((x - xc) / r, 2) + std::pow((z - zc) / r, 2));
-      return L <= 1.0 ? dth * std::pow(std::cos(0.5 * pi * L), 2) : 0.0;
+      double L = std::sqrt(libm::pow((x - xc) / r, 2) + libm::pow((z - zc) / r, 2));
+      return L <= 1.0 ? dth * libm::pow(libm::cos(0.5 * pi * L), 2) : 0.0;
     };
     c.params = {{"xc", xc}, {"zc", zc}, {"radius", r}, {"dtheta", dth}};
   } else if (name == "igw") {
@@ -125,10 +125,10 @@ CaseDef make_case(const std::string& name, const io::Config& cfg, const Grid& G)
     double th0 = 300.0, N = cfg.get_double("case.n_bv", 0.01), U = cfg.get_double("case.u_mean", 20.0);
     double dth = cfg.get_double("case.dtheta", 0.01), a = cfg.get_double("case.a", 5000.0);
     double xc = cfg.get_double("case.xc", 100000.0), H = G.ztop;
-    c.theta_env = [=](double z) { return th0 * std::exp(N * N * z / g); };
+    c.theta_env = [=](double z) { return th0 * libm::exp(N * N * z / g); };
     c.u_env = [=](double) { return U; };
     c.theta_pert = [=](double x, double, double z, double) {
-      return dth * std::sin(pi * z / H) / (1.0 + std::pow((x - xc) / a, 2));
+      return dth * libm::sin(pi * z / H) / (1.0 + libm::pow((x - xc) / a, 2));
     };
     c.params = {{"theta0", th0}, {"n_bv", N}, {"u_mean", U}, {"dtheta", dth}, {"a", a}, {"xc", xc}};
   } else if (name == "squall2d") {
@@ -144,9 +144,9 @@ CaseDef make_case(const std::string& name, const io::Config& cfg, const Grid& G)
     const double xr = cfg.get_double("case.xr", 10000.0), zr = cfg.get_double("case.zr", 1400.0);
     const double dth = cfg.get_double("case.dtheta", 2.0), psurf = cfg.get_double("case.p_surf", 1.0e5);
     auto theta = [=](double z) {
-      return z <= ztr ? th0 + (thtr - th0) * std::pow(z / ztr, 1.25) : thtr * std::exp(g / (cp * ttr) * (z - ztr));
+      return z <= ztr ? th0 + (thtr - th0) * libm::pow(z / ztr, 1.25) : thtr * libm::exp(g / (cp * ttr) * (z - ztr));
     };
-    auto rh = [=](double z) { return z <= ztr ? 1.0 - 0.75 * std::pow(z / ztr, 1.25) : 0.25; };
+    auto rh = [=](double z) { return z <= ztr ? 1.0 - 0.75 * libm::pow(z / ztr, 1.25) : 0.25; };
     // qv depends on p(z), which depends on qv: fixed-point iteration on a 50 m table.
     const double zmax = G.ztop * 1.2 + 1000.0, dzt = 50.0;
     const int nt = int(zmax / dzt) + 2;
@@ -160,18 +160,18 @@ CaseDef make_case(const std::string& name, const io::Config& cfg, const Grid& G)
       Sounding snd(theta, psurf, zmax, 0.5, it == 0 ? std::function<double(double)>{} : std::function<double(double)>(qv_of));
       std::vector<double> q(nt);
       for (int n = 0; n < nt; ++n) {
-        const double z = std::min(n * dzt, zmax), pz = snd.p(z), T = theta(z) * std::pow(pz / p1000mb, rcp);
-        const double es = 611.2 * std::exp(17.67 * (T - 273.15) / (T - 29.65));  // Pa (Kessler/WRF svp)
+        const double z = std::min(n * dzt, zmax), pz = snd.p(z), T = theta(z) * libm::pow(pz / p1000mb, rcp);
+        const double es = 611.2 * libm::exp(17.67 * (T - 273.15) / (T - 29.65));  // Pa (Kessler/WRF svp)
         q[n] = std::min(qvmax, rh(z) * ep_2 * es / (pz - es));
       }
       *qtab = q;
     }
     c.theta_env = theta;
     c.qv_env = qv_of;
-    c.u_env = [=](double z) { return us * std::tanh(z / 3000.0) - ushift; };
+    c.u_env = [=](double z) { return us * libm::tanh(z / 3000.0) - ushift; };
     c.theta_pert = [=](double x, double, double z, double) {
-      double L = std::sqrt(std::pow((x - xc) / xr, 2) + std::pow((z - zc) / zr, 2));
-      return L <= 1.0 ? dth * std::pow(std::cos(0.5 * pi * L), 2) : 0.0;
+      double L = std::sqrt(libm::pow((x - xc) / xr, 2) + libm::pow((z - zc) / zr, 2));
+      return L <= 1.0 ? dth * libm::pow(libm::cos(0.5 * pi * L), 2) : 0.0;
     };
     c.params = {{"theta0", th0}, {"theta_tr", thtr}, {"z_tr", ztr}, {"t_tr", ttr}, {"qv_max", qvmax},
                 {"u_shear", us}, {"u_shift", ushift}, {"xc", xc}, {"zc", zc}, {"xr", xr}, {"zr", zr},
@@ -183,7 +183,7 @@ CaseDef make_case(const std::string& name, const io::Config& cfg, const Grid& G)
   // optional unsaturated vapour profile qv(z) = qv0 exp(-z / qv_hscale) for any case
   if (cfg.has("case.qv0")) {
     const double qv0 = cfg.get_double("case.qv0"), hq = cfg.get_double("case.qv_hscale", 2500.0);
-    c.qv_env = [=](double z) { return qv0 * std::exp(-z / hq); };
+    c.qv_env = [=](double z) { return qv0 * libm::exp(-z / hq); };
     c.params["qv0"] = qv0;
     c.params["qv_hscale"] = hq;
   }
@@ -202,9 +202,9 @@ std::vector<double> make_eta_levels(const io::Config& cfg, const Grid& G, const 
     for (int k = 0; k <= G.nz; ++k) e[k] = 1.0 - double(k) / G.nz;
   } else if (mode == "stretched") {
     const double z_scale = cfg.get_double("domain.z_scale", 8000.0 / G.ztop);
-    const double denom = 1.0 - std::exp(-1.0 / z_scale);
+    const double denom = 1.0 - libm::exp(-1.0 / z_scale);
     for (int k = 0; k <= G.nz; ++k) {
-      e[k] = (std::exp(-double(k) / double(G.nz) / z_scale) - std::exp(-1.0 / z_scale)) / denom;
+      e[k] = (libm::exp(-double(k) / double(G.nz) / z_scale) - libm::exp(-1.0 / z_scale)) / denom;
     }
     e[0] = 1.0;
     e[G.nz] = 0.0;
@@ -232,8 +232,8 @@ void initialize(const CaseDef& c, const Sounding& snd, const std::vector<double>
   for (int k = 0; k < nz; ++k) {
     pb[k] = b.c3h[k] * mub + b.c4h[k] + G.p_top;
     tb[k] = snd.theta(snd.z_of_p(pb[k]));
-    alb[k] = (r_d / p1000mb) * tb[k] * std::pow(pb[k] / p1000mb, cvpm);
-    exn[k] = std::pow(pb[k] / p1000mb, rcp);
+    alb[k] = (r_d / p1000mb) * tb[k] * libm::pow(pb[k] / p1000mb, cvpm);
+    exn[k] = libm::pow(pb[k] / p1000mb, rcp);
   }
   phb[0] = 0.0;  // flat terrain, ht = 0
   for (int k = 0; k < nz; ++k) phb[k + 1] = phb[k] - b.dnw[k] * (b.c1h[k] * mub + b.c2h[k]) * alb[k];
@@ -254,7 +254,7 @@ void initialize(const CaseDef& c, const Sounding& snd, const std::vector<double>
         double x = (i + 0.5) * G.dx, y = (j + 0.5) * G.dy;
         double t = tb[k] + c.theta_pert(x, y, zm[k], exn[k]);
         th[I(i, j, k)] = t;
-        alt[I(i, j, k)] = (r_d / p1000mb) * t * std::pow(pb[k] / p1000mb, cvpm);
+        alt[I(i, j, k)] = (r_d / p1000mb) * t * libm::pow(pb[k] / p1000mb, cvpm);
         al[I(i, j, k)] = alt[I(i, j, k)] - alb[k];
       }
   for (int j = 0; j < nyh; ++j)
@@ -310,7 +310,7 @@ static void initialize_moist(const CaseDef& c, const Sounding& snd, const Grid& 
       for (int k = 0; k < nz; ++k) th[k] = thd[k] + c.theta_pert(x, y, zm[k], exn[k]);
       auto eos = [&](int k, double p) {  // alt = R_d/p0 theta (1 + rvovrd qv) ((p + pb)/p0)^cvpm
         const double qvf = 1.0 + rvovrd * qv[k];
-        alt[I(i, j, k)] = (r_d / p1000mb) * th[k] * qvf * std::pow((p + pb[k]) / p1000mb, cvpm);
+        alt[I(i, j, k)] = (r_d / p1000mb) * th[k] * qvf * libm::pow((p + pb[k]) / p1000mb, cvpm);
         al[I(i, j, k)] = alt[I(i, j, k)] - alb[k];
         pp[I(i, j, k)] = p;
       };

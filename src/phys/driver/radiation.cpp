@@ -33,14 +33,14 @@ constexpr double dpd = 360. / 365.;
 
 // radconst: declination (rad) and solar constant from the julian day
 void radconst(double julian, double& declin, double& solcon) {
-  const double obecl = 23.5 * degrad, sinob = std::sin(obecl);
+  const double obecl = 23.5 * degrad, sinob = libm::sin(obecl);
   double sxlong = julian >= 80. ? dpd * (julian - 80.) : dpd * (julian + 285.);
   sxlong = sxlong * degrad;
-  const double arg = sinob * std::sin(sxlong);
-  declin = std::asin(arg);
+  const double arg = sinob * libm::sin(sxlong);
+  declin = libm::asin(arg);
   const double djul = julian * 360. / 365., rjul = djul * degrad;
-  const double eccfac = 1.000110 + 0.034221 * std::cos(rjul) + 0.001280 * std::sin(rjul) +
-                        0.000719 * std::cos(2 * rjul) + 0.000077 * std::sin(2 * rjul);
+  const double eccfac = 1.000110 + 0.034221 * libm::cos(rjul) + 0.001280 * libm::sin(rjul) +
+                        0.000719 * libm::cos(2 * rjul) + 0.000077 * libm::sin(2 * rjul);
   solcon = 1370. * eccfac;
 }
 
@@ -100,7 +100,8 @@ struct KRadColumn {
   CPPWRF_HD void operator()(int i, int j) const {
     const int col = i + nx * j;
     double hr = 0;
-    const double c = calc_coszen(julian, xtime_mid, gmt, declin, xlong[col], xlat[col], 0, 1, &hr);
+    // lane i of the nx-trip i loop, as the host path: gfortran's 2-lane sin / cos of calc_coszen
+    const double c = calc_coszen(julian, xtime_mid, gmt, declin, xlong[col], xlat[col], i, nx, &hr);
     if (has_diag) hrang_out(i, j) = real(hr);
     cz[col] = c;
     coszen_out(i, j) = real(c);

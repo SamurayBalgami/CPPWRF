@@ -60,17 +60,17 @@ inline double gammln(double xx) {
     double x = xx;
     double y = x;
     double tmp = x + 5.5;
-    tmp = (x + 0.5) * std::log(tmp) - tmp;
+    tmp = (x + 0.5) * libm::log(tmp) - tmp;
     double ser = 1.000000000190015;
     for (int j = 0; j < 6; ++j) {
         y += 1.0;
         ser += cof[j] / y;
     }
-    return tmp + std::log(stp * ser / x);
+    return tmp + libm::log(stp * ser / x);
 }
 
 inline double wgamma(double y) {
-    return std::exp(gammln(y));
+    return libm::exp(gammln(y));
 }
 
 inline void gser(double& gamser, double a, double x, double& gln) {
@@ -90,7 +90,7 @@ inline void gser(double& gamser, double a, double x, double& gln) {
         sum += del;
         if (std::abs(del) < std::abs(sum) * geps) break;
     }
-    gamser = sum * std::exp(-x + a * std::log(x) - gln);
+    gamser = sum * libm::exp(-x + a * libm::log(x) - gln);
 }
 
 inline void gcf(double& gammcf, double a, double x, double& gln) {
@@ -114,7 +114,7 @@ inline void gcf(double& gammcf, double a, double x, double& gln) {
         h = h * del;
         if (std::abs(del - 1.0) < geps) break;
     }
-    gammcf = std::exp(-x + a * std::log(x) - gln) * h;
+    gammcf = libm::exp(-x + a * libm::log(x) - gln) * h;
 }
 
 inline double gammp(double a, double x) {
@@ -323,10 +323,10 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     for (int i = 0; i < ntb_t; ++i) tables.Tc[i] = Real(Tc_init[i]);
 
     // Exponents and Gamma calculations
-    double Sc3 = std::pow(Sc, 1.0 / 3.0);
-    double D0i = std::pow(xm0i / am_i, 1.0 / bm_i);
-    double xm0s = am_s * std::pow(D0s, bm_s);
-    double xm0g = (PI * 800.0 / 6.0) * std::pow(D0g, bm_g); // am_g(NRHG) with rho_g=800
+    double Sc3 = libm::pow(Sc, 1.0 / 3.0);
+    double D0i = libm::pow(xm0i / am_i, 1.0 / bm_i);
+    double xm0s = am_s * libm::pow(D0s, bm_s);
+    double xm0g = (PI * 800.0 / 6.0) * libm::pow(D0g, bm_g); // am_g(NRHG) with rho_g=800
 
     double cce[5][15], ccg[5][15], ocg1[15], ocg2[15];
     for (int n = 0; n < 15; ++n) {
@@ -396,7 +396,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     for (int n = 0; n < 17; ++n) csg[n] = wgamma(cse[n]);
     double oams = 1.0 / am_s;
     double obms = 1.0 / bm_s;
-    double ocms = std::pow(oams, obms);
+    double ocms = libm::pow(oams, obms);
 
     double cge[12], cgg[12];
     cge[0] = bm_g + 1.0;
@@ -438,15 +438,15 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     tables.t2_qg_me = Real(PI * 4.0 * C_cube * olfus * 0.28 * Sc3 * std::sqrt(av_g) * cgg[10]);
 
     // Index rounding constants
-    tables.nic2 = static_cast<int>(std::round(std::log10(tables.r_c[0])));
-    tables.nii2 = static_cast<int>(std::round(std::log10(tables.r_i[0])));
-    tables.nii3 = static_cast<int>(std::round(std::log10(tables.Nt_i[0])));
-    tables.nir2 = static_cast<int>(std::round(std::log10(tables.r_r[0])));
-    tables.nir3 = static_cast<int>(std::round(std::log10(tables.N0r_exp[0])));
-    tables.nis2 = static_cast<int>(std::round(std::log10(tables.r_s[0])));
-    tables.nig2 = static_cast<int>(std::round(std::log10(tables.r_g[0])));
-    tables.nig3 = static_cast<int>(std::round(std::log10(tables.N0g_exp[0])));
-    tables.niIN2 = static_cast<int>(std::round(std::log10(tables.Nt_IN[0])));
+    tables.nic2 = static_cast<int>(std::round(libm::log10(tables.r_c[0])));
+    tables.nii2 = static_cast<int>(std::round(libm::log10(tables.r_i[0])));
+    tables.nii3 = static_cast<int>(std::round(libm::log10(tables.Nt_i[0])));
+    tables.nir2 = static_cast<int>(std::round(libm::log10(tables.r_r[0])));
+    tables.nir3 = static_cast<int>(std::round(libm::log10(tables.N0r_exp[0])));
+    tables.nis2 = static_cast<int>(std::round(libm::log10(tables.r_s[0])));
+    tables.nig2 = static_cast<int>(std::round(libm::log10(tables.r_g[0])));
+    tables.nig3 = static_cast<int>(std::round(libm::log10(tables.N0g_exp[0])));
+    tables.niIN2 = static_cast<int>(std::round(libm::log10(tables.Nt_IN[0])));
 
     // Bins
     double Dc[nbc], dtc[nbc];
@@ -511,7 +511,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     for (int n = 0; n < nbc; ++n) {
         t_Nc[n] = std::sqrt(xDx[n] * xDx[n + 1]) * 1.0e6;
     }
-    tables.nic1 = static_cast<int>(std::log(t_Nc[nbc - 1] / t_Nc[0]));
+    tables.nic1 = static_cast<int>(libm::log(t_Nc[nbc - 1] / t_Nc[0]));
 
     for (int k = 0; k < 5; ++k) {
         for (int n = 0; n < 15; ++n) {
@@ -554,11 +554,11 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     }
 
     tables.Dr_0 = Real(Dr[0]);
-    tables.log_Dr = Real(std::log(Dr[nbr - 1] / Dr[0]));
-    tables.inv_log_Dr = Real(1.0 / std::log(Dr[nbr - 1] / Dr[0]));
+    tables.log_Dr = Real(libm::log(Dr[nbr - 1] / Dr[0]));
+    tables.inv_log_Dr = Real(1.0 / libm::log(Dr[nbr - 1] / Dr[0]));
     tables.Ds_0 = Real(Ds[0]);
-    tables.log_Ds = Real(std::log(Ds[nbs - 1] / Ds[0]));
-    tables.inv_log_Ds = Real(1.0 / std::log(Ds[nbs - 1] / Ds[0]));
+    tables.log_Ds = Real(libm::log(Ds[nbs - 1] / Ds[0]));
+    tables.inv_log_Ds = Real(1.0 / libm::log(Ds[nbs - 1] / Ds[0]));
     tables.t_Nc_0 = Real(t_Nc[0]);
     tables.inv_nic1 = Real(1.0 / tables.nic1);
 
@@ -598,12 +598,12 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
                            - 0.002362e12 * Dr[i] * Dr[i] * Dr[i] * Dr[i];
                 double stokes = Dc[j] * Dc[j] * vtr * rho_w / (9.0 * 1.718e-5 * Dr[i]);
                 double reynolds = 9.0 * stokes / (p * p * rho_w);
-                double F = std::log(reynolds);
+                double F = libm::log(reynolds);
                 double G = -0.1007 - 0.358 * F + 0.0261 * F * F;
-                double K0 = std::exp(G);
-                double z = std::log(stokes / (K0 + 1.0e-15));
+                double K0 = libm::exp(G);
+                double z = libm::log(stokes / (K0 + 1.0e-15));
                 double H = 0.1465 + 1.302 * z - 0.607 * z * z + 0.293 * z * z * z;
-                double yc0 = 2.0 / PI * std::atan(H);
+                double yc0 = 2.0 / PI * libm::atan(H);
                 Ef_rw = (yc0 + p) * (yc0 + p) / ((1.0 + p) * (1.0 + p));
             }
             tables.t_Efrw[view.idx_efrw(i, j)] = Real(std::max(0.0, std::min(Ef_rw, 0.95)));
@@ -614,8 +614,8 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     for (int j = 0; j < nbc; ++j) {
         double vtc = 1.19e4 * (1.0e4 * Dc[j] * Dc[j] * 0.25);
         for (int i = 0; i < nbs; ++i) {
-            double vts = av_s * std::pow(Ds[i], bv_s) * std::exp(-fv_s * Ds[i]) - vtc;
-            double Ds_m = std::pow(am_s * std::pow(Ds[i], bm_s) / am_r, obmr);
+            double vts = av_s * libm::pow(Ds[i], bv_s) * libm::exp(-fv_s * Ds[i]) - vtc;
+            double Ds_m = libm::pow(am_s * libm::pow(Ds[i], bm_s) / am_r, obmr);
             double p = Dc[j] / Ds_m;
             double Ef_sw = 0.0;
             if (p > 0.25 || Ds[i] < D0s || Dc[j] < 6.e-6 || vts < 1.e-3) {
@@ -623,12 +623,12 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
             } else {
                 double stokes = Dc[j] * Dc[j] * vts * rho_w / (9.0 * 1.718e-5 * Ds_m);
                 double reynolds = 9.0 * stokes / (p * p * rho_w);
-                double F = std::log(reynolds);
+                double F = libm::log(reynolds);
                 double G = -0.1007 - 0.358 * F + 0.0261 * F * F;
-                double K0 = std::exp(G);
-                double z = std::log(stokes / (K0 + 1.0e-15));
+                double K0 = libm::exp(G);
+                double z = libm::log(stokes / (K0 + 1.0e-15));
                 double H = 0.1465 + 1.302 * z - 0.607 * z * z + 0.293 * z * z * z;
-                double yc0 = 2.0 / PI * std::atan(H);
+                double yc0 = 2.0 / PI * libm::atan(H);
                 Ef_sw = (yc0 + p) * (yc0 + p) / ((1.0 + p) * (1.0 + p));
             }
             tables.t_Efsw[view.idx_efsw(i, j)] = Real(std::max(0.0, std::min(Ef_sw, 0.95)));
@@ -643,13 +643,13 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
         int nu_c = std::min(15, static_cast<int>(std::round(1000.e6 / t_Nc[k])) + 2);
         int nu_c_idx = nu_c - 1; // 0-based for cce/ccg
         for (int j = 0; j < ntb_c; ++j) {
-            double lamc = std::pow(t_Nc[k] * am_r * ccg[1][nu_c_idx] * ocg1[nu_c_idx] / tables.r_c[j], obmr);
-            double N0_c = t_Nc[k] * ocg1[nu_c_idx] * std::pow(lamc, cce[0][nu_c_idx]);
+            double lamc = libm::pow(t_Nc[k] * am_r * ccg[1][nu_c_idx] * ocg1[nu_c_idx] / tables.r_c[j], obmr);
+            double N0_c = t_Nc[k] * ocg1[nu_c_idx] * libm::pow(lamc, cce[0][nu_c_idx]);
             for (int i = 0; i < nbc; ++i) {
                 double summ = 0.0;
                 double summ2 = 0.0;
                 for (int n = 0; n <= i; ++n) {
-                    double N_c_n = N0_c * powi(Dc[n], nu_c) * std::exp(-lamc * Dc[n]) * dtc[n];  // Dc**nu_c: __powidf2
+                    double N_c_n = N0_c * powi(Dc[n], nu_c) * libm::exp(-lamc * Dc[n]) * dtc[n];  // Dc**nu_c: __powidf2
                     summ += massc[n] * N_c_n;
                     summ2 += N_c_n;
                 }
@@ -677,9 +677,9 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     };
     for (int j = 0; j < ntb_g; ++j) {
         for (int i = 0; i < ntb_g1; ++i) {
-            double lam_exp_g = std::pow(tables.N0g_exp[i] * am_g * cgg[0] / tables.r_g[j], oge1);
-            double lamg = lam_exp_g * std::pow(cgg[2] * ogg2 * ogg1, obmg);
-            double N0_g = tables.N0g_exp[i] / (cgg[1] * lam_exp_g) * std::pow(lamg, cge[1]);
+            double lam_exp_g = libm::pow(tables.N0g_exp[i] * am_g * cgg[0] / tables.r_g[j], oge1);
+            double lamg = lam_exp_g * libm::pow(cgg[2] * ogg2 * ogg1, obmg);
+            double N0_g = tables.N0g_exp[i] / (cgg[1] * lam_exp_g) * libm::pow(lamg, cge[1]);
             for (int n = 0; n < nbg; ++n) {
                 N_g_pre[idx_ng(j, i, n)] = N0_g * vm::pow(Dg[n], mu_g, n, nbg) * vm::exp(-lamg * Dg[n], n, nbg) * dtg[n];
             }
@@ -690,9 +690,9 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
         int m = km / ntb_r1;
         int k = km % ntb_r1;
 
-        double lam_exp_r = std::pow(tables.N0r_exp[k] * am_r * crg[0] / tables.r_r[m], ore1);
-        double lamr = lam_exp_r * std::pow(crg[2] * org2 * org1, obmr);
-        double N0_r = tables.N0r_exp[k] / (crg[1] * lam_exp_r) * std::pow(lamr, cre[1]);
+        double lam_exp_r = libm::pow(tables.N0r_exp[k] * am_r * crg[0] / tables.r_r[m], ore1);
+        double lamr = lam_exp_r * libm::pow(crg[2] * org2 * org1, obmr);
+        double N0_r = tables.N0r_exp[k] / (crg[1] * lam_exp_r) * libm::pow(lamr, cre[1]);
         double N_r[nbr];
         for (int n2 = 0; n2 < nbr; ++n2) {
             N_r[n2] = N0_r * vm::pow(Dr[n2], mu_r, n2, nbr) * vm::exp(-lamr * Dr[n2], n2, nbr) * dtr[n2];
@@ -705,7 +705,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
 
                 double t1 = 0.0, t2 = 0.0, z1 = 0.0, y1 = 0.0, y2 = 0.0;
                 for (int n2 = 0; n2 < nbr; ++n2) {
-                    double massr = am_r * std::pow(Dr[n2], bm_r);
+                    double massr = am_r * libm::pow(Dr[n2], bm_r);
                     for (int n = 0; n < nbg; ++n) {
                         double massg = am_g * vm::pow(Dg[n], bm_g, n, nbg);
                         double dvg = 0.5 * ((vr[n2] - vg[n]) + std::abs(vr[n2] - vg[n]));
@@ -733,7 +733,7 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     // 5. qr_acr_qs
     double D1[nbr];
     for (int n2 = 0; n2 < nbr; ++n2) {
-        D1[n2] = std::pow(vr[n2] / av_s, 1.0 / bv_s);
+        D1[n2] = libm::pow(vr[n2] / av_s, 1.0 / bv_s);
     }
     double vs[nbs];
     for (int n = 0; n < nbs; ++n) {
@@ -754,13 +754,13 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
                              + sa[5] * bm_s * bm_s + sa[6] * tables.Tc[j] * tables.Tc[j] * bm_s
                              + sa[7] * tables.Tc[j] * bm_s * bm_s + sa[8] * tables.Tc[j] * tables.Tc[j] * tables.Tc[j]
                              + sa[9] * bm_s * bm_s * bm_s;
-                double a_ = std::pow(10.0, loga_);
+                double a_ = libm::pow(10.0, loga_);
                 double b_ = sb[0] + sb[1] * tables.Tc[j] + sb[2] * bm_s
                           + sb[3] * tables.Tc[j] * bm_s + sb[4] * tables.Tc[j] * tables.Tc[j]
                           + sb[5] * bm_s * bm_s + sb[6] * tables.Tc[j] * tables.Tc[j] * bm_s
                           + sb[7] * tables.Tc[j] * bm_s * bm_s + sb[8] * tables.Tc[j] * tables.Tc[j] * tables.Tc[j]
                           + sb[9] * bm_s * bm_s * bm_s;
-                second = std::pow(M2 / a_, 1.0 / b_);
+                second = libm::pow(M2 / a_, 1.0 / b_);
             } else {
                 second = M2;
             }
@@ -770,16 +770,16 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
                          + sa[5] * cse[0] * cse[0] + sa[6] * tables.Tc[j] * tables.Tc[j] * cse[0]
                          + sa[7] * tables.Tc[j] * cse[0] * cse[0] + sa[8] * tables.Tc[j] * tables.Tc[j] * tables.Tc[j]
                          + sa[9] * cse[0] * cse[0] * cse[0];
-            double a_ = std::pow(10.0, loga_);
+            double a_ = libm::pow(10.0, loga_);
             double b_ = sb[0] + sb[1] * tables.Tc[j] + sb[2] * cse[0]
                       + sb[3] * tables.Tc[j] * cse[0] + sb[4] * tables.Tc[j] * tables.Tc[j]
                       + sb[5] * cse[0] * cse[0] + sb[6] * tables.Tc[j] * tables.Tc[j] * cse[0]
                       + sb[7] * tables.Tc[j] * cse[0] * cse[0] + sb[8] * tables.Tc[j] * tables.Tc[j] * tables.Tc[j]
                       + sb[9] * cse[0] * cse[0] * cse[0];
-            double M3 = a_ * std::pow(second, b_);
+            double M3 = a_ * libm::pow(second, b_);
             double oM3 = 1.0 / M3;
             double Mrat = M2 * (M2 * oM3) * (M2 * oM3) * (M2 * oM3);
-            double M0 = std::pow(M2 * oM3, mu_s);
+            double M0 = libm::pow(M2 * oM3, mu_s);
             double slam1 = M2 * oM3 * Lam0;
             double slam2 = M2 * oM3 * Lam1;
 
@@ -794,9 +794,9 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
         int m = km / ntb_r1;
         int k = km % ntb_r1;
 
-        double lam_exp_r = std::pow(tables.N0r_exp[k] * am_r * crg[0] / tables.r_r[m], ore1);
-        double lamr = lam_exp_r * std::pow(crg[2] * org2 * org1, obmr);
-        double N0_r = tables.N0r_exp[k] / (crg[1] * lam_exp_r) * std::pow(lamr, cre[1]);
+        double lam_exp_r = libm::pow(tables.N0r_exp[k] * am_r * crg[0] / tables.r_r[m], ore1);
+        double lamr = lam_exp_r * libm::pow(crg[2] * org2 * org1, obmr);
+        double N0_r = tables.N0r_exp[k] / (crg[1] * lam_exp_r) * libm::pow(lamr, cre[1]);
         double N_r[nbr];
         for (int n2 = 0; n2 < nbr; ++n2) {
             N_r[n2] = N0_r * vm::pow(Dr[n2], mu_r, n2, nbr) * vm::exp(-lamr * Dr[n2], n2, nbr) * dtr[n2];
@@ -811,9 +811,9 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
                 double y1 = 0.0, y2 = 0.0, y3 = 0.0, y4 = 0.0;
 
                 for (int n2 = 0; n2 < nbr; ++n2) {
-                    double massr = am_r * std::pow(Dr[n2], bm_r);
+                    double massr = am_r * libm::pow(Dr[n2], bm_r);
                     for (int n = 0; n < nbs; ++n) {
-                        double masss = am_s * std::pow(Ds[n], bm_s);
+                        double masss = am_s * libm::pow(Ds[n], bm_s);
                         double dvs = 0.5 * ((vr[n2] - vs[n]) + std::abs(vr[n2] - vs[n]));
                         double dvr = 0.5 * ((vs[n] - vr[n2]) + std::abs(vs[n] - vr[n2]));
                         double geom = PI * 0.25 * Ef_rs * (Ds[n] + Dr[n2]) * (Ds[n] + Dr[n2]);
@@ -868,19 +868,19 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
         int k = km % ntb_freeze_temp; // 0..44 -> 1..45 in Fortran (temp = -1 to -45 C)
         int k_f = k + 1;
 
-        double T_adjust = std::max(-3.0, std::min(3.0 - std::log10(tables.Nt_IN[m]), 3.0));
-        double Texp = std::exp(double(k_f) - T_adjust * 1.0) - 1.0;
+        double T_adjust = std::max(-3.0, std::min(3.0 - libm::log10(tables.Nt_IN[m]), 3.0));
+        double Texp = libm::exp(double(k_f) - T_adjust * 1.0) - 1.0;
 
         for (int j = 0; j < ntb_r1; ++j) {
             for (int i = 0; i < ntb_r; ++i) {
-                double lam_exp = std::pow(tables.N0r_exp[j] * am_r * crg[0] / tables.r_r[i], ore1);
-                double lamr = lam_exp * std::pow(crg[2] * org2 * org1, obmr);
-                double N0_r = tables.N0r_exp[j] / (crg[1] * lam_exp) * std::pow(lamr, cre[1]);
+                double lam_exp = libm::pow(tables.N0r_exp[j] * am_r * crg[0] / tables.r_r[i], ore1);
+                double lamr = lam_exp * libm::pow(crg[2] * org2 * org1, obmr);
+                double N0_r = tables.N0r_exp[j] / (crg[1] * lam_exp) * libm::pow(lamr, cre[1]);
                 double sum1 = 0.0, sum2 = 0.0, sumn1 = 0.0, sumn2 = 0.0;
                 for (int n2 = nbr - 1; n2 >= 0; --n2) {
-                    double N_r = N0_r * std::pow(Dr[n2], mu_r) * std::exp(-lamr * Dr[n2]) * dtr[n2];
+                    double N_r = N0_r * libm::pow(Dr[n2], mu_r) * libm::exp(-lamr * Dr[n2]) * dtr[n2];
                     double vol = massr_all[n2] * orho_w;
-                    double prob = std::max(0.0, 1.0 - std::exp(-120.0 * vol * 5.2e-4 * Texp));
+                    double prob = std::max(0.0, 1.0 - libm::exp(-120.0 * vol * 5.2e-4 * Texp));
                     if (massr_all[n2] < xm0g) {
                         sumn1 += prob * N_r;
                         sum1 += prob * N_r * massr_all[n2];
@@ -902,13 +902,13 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
             int nu_c = std::min(15, static_cast<int>(std::round(1000.e6 / t_Nc[j])) + 2);
             int nu_c_idx = nu_c - 1;
             for (int i = 0; i < ntb_c; ++i) {
-                double lamc = std::pow(t_Nc[j] * am_r * ccg[1][nu_c_idx] * ocg1[nu_c_idx] / tables.r_c[i], obmr);
-                double N0_c = t_Nc[j] * ocg1[nu_c_idx] * std::pow(lamc, cce[0][nu_c_idx]);
+                double lamc = libm::pow(t_Nc[j] * am_r * ccg[1][nu_c_idx] * ocg1[nu_c_idx] / tables.r_c[i], obmr);
+                double N0_c = t_Nc[j] * ocg1[nu_c_idx] * libm::pow(lamc, cce[0][nu_c_idx]);
                 double sum1 = 0.0, sumn2 = 0.0;
                 for (int n = nbc - 1; n >= 0; --n) {
                     double vol = massc_all[n] * orho_w;
-                    double prob = std::max(0.0, 1.0 - std::exp(-120.0 * vol * 5.2e-4 * Texp));
-                    double N_c = N0_c * powi(Dc[n], nu_c) * std::exp(-lamc * Dc[n]) * dtc[n];
+                    double prob = std::max(0.0, 1.0 - libm::exp(-120.0 * vol * 5.2e-4 * Texp));
+                    double N_c = N0_c * powi(Dc[n], nu_c) * libm::exp(-lamc * Dc[n]) * dtc[n];
                     sumn2 = std::min(t_Nc[j], sumn2 + prob * N_c);
                     sum1 += prob * N_c * massc_all[n];
                     if (sum1 >= tables.r_c[i]) break;
@@ -923,9 +923,9 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
     // 7. qi_aut_qs
     for (int j = 0; j < ntb_i1; ++j) {
         for (int i = 0; i < ntb_i; ++i) {
-            double lami = std::pow(am_i * cig[1] * oig1 * tables.Nt_i[j] / tables.r_i[i], obmi);
+            double lami = libm::pow(am_i * cig[1] * oig1 * tables.Nt_i[j] / tables.r_i[i], obmi);
             double Di_mean = (bm_i + mu_i + 1.0) / lami;
-            double N0_i = tables.Nt_i[j] * oig1 * std::pow(lami, cie[0]);
+            double N0_i = tables.Nt_i[j] * oig1 * libm::pow(lami, cie[0]);
             double t1 = 0.0, t2 = 0.0;
             size_t idx = view.idx_iaus(i, j);
             if (Di_mean > 5.0 * D0s) {
@@ -940,9 +940,9 @@ void init_thompson_tables(ThompsonHostTables<Real>& tables, const std::string& w
                 double xlimit_intg = lami * D0s;
                 tables.tpi_ide[idx] = Real(gammp(mu_i + 2.0, xlimit_intg));
                 for (int n2 = 0; n2 < nbi; ++n2) {
-                    double N_i_n2 = N0_i * std::pow(Di[n2], mu_i) * std::exp(-lami * Di[n2]) * dti[n2];
+                    double N_i_n2 = N0_i * libm::pow(Di[n2], mu_i) * libm::exp(-lami * Di[n2]) * dti[n2];
                     if (Di[n2] >= D0s) {
-                        t1 += N_i_n2 * am_i * std::pow(Di[n2], bm_i);
+                        t1 += N_i_n2 * am_i * libm::pow(Di[n2], bm_i);
                         t2 += N_i_n2;
                     }
                 }

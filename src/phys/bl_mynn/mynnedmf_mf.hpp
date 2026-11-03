@@ -145,9 +145,9 @@ CPPWRF_HD inline void dmp_mf(int kte, real dt, const real* zw1, const real* dz1,
   const real wspd_pbl = std::sqrt(c_max(u1[kts] * u1[kts] + v1[kts] * v1[kts], real(0.01)));
   real maxwidth_flx;
   if ((landsea - real(1.5)) < zero)
-    maxwidth_flx = c_max(c_min(real(1000.) * (real(0.6) * std::tanh((fltv - real(0.040)) / real(0.04)) + p5), real(1000.)), zero);
+    maxwidth_flx = c_max(c_min(real(1000.) * (real(0.6) * libm::tanh((fltv - real(0.040)) / real(0.04)) + p5), real(1000.)), zero);
   else
-    maxwidth_flx = c_max(c_min(real(1000.) * (real(0.6) * std::tanh((fltv - real(0.007)) / real(0.02)) + p5), real(1000.)), zero);
+    maxwidth_flx = c_max(c_min(real(1000.) * (real(0.6) * libm::tanh((fltv - real(0.007)) / real(0.02)) + p5), real(1000.)), zero);
   real maxwidth = c_min(maxwidth_dx, maxwidth_pbl);
   maxwidth = c_min(maxwidth, maxwidth_cld);
   maxwidth = c_min(maxwidth, maxwidth_flx);
@@ -167,8 +167,8 @@ CPPWRF_HD inline void dmp_mf(int kte, real dt, const real* zw1, const real* dz1,
     }
     const real C = Atot / cn;
     real acfac;
-    if ((landsea - real(1.5)) < zero) acfac = p5 * std::tanh((fltv2 - real(0.02)) / real(0.05)) + p5;
-    else acfac = p5 * std::tanh((fltv2 - real(0.012)) / real(0.03)) + p5;
+    if ((landsea - real(1.5)) < zero) acfac = p5 * libm::tanh((fltv2 - real(0.02)) / real(0.05)) + p5;
+    else acfac = p5 * libm::tanh((fltv2 - real(0.012)) / real(0.03)) + p5;
     const real ac_wsp = one - c_min((c_max(wspd_pbl - real(13.0), zero)) / real(12.), one);
     acfac = c_min(acfac, ac_wsp);
     for (int ip = 1; ip <= nup; ++ip) {
@@ -430,10 +430,10 @@ CPPWRF_HD inline void dmp_mf(int kte, real dt, const real* zw1, const real* dz1,
         real cf_mf;
         if ((landsea - real(1.5)) >= zero) {
           const real cffac = c_min(c_max(zero, mf_at_cb - real(0.05)) / real(0.05), one);
-          cf_mf = c_min(c_max(p5 + real(0.36) * std::atan(real(1.8) * (Q1 + p2 + cffac)), real(0.01)), one);
+          cf_mf = c_min(c_max(p5 + real(0.36) * libm::atan(real(1.8) * (Q1 + p2 + cffac)), real(0.01)), one);
           cf_mf = c_max(cf_mf, real(1.2) * Aup);
         } else {
-          cf_mf = c_min(c_max(p5 + real(0.36) * std::atan(real(1.8) * (Q1 + p2)), real(0.01)), one);
+          cf_mf = c_min(c_max(p5 + real(0.36) * libm::atan(real(1.8) * (Q1 + p2)), real(0.01)), one);
           cf_mf = c_max(cf_mf, real(1.8) * Aup);
         }
         const real qcfac = real(1.20) + real(1.0) * c_min(c_max(zero, mf_at_cb - real(0.04)) / real(0.05), one);

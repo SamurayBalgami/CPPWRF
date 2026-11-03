@@ -159,12 +159,12 @@ inline void adjust_tempqv(
 
         double tc;
         if (use_theta_m == 1) {
-          tc = (th[p3] + 300.0) * std::pow(p_old / p00, rcp) / (1.0 + R_ratio * qv[p3]) - 273.15;
+          tc = (th[p3] + 300.0) * libm::pow(p_old / p00, rcp) / (1.0 + R_ratio * qv[p3]) - 273.15;
         } else {
-          tc = (th[p3] + 300.0) * std::pow(p_old / p00, rcp) - 273.15;
+          tc = (th[p3] + 300.0) * libm::pow(p_old / p00, rcp) - 273.15;
         }
 
-        double es = 610.78 * std::exp(17.0809 * tc / (234.175 + tc));
+        double es = 610.78 * libm::exp(17.0809 * tc / (234.175 + tc));
         double e = qv[p3] * p_old / (0.622 + qv[p3]);
         rh[p3] = e / es;
       }
@@ -199,8 +199,8 @@ inline void adjust_tempqv(
           th[p3] = (thloc + dth) - 300.0;
         }
 
-        double tc = (thloc + dth) * std::pow(p_new / p00, rcp) - 273.15;
-        double es = 610.78 * std::exp(17.0809 * tc / (234.175 + tc));
+        double tc = (thloc + dth) * libm::pow(p_new / p00, rcp) - 273.15;
+        double es = 610.78 * libm::exp(17.0809 * tc / (234.175 + tc));
         double e = rh[p3] * es;
         qv[p3] = 0.622 * e / (p_new - e);
       }
@@ -331,7 +331,7 @@ struct KAdjustTempQv {
     const double moist_fac = (use_theta_m == 1) ? (1.0 + R_ratio * qv_in) : 1.0;
 
     const double tc_old = (th_in + 300.0) * rpow(p_old / p00, rcp) / moist_fac - 273.15;
-    const double es_old = 610.78 * std::exp(17.0809 * tc_old / (234.175 + tc_old));
+    const double es_old = 610.78 * libm::exp(17.0809 * tc_old / (234.175 + tc_old));
     const double e_old = qv_in * p_old / (0.622 + qv_in);
     const double rh = e_old / es_old;
 
@@ -347,7 +347,7 @@ struct KAdjustTempQv {
     th_v(i, j, k) = static_cast<real>((thloc + dth) * moist_fac - 300.0);
 
     const double tc_new = (thloc + dth) * rpow(p_new / p00, rcp) - 273.15;
-    const double es_new = 610.78 * std::exp(17.0809 * tc_new / (234.175 + tc_new));
+    const double es_new = 610.78 * libm::exp(17.0809 * tc_new / (234.175 + tc_new));
     const double e_new = rh * es_new;
     qv_v(i, j, k) = static_cast<real>(0.622 * e_new / (p_new - e_new));
   }

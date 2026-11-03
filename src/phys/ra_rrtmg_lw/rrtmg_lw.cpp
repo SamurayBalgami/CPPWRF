@@ -89,7 +89,7 @@ const RrtmgLwConsts& rrtmg_lw_consts() {
 }
 
 void rrtmg_default_gases(RrtmgLwConfig& c) {
-  c.co2 = (280. + 90. * std::exp(0.02 * (c.yr - 2000))) * 1.e-6;
+  c.co2 = (280. + 90. * libm::exp(0.02 * (c.yr - 2000))) * 1.e-6;
   c.ch4 = 1774.e-9;
   c.n2o = 319.e-9;
   c.cfc11 = 0.251e-9;

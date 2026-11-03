@@ -144,13 +144,13 @@ template <typename Real>
 CPPWRF_HD inline Real t_dew(Real pres_Pa, Real w_non) {
     Real rr = w_non + Real(1.0e-8);
     Real es = pres_Pa * rr / (Real(0.622) + rr);
-    Real esln = std::log(es);
+    Real esln = libm::log(es);
     return (Real(35.86) * esln - Real(4947.2325)) / (esln - Real(23.6837));
 }
 
 template <typename Real>
 CPPWRF_HD inline Real t_lcl(Real temp_K, Real tdew_K) {
-    Real denom = (Real(1.0) / (tdew_K - Real(56.0))) + (std::log(temp_K / tdew_K) / Real(800.0));
+    Real denom = (Real(1.0) / (tdew_K - Real(56.0))) + (libm::log(temp_K / tdew_K) / Real(800.0));
     return (Real(1.0) / denom) + Real(56.0);
 }
 
@@ -158,10 +158,10 @@ template <typename Real>
 CPPWRF_HD inline Real theta_e(Real pres_Pa, Real temp_K, Real w_non, Real tlcl_K) {
     Real rr = w_non + Real(1.0e-8);
     Real power = Real(0.2854) * (Real(1.0) - Real(0.28) * rr);
-    Real xx = temp_K * std::pow(Real(100000.0) / pres_Pa, power);
+    Real xx = temp_K * libm::pow(Real(100000.0) / pres_Pa, power);
     Real p1 = (Real(3.376) / tlcl_K) - Real(0.00254);
     Real p2 = (rr * Real(1000.0)) * (Real(1.0) + Real(0.81) * rr);
-    return xx * std::exp(p1 * p2);
+    return xx * libm::exp(p1 * p2);
 }
 
 template <typename Real>
@@ -189,8 +189,8 @@ template <typename Real>
 CPPWRF_HD inline Real compT_fr_The(Real thelcl_K, Real pres_Pa) {
     Real diff_th = thelcl_K - Real(270.0);
     Real max_diff = (diff_th > Real(0.0)) ? diff_th : Real(0.0);
-    Real guess = (thelcl_K - Real(0.5) * std::pow(max_diff, Real(1.05)))
-               * std::pow(pres_Pa / Real(100000.0), Real(0.2));
+    Real guess = (thelcl_K - Real(0.5) * libm::pow(max_diff, Real(1.05)))
+               * libm::pow(pres_Pa / Real(100000.0), Real(0.2));
     constexpr Real epsilon = Real(0.01);
     for (int iter = 0; iter < 100; ++iter) {
         Real w1 = rslf(pres_Pa, guess);
@@ -204,7 +204,7 @@ CPPWRF_HD inline Real compT_fr_The(Real thelcl_K, Real pres_Pa) {
         }
     }
     Real thwlcl_K = theta_wetb(thelcl_K);
-    return thwlcl_K * std::pow(pres_Pa / Real(100000.0), Real(0.286));
+    return thwlcl_K * libm::pow(pres_Pa / Real(100000.0), Real(0.286));
 }
 
 // module_mp_thompson.F Eff_aero: collision efficiency of rain ('r'), snow ('s') or graupel ('g') of diameter D
@@ -218,22 +218,22 @@ CPPWRF_HD inline Real eff_aero(Real D, Real Da, Real visc, Real rhoa, Real Temp,
         vt = Real(-0.1021) + Real(4.932E3) * D - Real(0.9551E6) * D * D + Real(0.07934E9) * D * D * D -
              Real(0.002362E12) * D * D * D * D;
     } else if (species == 's') {
-        vt = Real(av_s) * std::pow(D, Real(bv_s));
+        vt = Real(av_s) * libm::pow(D, Real(bv_s));
     } else if (species == 'g') {
-        vt = Real(av_g5) * std::pow(D, Real(bv_g5));
+        vt = Real(av_g5) * libm::pow(D, Real(bv_g5));
     }
-    const Real Cc = Real(1.) + Real(2.) * meanPath / Da * (Real(1.257) + Real(0.4) * std::exp(-(Real(0.55) * Da / meanPath)));
+    const Real Cc = Real(1.) + Real(2.) * meanPath / Da * (Real(1.257) + Real(0.4) * libm::exp(-(Real(0.55) * Da / meanPath)));
     const Real diff = boltzman * Temp * Cc / (Real(3.) * Real(PI_CONST) * visc * Da);
     const Real Re = Real(0.5) * rhoa * D * vt / visc;
     const Real Sc = visc / (rhoa * diff);
     const Real St = Da * Da * vt * Real(1000.) / (Real(9.) * visc * D);
-    const Real aval = Real(1.) + std::log(Real(1.) + Re);
+    const Real aval = Real(1.) + libm::log(Real(1.) + Re);
     const Real St2 = (Real(1.2) + Real(1. / 12.) * aval) / (Real(1.) + aval);
     Real Eff = Real(4.) / (Re * Sc) *
-                   (Real(1.) + Real(0.4) * std::sqrt(Re) * std::pow(Sc, Real(0.3333)) +
+                   (Real(1.) + Real(0.4) * std::sqrt(Re) * libm::pow(Sc, Real(0.3333)) +
                     Real(0.16) * std::sqrt(Re) * std::sqrt(Sc)) +
                Real(4.) * Da / D * (Real(0.02) + Da / D * (Real(1.) + Real(2.) * std::sqrt(Re)));
-    if (St > St2) Eff = Eff + std::pow((St - St2) / (St - St2 + Real(0.666667)), Real(1.5));
+    if (St > St2) Eff = Eff + libm::pow((St - St2) / (St - St2 + Real(0.666667)), Real(1.5));
     return c_max(Real(1.E-5), c_min(Eff, Real(1.0)));
 }
 
@@ -257,8 +257,8 @@ CPPWRF_HD inline Real activ_ncloud(Real Tt, Real Ww, Real NCCN, const ThompsonTa
     for (; n <= ntb_arc; ++n)
         if (n_local >= ta_Na[n - 2] && n_local < ta_Na[n - 1]) break;
     const int i = n;
-    const Real x1 = std::log(ta_Na[i - 2]);
-    const Real x2 = std::log(ta_Na[i - 1]);
+    const Real x1 = libm::log(ta_Na[i - 2]);
+    const Real x2 = libm::log(ta_Na[i - 1]);
     if (w_local >= ta_Ww[ntb_arw - 1]) {
         w_local = ta_Ww[ntb_arw - 1] - Real(1.0);
     } else if (w_local <= ta_Ww[0]) {
@@ -267,8 +267,8 @@ CPPWRF_HD inline Real activ_ncloud(Real Tt, Real Ww, Real NCCN, const ThompsonTa
     for (n = 2; n <= ntb_arw; ++n)
         if (w_local >= ta_Ww[n - 2] && w_local < ta_Ww[n - 1]) break;
     const int j = n;
-    const Real y1 = std::log(ta_Ww[j - 2]);
-    const Real y2 = std::log(ta_Ww[j - 1]);
+    const Real y1 = libm::log(ta_Ww[j - 2]);
+    const Real y2 = libm::log(ta_Ww[j - 1]);
     int k = static_cast<int>(std::round((Tt - ta_Tk1) * Real(0.1))) + 1;  // NINT
     k = k < ntb_art ? k : ntb_art;
     k = k > 1 ? k : 1;
@@ -277,8 +277,8 @@ CPPWRF_HD inline Real activ_ncloud(Real Tt, Real Ww, Real NCCN, const ThompsonTa
     const Real B = tb.tnccn_act[tb.idx_ccn(i - 1, j - 2, k - 1, l - 1, m - 1)];
     const Real C = tb.tnccn_act[tb.idx_ccn(i - 1, j - 1, k - 1, l - 1, m - 1)];
     const Real D = tb.tnccn_act[tb.idx_ccn(i - 2, j - 1, k - 1, l - 1, m - 1)];
-    const Real nx = std::log(n_local);
-    const Real wy = std::log(w_local);
+    const Real nx = libm::log(n_local);
+    const Real wy = libm::log(w_local);
     const Real t = (nx - x1) / (x2 - x1);
     const Real u = (wy - y1) / (y2 - y1);
     const Real fraction = (Real(1.0) - t) * (Real(1.0) - u) * A + t * (Real(1.0) - u) * B + t * u * C +
@@ -291,8 +291,8 @@ template <typename Real>
 CPPWRF_HD inline Real ice_demott(Real tempc, Real rho, Real nifa) {
     constexpr double rho_not0 = 101325. / (287.05 * 273.15);
     const Real nifa_cc = c_max(Real(0.5), nifa * Real(rho_not0) * Real(1.E-6) / rho);
-    Real xni = (Real(5.94e-5) * std::pow(-tempc, Real(3.33))) *
-               std::pow(nifa_cc, (-(Real(0.0264) * tempc)) + Real(0.0033));
+    Real xni = (Real(5.94e-5) * libm::pow(-tempc, Real(3.33))) *
+               libm::pow(nifa_cc, (-(Real(0.0264) * tempc)) + Real(0.0033));
     xni = xni * rho / Real(rho_not0) * Real(1000.);
     return c_max(Real(0.), xni);
 }
@@ -303,14 +303,14 @@ CPPWRF_HD inline Real ice_koop(Real temp, Real qv, Real qvs, Real naero, Real dt
     Real xni = Real(0.0);
     const Real satw = qv / qvs;
     const Real mu_diff = Real(210368.0) + (Real(131.438) * temp) - (Real(3.32373E6) / temp) -
-                         (Real(41729.1) * std::log(temp));
-    const Real a_w_i = std::exp(mu_diff / (Real(R_uni) * temp));
+                         (Real(41729.1) * libm::log(temp));
+    const Real a_w_i = libm::exp(mu_diff / (Real(R_uni) * temp));
     const Real delta_aw = satw - a_w_i;
     Real log_J_rate = Real(-906.7) + (Real(8502.0) * delta_aw) - (Real(26924.0) * delta_aw * delta_aw) +
                       (Real(29180.0) * delta_aw * delta_aw * delta_aw);
     log_J_rate = c_min(Real(20.0), log_J_rate);
-    const Real J_rate = std::pow(Real(10.), log_J_rate);
-    const Real prob_h = c_min(Real(1.) - std::exp(-(J_rate * Real(ar_volume) * dt)), Real(1.));
+    const Real J_rate = libm::pow(Real(10.), log_J_rate);
+    const Real prob_h = c_min(Real(1.) - libm::exp(-(J_rate * Real(ar_volume) * dt)), Real(1.));
     if (prob_h > Real(0.)) xni = c_min(prob_h * naero, Real(1000.E3));
     return c_max(Real(0.0), xni);
 }
@@ -400,14 +400,14 @@ struct ThompsonKernel {
                     inu_c = int(lround(Real(1000.E6) / nc)) + 2;  // NINT
                     if (inu_c > 15) inu_c = 15;
                 }
-                const Real lamc = std::pow(nc * Real(am_r) * g_ratio[inu_c - 1] / rc[k], obmr);
+                const Real lamc = libm::pow(nc * Real(am_r) * g_ratio[inu_c - 1] / rc[k], obmr);
                 re_cloud(i, j, k) = c_max(Real(2.51E-6), c_min(Real(0.5) * (Real(3.) + Real(inu_c)) / lamc, Real(50.E-6)));
             }
         }
         if (has_qi) {
             for (int k = 0; k < nz; ++k) {
                 if (ri[k] <= Real(R1) || ni_c[k] <= Real(R2)) continue;
-                const Real lami = std::pow(Real(am_i) * tables.cig[1] * tables.oig1 * ni_c[k] / ri[k], obmi);
+                const Real lami = libm::pow(Real(am_i) * tables.cig[1] * tables.oig1 * ni_c[k] / ri[k], obmi);
                 re_ice(i, j, k) = c_max(Real(2.51E-6), c_min(Real(0.5) * (Real(3.) + Real(mu_i)) / lami, Real(125.E-6)));
             }
         }
@@ -422,12 +422,12 @@ struct ThompsonKernel {
                                    tables.sa[4] * tc0 * tc0 + tables.sa[5] * cse1 * cse1 +
                                    tables.sa[6] * tc0 * tc0 * cse1 + tables.sa[7] * tc0 * cse1 * cse1 +
                                    tables.sa[8] * tc0 * tc0 * tc0 + tables.sa[9] * cse1 * cse1 * cse1;
-                const Real a_ = std::pow(Real(10.0), loga_);
+                const Real a_ = libm::pow(Real(10.0), loga_);
                 const Real b_ = tables.sb[0] + tables.sb[1] * tc0 + tables.sb[2] * cse1 + tables.sb[3] * tc0 * cse1 +
                                 tables.sb[4] * tc0 * tc0 + tables.sb[5] * cse1 * cse1 +
                                 tables.sb[6] * tc0 * tc0 * cse1 + tables.sb[7] * tc0 * cse1 * cse1 +
                                 tables.sb[8] * tc0 * tc0 * tc0 + tables.sb[9] * cse1 * cse1 * cse1;
-                const Real smoc = a_ * std::pow(smo2, b_);
+                const Real smoc = a_ * libm::pow(smo2, b_);
                 re_snow(i, j, k) = c_max(Real(5.01E-6), c_min(Real(0.5) * (smoc / smob), Real(999.E-6)));
             }
         }
@@ -470,9 +470,9 @@ struct ThompsonKernel {
             if (qr(i, j, k) > Real(R1)) {
                 rr[k] = qr(i, j, k) * rho;
                 const Real nrk = c_max(Real(R2), nr(i, j, k) * rho);
-                const double lamr = std::pow(Real(am_r) * tables.crg[2] * tables.org2 * nrk / rr[k], tables.obmr);
+                const double lamr = libm::pow(Real(am_r) * tables.crg[2] * tables.org2 * nrk / rr[k], tables.obmr);
                 ilamr[k] = 1. / lamr;
-                N0_r[k] = double(nrk * tables.org2) * std::pow(lamr, double(tables.cre[1]));
+                N0_r[k] = double(nrk * tables.org2) * libm::pow(lamr, double(tables.cre[1]));
                 L_qr[k] = true;
             } else {
                 rr[k] = Real(R1);
@@ -510,12 +510,12 @@ struct ThompsonKernel {
                                        tables.sa[4] * tc0 * tc0 + tables.sa[5] * c * c + tables.sa[6] * tc0 * tc0 * c +
                                        tables.sa[7] * tc0 * c * c + tables.sa[8] * tc0 * tc0 * tc0 +
                                        tables.sa[9] * c * c * c;
-                    const Real a_ = std::pow(Real(10.0), loga_);
+                    const Real a_ = libm::pow(Real(10.0), loga_);
                     const Real b_ = tables.sb[0] + tables.sb[1] * tc0 + tables.sb[2] * c + tables.sb[3] * tc0 * c +
                                     tables.sb[4] * tc0 * tc0 + tables.sb[5] * c * c + tables.sb[6] * tc0 * tc0 * c +
                                     tables.sb[7] * tc0 * c * c + tables.sb[8] * tc0 * tc0 * tc0 +
                                     tables.sb[9] * c * c * c;
-                    return a_ * std::pow(smo2, b_);
+                    return a_ * libm::pow(smo2, b_);
                 };
                 smoc[k] = moment(tables.cse[0]);
                 smoz[k] = moment(tables.cse[2]);
@@ -524,9 +524,9 @@ struct ThompsonKernel {
         // graupel intercept and slope (every level once any level has graupel)
         for (int k = nz - 1; k >= 0; --k) {
             if (any_qg) {
-                const double lamg = std::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * ng[k] / rg[k], tables.obmg);
+                const double lamg = libm::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * ng[k] / rg[k], tables.obmg);
                 ilamg[k] = 1. / lamg;
-                N0_g[k] = double(ng[k] * tables.ogg2) * std::pow(lamg, double(tables.cge[1]));
+                N0_g[k] = double(ng[k] * tables.ogg2) * libm::pow(lamg, double(tables.cge[1]));
             } else {
                 ilamg[k] = 0.;
                 N0_g[k] = 0.;
@@ -549,10 +549,10 @@ struct ThompsonKernel {
             ze_rain[k] = Real(1.e-22);
             ze_snow[k] = Real(1.e-22);
             ze_graupel[k] = Real(1.e-22);
-            if (L_qr[k]) ze_rain[k] = Real(N0_r[k] * double(tables.crg[3]) * std::pow(ilamr[k], double(tables.cre[3])));
+            if (L_qr[k]) ze_rain[k] = Real(N0_r[k] * double(tables.crg[3]) * libm::pow(ilamr[k], double(tables.cre[3])));
             if (L_qs[k]) ze_snow[k] = cs * smoz[k];
             if (L_qg[k])
-                ze_graupel[k] = Real(double(cg) * N0_g[k] * double(tables.cgg[3]) * std::pow(ilamg[k], double(tables.cge[3])));
+                ze_graupel[k] = Real(double(cg) * N0_g[k] * double(tables.cgg[3]) * libm::pow(ilamg[k], double(tables.cge[3])));
         }
         // melting snow (the graupel branch is commented out in WRF)
         if (melti && k_0 >= 1) {
@@ -569,9 +569,9 @@ struct ThompsonKernel {
                     const double x = double(Real(am_s)) * (rt.xxDs[n] * rt.xxDs[n]);  // xxDs**bm_s, bm_s = 2.0
                     const double cback = radar::rayleigh_soak_wetgraupel(x, double(tables.ocms), double(tables.obms),
                                                                          fmelt_s, rt.m_w_0, rt.m_i_0, rt.pi5, rt.lamda4);
-                    const double f_d = double(Mrat) * (double(Real(Kap0)) * std::exp(-double(slam1) * rt.xxDs[n]) +
-                                                       double(Real(Kap1)) * std::pow(double(M0) * rt.xxDs[n], double(Real(mu_s))) *
-                                                           std::exp(-double(slam2) * rt.xxDs[n]));
+                    const double f_d = double(Mrat) * (double(Real(Kap0)) * libm::exp(-double(slam1) * rt.xxDs[n]) +
+                                                       double(Real(Kap1)) * libm::pow(double(M0) * rt.xxDs[n], double(Real(mu_s))) *
+                                                           libm::exp(-double(slam2) * rt.xxDs[n]));
                     eta = eta + f_d * cback * rt.simpson[n] * rt.xdts[n];
                 }
                 ze_snow[k] = Real(rt.lamda4 / (rt.pi5 * rt.k_w) * eta);
@@ -763,14 +763,14 @@ struct ThompsonKernel {
             }
             if (qg1d[k] > Real(R1)) {
                 Real rg_drv = qg1d[k] * rho_drv;
-                Real ygra1 = std::log10((rg_drv > Real(1.0e-9)) ? rg_drv : Real(1.0e-9));
+                Real ygra1 = libm::log10((rg_drv > Real(1.0e-9)) ? rg_drv : Real(1.0e-9));
                 Real zans1 = Real(3.0) + Real(2.0 / 7.0) * (ygra1 + Real(8.0));
                 if (zans1 < Real(2.0)) zans1 = Real(2.0);
                 if (zans1 > Real(6.0)) zans1 = Real(6.0);
-                Real N0_exp = std::pow(Real(10.0), zans1);
-                Real lam_exp = std::pow(N0_exp * Real(am_g5) * tables.cgg[0] / (rho_drv * qg1d[k]), tables.oge1);
-                Real lamg = lam_exp * std::pow(tables.cgg[2] * tables.ogg2 * tables.ogg1, tables.obmg);
-                ng1d[k] = tables.cgg[1] * tables.ogg3 * rho_drv * qg1d[k] * std::pow(lamg, Real(bm_g)) / Real(am_g5);
+                Real N0_exp = libm::pow(Real(10.0), zans1);
+                Real lam_exp = libm::pow(N0_exp * Real(am_g5) * tables.cgg[0] / (rho_drv * qg1d[k]), tables.oge1);
+                Real lamg = lam_exp * libm::pow(tables.cgg[2] * tables.ogg2 * tables.ogg1, tables.obmg);
+                ng1d[k] = tables.cgg[1] * tables.ogg3 * rho_drv * qg1d[k] * libm::pow(lamg, Real(bm_g)) / Real(am_g5);
                 ng1d[k] = (ng1d[k] / rho_drv > Real(R2)) ? (ng1d[k] / rho_drv) : Real(R2);
                 qb1d[k] = qg1d[k] / Real(rho_g_val);
             } else {
@@ -794,7 +794,7 @@ struct ThompsonKernel {
                     int nu_c = static_cast<int>(std::round(Real(1000.0e6) / nc[k])) + 2;
                     if (nu_c > 15) nu_c = 15;
                     const int nu_idx = nu_c - 1;
-                    Real lamc = std::pow(nc[k] * Real(am_r) * tables.ccg[1][nu_idx] * tables.ocg1[nu_idx] / rc[k], obmr);
+                    Real lamc = libm::pow(nc[k] * Real(am_r) * tables.ccg[1][nu_idx] * tables.ocg1[nu_idx] / rc[k], obmr);
                     const Real xDc = (Real(bm_r) + Real(nu_c) + Real(1.)) / lamc;
                     if (xDc < Real(D0c)) {
                         lamc = tables.cce[1][nu_idx] / Real(D0c);
@@ -802,7 +802,7 @@ struct ThompsonKernel {
                         lamc = tables.cce[1][nu_idx] / Real(D0r * 2.);
                     }
                     nc[k] = c_min(Real(Nt_c_max),
-                                  tables.ccg[0][nu_idx] * tables.ocg2[nu_idx] * rc[k] / Real(am_r) * std::pow(lamc, Real(bm_r)));
+                                  tables.ccg[0][nu_idx] * tables.ocg2[nu_idx] * rc[k] / Real(am_r) * libm::pow(lamc, Real(bm_r)));
                 } else {
                     nc[k] = Real(Nt_c);
                 }
@@ -823,20 +823,20 @@ struct ThompsonKernel {
                 ni_loc[k] = (ni_in > Real(R2)) ? ni_in : Real(R2);
                 if (ni_loc[k] <= Real(R2)) {
                     Real lami = tables.cie[1] / Real(5.0e-6);
-                    Real term = tables.cig[0] * tables.oig2 * ri[k] / Real(am_i) * std::pow(lami, Real(bm_i));
+                    Real term = tables.cig[0] * tables.oig2 * ri[k] / Real(am_i) * libm::pow(lami, Real(bm_i));
                     ni_loc[k] = (term < Real(999.0e3)) ? term : Real(999.0e3);
                 }
                 L_qi[k] = true;
-                Real lami = std::pow(Real(am_i) * tables.cig[1] * tables.oig1 * ni_loc[k] / ri[k], obmi);
+                Real lami = libm::pow(Real(am_i) * tables.cig[1] * tables.oig1 * ni_loc[k] / ri[k], obmi);
                 Real ilami = Real(1.0) / lami;
                 Real xDi = (Real(bm_i) + Real(mu_i) + Real(1.0)) * ilami;
                 if (xDi < Real(5.0e-6)) {
                     lami = tables.cie[1] / Real(5.0e-6);
-                    Real term = tables.cig[0] * tables.oig2 * ri[k] / Real(am_i) * std::pow(lami, Real(bm_i));
+                    Real term = tables.cig[0] * tables.oig2 * ri[k] / Real(am_i) * libm::pow(lami, Real(bm_i));
                     ni_loc[k] = (term < Real(999.0e3)) ? term : Real(999.0e3);
                 } else if (xDi > Real(300.0e-6)) {
                     lami = tables.cie[1] / Real(300.0e-6);
-                    ni_loc[k] = tables.cig[0] * tables.oig2 * ri[k] / Real(am_i) * std::pow(lami, Real(bm_i));
+                    ni_loc[k] = tables.cig[0] * tables.oig2 * ri[k] / Real(am_i) * libm::pow(lami, Real(bm_i));
                 }
             } else {
                 qi1d[k] = Real(0.0);
@@ -855,19 +855,19 @@ struct ThompsonKernel {
                 if (nr_loc[k] <= Real(R2)) {
                     mvd_r[k] = Real(1.0e-3);
                     Real lamr = (Real(3.0) + Real(mu_r) + Real(0.672)) / mvd_r[k];
-                    nr_loc[k] = tables.crg[1] * tables.org3 * rr[k] * std::pow(lamr, Real(bm_r)) / Real(am_r);
+                    nr_loc[k] = tables.crg[1] * tables.org3 * rr[k] * libm::pow(lamr, Real(bm_r)) / Real(am_r);
                 }
                 L_qr[k] = true;
-                Real lamr = std::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_loc[k] / rr[k], obmr);
+                Real lamr = libm::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_loc[k] / rr[k], obmr);
                 mvd_r[k] = (Real(3.0) + Real(mu_r) + Real(0.672)) / lamr;
                 if (mvd_r[k] > Real(2.5e-3)) {
                     mvd_r[k] = Real(2.5e-3);
                     lamr = (Real(3.0) + Real(mu_r) + Real(0.672)) / mvd_r[k];
-                    nr_loc[k] = tables.crg[1] * tables.org3 * rr[k] * std::pow(lamr, Real(bm_r)) / Real(am_r);
+                    nr_loc[k] = tables.crg[1] * tables.org3 * rr[k] * libm::pow(lamr, Real(bm_r)) / Real(am_r);
                 } else if (mvd_r[k] < Real(D0r) * Real(0.75)) {
                     mvd_r[k] = Real(D0r) * Real(0.75);
                     lamr = (Real(3.0) + Real(mu_r) + Real(0.672)) / mvd_r[k];
-                    nr_loc[k] = tables.crg[1] * tables.org3 * rr[k] * std::pow(lamr, Real(bm_r)) / Real(am_r);
+                    nr_loc[k] = tables.crg[1] * tables.org3 * rr[k] * libm::pow(lamr, Real(bm_r)) / Real(am_r);
                 }
             } else {
                 qr1d[k] = Real(0.0);
@@ -899,18 +899,18 @@ struct ThompsonKernel {
                 if (ng[k] <= Real(R2)) {
                     mvd_g[k] = Real(1.5e-3);
                     Real lamg = (Real(3.0) + Real(mu_g) + Real(0.672)) / mvd_g[k];
-                    ng[k] = tables.cgg[1] * tables.ogg3 * rg[k] * std::pow(lamg, Real(bm_g)) / Real(am_g5);
+                    ng[k] = tables.cgg[1] * tables.ogg3 * rg[k] * libm::pow(lamg, Real(bm_g)) / Real(am_g5);
                 }
-                Real lamg = std::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * ng[k] / rg[k], tables.obmg);
+                Real lamg = libm::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * ng[k] / rg[k], tables.obmg);
                 mvd_g[k] = (Real(3.0) + Real(mu_g) + Real(0.672)) / lamg;
                 if (mvd_g[k] > Real(25.4e-3)) {
                     mvd_g[k] = Real(25.4e-3);
                     lamg = (Real(3.0) + Real(mu_g) + Real(0.672)) / mvd_g[k];
-                    ng[k] = tables.cgg[1] * tables.ogg3 * rg[k] * std::pow(lamg, Real(bm_g)) / Real(am_g5);
+                    ng[k] = tables.cgg[1] * tables.ogg3 * rg[k] * libm::pow(lamg, Real(bm_g)) / Real(am_g5);
                 } else if (mvd_g[k] < Real(D0r)) {
                     mvd_g[k] = Real(D0r);
                     lamg = (Real(3.0) + Real(mu_g) + Real(0.672)) / mvd_g[k];
-                    ng[k] = tables.cgg[1] * tables.ogg3 * rg[k] * std::pow(lamg, Real(bm_g)) / Real(am_g5);
+                    ng[k] = tables.cgg[1] * tables.ogg3 * rg[k] * libm::pow(lamg, Real(bm_g)) / Real(am_g5);
                 }
             } else {
                 qg1d[k] = Real(0.0);
@@ -945,7 +945,7 @@ struct ThompsonKernel {
             if (std::abs(ssati[k]) < Real(eps_val)) ssati[k] = Real(0.0);
             if (no_micro && ssati[k] > Real(0.0)) no_micro = false;
 
-            diffu[k] = Real(2.11e-5) * std::pow(temp[k] / Real(273.15), Real(1.94)) * (Real(101325.0) / pres[k]);
+            diffu[k] = Real(2.11e-5) * libm::pow(temp[k] / Real(273.15), Real(1.94)) * (Real(101325.0) / pres[k]);
             if (tempc >= Real(0.0)) {
                 visco[k] = (Real(1.718) + Real(0.0049) * tempc) * Real(1.0e-5);
             } else {
@@ -1010,21 +1010,21 @@ struct ThompsonKernel {
             smo2[k] = smob[k]; // bm_s == 2.0
 
             Real loga0 = tables.sa[0] + tables.sa[1]*tc0 + tables.sa[4]*tc0*tc0 + tables.sa[8]*tc0*tc0*tc0;
-            Real a0 = std::pow(Real(10.0), loga0);
+            Real a0 = libm::pow(Real(10.0), loga0);
             Real b0 = tables.sb[0] + tables.sb[1]*tc0 + tables.sb[4]*tc0*tc0 + tables.sb[8]*tc0*tc0*tc0;
-            smo0[k] = a0 * std::pow(smo2[k], b0);
+            smo0[k] = a0 * libm::pow(smo2[k], b0);
 
             Real loga1 = tables.sa[0] + tables.sa[1]*tc0 + tables.sa[2]
                        + tables.sa[3]*tc0 + tables.sa[4]*tc0*tc0
                        + tables.sa[5] + tables.sa[6]*tc0*tc0
                        + tables.sa[7]*tc0 + tables.sa[8]*tc0*tc0*tc0
                        + tables.sa[9];
-            Real a1 = std::pow(Real(10.0), loga1);
+            Real a1 = libm::pow(Real(10.0), loga1);
             Real b1 = tables.sb[0] + tables.sb[1]*tc0 + tables.sb[2] + tables.sb[3]*tc0
                     + tables.sb[4]*tc0*tc0 + tables.sb[5]
                     + tables.sb[6]*tc0*tc0 + tables.sb[7]*tc0
                     + tables.sb[8]*tc0*tc0*tc0 + tables.sb[9];
-            smo1[k] = a1 * std::pow(smo2[k], b1);
+            smo1[k] = a1 * libm::pow(smo2[k], b1);
 
             Real cse1 = tables.cse[0];
             Real logac = tables.sa[0] + tables.sa[1]*tc0 + tables.sa[2]*cse1
@@ -1032,18 +1032,18 @@ struct ThompsonKernel {
                        + tables.sa[5]*cse1*cse1 + tables.sa[6]*tc0*tc0*cse1
                        + tables.sa[7]*tc0*cse1*cse1 + tables.sa[8]*tc0*tc0*tc0
                        + tables.sa[9]*cse1*cse1*cse1;
-            Real ac = std::pow(Real(10.0), logac);
+            Real ac = libm::pow(Real(10.0), logac);
             Real bc = tables.sb[0] + tables.sb[1]*tc0 + tables.sb[2]*cse1 + tables.sb[3]*tc0*cse1
                     + tables.sb[4]*tc0*tc0 + tables.sb[5]*cse1*cse1
                     + tables.sb[6]*tc0*tc0*cse1 + tables.sb[7]*tc0*cse1*cse1
                     + tables.sb[8]*tc0*tc0*tc0 + tables.sb[9]*cse1*cse1*cse1;
-            smoc[k] = ac * std::pow(smo2[k], bc);
+            smoc[k] = ac * libm::pow(smo2[k], bc);
 
             Real M0 = smob[k] / smoc[k];
             Real Mrat = smob[k] * M0 * M0 * M0;
             Real slam1 = M0 * Real(Lam0);
             Real slam2 = M0 * Real(Lam1);
-            ns[k] = Mrat * Real(Kap0) / slam1 + Mrat * Real(Kap1) * std::pow(M0, Real(mu_s)) * tables.csg[14] / std::pow(slam2, tables.cse[14]);
+            ns[k] = Mrat * Real(Kap0) / slam1 + Mrat * Real(Kap1) * libm::pow(M0, Real(mu_s)) * tables.csg[14] / libm::pow(slam2, tables.cse[14]);
 
             Real cse13 = tables.cse[12];
             Real logae = tables.sa[0] + tables.sa[1]*tc0 + tables.sa[2]*cse13
@@ -1051,12 +1051,12 @@ struct ThompsonKernel {
                        + tables.sa[5]*cse13*cse13 + tables.sa[6]*tc0*tc0*cse13
                        + tables.sa[7]*tc0*cse13*cse13 + tables.sa[8]*tc0*tc0*tc0
                        + tables.sa[9]*cse13*cse13*cse13;
-            Real ae = std::pow(Real(10.0), logae);
+            Real ae = libm::pow(Real(10.0), logae);
             Real be = tables.sb[0] + tables.sb[1]*tc0 + tables.sb[2]*cse13 + tables.sb[3]*tc0*cse13
                     + tables.sb[4]*tc0*tc0 + tables.sb[5]*cse13*cse13
                     + tables.sb[6]*tc0*tc0*cse13 + tables.sb[7]*tc0*cse13*cse13
                     + tables.sb[8]*tc0*tc0*tc0 + tables.sb[9]*cse13*cse13*cse13;
-            smoe[k] = ae * std::pow(smo2[k], be);
+            smoe[k] = ae * libm::pow(smo2[k], be);
 
             Real cse16 = tables.cse[15];
             Real logaf = tables.sa[0] + tables.sa[1]*tc0 + tables.sa[2]*cse16
@@ -1064,12 +1064,12 @@ struct ThompsonKernel {
                        + tables.sa[5]*cse16*cse16 + tables.sa[6]*tc0*tc0*cse16
                        + tables.sa[7]*tc0*cse16*cse16 + tables.sa[8]*tc0*tc0*tc0
                        + tables.sa[9]*cse16*cse16*cse16;
-            Real af = std::pow(Real(10.0), logaf);
+            Real af = libm::pow(Real(10.0), logaf);
             Real bf = tables.sb[0] + tables.sb[1]*tc0 + tables.sb[2]*cse16 + tables.sb[3]*tc0*cse16
                     + tables.sb[4]*tc0*tc0 + tables.sb[5]*cse16*cse16
                     + tables.sb[6]*tc0*tc0*cse16 + tables.sb[7]*tc0*cse16*cse16
                     + tables.sb[8]*tc0*tc0*tc0 + tables.sb[9]*cse16*cse16*cse16;
-            smof[k] = af * std::pow(smo2[k], bf);
+            smof[k] = af * libm::pow(smo2[k], bf);
 
             Real cse17 = tables.cse[16];
             Real logag = tables.sa[0] + tables.sa[1]*tc0 + tables.sa[2]*cse17
@@ -1077,18 +1077,18 @@ struct ThompsonKernel {
                        + tables.sa[5]*cse17*cse17 + tables.sa[6]*tc0*tc0*cse17
                        + tables.sa[7]*tc0*cse17*cse17 + tables.sa[8]*tc0*tc0*tc0
                        + tables.sa[9]*cse17*cse17*cse17;
-            Real ag = std::pow(Real(10.0), logag);
+            Real ag = libm::pow(Real(10.0), logag);
             Real bg = tables.sb[0] + tables.sb[1]*tc0 + tables.sb[2]*cse17 + tables.sb[3]*tc0*cse17
                     + tables.sb[4]*tc0*tc0 + tables.sb[5]*cse17*cse17
                     + tables.sb[6]*tc0*tc0*cse17 + tables.sb[7]*tc0*cse17*cse17
                     + tables.sb[8]*tc0*tc0*tc0 + tables.sb[9]*cse17*cse17*cse17;
-            smog[k] = ag * std::pow(smo2[k], bg);
+            smog[k] = ag * libm::pow(smo2[k], bg);
         }
 
         for (int k = nz - 1; k >= 0; --k) {
-            Real lamg = std::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * ng[k] / rg[k], tables.obmg);
+            Real lamg = libm::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * ng[k] / rg[k], tables.obmg);
             ilamg[k] = Real(1.0) / lamg;
-            N0_g[k] = ng[k] * tables.ogg2 * std::pow(lamg, tables.cge[1]);
+            N0_g[k] = ng[k] * tables.ogg2 * libm::pow(lamg, tables.cge[1]);
         }
 
         // gfortran vectorises this k loop (kte down to kts): libmvec's 2-lane pow (cppwrf::vm)
@@ -1102,7 +1102,7 @@ struct ThompsonKernel {
         // Warm-rain processes
         for (int k = 0; k < nz; ++k) {
             if (L_qr[k] && mvd_r[k] > Real(D0r)) {
-                Real Ef_rr = Real(1.0) - std::exp(Real(2300.0) * (mvd_r[k] - Real(1950.0e-6)));
+                Real Ef_rr = Real(1.0) - libm::exp(Real(2300.0) * (mvd_r[k] - Real(1950.0e-6)));
                 pnr_rcr[k] = Ef_rr * Real(2.0) * nr_loc[k] * rr[k];
             }
 
@@ -1114,9 +1114,9 @@ struct ThompsonKernel {
                 nu_c = static_cast<int>(std::round(Real(1000.0e6) / nc[k])) + 2;
                 if (nu_c > 15) nu_c = 15;
                 int nu_idx = nu_c - 1;
-                Real xDc_calc = std::pow(rc[k] / (Real(am_r) * nc[k]), obmr) * Real(1.0e6);
+                Real xDc_calc = libm::pow(rc[k] / (Real(am_r) * nc[k]), obmr) * Real(1.0e6);
                 xDc = (Real(D0c * 1.0e6) > xDc_calc) ? Real(D0c * 1.0e6) : xDc_calc;
-                lamc = std::pow(nc[k] * Real(am_r) * tables.ccg[1][nu_idx] * tables.ocg1[nu_idx] / rc[k], obmr);
+                lamc = libm::pow(nc[k] * Real(am_r) * tables.ccg[1][nu_idx] * tables.ocg1[nu_idx] / rc[k], obmr);
                 mvd_c[k] = (Real(3.0) + Real(nu_c) + Real(0.672)) / lamc;
                 if (mvd_c[k] < Real(D0c)) mvd_c[k] = Real(D0c);
                 if (mvd_c[k] > Real(D0r)) mvd_c[k] = Real(D0r);
@@ -1124,10 +1124,10 @@ struct ThompsonKernel {
 
             if (rc[k] > Real(0.01e-3)) {
                 int nu_idx = nu_c - 1;
-                Real Dc_g = (std::pow(tables.ccg[2][nu_idx] * tables.ocg2[nu_idx], obmr) / lamc) * Real(1.0e6);
+                Real Dc_g = (libm::pow(tables.ccg[2][nu_idx] * tables.ocg2[nu_idx], obmr) / lamc) * Real(1.0e6);
                 // WRF's left-to-right products: xDc*xDc*xDc*Dc_g*Dc_g*Dc_g - xDc*xDc*xDc*xDc*xDc*xDc
                 Real diff6 = xDc * xDc * xDc * Dc_g * Dc_g * Dc_g - xDc * xDc * xDc * xDc * xDc * xDc;
-                Real Dc_b = (diff6 > Real(0.0)) ? std::pow(diff6, Real(1.0 / 6.0)) : Real(0.0);
+                Real Dc_b = (diff6 > Real(0.0)) ? libm::pow(diff6, Real(1.0 / 6.0)) : Real(0.0);
                 Real arg_zeta = Real(6.25e-6) * xDc * Dc_b * Dc_b * Dc_b - Real(0.4);
                 Real zeta1 = Real(0.5) * (arg_zeta + std::abs(arg_zeta));
                 Real zeta = Real(0.027) * rc[k] * zeta1;
@@ -1146,7 +1146,7 @@ struct ThompsonKernel {
 
             if (L_qr[k] && mvd_r[k] > Real(D0r) && mvd_c[k] > Real(D0c)) {
                 Real lamr = Real(1.0) / ilamr[k];
-                int idx = 1 + static_cast<int>(Real(nbr) * std::log(mvd_r[k] / tables.Dr_0) / tables.log_Dr);
+                int idx = 1 + static_cast<int>(Real(nbr) * libm::log(mvd_r[k] / tables.Dr_0) / tables.log_Dr);
                 if (idx > nbr) idx = nbr;
                 if (idx < 1) idx = 1;
                 int j_c = static_cast<int>(mvd_c[k] * Real(1.0e6));
@@ -1154,9 +1154,9 @@ struct ThompsonKernel {
                 if (j_c < 1) j_c = 1;
 
                 Real Ef_rw = tables.t_Efrw[tables.idx_efrw(idx - 1, j_c - 1)];
-                Real rate = rhof[k] * tables.t1_qr_qc * Ef_rw * rc[k] * N0_r[k] * std::pow(lamr + Real(fv_r), -tables.cre[8]);
+                Real rate = rhof[k] * tables.t1_qr_qc * Ef_rw * rc[k] * N0_r[k] * libm::pow(lamr + Real(fv_r), -tables.cre[8]);
                 prr_rcw[k] = (rate < rc[k] * odts) ? rate : rc[k] * odts;
-                Real rate_nc = rhof[k] * tables.t1_qr_qc * Ef_rw * nc[k] * N0_r[k] * std::pow(lamr + Real(fv_r), -tables.cre[8]);
+                Real rate_nc = rhof[k] * tables.t1_qr_qc * Ef_rw * nc[k] * N0_r[k] * libm::pow(lamr + Real(fv_r), -tables.cre[8]);
                 pnc_rcw[k] = (rate_nc < nc[k] * odts) ? rate_nc : nc[k] * odts;
             }
 
@@ -1164,10 +1164,10 @@ struct ThompsonKernel {
             if (aero && L_qr[k] && mvd_r[k] > Real(D0r)) {
                 Real Ef_ra = eff_aero(mvd_r[k], Real(0.04E-6), visco[k], rho[k], temp[k], 'r');
                 const Real lamr = Real(1.0) / ilamr[k];
-                pna_rca[k] = rhof[k] * tables.t1_qr_qc * Ef_ra * nwfa[k] * N0_r[k] * std::pow(lamr + Real(fv_r), -tables.cre[8]);
+                pna_rca[k] = rhof[k] * tables.t1_qr_qc * Ef_ra * nwfa[k] * N0_r[k] * libm::pow(lamr + Real(fv_r), -tables.cre[8]);
                 pna_rca[k] = c_min(nwfa[k] * odts, pna_rca[k]);
                 Ef_ra = eff_aero(mvd_r[k], Real(0.8E-6), visco[k], rho[k], temp[k], 'r');
-                pnd_rcd[k] = rhof[k] * tables.t1_qr_qc * Ef_ra * nifa[k] * N0_r[k] * std::pow(lamr + Real(fv_r), -tables.cre[8]);
+                pnd_rcd[k] = rhof[k] * tables.t1_qr_qc * Ef_ra * nifa[k] * N0_r[k] * libm::pow(lamr + Real(fv_r), -tables.cre[8]);
                 pnd_rcd[k] = c_min(nifa[k] * odts, pnd_rcd[k]);
             }
         }
@@ -1199,7 +1199,7 @@ struct ThompsonKernel {
             if (idx_t > ntb_t) idx_t = ntb_t;
 
             int idx_c = (rc[k] > tables.r_c[0]) ? tables.get_table_index(rc[k], tables.nic2, ntb_c) : 1;
-            int idx_n = static_cast<int>(std::round(Real(1.0) + Real(nbc) * std::log(nc[k] / tables.t_Nc_0) / Real(tables.nic1)));
+            int idx_n = static_cast<int>(std::round(Real(1.0) + Real(nbc) * libm::log(nc[k] / tables.t_Nc_0) / Real(tables.nic1)));
             if (idx_n < 1) idx_n = 1;
             if (idx_n > nbc) idx_n = nbc;
 
@@ -1211,8 +1211,8 @@ struct ThompsonKernel {
             if (rr[k] > tables.r_r[0]) {
                 idx_r = tables.get_table_index(rr[k], tables.nir2, ntb_r);
                 Real lamr = Real(1.0) / ilamr[k];
-                Real lam_exp = lamr * std::pow(tables.crg[2] * tables.org2 * tables.org1, Real(bm_r));
-                Real N0_exp = tables.org1 * rr[k] / Real(am_r) * std::pow(lam_exp, tables.cre[0]);
+                Real lam_exp = lamr * libm::pow(tables.crg[2] * tables.org2 * tables.org1, Real(bm_r));
+                Real N0_exp = tables.org1 * rr[k] / Real(am_r) * libm::pow(lam_exp, tables.cre[0]);
                 idx_r1 = tables.get_table_index(N0_exp, tables.nir3, ntb_r1);
             }
 
@@ -1223,8 +1223,8 @@ struct ThompsonKernel {
             if (rg[k] > tables.r_g[0]) {
                 idx_g = tables.get_table_index(rg[k], tables.nig2, ntb_g);
                 Real lamg = Real(1.0) / ilamg[k];
-                Real lam_exp = lamg * std::pow(tables.cgg[2] * tables.ogg2 * tables.ogg1, Real(bm_g));
-                Real N0_exp = tables.ogg1 * rg[k] / Real(am_g5) * std::pow(lam_exp, tables.cge[0]);
+                Real lam_exp = lamg * libm::pow(tables.cgg[2] * tables.ogg2 * tables.ogg1, Real(bm_g));
+                Real N0_exp = tables.ogg1 * rg[k] / Real(am_g5) * libm::pow(lam_exp, tables.cge[0]);
                 idx_g1 = tables.get_table_index(N0_exp, tables.nig3, ntb_g1);
             }
 
@@ -1248,7 +1248,7 @@ struct ThompsonKernel {
 
             if (L_qc[k] && mvd_c[k] > Real(D0c)) {
                 if (xDs > Real(D0s)) {
-                    int idx = 1 + static_cast<int>(Real(nbs) * std::log(xDs / tables.Ds_0) / tables.log_Ds);
+                    int idx = 1 + static_cast<int>(Real(nbs) * libm::log(xDs / tables.Ds_0) / tables.log_Ds);
                     if (idx > nbs) idx = nbs;
                     if (idx < 1) idx = 1;
                     int j_c = static_cast<int>(mvd_c[k] * Real(1.0e6));
@@ -1264,7 +1264,7 @@ struct ThompsonKernel {
 
                 if (rg[k] >= tables.r_g[0] && mvd_c[k] > Real(D0c)) {
                     Real xDg = (Real(bm_g) + Real(mu_g) + Real(1.0)) * ilamg[k];
-                    Real vtg = rhof[k] * Real(av_g_old) * tables.cgg[5] * tables.ogg3 * std::pow(ilamg[k], Real(bv_g_old));
+                    Real vtg = rhof[k] * Real(av_g_old) * tables.cgg[5] * tables.ogg3 * libm::pow(ilamg[k], Real(bv_g_old));
                     Real stoke_g = mvd_c[k] * mvd_c[k] * vtg * Real(rho_w) / (Real(9.0) * visco[k] * xDg);
                     Real tc_min = (tempc < Real(-0.1)) ? tempc : Real(-0.1);
                     Real const_Ri = -Real(1.0) * (mvd_c[k] * Real(0.5e6)) * vtg / tc_min;
@@ -1274,14 +1274,14 @@ struct ThompsonKernel {
 
                     Real Ef_gw = Real(0.0);
                     if (stoke_g >= Real(0.4) && stoke_g <= Real(10.0)) {
-                        Ef_gw = Real(0.55) * std::log10(Real(2.51) * stoke_g);
+                        Ef_gw = Real(0.55) * libm::log10(Real(2.51) * stoke_g);
                     } else if (stoke_g > Real(10.0)) {
                         Ef_gw = Real(0.77);
                     }
                     if (twet[k] > Real(273.15)) Ef_gw *= Real(0.1);
 
-                    prg_gcw[k] = rhof[k] * tables.t1_qg_qc * Ef_gw * rc[k] * N0_g[k] * std::pow(ilamg[k], tables.cge[8]);
-                    Real rate_nc = rhof[k] * tables.t1_qg_qc * Ef_gw * nc[k] * N0_g[k] * std::pow(ilamg[k], tables.cge[8]);
+                    prg_gcw[k] = rhof[k] * tables.t1_qg_qc * Ef_gw * rc[k] * N0_g[k] * libm::pow(ilamg[k], tables.cge[8]);
+                    Real rate_nc = rhof[k] * tables.t1_qg_qc * Ef_gw * nc[k] * N0_g[k] * libm::pow(ilamg[k], tables.cge[8]);
                     pnc_gcw[k] = (rate_nc < nc[k] * odts) ? rate_nc : nc[k] * odts;
                     if (twet[k] < Real(273.15)) pbg_gcw[k] = prg_gcw[k] / rime_dens;
                 }
@@ -1299,10 +1299,10 @@ struct ThompsonKernel {
             if (aero && rg[k] > tables.r_g[0]) {
                 const Real xDg = (Real(bm_g) + Real(mu_g) + Real(1.)) * ilamg[k];
                 Real Ef_ga = eff_aero(xDg, Real(0.04E-6), visco[k], rho[k], temp[k], 'g');
-                pna_gca[k] = rhof[k] * tables.t1_qg_qc * Ef_ga * nwfa[k] * N0_g[k] * std::pow(ilamg[k], tables.cge[8]);
+                pna_gca[k] = rhof[k] * tables.t1_qg_qc * Ef_ga * nwfa[k] * N0_g[k] * libm::pow(ilamg[k], tables.cge[8]);
                 pna_gca[k] = c_min(nwfa[k] * odts, pna_gca[k]);
                 Ef_ga = eff_aero(xDg, Real(0.8E-6), visco[k], rho[k], temp[k], 'g');
-                pnd_gcd[k] = rhof[k] * tables.t1_qg_qc * Ef_ga * nifa[k] * N0_g[k] * std::pow(ilamg[k], tables.cge[8]);
+                pnd_gcd[k] = rhof[k] * tables.t1_qg_qc * Ef_ga * nifa[k] * N0_g[k] * libm::pow(ilamg[k], tables.cge[8]);
                 pnd_gcd[k] = c_min(nifa[k] * odts, pnd_gcd[k]);
             }
 
@@ -1398,7 +1398,7 @@ struct ThompsonKernel {
                     if (aero) {
                         xnc = ice_demott(tempc, rho[k], nifa[k]);
                     } else {
-                        xnc = Real(TNO) * std::exp(Real(ATO) * (Real(273.15) - temp[k]));
+                        xnc = Real(TNO) * libm::exp(Real(ATO) * (Real(273.15) - temp[k]));
                         if (xnc > Real(250.0e3)) xnc = Real(250.0e3);
                     }
                     Real xni_cur = ni_loc[k] + (pni_rfz[k] + pni_wfz[k]) * dtsave;
@@ -1422,11 +1422,11 @@ struct ThompsonKernel {
                 }
 
                 if (L_qi[k]) {
-                    Real lami = std::pow(Real(am_i) * tables.cig[1] * tables.oig1 * ni_loc[k] / ri[k], obmi);
+                    Real lami = libm::pow(Real(am_i) * tables.cig[1] * tables.oig1 * ni_loc[k] / ri[k], obmi);
                     Real ilami = Real(1.0) / lami;
                     Real xDi = (Real(bm_i) + Real(mu_i) + Real(1.0)) * ilami;
                     if (xDi < tables.D0i) xDi = tables.D0i;
-                    Real xmi = Real(am_i) * std::pow(xDi, Real(bm_i));
+                    Real xmi = Real(am_i) * libm::pow(xDi, Real(bm_i));
                     Real oxmi = Real(1.0) / xmi;
 
                     pri_ide[k] = Real(C_cube) * t1_subl * diffu[k] * ssati[k] * rvs
@@ -1478,8 +1478,8 @@ struct ThompsonKernel {
 
                 if (L_qg[k] && ssati[k] < -Real(eps_val)) {
                     prg_gde[k] = Real(C_cube) * t1_subl * diffu[k] * ssati[k] * rvs * N0_g[k]
-                               * (tables.t1_qg_sd * std::pow(ilamg[k], tables.cge[9])
-                                + tables.t2_qg_sd * vsc2[k] * rhof2[k] * std::pow(ilamg[k], tables.cge[10]));
+                               * (tables.t1_qg_sd * libm::pow(ilamg[k], tables.cge[9])
+                                + tables.t2_qg_sd * vsc2[k] * rhof2[k] * libm::pow(ilamg[k], tables.cge[10]));
                     if (prg_gde[k] < Real(0.0)) {
                         Real min_rg = -rg[k] * odts;
                         if (prg_gde[k] < min_rg) prg_gde[k] = min_rg;
@@ -1491,11 +1491,11 @@ struct ThompsonKernel {
                 }
 
                 if (L_qi[k]) {
-                    Real lami = std::pow(Real(am_i) * tables.cig[1] * tables.oig1 * ni_loc[k] / ri[k], obmi);
+                    Real lami = libm::pow(Real(am_i) * tables.cig[1] * tables.oig1 * ni_loc[k] / ri[k], obmi);
                     Real ilami = Real(1.0) / lami;
                     Real xDi = (Real(bm_i) + Real(mu_i) + Real(1.0)) * ilami;
                     if (xDi < tables.D0i) xDi = tables.D0i;
-                    Real xmi = Real(am_i) * std::pow(xDi, Real(bm_i));
+                    Real xmi = Real(am_i) * libm::pow(xDi, Real(bm_i));
                     Real oxmi = Real(1.0) / xmi;
 
                     if (rs[k] >= tables.r_s[0]) {
@@ -1506,13 +1506,13 @@ struct ThompsonKernel {
                     if (rr[k] >= tables.r_r[0] && mvd_r[k] > Real(4.0) * xDi) {
                         Real lamr = Real(1.0) / ilamr[k];
                         pri_rci[k] = rhof[k] * tables.t1_qr_qi * Real(Ef_ri) * ri[k] * N0_r[k]
-                                   * std::pow(lamr + Real(fv_r), -tables.cre[8]);
+                                   * libm::pow(lamr + Real(fv_r), -tables.cre[8]);
                         pnr_rci[k] = rhof[k] * tables.t1_qr_qi * Real(Ef_ri) * ni_loc[k] * N0_r[k]
-                                   * std::pow(lamr + Real(fv_r), -tables.cre[8]);
+                                   * libm::pow(lamr + Real(fv_r), -tables.cre[8]);
                         if (pnr_rci[k] > nr_loc[k] * odts) pnr_rci[k] = nr_loc[k] * odts;
                         pni_rci[k] = pri_rci[k] * oxmi;
                         prr_rci[k] = rhof[k] * tables.t2_qr_qi * Real(Ef_ri) * ni_loc[k] * N0_r[k]
-                                   * std::pow(lamr + Real(fv_r), -tables.cre[7]);
+                                   * libm::pow(lamr + Real(fv_r), -tables.cre[7]);
                         if (prr_rci[k] > rr[k] * odts) prr_rci[k] = rr[k] * odts;
                         prg_rci[k] = pri_rci[k] + prr_rci[k];
                         pbg_rci[k] = prg_rci[k] / Real(rho_i);
@@ -1543,7 +1543,7 @@ struct ThompsonKernel {
                     prg_scw[k] = g_frac * prs_scw[k];
                     png_scw[k] = prg_scw[k] * smo0[k] / rs[k];
 
-                    Real vts = Real(av_s) * std::pow(xDs, Real(bv_s)) * std::exp(-Real(fv_s) * xDs);
+                    Real vts = Real(av_s) * libm::pow(xDs, Real(bv_s)) * libm::exp(-Real(fv_s) * xDs);
                     Real tc_min = (tempc < Real(-0.1)) ? tempc : Real(-0.1);
                     Real const_Ri = -Real(1.0) * (mvd_c[k] * Real(0.5e6)) * vts / tc_min;
                     if (const_Ri < Real(0.1)) const_Ri = Real(0.1);
@@ -1569,7 +1569,7 @@ struct ThompsonKernel {
                     if (prr_sml[k] > rs[k] * odts) prr_sml[k] = rs[k] * odts;
 
                     if (prr_sml[k] > Real(0.0)) {
-                        pnr_sml[k] = smo0[k] / rs[k] * prr_sml[k] * std::pow(Real(10.0), Real(-0.25) * (twet[k] - Real(273.15)));
+                        pnr_sml[k] = smo0[k] / rs[k] * prr_sml[k] * libm::pow(Real(10.0), Real(-0.25) * (twet[k] - Real(273.15)));
                     } else if (ssati[k] < Real(0.0)) {
                         prs_sde[k] = Real(C_sqrd) * t1_subl * diffu[k] * ssati[k] * rvs
                                    * (tables.t1_qs_sd * smo1[k] + tables.t2_qs_sd * rhof2[k] * vsc2[k] * smof[k]);
@@ -1581,11 +1581,11 @@ struct ThompsonKernel {
                     Real N0_melt = N0_g[k];
                     if (rg[k] * ng[k] < Real(1.0e-4)) {
                         Real lamg = Real(1.0) / ilamg[k];
-                        N0_melt = (Real(1.0e-4) / rg[k]) * tables.ogg2 * std::pow(lamg, tables.cge[1]);
+                        N0_melt = (Real(1.0e-4) / rg[k]) * tables.ogg2 * libm::pow(lamg, tables.cge[1]);
                     }
                     prr_gml[k] = (tempc * tcond[k] - Real(lvap0) * diffu[k] * delQvs[k])
-                               * N0_melt * (tables.t1_qg_me * std::pow(ilamg[k], tables.cge[9])
-                                          + tables.t2_qg_me * rhof2[k] * vsc2[k] * std::pow(ilamg[k], tables.cge[10]));
+                               * N0_melt * (tables.t1_qg_me * libm::pow(ilamg[k], tables.cge[9])
+                                          + tables.t2_qg_me * rhof2[k] * vsc2[k] * libm::pow(ilamg[k], tables.cge[10]));
                     if (prr_gml[k] < Real(0.0)) prr_gml[k] = Real(0.0);
                     if (prr_gml[k] > rg[k] * odts) prr_gml[k] = rg[k] * odts;
 
@@ -1597,11 +1597,11 @@ struct ThompsonKernel {
                         if (dens < Real(50.0)) dens = Real(50.0);
                         if (dens > Real(1000.0)) dens = Real(1000.0);
                         pbg_gml[k] = prr_gml[k] / dens;
-                        pnr_gml[k] = prr_gml[k] * ng[k] / rg[k] * std::pow(Real(10.0), Real(-0.33) * (twet[k] - Real(273.15)));
+                        pnr_gml[k] = prr_gml[k] * ng[k] / rg[k] * libm::pow(Real(10.0), Real(-0.33) * (twet[k] - Real(273.15)));
                     } else if (ssati[k] < Real(0.0)) {
                         prg_gde[k] = Real(C_cube) * t1_subl * diffu[k] * ssati[k] * rvs
-                                   * N0_g[k] * (tables.t1_qg_sd * std::pow(ilamg[k], tables.cge[9])
-                                              + tables.t2_qg_sd * vsc2[k] * rhof2[k] * std::pow(ilamg[k], tables.cge[10]));
+                                   * N0_g[k] * (tables.t1_qg_sd * libm::pow(ilamg[k], tables.cge[9])
+                                              + tables.t2_qg_sd * vsc2[k] * rhof2[k] * libm::pow(ilamg[k], tables.cge[10]));
                         if (prg_gde[k] < -rg[k] * odts) prg_gde[k] = -rg[k] * odts;
                         png_gde[k] = prg_gde[k] * ng[k] / rg[k];
                     }
@@ -1717,15 +1717,15 @@ struct ThompsonKernel {
                 int nu_c = static_cast<int>(std::round(Real(1000.0e6) / xnc)) + 2;
                 if (nu_c > 15) nu_c = 15;
                 int nu_idx = nu_c - 1;
-                Real lamc = std::pow(xnc * Real(am_r) * tables.ccg[1][nu_idx] * tables.ocg1[nu_idx] / rc[k], obmr);
+                Real lamc = libm::pow(xnc * Real(am_r) * tables.ccg[1][nu_idx] * tables.ocg1[nu_idx] / rc[k], obmr);
                 Real xDc = (Real(bm_r) + Real(nu_c) + Real(1.0)) / lamc;
                 if (xDc < Real(D0c)) {
                     lamc = tables.cce[1][nu_idx] / Real(D0c);
-                    xnc = tables.ccg[0][nu_idx] * tables.ocg2[nu_idx] * xrc / Real(am_r) * std::pow(lamc, Real(bm_r));
+                    xnc = tables.ccg[0][nu_idx] * tables.ocg2[nu_idx] * xrc / Real(am_r) * libm::pow(lamc, Real(bm_r));
                     ncten[k] = (xnc - nc1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 } else if (xDc > Real(D0r * 2.0)) {
                     lamc = tables.cce[1][nu_idx] / Real(D0r * 2.0);
-                    xnc = tables.ccg[0][nu_idx] * tables.ocg2[nu_idx] * xrc / Real(am_r) * std::pow(lamc, Real(bm_r));
+                    xnc = tables.ccg[0][nu_idx] * tables.ocg2[nu_idx] * xrc / Real(am_r) * libm::pow(lamc, Real(bm_r));
                     ncten[k] = (xnc - nc1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 }
             } else {
@@ -1744,17 +1744,17 @@ struct ThompsonKernel {
             Real xni = (ni1d[k] + niten[k] * dtsave) * rho[k];
             if (xni < Real(R2)) xni = Real(R2);
             if (xri > Real(R1)) {
-                Real lami = std::pow(Real(am_i) * tables.cig[1] * tables.oig1 * xni / xri, obmi);
+                Real lami = libm::pow(Real(am_i) * tables.cig[1] * tables.oig1 * xni / xri, obmi);
                 Real ilami = Real(1.0) / lami;
                 Real xDi = (Real(bm_i) + Real(mu_i) + Real(1.0)) * ilami;
                 if (xDi < Real(5.0e-6)) {
                     lami = tables.cie[1] / Real(5.0e-6);
-                    Real term = tables.cig[0] * tables.oig2 * xri / Real(am_i) * std::pow(lami, Real(bm_i));
+                    Real term = tables.cig[0] * tables.oig2 * xri / Real(am_i) * libm::pow(lami, Real(bm_i));
                     xni = (term < Real(999.0e3)) ? term : Real(999.0e3);
                     niten[k] = (xni - ni1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 } else if (xDi > Real(300.0e-6)) {
                     lami = tables.cie[1] / Real(300.0e-6);
-                    xni = tables.cig[0] * tables.oig2 * xri / Real(am_i) * std::pow(lami, Real(bm_i));
+                    xni = tables.cig[0] * tables.oig2 * xri / Real(am_i) * libm::pow(lami, Real(bm_i));
                     niten[k] = (xni - ni1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 }
             } else {
@@ -1773,17 +1773,17 @@ struct ThompsonKernel {
             Real xnr = (nr1d[k] + nrten[k] * dtsave) * rho[k];
             if (xnr < Real(R2)) xnr = Real(R2);
             if (xrr > Real(R1)) {
-                Real lamr = std::pow(Real(am_r) * tables.crg[2] * tables.org2 * xnr / xrr, obmr);
+                Real lamr = libm::pow(Real(am_r) * tables.crg[2] * tables.org2 * xnr / xrr, obmr);
                 mvd_r[k] = (Real(3.0) + Real(mu_r) + Real(0.672)) / lamr;
                 if (mvd_r[k] > Real(2.5e-3)) {
                     mvd_r[k] = Real(2.5e-3);
                     lamr = (Real(3.0) + Real(mu_r) + Real(0.672)) / mvd_r[k];
-                    xnr = tables.crg[1] * tables.org3 * xrr * std::pow(lamr, Real(bm_r)) / Real(am_r);
+                    xnr = tables.crg[1] * tables.org3 * xrr * libm::pow(lamr, Real(bm_r)) / Real(am_r);
                     nrten[k] = (xnr - nr1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 } else if (mvd_r[k] < Real(D0r) * Real(0.75)) {
                     mvd_r[k] = Real(D0r) * Real(0.75);
                     lamr = (Real(3.0) + Real(mu_r) + Real(0.672)) / mvd_r[k];
-                    xnr = tables.crg[1] * tables.org3 * xrr * std::pow(lamr, Real(bm_r)) / Real(am_r);
+                    xnr = tables.crg[1] * tables.org3 * xrr * libm::pow(lamr, Real(bm_r)) / Real(am_r);
                     nrten[k] = (xnr - nr1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 }
             } else {
@@ -1805,17 +1805,17 @@ struct ThompsonKernel {
             Real xng = (ng1d[k] + ngten[k] * dtsave) * rho[k];
             if (xng < Real(R2)) xng = Real(R2);
             if (xrg > Real(R1)) {
-                Real lamg = std::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * xng / xrg, tables.obmg);
+                Real lamg = libm::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * xng / xrg, tables.obmg);
                 mvd_g[k] = (Real(3.0) + Real(mu_g) + Real(0.672)) / lamg;
                 if (mvd_g[k] > Real(25.4e-3)) {
                     mvd_g[k] = Real(25.4e-3);
                     lamg = (Real(3.0) + Real(mu_g) + Real(0.672)) / mvd_g[k];
-                    xng = tables.cgg[1] * tables.ogg3 * xrg * std::pow(lamg, Real(bm_g)) / Real(am_g5);
+                    xng = tables.cgg[1] * tables.ogg3 * xrg * libm::pow(lamg, Real(bm_g)) / Real(am_g5);
                     ngten[k] = (xng - ng1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 } else if (mvd_g[k] < Real(D0r)) {
                     mvd_g[k] = Real(D0r);
                     lamg = (Real(3.0) + Real(mu_g) + Real(0.672)) / mvd_g[k];
-                    xng = tables.cgg[1] * tables.ogg3 * xrg * std::pow(lamg, Real(bm_g)) / Real(am_g5);
+                    xng = tables.cgg[1] * tables.ogg3 * xrg * libm::pow(lamg, Real(bm_g)) / Real(am_g5);
                     ngten[k] = (xng - ng1d[k] * rho[k]) * odts * orho;  // WRF: (x-n1d*rho)*odts*orho
                 }
             } else {
@@ -1847,7 +1847,7 @@ struct ThompsonKernel {
             qvs[k] = rslf(pres[k], temp[k]);
             ssatw[k] = qv_loc[k] / qvs[k] - Real(1.0);
             if (std::abs(ssatw[k]) < Real(eps_val)) ssatw[k] = Real(0.0);
-            diffu[k] = Real(2.11e-5) * std::pow(temp[k] / Real(273.15), Real(1.94)) * (Real(101325.0) / pres[k]);
+            diffu[k] = Real(2.11e-5) * libm::pow(temp[k] / Real(273.15), Real(1.94)) * (Real(101325.0) / pres[k]);
             if (tempc >= Real(0.0)) {
                 visco[k] = (Real(1.718) + Real(0.0049) * tempc) * Real(1.0e-5);
             } else {
@@ -1889,16 +1889,16 @@ struct ThompsonKernel {
                 Real nr_calc = (nr1d[k] + nrten[k] * dt) * rho[k];
                 nr_loc[k] = (nr_calc > Real(R2)) ? nr_calc : Real(R2);
                 L_qr[k] = true;
-                Real lamr = std::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_loc[k] / rr[k], obmr);
+                Real lamr = libm::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_loc[k] / rr[k], obmr);
                 mvd_r[k] = (Real(3.0) + Real(mu_r) + Real(0.672)) / lamr;
                 if (mvd_r[k] > Real(2.5e-3)) {
                     mvd_r[k] = Real(2.5e-3);
                     lamr = (Real(3.0) + Real(mu_r) + Real(0.672)) / mvd_r[k];
-                    nr_loc[k] = tables.crg[1] * tables.org3 * rr[k] * std::pow(lamr, Real(bm_r)) / Real(am_r);
+                    nr_loc[k] = tables.crg[1] * tables.org3 * rr[k] * libm::pow(lamr, Real(bm_r)) / Real(am_r);
                 } else if (mvd_r[k] < Real(D0r) * Real(0.75)) {
                     mvd_r[k] = Real(D0r) * Real(0.75);
                     lamr = (Real(3.0) + Real(mu_r) + Real(0.672)) / mvd_r[k];
-                    nr_loc[k] = tables.crg[1] * tables.org3 * rr[k] * std::pow(lamr, Real(bm_r)) / Real(am_r);
+                    nr_loc[k] = tables.crg[1] * tables.org3 * rr[k] * libm::pow(lamr, Real(bm_r)) / Real(am_r);
                 }
             } else {
                 rr[k] = Real(R1);
@@ -1918,14 +1918,14 @@ struct ThompsonKernel {
             Real qg_new = qg1d[k] + qgten[k] * dt;
             if (qg_new > Real(R1)) {
                 rg[k] = qg_new * rho[k];
-                Real ygra1 = std::log10((rg[k] > Real(1.0e-9)) ? rg[k] : Real(1.0e-9));
+                Real ygra1 = libm::log10((rg[k] > Real(1.0e-9)) ? rg[k] : Real(1.0e-9));
                 Real zans1 = Real(3.0) + Real(2.0 / 7.0) * (ygra1 + Real(8.0));
                 if (zans1 < Real(2.0)) zans1 = Real(2.0);
                 if (zans1 > Real(6.0)) zans1 = Real(6.0);
-                Real N0_exp = std::pow(Real(10.0), zans1);
-                Real lam_exp = std::pow(N0_exp * Real(am_g5) * tables.cgg[0] / rg[k], tables.oge1);
-                Real lamg = lam_exp * std::pow(tables.cgg[2] * tables.ogg2 * tables.ogg1, tables.obmg);
-                ng[k] = tables.cgg[1] * tables.ogg3 * rg[k] * std::pow(lamg, Real(bm_g)) / Real(am_g5);
+                Real N0_exp = libm::pow(Real(10.0), zans1);
+                Real lam_exp = libm::pow(N0_exp * Real(am_g5) * tables.cgg[0] / rg[k], tables.oge1);
+                Real lamg = lam_exp * libm::pow(tables.cgg[2] * tables.ogg2 * tables.ogg1, tables.obmg);
+                ng[k] = tables.cgg[1] * tables.ogg3 * rg[k] * libm::pow(lamg, Real(bm_g)) / Real(am_g5);
                 rb[k] = rg[k] / rho[k] / Real(rho_g_val);
             } else {
                 rg[k] = Real(R1);
@@ -1953,12 +1953,12 @@ struct ThompsonKernel {
                        + tables.sa[5]*cse1*cse1 + tables.sa[6]*tc0*tc0*cse1
                        + tables.sa[7]*tc0*cse1*cse1 + tables.sa[8]*tc0*tc0*tc0
                        + tables.sa[9]*cse1*cse1*cse1;
-            Real ac = std::pow(Real(10.0), logac);
+            Real ac = libm::pow(Real(10.0), logac);
             Real bc = tables.sb[0] + tables.sb[1]*tc0 + tables.sb[2]*cse1 + tables.sb[3]*tc0*cse1
                     + tables.sb[4]*tc0*tc0 + tables.sb[5]*cse1*cse1
                     + tables.sb[6]*tc0*tc0*cse1 + tables.sb[7]*tc0*cse1*cse1
                     + tables.sb[8]*tc0*tc0*tc0 + tables.sb[9]*cse1*cse1*cse1;
-            smoc[k] = ac * std::pow(smo2[k], bc);
+            smoc[k] = ac * libm::pow(smo2[k], bc);
 
             Real cse14 = tables.cse[13];
             Real logad = tables.sa[0] + tables.sa[1]*tc0 + tables.sa[2]*cse14
@@ -1966,18 +1966,18 @@ struct ThompsonKernel {
                        + tables.sa[5]*cse14*cse14 + tables.sa[6]*tc0*tc0*cse14
                        + tables.sa[7]*tc0*cse14*cse14 + tables.sa[8]*tc0*tc0*tc0
                        + tables.sa[9]*cse14*cse14*cse14;
-            Real ad = std::pow(Real(10.0), logad);
+            Real ad = libm::pow(Real(10.0), logad);
             Real bd = tables.sb[0] + tables.sb[1]*tc0 + tables.sb[2]*cse14 + tables.sb[3]*tc0*cse14
                     + tables.sb[4]*tc0*tc0 + tables.sb[5]*cse14*cse14
                     + tables.sb[6]*tc0*tc0*cse14 + tables.sb[7]*tc0*cse14*cse14
                     + tables.sb[8]*tc0*tc0*tc0 + tables.sb[9]*cse14*cse14*cse14;
-            smod[k] = ad * std::pow(smo2[k], bd);
+            smod[k] = ad * libm::pow(smo2[k], bd);
         }
 
         for (int k = nz - 1; k >= 0; --k) {
-            Real lamg = std::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * ng[k] / rg[k], tables.obmg);
+            Real lamg = libm::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * ng[k] / rg[k], tables.obmg);
             ilamg[k] = Real(1.0) / lamg;
-            N0_g[k] = ng[k] * tables.ogg2 * std::pow(lamg, tables.cge[1]);
+            N0_g[k] = ng[k] * tables.ogg2 * libm::pow(lamg, tables.cge[1]);
         }
 
         // gfortran vectorises this k loop (kte down to kts): libmvec's 2-lane pow (cppwrf::vm)
@@ -1994,8 +1994,8 @@ struct ThompsonKernel {
             if (ssatw[k] > Real(eps_val) || (ssatw[k] < -Real(eps_val) && L_qc[k])) {
                 Real clap = (qv_loc[k] - qvs[k]) / (Real(1.0) + lvt2[k] * qvs[k]);
                 for (int iter = 0; iter < 3; ++iter) {
-                    Real fcd = qvs[k] * std::exp(lvt2[k] * clap) - qv_loc[k] + clap;
-                    Real dfcd = qvs[k] * lvt2[k] * std::exp(lvt2[k] * clap) + Real(1.0);
+                    Real fcd = qvs[k] * libm::exp(lvt2[k] * clap) - qv_loc[k] + clap;
+                    Real dfcd = qvs[k] * lvt2[k] * libm::exp(lvt2[k] * clap) + Real(1.0);
                     clap -= fcd / dfcd;
                 }
                 Real xrc = rc[k] + clap * rho[k];
@@ -2029,7 +2029,7 @@ struct ThompsonKernel {
                         int idx_d = static_cast<int>(Real(1.E6) * Dc_star);
                         idx_d = idx_d < nbc ? idx_d : nbc;
                         idx_d = idx_d > 1 ? idx_d : 1;
-                        int idx_n = static_cast<int>(std::round(Real(1.0) + Real(nbc) * std::log(nc[k] / tables.t_Nc_0) /
+                        int idx_n = static_cast<int>(std::round(Real(1.0) + Real(nbc) * libm::log(nc[k] / tables.t_Nc_0) /
                                                                  Real(tables.nic1)));
                         idx_n = idx_n < nbc ? idx_n : nbc;
                         idx_n = idx_n > 1 ? idx_n : 1;
@@ -2069,7 +2069,7 @@ struct ThompsonKernel {
                 Real orho = Real(1.0) / rho[k];
                 rhof[k] = std::sqrt(Real(RHO_NOT) * orho);
                 rhof2[k] = std::sqrt(rhof[k]);
-                diffu[k] = Real(2.11e-5) * std::pow(temp[k] / Real(273.15), Real(1.94)) * (Real(101325.0) / pres[k]);
+                diffu[k] = Real(2.11e-5) * libm::pow(temp[k] / Real(273.15), Real(1.94)) * (Real(101325.0) / pres[k]);
                 if (tempc >= Real(0.0)) {
                     visco[k] = (Real(1.718) + Real(0.0049) * tempc) * Real(1.0e-5);
                 } else {
@@ -2101,8 +2101,8 @@ struct ThompsonKernel {
                     prv_rev[k] = rr[k] * orho * odts;
                 } else {
                     prv_rev[k] = t1_evap * diffu[k] * (-ssatw[k]) * N0_r[k] * rvs
-                               * (tables.t1_qr_ev * std::pow(ilamr[k], tables.cre[9])
-                                + tables.t2_qr_ev * vsc2[k] * rhof2[k] * std::pow(lamr + Real(0.5 * fv_r), -tables.cre[10]));
+                               * (tables.t1_qr_ev * libm::pow(ilamr[k], tables.cre[9])
+                                + tables.t2_qr_ev * vsc2[k] * rhof2[k] * libm::pow(lamr + Real(0.5 * fv_r), -tables.cre[10]));
                     Real rate_max = (rr[k] * orho * odts < (qvs[k] - qv_loc[k]) * odts) ? rr[k] * orho * odts : (qvs[k] - qv_loc[k]) * odts;
                     Real prv_eff = prv_rev[k] * orho;
                     prv_rev[k] = (rate_max < prv_eff) ? rate_max : prv_eff;
@@ -2166,11 +2166,11 @@ struct ThompsonKernel {
             for (int k = nz - 1; k >= 0; --k) {
                 rhof[k] = std::sqrt(Real(RHO_NOT) / rho[k]);
                 if (rr[k] > Real(R1)) {
-                    Real lamr = std::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_loc[k] / rr[k], obmr);
+                    Real lamr = libm::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_loc[k] / rr[k], obmr);
                     // gfortran pairs the two (lamr+fv_r)**(-cre) into one libmvec pow (SLP): vector lanes
-                    vtrk[k] = rhof[k] * Real(av_r) * tables.crg[5] * tables.org3 * std::pow(lamr, tables.cre[2])
+                    vtrk[k] = rhof[k] * Real(av_r) * tables.crg[5] * tables.org3 * libm::pow(lamr, tables.cre[2])
                             * vm::pow(lamr + Real(fv_r), -tables.cre[5], 0, 2);
-                    vtnrk[k] = rhof[k] * Real(av_r) * tables.crg[6] / tables.crg[11] * std::pow(lamr, tables.cre[11])
+                    vtnrk[k] = rhof[k] * Real(av_r) * tables.crg[6] / tables.crg[11] * libm::pow(lamr, tables.cre[11])
                              * vm::pow(lamr + Real(fv_r), -tables.cre[6], 0, 2);
                 } else {
                     vtrk[k] = vtrk[k + 1];
@@ -2202,10 +2202,10 @@ struct ThompsonKernel {
                     int nu_c = static_cast<int>(std::round(Real(1000.0e6) / nc[k])) + 2;
                     if (nu_c > 15) nu_c = 15;
                     int nu_idx = nu_c - 1;
-                    Real lamc = std::pow(nc[k] * Real(am_r) * tables.ccg[1][nu_idx] * tables.ocg1[nu_idx] / rc[k], obmr);
+                    Real lamc = libm::pow(nc[k] * Real(am_r) * tables.ccg[1][nu_idx] * tables.ocg1[nu_idx] / rc[k], obmr);
                     Real ilamc = Real(1.0) / lamc;
-                    vtck[k] = rhof[k] * Real(av_c) * tables.ccg[4][nu_idx] * tables.ocg2[nu_idx] * std::pow(ilamc, Real(bv_c));
-                    vtnck[k] = rhof[k] * Real(av_c) * tables.ccg[3][nu_idx] * tables.ocg1[nu_idx] * std::pow(ilamc, Real(bv_c));
+                    vtck[k] = rhof[k] * Real(av_c) * tables.ccg[4][nu_idx] * tables.ocg2[nu_idx] * libm::pow(ilamc, Real(bv_c));
+                    vtnck[k] = rhof[k] * Real(av_c) * tables.ccg[3][nu_idx] * tables.ocg1[nu_idx] * libm::pow(ilamc, Real(bv_c));
                 }
             }
         }
@@ -2214,10 +2214,10 @@ struct ThompsonKernel {
         if (has_qi) {
             for (int k = nz - 1; k >= 0; --k) {
                 if (ri[k] > Real(R1)) {
-                    Real lami = std::pow(Real(am_i) * tables.cig[1] * tables.oig1 * ni_loc[k] / ri[k], obmi);
+                    Real lami = libm::pow(Real(am_i) * tables.cig[1] * tables.oig1 * ni_loc[k] / ri[k], obmi);
                     Real ilami = Real(1.0) / lami;
-                    vtik[k] = rhof[k] * Real(av_i) * tables.cig[2] * tables.oig2 * std::pow(ilami, Real(bv_i));
-                    vtnik[k] = rhof[k] * Real(av_i) * tables.cig[5] / tables.cig[6] * std::pow(ilami, Real(bv_i));
+                    vtik[k] = rhof[k] * Real(av_i) * tables.cig[2] * tables.oig2 * libm::pow(ilami, Real(bv_i));
+                    vtnik[k] = rhof[k] * Real(av_i) * tables.cig[5] / tables.cig[6] * libm::pow(ilami, Real(bv_i));
                 } else {
                     vtik[k] = vtik[k + 1];
                     vtnik[k] = vtnik[k + 1];
@@ -2242,12 +2242,12 @@ struct ThompsonKernel {
                     Real Mrat = Real(1.0) / xDs;
                     Real ils1 = Real(1.0) / (Mrat * Real(Lam0) + Real(fv_s));
                     Real ils2 = Real(1.0) / (Mrat * Real(Lam1) + Real(fv_s));
-                    Real t1_vts = Real(Kap0) * tables.csg[3] * std::pow(ils1, tables.cse[3]);
-                    Real t2_vts = Real(Kap1) * std::pow(Mrat, Real(mu_s)) * tables.csg[9] * std::pow(ils2, tables.cse[9]);
+                    Real t1_vts = Real(Kap0) * tables.csg[3] * libm::pow(ils1, tables.cse[3]);
+                    Real t2_vts = Real(Kap1) * libm::pow(Mrat, Real(mu_s)) * tables.csg[9] * libm::pow(ils2, tables.cse[9]);
                     ils1 = Real(1.0) / (Mrat * Real(Lam0));
                     ils2 = Real(1.0) / (Mrat * Real(Lam1));
-                    Real t3_vts = Real(Kap0) * tables.csg[0] * std::pow(ils1, tables.cse[0]);
-                    Real t4_vts = Real(Kap1) * std::pow(Mrat, Real(mu_s)) * tables.csg[6] * std::pow(ils2, tables.cse[6]);
+                    Real t3_vts = Real(Kap0) * tables.csg[0] * libm::pow(ils1, tables.cse[0]);
+                    Real t4_vts = Real(Kap1) * libm::pow(Mrat, Real(mu_s)) * tables.csg[6] * libm::pow(ils2, tables.cse[6]);
                     Real vts = rhof[k] * Real(av_s) * (t1_vts + t2_vts) / (t3_vts + t4_vts);
                     if (prr_sml[k] > Real(0.0)) {
                         Real SR_k = rs[k] / (rs[k] + rr[k]);
@@ -2274,8 +2274,8 @@ struct ThompsonKernel {
         if (has_qg) {
             for (int k = nz - 1; k >= 0; --k) {
                 if (rg[k] > Real(R1)) {
-                    vtgk[k] = rhof[k] * Real(av_g_old) * tables.cgg[5] * tables.ogg3 * std::pow(ilamg[k], Real(bv_g_old));
-                    vtngk[k] = rhof[k] * Real(av_g_old) * tables.cgg[6] / tables.cgg[11] * std::pow(ilamg[k], Real(bv_g_old));
+                    vtgk[k] = rhof[k] * Real(av_g_old) * tables.cgg[5] * tables.ogg3 * libm::pow(ilamg[k], Real(bv_g_old));
+                    vtngk[k] = rhof[k] * Real(av_g_old) * tables.cgg[6] / tables.cgg[11] * libm::pow(ilamg[k], Real(bv_g_old));
                 } else {
                     vtgk[k] = vtgk[k + 1];
                     vtngk[k] = vtngk[k + 1];
@@ -2513,14 +2513,14 @@ struct ThompsonKernel {
                     int nu_c = static_cast<int>(std::round(Real(1000.E6) / (ncf * rho[k]))) + 2;
                     if (nu_c > 15) nu_c = 15;
                     const int nu_idx = nu_c - 1;
-                    Real lamc = std::pow(Real(am_r) * tables.ccg[1][nu_idx] * tables.ocg1[nu_idx] * ncf / qc_final, obmr);
+                    Real lamc = libm::pow(Real(am_r) * tables.ccg[1][nu_idx] * tables.ocg1[nu_idx] * ncf / qc_final, obmr);
                     const Real xDc = (Real(bm_r) + Real(nu_c) + Real(1.)) / lamc;
                     if (xDc < Real(D0c)) {
                         lamc = tables.cce[1][nu_idx] / Real(D0c);
                     } else if (xDc > Real(D0r * 2.)) {
                         lamc = tables.cce[1][nu_idx] / Real(D0r * 2.);
                     }
-                    ncf = c_min(tables.ccg[0][nu_idx] * tables.ocg2[nu_idx] * qc_final / Real(am_r) * std::pow(lamc, Real(bm_r)),
+                    ncf = c_min(tables.ccg[0][nu_idx] * tables.ocg2[nu_idx] * qc_final / Real(am_r) * libm::pow(lamc, Real(bm_r)),
                                 Real(Nt_c_max) / rho[k]);
                 }
                 nc1d[k] = ncf;
@@ -2536,7 +2536,7 @@ struct ThompsonKernel {
                 ni(i, j, k) = Real(0.0);
             } else {
                 qi(i, j, k) = qi_final;
-                Real lami = std::pow(Real(am_i) * tables.cig[1] * tables.oig1 * ni_final / qi_final, obmi);
+                Real lami = libm::pow(Real(am_i) * tables.cig[1] * tables.oig1 * ni_final / qi_final, obmi);
                 Real ilami = Real(1.0) / lami;
                 Real xDi = (Real(bm_i) + Real(mu_i) + Real(1.0)) * ilami;
                 if (xDi < Real(5.0e-6)) {
@@ -2544,7 +2544,7 @@ struct ThompsonKernel {
                 } else if (xDi > Real(300.0e-6)) {
                     lami = tables.cie[1] / Real(300.0e-6);
                 }
-                Real term = tables.cig[0] * tables.oig2 * qi_final / Real(am_i) * std::pow(lami, Real(bm_i));
+                Real term = tables.cig[0] * tables.oig2 * qi_final / Real(am_i) * libm::pow(lami, Real(bm_i));
                 Real max_ni = Real(999.0e3) / rho[k];
                 ni(i, j, k) = (term < max_ni) ? term : max_ni;
             }
@@ -2559,7 +2559,7 @@ struct ThompsonKernel {
                 nr(i, j, k) = Real(0.0);
             } else {
                 qr(i, j, k) = qr_final;
-                Real lamr = std::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_final / qr_final, obmr);
+                Real lamr = libm::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_final / qr_final, obmr);
                 Real mvd = (Real(3.0) + Real(mu_r) + Real(0.672)) / lamr;
                 if (mvd > Real(2.5e-3)) {
                     mvd = Real(2.5e-3);
@@ -2567,7 +2567,7 @@ struct ThompsonKernel {
                     mvd = Real(D0r) * Real(0.75);
                 }
                 lamr = (Real(3.0) + Real(mu_r) + Real(0.672)) / mvd;
-                nr(i, j, k) = tables.crg[1] * tables.org3 * qr_final * std::pow(lamr, Real(bm_r)) / Real(am_r);
+                nr(i, j, k) = tables.crg[1] * tables.org3 * qr_final * libm::pow(lamr, Real(bm_r)) / Real(am_r);
             }
 
             Real qs_final = qs1d[k] + qsten[k] * dt;
@@ -2584,7 +2584,7 @@ struct ThompsonKernel {
                 if (qg_final <= Real(R1)) {
                     ng1d[k] = Real(0.0);
                 } else {
-                    const double lamg = std::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * ng1d[k] / qg_final, tables.obmg);
+                    const double lamg = libm::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * ng1d[k] / qg_final, tables.obmg);
                     Real mvd_g = Real(double(Real(3.0) + Real(mu_g) + Real(0.672)) / lamg);
                     if (mvd_g > Real(25.4E-3)) {
                         mvd_g = Real(25.4E-3);
@@ -2592,7 +2592,7 @@ struct ThompsonKernel {
                         mvd_g = Real(D0r);
                     }
                     const double lamg2 = double(Real(3.0) + Real(mu_g) + Real(0.672)) / double(mvd_g);
-                    ng1d[k] = Real(double(tables.cgg[1] * tables.ogg3 * qg_final) * std::pow(lamg2, double(Real(bm_g))) /
+                    ng1d[k] = Real(double(tables.cgg[1] * tables.ogg3 * qg_final) * libm::pow(lamg2, double(Real(bm_g))) /
                                    double(Real(am_g5)));
                 }
             }

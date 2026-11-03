@@ -8,7 +8,7 @@
 //
 // Complex arithmetic as gfortran (-fcx-fortran-rules) lowers it: products (ar*br - ai*bi, ar*bi + ai*br), a real
 // times a complex part by part, quotients by GCC's expand_complex_div_wide (Smith's method), SQRT / LOG / ABS by
-// glibc's csqrt / clog / cabs on the host (std::complex calls them); the device uses its own formulas.
+// glibc's csqrt / clog / cabs on the host (std::complex calls them); the CUDA FP32 device uses its own formulas.
 #include <cmath>
 #include <memory>
 
@@ -48,15 +48,23 @@ CPPWRF_HD inline Cplx cdiv(Cplx a, Cplx b) {
   }
   return {tr / div, ti / div};
 }
+// CUDA FP64 build (CPPWRF_GLIBC_MATH): glibc's cabs (__hypot), clog and csqrt (core/glibc_math.hpp) on the host
+// and the device
 CPPWRF_HD inline double cabs_(Cplx z) {
-#if defined(__CUDA_ARCH__)
+#if defined(CPPWRF_GLIBC_MATH)
+  return glibc::hypot(z.re, z.im);
+#elif defined(__CUDA_ARCH__)
   return ::hypot(z.re, z.im);
 #else
   return std::abs(std::complex<double>(z.re, z.im));
 #endif
 }
 CPPWRF_HD inline Cplx clog_(Cplx z) {
-#if defined(__CUDA_ARCH__)
+#if defined(CPPWRF_GLIBC_MATH)
+  Cplx r;
+  glibc::clog(z.re, z.im, &r.re, &r.im);
+  return r;
+#elif defined(__CUDA_ARCH__)
   return {::log(::hypot(z.re, z.im)), ::atan2(z.im, z.re)};
 #else
   const std::complex<double> r = std::log(std::complex<double>(z.re, z.im));
@@ -64,7 +72,11 @@ CPPWRF_HD inline Cplx clog_(Cplx z) {
 #endif
 }
 CPPWRF_HD inline Cplx csqrt_(Cplx z) {
-#if defined(__CUDA_ARCH__)
+#if defined(CPPWRF_GLIBC_MATH)
+  Cplx r;
+  glibc::csqrt(z.re, z.im, &r.re, &r.im);
+  return r;
+#elif defined(__CUDA_ARCH__)
   if (z.re == 0.0 && z.im == 0.0) return {0.0, z.im};
   const double t = ::sqrt(0.5 * (::hypot(z.re, z.im) + ::fabs(z.re)));
   if (z.re >= 0.0) return {t, z.im / (2.0 * t)};
@@ -97,13 +109,13 @@ inline Real gammln(Real xx) {
   const double x = double(xx);
   double y = x;
   double tmp = x + 5.5;
-  tmp = (x + 0.5) * std::log(tmp) - tmp;
+  tmp = (x + 0.5) * libm::log(tmp) - tmp;
   double ser = 1.000000000190015;
   for (int j = 0; j < 6; ++j) {
     y = y + 1.0;
     ser = ser + cof[j] / y;
   }
-  return Real(tmp + std::log(stp * ser / x));
+  return Real(tmp + libm::log(stp * ser / x));
 }
 // WGAMMA = EXP(GAMMLN(y)); radar_init's 4-value loops are vectorised: libmvec exp on the pairs 1-2, 3-4
 template <typename Real>
@@ -173,10 +185,10 @@ inline RadarTables<Real> radar_init(Real xam_r, Real xbm_r, Real xmu_r, Real xam
   t.xobmr = Real(1.) / xbm_r;
   t.xoams = Real(1.) / xam_s;
   t.xobms = Real(1.) / xbm_s;
-  t.xocms = std::pow(t.xoams, t.xobms);
+  t.xocms = libm::pow(t.xoams, t.xobms);
   t.xoamg = Real(1.) / xam_g;
   t.xobmg = Real(1.) / xbm_g;
-  t.xocmg = std::pow(t.xoamg, t.xobmg);
+  t.xocmg = libm::pow(t.xoamg, t.xobmg);
   return t;
 }
 
@@ -227,7 +239,7 @@ CPPWRF_HD inline double rayleigh_soak_wetgraupel(double x_g, double a_geo, doubl
   double mra = c_max(c_min(melt_outside, 1.0), 0.0);
   mra = mra + (1.0 - mra) * fm;
   const double x_w = x_g * fm;
-  const double D_g = a_geo * std::pow(x_g, b_geo);
+  const double D_g = a_geo * libm::pow(x_g, b_geo);
   if (!(D_g >= 1e-12)) return 0.0;
   double vg = PIx / 6. * ((D_g * D_g) * D_g);
   const double rhog = c_max(c_min(x_g / vg, 900.0), 10.0);
@@ -241,7 +253,7 @@ CPPWRF_HD inline double rayleigh_soak_wetgraupel(double x_g, double a_geo, doubl
     if (fm <= fmgrenz) volg = (1.0 - mra * fm) * vg;
     else volg = (x_g - x_w) / 900.0 + x_w / 1000.;
   }
-  const double D_large = std::pow(6.0 / PIx * volg, 1. / 3.);
+  const double D_large = libm::pow(6.0 / PIx * volg, 1. / 3.);
   const double volice = (x_g - x_w) / (volg * 900.0);
   const double volwater = x_w / (1000. * volg);
   const double volair = 1.0 - volice - volwater;

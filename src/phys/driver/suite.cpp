@@ -807,6 +807,7 @@ void PhysicsSuite::part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies
                         {&lwupt, &lwuptc, &lwdnt, &lwdntc, &lwupb, &lwupbc, &lwdnb, &lwdnbc, &olr}, {&swupt, &swuptc, &swdnt, &swdntc, &swupb, &swupbc, &swdnb, &swdnbc},
                         {&swvisdir, &swvisdif, &swnirdir, &swnirdif, &swddir, &swddni, &swddif, &swddirc, &swddnic, &diffuse_frac}};
     rad_->run(itimestep, xtime, julian, yr, ri, ro, adapt_step_flag, wrf_time::real_time<real>(elapsed), &radtacttime);
+    vmdump::dump("vm_rad", 1, {&rthratenlw, &rthratensw, &cldfra}, {&glw, &gsw, &swdown, &coszen, &lwupb, &swupb, &olr});
   }
   if (rad_) {  // radiation_driver: accumulated fluxes, every step (DTaccum = DT)
     const real dt = real(g_.dt);

@@ -108,7 +108,7 @@ CPPWRF_HD inline void bl_gwdo_run(GwdoColumn<T>& c, int kte, T dx_factor, bool i
   oa4[1] = c.oa2d1; oa4[2] = c.oa2d2; oa4[3] = c.oa2d3; oa4[4] = c.oa2d4;
   ol4[1] = c.ol2d1; ol4[2] = c.ol2d2; ol4[3] = c.ol2d3; ol4[4] = c.ol2d4;
   {
-    const T wdir = std::atan2(ubar, vbar) + pi_;
+    const T wdir = libm::atan2(ubar, vbar) + pi_;
     const int idir = int(std::lround(fdir * wdir) % mdir) + 1;
     const int nwd = nwdir[idir - 1];
     oa = T(1 - 2 * ((nwd - 1) / 4)) * oa4[(nwd - 1) % 4 + 1];
@@ -173,9 +173,9 @@ CPPWRF_HD inline void bl_gwdo_run(GwdoColumn<T>& c, int kte, T dx_factor, bool i
   }
   // base level stress
   if (!ldrag) {
-    T efac = std::pow(oa + T(2.), ce * fr / frc);
+    T efac = libm::pow(oa + T(2.), ce * fr / frc);
     efac = c_min(c_max(efac, efacmin), efacmax);
-    coefm = std::pow(T(1.) + ol, oa + T(1.));
+    coefm = libm::pow(T(1.) + ol, oa + T(1.));
     xlinv = coefm / dx_eff;
     T tem = fr * fr * oc;
     const T gfac = tem / (tem + cg);
@@ -183,7 +183,7 @@ CPPWRF_HD inline void bl_gwdo_run(GwdoColumn<T>& c, int kte, T dx_factor, bool i
     if (if_nonhyd) {
       tem = fr * fr;
       nhd_effect = -(T(9.) / T(8.)) * tem +
-                   std::exp(-(T(2.) / fr)) * (-(T(5.) / T(4.) / tem) - T(0.5) / fr + T(5.) / T(4.) + T(9.) / T(4.) * fr + T(9.) / T(8.) * tem);
+                   libm::exp(-(T(2.) / fr)) * (-(T(5.) / T(4.) / tem) - T(0.5) / fr + T(5.) / T(4.) + T(9.) / T(4.) * fr + T(9.) / T(8.) * tem);
       taub = taub * (T(1.) + nhd_effect);
     }
   } else {

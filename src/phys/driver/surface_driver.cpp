@@ -248,7 +248,7 @@ struct KLsmPre {
     real dq = q2s * C::a23m4 / ((sfct - C::a4) * (sfct - C::a4));
     if (snow(i, j) > real(0.0)) {
       real sfctsno = sfct;
-      real e2sat = real(611.2) * std::exp(real(6174.) * (real(1.) / real(273.15) - real(1.) / sfctsno));
+      real e2sat = real(611.2) * libm::exp(real(6174.) * (real(1.) / real(273.15) - real(1.) / sfctsno));
       real q2sati = real(0.622) * e2sat / (sfcprs(i, j) - e2sat);
       q2sati = q2sati / (real(1.0) + q2sati);
       if (t1(i, j) > real(273.14)) {
@@ -457,7 +457,7 @@ struct KSeaiceNoah {
     real dqsdt2 = q2sat * C::a23m4 / ((sfctmp - C::a4) * (sfctmp - C::a4));
     if (snow(i, j) > real(0.0)) {
       real sfctsno = sfctmp;
-      real e2sat = real(611.2) * std::exp(real(6174.) * (real(1.) / real(273.15) - real(1.) / sfctsno));
+      real e2sat = real(611.2) * libm::exp(real(6174.) * (real(1.) / real(273.15) - real(1.) / sfctsno));
       real q2sati = real(0.622) * e2sat / (sfcprs - e2sat);
       q2sati = q2sati / (real(1.0) + q2sati);
       if (t1 > real(273.14)) {
@@ -833,7 +833,7 @@ struct KMyjsfcSeaPre {
     const bool ice = frac_ice(xice(i, j), xice_threshold);
     const real psfc = pint(i, j, lowlyr(i, j) - 1);
     if (ice) {
-      const real qs = pq0sea / psfc * std::exp(a2s * (tsk(i, j) - a3s) / (tsk(i, j) - a4s));
+      const real qs = pq0sea / psfc * libm::exp(a2s * (tsk(i, j) - a3s) / (tsk(i, j) - a4s));
       qsfc(i, j) = (qsfc(i, j) - (real(1.0) - xice(i, j)) * qs) / xice(i, j);
       hfx_sea(i, j) = hfx(i, j);
       qfx_sea(i, j) = qfx(i, j);
@@ -849,7 +849,7 @@ struct KMyjsfcSeaPre {
       z0base_sea(i, j) = znt_sea(i, j);
       if (ss < real(271.4)) ss = real(271.4);
       ts = ss;
-      qsfc_sea(i, j) = pq0sea / psfc * std::exp(a2s * (ts - a3s) / (ts - a4s));
+      qsfc_sea(i, j) = pq0sea / psfc * libm::exp(a2s * (ts - a3s) / (ts - a4s));
     } else {
       xland_sea(i, j) = xland(i, j);
       mavail_sea(i, j) = mavail(i, j);

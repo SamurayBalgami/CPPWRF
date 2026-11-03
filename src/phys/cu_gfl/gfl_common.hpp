@@ -69,7 +69,13 @@ struct GflConstants {
 template <typename real>
 CPPWRF_HOST_DEVICE inline void pow_pair(real x0, real x1, real y, real& r0,
                                         real& r1) {
-#if !defined(__CUDA_ARCH__) && defined(__x86_64__) && defined(__GLIBC__)
+#if defined(CPPWRF_GLIBC_MATH)
+  if constexpr (std::is_same_v<real, double>) {  // CUDA FP64: libmvec's lanes as glibc computes them
+    r0 = glibc::mvec::pow(x0, y);
+    r1 = glibc::mvec::pow(x1, y);
+    return;
+  }
+#elif !defined(__CUDA_ARCH__) && defined(__x86_64__) && defined(__GLIBC__)
   if constexpr (std::is_same_v<real, double>) {
     alignas(16) double out[2];
     _mm_store_pd(out, _ZGVbN2vv_pow(_mm_set_pd(x1, x0), _mm_set1_pd(y)));
@@ -78,8 +84,8 @@ CPPWRF_HOST_DEVICE inline void pow_pair(real x0, real x1, real y, real& r0,
     return;
   }
 #endif
-  r0 = pow(x0, y);
-  r1 = pow(x1, y);
+  r0 = libm::pow(x0, y);
+  r1 = libm::pow(x1, y);
 }
 
 template <typename real>
@@ -87,7 +93,7 @@ CPPWRF_HOST_DEVICE inline real tgamma_fn(real x) {
   if constexpr (std::is_same_v<real, float>) {
     return ::tgammaf(x);
   } else {
-    return ::tgamma(x);
+    return libm::tgamma(x);
   }
 }
 
@@ -108,8 +114,8 @@ CPPWRF_HOST_DEVICE inline void zu_profile(real* zu, const real* p, int kstart,
   }
   if (k <= kt_minus_1) {
     real r = (p[k] - p_kstart) / dp;
-    real a = pow(r, e1);
-    real b = pow(R(1.0) - r, e2);
+    real a = libm::pow(r, e1);
+    real b = libm::pow(R(1.0) - r, e2);
     zu[k] = zubeg + (fzu * a) * b;
   }
 }
@@ -125,22 +131,22 @@ CPPWRF_HOST_DEVICE inline real satvap(real temp2) {
     const real toto = R(1.0) / toot;
     const real eilog =
         -(R(9.09718) * (toot - R(1.0))) -
-        R(3.56654) * (log(toot) / log(R(10.0))) +
-        R(0.876793) * (R(1.0) - toto) + (log(R(6.1071)) / log(R(10.0)));
-    return pow(R(10.0), eilog);
+        R(3.56654) * (libm::log(toot) / libm::log(R(10.0))) +
+        R(0.876793) * (R(1.0) - toto) + (libm::log(R(6.1071)) / libm::log(R(10.0)));
+    return libm::pow(R(10.0), eilog);
   }
   const real tsot = R(373.16) / temp2;
   const real ewlog = -(R(7.90298) * (tsot - R(1.0))) +
-                     R(5.02808) * (log(tsot) / log(R(10.0)));
+                     R(5.02808) * (libm::log(tsot) / libm::log(R(10.0)));
   const real ewlog2 =
       ewlog - R(1.3816e-07) *
-                  (pow(R(10.0), R(11.344) * (R(1.0) - (R(1.0) / tsot))) -
+                  (libm::pow(R(10.0), R(11.344) * (R(1.0) - (R(1.0) / tsot))) -
                    R(1.0));
   const real ewlog3 =
       ewlog2 +
-      R(0.0081328) * (pow(R(10.0), -(R(3.49149) * (tsot - R(1.0)))) - R(1.0));
-  const real ewlog4 = ewlog3 + (log(R(1013.246)) / log(R(10.0)));
-  return pow(R(10.0), ewlog4);
+      R(0.0081328) * (libm::pow(R(10.0), -(R(3.49149) * (tsot - R(1.0)))) - R(1.0));
+  const real ewlog4 = ewlog3 + (libm::log(R(1013.246)) / libm::log(R(10.0)));
+  return libm::pow(R(10.0), ewlog4);
 }
 
 // ---------------------------------------------------------------------------
@@ -164,11 +170,11 @@ CPPWRF_HOST_DEVICE inline void cup_env(int ktf, int kte, int ierr, int itest,
 
   if (itest == 1 || itest == 0) {
     z[1] =
-        max(R(0.0), z1) - (log(p[1]) - log(psur)) * R(287.0) * tv[1] / R(9.81);
+        max(R(0.0), z1) - (libm::log(p[1]) - libm::log(psur)) * R(287.0) * tv[1] / R(9.81);
     for (int k = 2; k <= ktf; ++k) {
       real tvbar = R(0.5) * tv[k] + R(0.5) * tv[k - 1];
       z[k] =
-          z[k - 1] - (log(p[k]) - log(p[k - 1])) * R(287.0) * tvbar / R(9.81);
+          z[k - 1] - (libm::log(p[k]) - libm::log(p[k - 1])) * R(287.0) * tvbar / R(9.81);
     }
   } else if (itest == 2) {
     for (int k = 1; k <= ktf; ++k) {
@@ -898,7 +904,7 @@ CPPWRF_HOST_DEVICE inline void cup_up_moisture(
 
   for (int k = k22 + 1; k <= kbcon; ++k) {
     real c0t =
-        (t[k] > R(273.16)) ? c0 : c0 * exp(c0_iceconv * (t[k] - R(273.16)));
+        (t[k] > R(273.16)) ? c0 : c0 * libm::exp(c0_iceconv * (t[k] - R(273.16)));
     c0t3d[k] = c0t;
     qc[k] = (qc[k - 1] * zu[k - 1] - R(0.5) * up_massdetr[k - 1] * qc[k - 1] +
              up_massentr[k - 1] * q[k - 1]) /
@@ -918,7 +924,7 @@ CPPWRF_HOST_DEVICE inline void cup_up_moisture(
 
   for (int k = kbcon + 1; k <= ktop; ++k) {
     real c0t =
-        (t[k] > R(273.16)) ? c0 : c0 * exp(c0_iceconv * (t[k] - R(273.16)));
+        (t[k] > R(273.16)) ? c0 : c0 * libm::exp(c0_iceconv * (t[k] - R(273.16)));
     if (is_mid) c0t = R(0.004);
     c0t3d[k] = c0t;
     if (autoconv > 1) c0t = c0;

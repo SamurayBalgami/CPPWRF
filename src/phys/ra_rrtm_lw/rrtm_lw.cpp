@@ -241,7 +241,7 @@ void setcoef(const RrtmLwTables& t, Col& C, int& LAYTROP, int& LAYSWTCH, int& LA
   LAYSWTCH = 0;
   LAYLOW = 0;
   for (int LAY = 1; LAY <= NLAYERS; ++LAY) {
-    const double PLOG = std::log(w.pavel[LAY]);
+    const double PLOG = libm::log(w.pavel[LAY]);
     w.jp[LAY] = int(36. - 5 * (PLOG + 0.04));
     if (w.jp[LAY] < 1)
       w.jp[LAY] = 1;
@@ -286,7 +286,7 @@ void setcoef(const RrtmLwTables& t, Col& C, int& LAYTROP, int& LAYSWTCH, int& LA
     if (w.colch4[LAY] == 0.) w.colch4[LAY] = 1.E-32 * w.coldry[LAY];
     const double CO2REG = 3.55E-24 * w.coldry[LAY];
     w.co2mult[LAY] =
-        (w.colco2[LAY] - CO2REG) * 272.63 * std::exp(-1919.4 / w.tavel[LAY]) / (8.7604E-4 * w.tavel[LAY]);
+        (w.colco2[LAY] - CO2REG) * 272.63 * libm::exp(-1919.4 / w.tavel[LAY]) / (8.7604E-4 * w.tavel[LAY]);
     // 5400
     const double COMPFP = 1. - FP;
     w.fac10[LAY] = COMPFP * FT;
@@ -865,7 +865,7 @@ void rtrn(const RrtmLwTables& t, Col& C, double TBOUND, const double* SEMISS) {
       INDLAY[LEV] = int(TAVEL[LEV] - 159.);
       TLAYFRAC[LEV] = TAVEL[LEV] - double(int(TAVEL[LEV]));
       ODCLD[LEV] = SECANG * TAUCLOUD[LEV];
-      const double TRANSCLD = std::exp(-ODCLD[LEV]);
+      const double TRANSCLD = libm::exp(-ODCLD[LEV]);
       ABSCLD[LEV] = 1. - TRANSCLD;
       EFCLFRAC[LEV] = ABSCLD[LEV] * CLDFRAC[LEV];
       for (int IPR = 1; IPR <= NGPT; ++IPR) {

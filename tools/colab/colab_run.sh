@@ -4,7 +4,7 @@
 #
 #   tools/colab/colab_run.sh [--gpu T4|L4|G4|A100|H100] (default G4: RTX PRO 6000, the fastest per credit)
 #                            [--cases NAME,...] [--files NAME,...] [--bench NAME[@cuda|@cuda_dp],...]
-#                            [--env K=V]... [--nsys] [--ncu REGEX|top] [--keep] [--out DIR]
+#                            [--env K=V]... [--nsys] [--ncu REGEX|top] [--wrf-tables] [--keep] [--out DIR]
 #
 #   --cases  wrf_suite.py cases to run on the VM against the WRF references (default: the GPU core set below;
 #            '' for none: the data then have no reference files)
@@ -18,19 +18,22 @@
 #   --ncu    ncu on the bench cases' kernels whose mangled names match REGEX (e.g. 'KTendU|YSURunner'; "top": the
 #            nsys top 15) in their first 2 steps (at most 500 launches): achieved occupancy, local-memory traffic,
 #            DRAM bytes, registers and stack
+#   --wrf-tables  upload WRF's Thompson tables (370 MB) instead of computing them on the VM: the Thompson cases
+#            (mp_physics 8 / 28) are then bit-identical to WRF in FP64
 #   --keep   leave the VM running (stop it later with `colab stop -s <session>`)
 #   --out    local results directory (default: ${CPPWRF_SCRATCH:-~/cppwrf_scratch}/colab/<date>_<gpu>)
 #   MAX_UPLOAD_MIN (environment, default 20): stop when the upload would take longer (slow regions)
 #
 # The source is the committed HEAD (git archive); the data come from ${CPPWRF_WRF_RUNS} through
-# tools/colab/stage_data.py (cached per case list). Results: summary.txt (GPU, build times, PASS/FAIL lines
+# tools/colab/stage_data.py (cached per case list). Results: summary.txt (GPU, build times, the device math proof
+# (tools/glibc_math_proof_cuda.cu, 10^7 inputs per function; --env CPPWRF_JOB_GLIBC_PROOF=N), PASS/FAIL lines
 # with the relative L2 differences, ns/cell/step, device memory, the nsys / ncu lines), the logs, profile/ (per
 # bench case the nsys tables per step and the ncu kernel table) and nsys/ (nsys stats as CSV).
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_WRF_RUNS:?set CPPWRF_WRF_RUNS}"
 SCRATCH=${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}
-GPU=G4 KEEP=0 OUT= FILES= NSYS= NCU= ENVS=() KEYS= MAX_UPLOAD_MIN=${MAX_UPLOAD_MIN:-20}
+GPU=G4 KEEP=0 OUT= FILES= NSYS= NCU= ENVS=() KEYS= MAX_UPLOAD_MIN=${MAX_UPLOAD_MIN:-20} TABLES=--no-thompson-tables WT=
 CASES=real_r1_fp64_cuda,real_p1_r8_fp64_cuda_1h,real_p1_fp32_1h,real_p4_r8_fp64_cuda_1h,real_p8_r8_fp64_cuda_1h,real_t6_r8_fp64_cuda_1h,real_d0_r8_fp64_cuda_1h,real_nmp1_r8_fp64_cuda_1h
 BENCH=real_p1_r8_fp64_cuda_1h,real_p1_fp32_1h,real_d0_r8_fp64_cuda_1h
 while [ $# -gt 0 ]; do
@@ -43,6 +46,7 @@ while [ $# -gt 0 ]; do
            ENVS+=(--env "$2"); KEYS=${KEYS:+$KEYS,}${2%%=*}; shift 2 ;;
     --nsys) NSYS=1; shift ;;
     --ncu) NCU=$2; shift 2 ;;
+    --wrf-tables) TABLES= WT=wrf-tables; shift ;;
     --keep) KEEP=1; shift ;;
     --out) OUT=$2; shift 2 ;;
     *) sed -n '2,27p' "$0"; exit 2 ;;
@@ -62,10 +66,10 @@ git -C "$REPO" rev-parse --short HEAD > "$OUT/commit.txt"
 STAGE=$(echo "$CASES,$BENCH" | sed 's/@cuda[a-z_]*//g')
 # no --cases and no --files: the bench cases need no reference files
 NOREFS=; [ -n "$CASES$FILES" ] || NOREFS=--no-refs
-key=$( (echo "$STAGE" | tr ',' '\n' | sort -u; echo "files:$FILES$NOREFS") | tr '\n' ',' | md5sum | cut -c1-12)
+key=$( (echo "$STAGE" | tr ',' '\n' | sort -u; echo "files:$FILES$NOREFS$WT") | tr '\n' ',' | md5sum | cut -c1-12)
 DATA=$SCRATCH/colab/cache/data_$key.tar
-# GPU runs only: CPPWRF computes the Thompson tables on the VM instead of uploading WRF's 370 MB
-[ -f "$DATA" ] || python3 "$REPO/tools/colab/stage_data.py" --only "$STAGE" --files "$FILES" --no-thompson-tables $NOREFS \
+# GPU runs only: CPPWRF computes the Thompson tables on the VM instead of uploading WRF's 370 MB (--wrf-tables: WRF's)
+[ -f "$DATA" ] || python3 "$REPO/tools/colab/stage_data.py" --only "$STAGE" --files "$FILES" $TABLES $NOREFS \
   "$DATA"
 
 # ---- remote
@@ -155,7 +159,7 @@ tar xzf "$OUT/results.tar.gz" -C "$OUT"
 rm -f "$OUT/src.tar.gz"
 echo "[colab_run] results in $OUT/job"
 cat "$OUT/job/summary.txt"
-if grep -qE "^suite (FAIL|SKIP|ERROR)|^files (FAIL|SKIP)|^job error" "$OUT/job/summary.txt" ||
+if grep -qE "^suite (FAIL|SKIP|ERROR)|^files (FAIL|SKIP)|^job error|^glibc device math: exit [1-9]" "$OUT/job/summary.txt" ||
    { [ -n "$FILES" ] && ! grep -q "^files compared " "$OUT/job/summary.txt"; } ||
    { [ -n "$CASES" ] && ! grep -q "^suite SUITE " "$OUT/job/summary.txt"; }; then
   echo "[colab_run] the suite did not pass"; exit 1

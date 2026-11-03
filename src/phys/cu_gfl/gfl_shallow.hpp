@@ -113,13 +113,13 @@ CPPWRF_HOST_DEVICE inline GflShallowOut cu_gfl_sh_run(
     (void)pgeoh;
     zws = max(R(0.0), flux_tun * R(0.41) * buo_flux * zo[2] * C::g / t[1]);
     if (zws > std::numeric_limits<real>::min()) {
-      zws = R(1.2) * pow(zws, R(0.3333));
+      zws = R(1.2) * libm::pow(zws, R(0.3333));
       ztexec = max(flux_tun * in.hfx / (rho[1] * zws * C::cp), R(0.0));
       zqexec = max(flux_tun * in.qfx / C::xlv / (rho[1] * zws), R(0.0));
     }
     zws =
         max(R(0.0), flux_tun * R(0.41) * buo_flux * zo[kpbl] * C::g / t[kpbl]);
-    zws = R(1.2) * pow(zws, R(0.3333));
+    zws = R(1.2) * libm::pow(zws, R(0.3333));
     zws = zws * rho[kpbl];
   }
 

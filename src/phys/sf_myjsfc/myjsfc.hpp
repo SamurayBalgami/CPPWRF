@@ -451,7 +451,7 @@ struct MYJSFCKernel {
       }
 
       for (int itr = 1; itr <= ITRMX; ++itr) {
-        zt = c_max(std::exp(zzil * std::sqrt(ustar_val * z0base_val)) * z0base_val, EPSZT);
+        zt = c_max(libm::exp(zzil * std::sqrt(ustar_val * z0base_val)) * z0base_val, EPSZT);
         real rzst = zslt / zt;
         real rlogt = rlog(rzst);
 
@@ -616,7 +616,7 @@ struct MYJSFCKernel {
     real qshltr_val = hlflx / akhs02 + qz0_val;
     real q10_val = hlflx / akhs10 + qz0_val;
     real term1 = real(-0.068283) / tlow;
-    real pshltr_val = psfc_val * std::exp(term1);
+    real pshltr_val = psfc_val * libm::exp(term1);
 
     real u10e_val = u10_val;
     real v10e_val = v10_val;
@@ -655,12 +655,12 @@ struct MYJSFCKernel {
     real flqc_val = rlow * akhs_val * wetm;
 
     real qgh_val = ((real(1.) - seamask) * PQ0 + seamask * PQ0SEA) / plow *
-                   std::exp(A2S * (tlow - A3S) / (tlow - A4S));
+                   libm::exp(A2S * (tlow - A3S) / (tlow - A4S));
     qgh_val = qgh_val / (real(1.) - qgh_val);
     real cpm_val = CP * (real(1.) + real(0.8) * qlow);
 
     if (seamask > real(0.5)) {
-      qs_val = PQ0SEA / psfc_val * std::exp(A2S * (tsk(i, j) - A3S) / (tsk(i, j) - A4S));
+      qs_val = PQ0SEA / psfc_val * libm::exp(A2S * (tsk(i, j) - A3S) / (tsk(i, j) - A4S));
       qs_val = qs_val / (real(1.) - qs_val);
     }
 
@@ -684,8 +684,8 @@ struct MYJSFCKernel {
     constexpr real A3 = real(273.16);
     constexpr real A4 = real(35.86);
 
-    real qs02 = PQ0 / p02p * std::exp(A2 * (t02p - A3) / (t02p - A4));
-    real qs10 = PQ0 / p10p * std::exp(A2 * (t10p - A3) / (t10p - A4));
+    real qs02 = PQ0 / p02p * libm::exp(A2 * (t02p - A3) / (t02p - A4));
+    real qs10 = PQ0 / p10p * libm::exp(A2 * (t10p - A3) / (t10p - A4));
 
     if (qshltr_val > qs02) qshltr_val = qs02;
     if (q10_val > qs10) q10_val = qs10;

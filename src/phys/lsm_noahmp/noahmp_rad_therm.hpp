@@ -87,7 +87,7 @@ CPPWRF_HD inline void SnowCoverGroundNiu07(NoahmpType& noahmp) {
   if (water.state.SnowDepth > real(0.0)) {
     real SnowDensBulk = water.state.SnowWaterEquiv / water.state.SnowDepth;
     real MeltFac = rpow(SnowDensBulk / real(100.0), water.param.SnowMeltFac);
-    water.state.SnowCoverFrac = std::tanh(water.state.SnowDepth / (water.param.SnowCoverFac * MeltFac));
+    water.state.SnowCoverFrac = libm::tanh(water.state.SnowDepth / (water.param.SnowCoverFac * MeltFac));
   }
 }
 
@@ -102,14 +102,14 @@ CPPWRF_HD inline void SnowCoverGroundAR25(NoahmpType& noahmp) {
   if (water.state.SnowDepth > real(0.0)) {
     real SnowMeltFac =
         water.param.SnowCoverM1AR25 +
-        std::tanh(water.param.SnowCoverM2AR25 * std::min((std::max(domain.GridSize, real(500.0)) / real(1000.0)), real(36.0)));
+        libm::tanh(water.param.SnowCoverM2AR25 * std::min((std::max(domain.GridSize, real(500.0)) / real(1000.0)), real(36.0)));
     real SnowCoverFac =
         water.param.SnowCoverFac1AR25 *
-            std::sinh(water.param.SnowCoverFac2AR25 * std::min((std::max(domain.GridSize, real(500.0)) / real(1000.0)), real(36.0))) +
+            libm::sinh(water.param.SnowCoverFac2AR25 * std::min((std::max(domain.GridSize, real(500.0)) / real(1000.0)), real(36.0))) +
         water.param.SnowCoverFac2AR25;
     real SnowDensBulk = water.state.SnowWaterEquiv / water.state.SnowDepth;
     real MeltFac = rpow(SnowDensBulk / real(100.0), SnowMeltFac);
-    water.state.SnowCoverFrac = std::tanh(water.state.SnowDepth / (SnowCoverFac * MeltFac));
+    water.state.SnowCoverFrac = libm::tanh(water.state.SnowDepth / (SnowCoverFac * MeltFac));
   }
 }
 
@@ -305,11 +305,11 @@ CPPWRF_HD inline void CanopyRadiationTwoStream(NoahmpType& noahmp, int IndSwBnd,
       real CrownDepth = energy.param.HeightCanopyTop - energy.param.HeightCanopyBot;
       real CrownRadiusVert = real(0.5) * CrownDepth;
       real SolarAngleTmp =
-          std::atan(CrownRadiusVert / energy.param.TreeCrownRadius *
-                    std::tan(std::acos(std::max(real(0.01), domain.CosSolarZenithAngle))));
+          libm::atan(CrownRadiusVert / energy.param.TreeCrownRadius *
+                    libm::tan(libm::acos(std::max(real(0.01), domain.CosSolarZenithAngle))));
       energy.state.GapBtwCanopy =
           rexp(-VegDensity * ConstPI * (energy.param.TreeCrownRadius * energy.param.TreeCrownRadius) /
-               std::cos(SolarAngleTmp));
+               libm::cos(SolarAngleTmp));
       real FoliageDensity =
           energy.state.VegAreaIndEff /
           (real(1.33) * ConstPI * rpow(energy.param.TreeCrownRadius, real(3.0)) *
@@ -782,7 +782,7 @@ CPPWRF_HD inline void SoilThermalProperty(NoahmpType& noahmp) {
       KerstenFac = SoilSatRatio;
     } else {
       if (SoilSatRatio > real(0.1)) {
-        KerstenFac = std::log10(SoilSatRatio) + real(1.0);
+        KerstenFac = libm::log10(SoilSatRatio) + real(1.0);
       } else {
         KerstenFac = real(0.0);
       }

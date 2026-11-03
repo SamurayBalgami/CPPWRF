@@ -1,6 +1,10 @@
 #include "kf_tables.hpp"
 #include <cmath>
 
+#include "core/libm.hpp"
+
+#include "core/libm.hpp"
+
 namespace cppwrf::phys::cu_kf {
 
 template <typename T>
@@ -31,10 +35,10 @@ void init_kf_tables(KFTables<T>& tables, T svp1, T svp2, T svp3, T svpt0) {
     T p = plutop - dpr;
     for (int kp = 0; kp < KFNP; ++kp) {
         p += dpr;
-        T es = aliq * exp((bliq * temp - cliq) / (temp - dliq));
+        T es = aliq * libm::exp((bliq * temp - cliq) / (temp - dliq));
         T qs = static_cast<T>(0.622) * es / (p - es);
-        T pi = pow(static_cast<T>(1.0e5) / p, static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qs));
-        tables.the0k[kp] = temp * pi * exp((static_cast<T>(3374.6525) / temp - static_cast<T>(2.5403)) * qs * (static_cast<T>(1.0) + static_cast<T>(0.81) * qs));
+        T pi = libm::pow(static_cast<T>(1.0e5) / p, static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qs));
+        tables.the0k[kp] = temp * pi * libm::exp((static_cast<T>(3374.6525) / temp - static_cast<T>(2.5403)) * qs * (static_cast<T>(1.0) + static_cast<T>(0.81) * qs));
     }
 
     // Compute temperatures for each sat. equiv. potential temp.
@@ -45,19 +49,19 @@ void init_kf_tables(KFTables<T>& tables, T svp1, T svp2, T svp3, T svpt0) {
         for (int it = 0; it < KFNT; ++it) {
             thes += dth;
             T tgues = (it == 0) ? tmin : tables.ttab[kp][it - 1];
-            T es = aliq * exp((bliq * tgues - cliq) / (tgues - dliq));
+            T es = aliq * libm::exp((bliq * tgues - cliq) / (tgues - dliq));
             T qs = static_cast<T>(0.622) * es / (p - es);
-            T pi = pow(static_cast<T>(1.0e5) / p, static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qs));
-            T thgues = tgues * pi * exp((static_cast<T>(3374.6525) / tgues - static_cast<T>(2.5403)) * qs * (static_cast<T>(1.0) + static_cast<T>(0.81) * qs));
+            T pi = libm::pow(static_cast<T>(1.0e5) / p, static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qs));
+            T thgues = tgues * pi * libm::exp((static_cast<T>(3374.6525) / tgues - static_cast<T>(2.5403)) * qs * (static_cast<T>(1.0) + static_cast<T>(0.81) * qs));
             T f0 = thgues - thes;
             T t1 = tgues - static_cast<T>(0.5) * f0;
             T t0 = tgues;
 
             for (int itcnt = 1; itcnt <= 11; ++itcnt) {
-                es = aliq * exp((bliq * t1 - cliq) / (t1 - dliq));
+                es = aliq * libm::exp((bliq * t1 - cliq) / (t1 - dliq));
                 qs = static_cast<T>(0.622) * es / (p - es);
-                pi = pow(static_cast<T>(1.0e5) / p, static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qs));
-                T thtgs = t1 * pi * exp((static_cast<T>(3374.6525) / t1 - static_cast<T>(2.5403)) * qs * (static_cast<T>(1.0) + static_cast<T>(0.81) * qs));
+                pi = libm::pow(static_cast<T>(1.0e5) / p, static_cast<T>(0.2854) * (static_cast<T>(1.0) - static_cast<T>(0.28) * qs));
+                T thtgs = t1 * pi * libm::exp((static_cast<T>(3374.6525) / t1 - static_cast<T>(2.5403)) * qs * (static_cast<T>(1.0) + static_cast<T>(0.81) * qs));
                 T f1 = thtgs - thes;
                 if (abs(f1) < toler) {
                     break;
@@ -78,7 +82,7 @@ void init_kf_tables(KFTables<T>& tables, T svp1, T svp2, T svp3, T svpt0) {
     T a1 = astrt - ainc;
     for (int i = 0; i < KFNALU; ++i) {
         a1 += ainc;
-        tables.alu[i] = log(a1);
+        tables.alu[i] = libm::log(a1);
     }
 }
 

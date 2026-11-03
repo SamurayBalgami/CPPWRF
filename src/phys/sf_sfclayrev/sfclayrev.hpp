@@ -22,14 +22,14 @@ template <typename T>
 CPPWRF_HD inline T psim_stable_full(T zolf) {
   using std::log;
   using std::pow;
-  return static_cast<T>(-6.1) * log(zolf + pow(static_cast<T>(1.0) + pow(zolf, static_cast<T>(2.5)), static_cast<T>(1.0 / 2.5)));
+  return static_cast<T>(-6.1) * libm::log(zolf + libm::pow(static_cast<T>(1.0) + libm::pow(zolf, static_cast<T>(2.5)), static_cast<T>(1.0 / 2.5)));
 }
 
 template <typename T>
 CPPWRF_HD inline T psih_stable_full(T zolf) {
   using std::log;
   using std::pow;
-  return static_cast<T>(-5.3) * log(zolf + pow(static_cast<T>(1.0) + pow(zolf, static_cast<T>(1.1)), static_cast<T>(1.0 / 1.1)));
+  return static_cast<T>(-5.3) * libm::log(zolf + libm::pow(static_cast<T>(1.0) + libm::pow(zolf, static_cast<T>(1.1)), static_cast<T>(1.0 / 1.1)));
 }
 
 template <typename T>
@@ -38,16 +38,16 @@ CPPWRF_HD inline T psim_unstable_full(T zolf) {
   using std::log;
   using std::pow;
   using std::sqrt;
-  T x = pow(static_cast<T>(1.0) - static_cast<T>(16.0) * zolf, static_cast<T>(0.25));
-  T psimk = static_cast<T>(2.0) * log(static_cast<T>(0.5) * (static_cast<T>(1.0) + x)) +
-            log(static_cast<T>(0.5) * (static_cast<T>(1.0) + x * x)) -
-            static_cast<T>(2.0) * atan(x) + static_cast<T>(2.0) * atan(static_cast<T>(1.0));
+  T x = libm::pow(static_cast<T>(1.0) - static_cast<T>(16.0) * zolf, static_cast<T>(0.25));
+  T psimk = static_cast<T>(2.0) * libm::log(static_cast<T>(0.5) * (static_cast<T>(1.0) + x)) +
+            libm::log(static_cast<T>(0.5) * (static_cast<T>(1.0) + x * x)) -
+            static_cast<T>(2.0) * libm::atan(x) + static_cast<T>(2.0) * libm::atan(static_cast<T>(1.0));
 
-  T ym = pow(static_cast<T>(1.0) - static_cast<T>(10.0) * zolf, static_cast<T>(0.33));
+  T ym = libm::pow(static_cast<T>(1.0) - static_cast<T>(10.0) * zolf, static_cast<T>(0.33));
   T sqrt3 = sqrt(static_cast<T>(3.0));
-  T psimc = (static_cast<T>(3.0) / static_cast<T>(2.0)) * log((ym * ym + ym + static_cast<T>(1.0)) / static_cast<T>(3.0)) -
-            sqrt3 * atan((static_cast<T>(2.0) * ym + static_cast<T>(1.0)) / sqrt3) +
-            static_cast<T>(4.0) * atan(static_cast<T>(1.0)) / sqrt3;
+  T psimc = (static_cast<T>(3.0) / static_cast<T>(2.0)) * libm::log((ym * ym + ym + static_cast<T>(1.0)) / static_cast<T>(3.0)) -
+            sqrt3 * libm::atan((static_cast<T>(2.0) * ym + static_cast<T>(1.0)) / sqrt3) +
+            static_cast<T>(4.0) * libm::atan(static_cast<T>(1.0)) / sqrt3;
 
   return (psimk + zolf * zolf * psimc) / (static_cast<T>(1.0) + zolf * zolf);
 }
@@ -58,14 +58,14 @@ CPPWRF_HD inline T psih_unstable_full(T zolf) {
   using std::log;
   using std::pow;
   using std::sqrt;
-  T y = pow(static_cast<T>(1.0) - static_cast<T>(16.0) * zolf, static_cast<T>(0.5));  // WRF's **.5: a pow call
-  T psihk = static_cast<T>(2.0) * log((static_cast<T>(1.0) + y) * static_cast<T>(0.5));
+  T y = libm::pow(static_cast<T>(1.0) - static_cast<T>(16.0) * zolf, static_cast<T>(0.5));  // WRF's **.5: a pow call
+  T psihk = static_cast<T>(2.0) * libm::log((static_cast<T>(1.0) + y) * static_cast<T>(0.5));
 
-  T yh = pow(static_cast<T>(1.0) - static_cast<T>(34.0) * zolf, static_cast<T>(0.33));
+  T yh = libm::pow(static_cast<T>(1.0) - static_cast<T>(34.0) * zolf, static_cast<T>(0.33));
   T sqrt3 = sqrt(static_cast<T>(3.0));
-  T psihc = (static_cast<T>(3.0) / static_cast<T>(2.0)) * log((yh * yh + yh + static_cast<T>(1.0)) / static_cast<T>(3.0)) -
-            sqrt3 * atan((static_cast<T>(2.0) * yh + static_cast<T>(1.0)) / sqrt3) +
-            static_cast<T>(4.0) * atan(static_cast<T>(1.0)) / sqrt3;
+  T psihc = (static_cast<T>(3.0) / static_cast<T>(2.0)) * libm::log((yh * yh + yh + static_cast<T>(1.0)) / static_cast<T>(3.0)) -
+            sqrt3 * libm::atan((static_cast<T>(2.0) * yh + static_cast<T>(1.0)) / sqrt3) +
+            static_cast<T>(4.0) * libm::atan(static_cast<T>(1.0)) / sqrt3;
 
   return (psihk + zolf * zolf * psihc) / (static_cast<T>(1.0) + zolf * zolf);
 }
@@ -125,11 +125,11 @@ CPPWRF_HD inline T zolri2(T& zol2, T ri2, T z, T z0, const SFClayRevTables<T>& t
 
   T psix2, psih2;
   if (ri2 < static_cast<T>(0.0)) {
-    psix2 = log((z + z0) / z0) - (psim_unstable(zol3, tbl) - psim_unstable(zol20, tbl));
-    psih2 = log((z + z0) / z0) - (psih_unstable(zol3, tbl) - psih_unstable(zol20, tbl));
+    psix2 = libm::log((z + z0) / z0) - (psim_unstable(zol3, tbl) - psim_unstable(zol20, tbl));
+    psih2 = libm::log((z + z0) / z0) - (psih_unstable(zol3, tbl) - psih_unstable(zol20, tbl));
   } else {
-    psix2 = log((z + z0) / z0) - (psim_stable(zol3, tbl) - psim_stable(zol20, tbl));
-    psih2 = log((z + z0) / z0) - (psih_stable(zol3, tbl) - psih_stable(zol20, tbl));
+    psix2 = libm::log((z + z0) / z0) - (psim_stable(zol3, tbl) - psim_stable(zol20, tbl));
+    psih2 = libm::log((z + z0) / z0) - (psih_stable(zol3, tbl) - psih_stable(zol20, tbl));
   }
   return zol2 * psih2 / (psix2 * psix2) - ri2;
 }
@@ -181,8 +181,8 @@ CPPWRF_HD inline T depth_dependent_z0(T water_depth, T z0, T ust) {
   } else {
     effective_depth = water_depth;
   }
-  T depth_b = static_cast<T>(1.0 / 30.0) * log(static_cast<T>(1260.0) / effective_depth);
-  T res = exp((static_cast<T>(2.7) * ust - static_cast<T>(1.8) / depth_b) /
+  T depth_b = static_cast<T>(1.0 / 30.0) * libm::log(static_cast<T>(1260.0) / effective_depth);
+  T res = libm::exp((static_cast<T>(2.7) * ust - static_cast<T>(1.8) / depth_b) /
               (ust + static_cast<T>(0.17) / depth_b));
   return min(res, static_cast<T>(0.1));
 }
@@ -309,7 +309,7 @@ struct SFClayRevKernel {
     // WRF lines 253-263
     real pl = p1d(i, j) / real(1000.0);
     real scr3 = t1d(i, j);
-    real thcon = pow(p1000mb * real(0.001) / pl, rovcp);  // scalar in WRF (loop 30 is not vectorised)
+    real thcon = libm::pow(p1000mb * real(0.001) / pl, rovcp);  // scalar in WRF (loop 30 is not vectorised)
     real thx = scr3 * thcon;
     real scr4 = scr3;
     real thvx = thx;
@@ -328,14 +328,14 @@ struct SFClayRevKernel {
     scr4 = scr3 * tvcon;
 
     // WRF lines 280-292
-    real e1 = svp1 * exp(svp2 * (tgdsa - svpt0) / (tgdsa - svp3));
+    real e1 = svp1 * libm::exp(svp2 * (tgdsa - svpt0) / (tgdsa - svp3));
     if (xland(i, j) > real(1.5) && lakemask(i, j) == real(0.0)) {
       e1 = e1 * salinity_factor;
     }
     if (xland(i, j) > real(1.5) || qsfc(i, j) <= real(0.0)) {
       qsfc(i, j) = ep2 * e1 / (psfc_cb - e1);
     }
-    e1 = svp1 * exp(svp2 * (t1d(i, j) - svpt0) / (t1d(i, j) - svp3));
+    e1 = svp1 * libm::exp(svp2 * (t1d(i, j) - svpt0) / (t1d(i, j) - svp3));
     pl = p1d(i, j) / real(1000.0);
     qgh(i, j) = ep2 * e1 / (pl - e1);
     cpm(i, j) = cp * (real(1.0) + real(0.8) * qx);
@@ -348,9 +348,9 @@ struct SFClayRevKernel {
     real govrth = g / thx;
 
     // WRF lines 317-358
-    gz1oz0(i, j) = log((za + znt(i, j)) / znt(i, j));
-    real gz2oz0 = log((real(2.0) + znt(i, j)) / znt(i, j));
-    real gz10oz0 = log((real(10.0) + znt(i, j)) / znt(i, j));
+    gz1oz0(i, j) = libm::log((za + znt(i, j)) / znt(i, j));
+    real gz2oz0 = libm::log((real(2.0) + znt(i, j)) / znt(i, j));
+    real gz10oz0 = libm::log((real(10.0) + znt(i, j)) / znt(i, j));
 
     real zl;
     if ((xland(i, j) - real(1.5)) >= real(0.0)) {
@@ -366,13 +366,13 @@ struct SFClayRevKernel {
     real vconv;
     if (xland(i, j) < real(1.5)) {
       real fluxc = max(hfx(i, j) / rhox / cp + ep1 * tskv * qfx(i, j) / rhox, real(0.0));
-      vconv = vconvc * pow(g / tgdsa * pblh(i, j) * fluxc, real(0.33));
+      vconv = vconvc * libm::pow(g / tgdsa * pblh(i, j) * fluxc, real(0.33));
     } else {
       real dthvm = (-dthvdz >= real(0.0)) ? -dthvdz : real(0.0);
       vconv = sqrt(dthvm);
     }
 
-    real vsgd = real(0.32) * pow(max(dx(i, j) / real(5000.0) - real(1.0), real(0.0)), real(0.33));
+    real vsgd = real(0.32) * libm::pow(max(dx(i, j) / real(5000.0) - real(1.0), real(0.0)), real(0.33));
     wspd(i, j) = sqrt(wspd(i, j) * wspd(i, j) + vconv * vconv + vsgd * vsgd);
     wspd(i, j) = max(wspd(i, j), real(0.1));
     br(i, j) = govrth * za * dthvdz / (wspd(i, j) * wspd(i, j));
@@ -479,15 +479,15 @@ struct SFClayRevKernel {
       zl = real(0.01);
     }
 
-    real psiq = log(karman * ust(i, j) * za / xka + za / zl) - pq;
-    real psiq2 = log(karman * ust(i, j) * real(2.0) / xka + real(2.0) / zl) - pq2;
-    real psiq10 = log(karman * ust(i, j) * real(10.0) / xka + real(10.0) / zl) - pq10;
+    real psiq = libm::log(karman * ust(i, j) * za / xka + za / zl) - pq;
+    real psiq2 = libm::log(karman * ust(i, j) * real(2.0) / xka + real(2.0) / zl) - pq2;
+    real psiq10 = libm::log(karman * ust(i, j) * real(10.0) / xka + real(10.0) / zl) - pq10;
 
     // WRF lines 531-587: Fairall 2003 over water
     if ((xland(i, j) - real(1.5)) >= real(0.0)) {
       real visc = (real(1.32) + real(0.009) * (scr3 - real(273.15))) * real(1.0e-5);
       real restar = ust(i, j) * znt(i, j) / visc;
-      real z0t = (real(5.5e-5)) * pow(restar, real(-0.60));
+      real z0t = (real(5.5e-5)) * libm::pow(restar, real(-0.60));
       z0t = min(z0t, real(1.0e-4));
       z0t = max(z0t, real(2.0e-9));
       real z0q = z0t;
@@ -512,8 +512,8 @@ struct SFClayRevKernel {
           psih2 = psih_unstable(zol2, tbl) - psih_unstable(zol0, tbl);
         }
       }
-      psit = log((za + z0t) / z0t) - psih(i, j);
-      psit2 = log((real(2.0) + z0t) / z0t) - psih2;
+      psit = libm::log((za + z0t) / z0t) - psih(i, j);
+      psit2 = libm::log((real(2.0) + z0t) / z0t) - psih2;
 
       zolzz = zol(i, j) * (za + z0q) / za;
       zol10 = zol(i, j) * (real(10.0) + z0q) / za;
@@ -536,9 +536,9 @@ struct SFClayRevKernel {
         }
       }
 
-      psiq = log((za + z0q) / z0q) - psih(i, j);
-      psiq2 = log((real(2.0) + z0q) / z0q) - psih2;
-      psiq10 = log((real(10.0) + z0q) / z0q) - psih10;
+      psiq = libm::log((za + z0q) / z0q) - psih(i, j);
+      psiq2 = libm::log((real(2.0) + z0q) / z0q) - psih2;
+      psiq10 = libm::log((real(10.0) + z0q) / z0q) - psih10;
 
       // WRF lines 589-626: isftcflx == 1
       if (isftcflx == 1) {
@@ -563,10 +563,10 @@ struct SFClayRevKernel {
             psih2 = psih_unstable(zol2, tbl) - psih_unstable(zol0, tbl);
           }
         }
-        psiq = log((za + z0q) / z0q) - psih(i, j);
+        psiq = libm::log((za + z0q) / z0q) - psih(i, j);
         psit = psiq;
-        psiq2 = log((real(2.0) + z0q) / z0q) - psih2;
-        psiq10 = log((real(10.0) + z0q) / z0q) - psih10;
+        psiq2 = libm::log((real(2.0) + z0q) / z0q) - psih2;
+        psiq10 = libm::log((real(10.0) + z0q) / z0q) - psih10;
         psit2 = psiq2;
       }
 
@@ -575,7 +575,7 @@ struct SFClayRevKernel {
         visc = (real(1.32) + real(0.009) * (scr3 - real(273.15))) * real(1.0e-5);
         restar = ust(i, j) * znt(i, j) / visc;
         real gz0ozt = real(0.40) * (real(7.3) * sqrt(sqrt(restar)) * sqrt(real(0.71)) - real(5.0));
-        z0t = znt(i, j) / exp(gz0ozt);
+        z0t = znt(i, j) / libm::exp(gz0ozt);
 
         zolzz = zol(i, j) * (za + z0t) / za;
         zol10 = zol(i, j) * (real(10.0) + z0t) / za;
@@ -598,11 +598,11 @@ struct SFClayRevKernel {
           }
         }
 
-        psit = log((za + z0t) / z0t) - psih(i, j);
-        psit2 = log((real(2.0) + z0t) / z0t) - psih2;
+        psit = libm::log((za + z0t) / z0t) - psih(i, j);
+        psit2 = libm::log((real(2.0) + z0t) / z0t) - psih2;
 
         real gz0ozq = real(0.40) * (real(7.3) * sqrt(sqrt(restar)) * sqrt(real(0.60)) - real(5.0));
-        z0q = znt(i, j) / exp(gz0ozq);
+        z0q = znt(i, j) / libm::exp(gz0ozq);
 
         zolzz = zol(i, j) * (za + z0q) / za;
         zol10 = zol(i, j) * (real(10.0) + z0q) / za;
@@ -625,9 +625,9 @@ struct SFClayRevKernel {
           }
         }
 
-        psiq = log((za + z0q) / z0q) - psih(i, j);
-        psiq2 = log((real(2.0) + z0q) / z0q) - psih2;
-        psiq10 = log((real(10.0) + z0q) / z0q) - psih10;
+        psiq = libm::log((za + z0q) / z0q) - psih(i, j);
+        psiq2 = libm::log((real(2.0) + z0q) / z0q) - psih2;
+        psiq10 = libm::log((real(10.0) + z0q) / z0q) - psih10;
       }
     }
 
@@ -640,7 +640,7 @@ struct SFClayRevKernel {
     if (kim_tofd && varf(i, j) > varf_min) {
       const real zf = min(varf(i, j) * tofd_factor, za);
       const real fri = min(max(real(1.) - br(i, j), real(0.)), real(1.));
-      const real ff = log((za + zf) / zf);
+      const real ff = libm::log((za + zf) / zf);
       cf = ca_square / (ff * ff) * fri;
     }
     ck(i, j) = (karman / psix10) * (karman / psiq10);
@@ -655,12 +655,12 @@ struct SFClayRevKernel {
       real restar = ust(i, j) * zl / visc;
       real czil = real(0.0);
       if (iz0tlnd == 1) {
-        czil = pow(real(10.0), real(-0.40) * (zl / real(0.07)));
+        czil = libm::pow(real(10.0), real(-0.40) * (zl / real(0.07)));
       } else if (iz0tlnd == 2) {
         czil = real(0.1);
       }
 
-      real z0t = znt(i, j) / exp(czil * karman * sqrt(restar));
+      real z0t = znt(i, j) / libm::exp(czil * karman * sqrt(restar));
       zolzz = zol(i, j) * (za + z0t) / za;
       zol10 = zol(i, j) * (real(10.0) + z0t) / za;
       zol2 = zol(i, j) * (real(2.0) + z0t) / za;
@@ -682,8 +682,8 @@ struct SFClayRevKernel {
         }
       }
 
-      psiq = log((za + z0t) / z0t) - psih(i, j);
-      psiq2 = log((real(2.0) + z0t) / z0t) - psih2;
+      psiq = libm::log((za + z0t) / z0t) - psih(i, j);
+      psiq2 = libm::log((real(2.0) + z0t) / z0t) - psih2;
       psit = psiq;
       psit2 = psiq2;
     }
@@ -700,7 +700,7 @@ struct SFClayRevKernel {
     v10(i, j) = v1d(i, j) * psix10 / psix;
     th2(i, j) = thgb + dtg * psit2 / psit;
     q2(i, j) = qsfc(i, j) + (qx - qsfc(i, j)) * psiq2 / psiq;
-    t2(i, j) = th2(i, j) * pow(psfcpa(i, j) / p1000mb, rovcp);
+    t2(i, j) = th2(i, j) * libm::pow(psfcpa(i, j) / p1000mb, rovcp);
 
     if ((xland(i, j) - real(1.5)) < real(0.0)) {
       ust(i, j) = max(ust(i, j), real(0.001));
@@ -729,9 +729,9 @@ struct SFClayRevKernel {
         }
 
         if (isftcflx != 0) {
-          real zw = min(pow(ust(i, j) / real(1.06), real(0.3)), real(1.0));
+          real zw = min(libm::pow(ust(i, j) / real(1.06), real(0.3)), real(1.0));
           real zn1 = real(0.011) * ust(i, j) * ust(i, j) / g + ozo;
-          real zn2 = real(10.0) * exp(real(-9.5) * pow(ust(i, j), real(-0.3333))) +
+          real zn2 = real(10.0) * libm::exp(real(-9.5) * libm::pow(ust(i, j), real(-0.3333))) +
                      real(0.11) * real(1.5e-5) / max(ust(i, j), real(0.01));
           znt(i, j) = (real(1.0) - zw) * zn1 + zw * zn2;
           znt(i, j) = min(znt(i, j), real(2.85e-3));

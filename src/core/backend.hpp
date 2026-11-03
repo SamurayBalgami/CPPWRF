@@ -29,6 +29,14 @@
 #define CPPWRF_RESTRICT
 #endif
 
+// CUDA FP64 build: glibc's libm and libmvec algorithms on the device and the host (core/glibc_math.hpp), the
+// results of WRF's real*8 build and of the CPU build; CMake option CPPWRF_CUDA_GLIBC_MATH (default ON; OFF:
+// CPPWRF_CUDA_LIBM, CUDA's math library). The kernels call the math library as cppwrf::libm (core/libm.hpp).
+#if defined(CPPWRF_USE_CUDA) && defined(CPPWRF_DOUBLE) && !defined(CPPWRF_CUDA_LIBM)
+#define CPPWRF_GLIBC_MATH 1
+#endif
+#include "core/libm.hpp"
+
 // pow in the working precision on host and device (powf for float, as Fortran REAL ** REAL);
 // unqualified pow(float, float) would resolve to the double C function on the host.
 CPPWRF_HD inline float rpow(float a, float b) {
@@ -46,18 +54,31 @@ CPPWRF_HD inline float rlog(float a) {
 #endif
 }
 CPPWRF_HD inline double rlog(double a) {
-#if defined(__CUDA_ARCH__)
+#if defined(CPPWRF_GLIBC_MATH)
+  return cppwrf::libm::log(a);
+#elif defined(__CUDA_ARCH__)
   return ::log(a);
 #else
   return std::log(a);
 #endif
 }
 CPPWRF_HD inline double rpow(double a, double b) {
-#if defined(__CUDA_ARCH__)
+#if defined(CPPWRF_GLIBC_MATH)
+  return cppwrf::libm::pow_d(a, b);
+#elif defined(__CUDA_ARCH__)
   return ::pow(a, b);
 #else
   return std::pow(a, b);
 #endif
+}
+// x**2.0 with the constant exponent 2.0: gcc folds pow(x, 2.0) into x * x (WRF's gfortran build and the CPU build);
+// the device cannot test for a constant, so the CUDA FP64 build writes the product out
+template <typename T>
+CPPWRF_HD inline T rpow2c(T a) {
+#if defined(CPPWRF_GLIBC_MATH)
+  if constexpr (sizeof(T) == sizeof(double)) return a * a;
+#endif
+  return rpow(a, T(2.0));
 }
 CPPWRF_HD inline float rexp(float a) {
 #if defined(__CUDA_ARCH__)
@@ -67,7 +88,9 @@ CPPWRF_HD inline float rexp(float a) {
 #endif
 }
 CPPWRF_HD inline double rexp(double a) {
-#if defined(__CUDA_ARCH__)
+#if defined(CPPWRF_GLIBC_MATH)
+  return cppwrf::libm::exp(a);
+#elif defined(__CUDA_ARCH__)
   return ::exp(a);
 #else
   return std::exp(a);
@@ -87,7 +110,7 @@ CPPWRF_HD inline T c_max(T a, T b) { return (a > b) ? a : b; }
 // independent and differ from the scalar libm in the last bit for ~30% of arguments. On the host the
 // v* functions below give WRF's value for iteration i (0-based) of an n-trip loop; double only (float
 // and the device use the scalar functions).
-#if defined(__x86_64__) && !defined(__CUDA_ARCH__) && !defined(CPPWRF_NO_LIBMVEC)
+#if defined(__x86_64__) && !defined(__CUDA_ARCH__) && !defined(CPPWRF_NO_LIBMVEC) && !defined(CPPWRF_GLIBC_MATH)
 #include <emmintrin.h>
 extern "C" __m128d _ZGVbN2vv_pow(__m128d, __m128d);
 extern "C" __m128d _ZGVbN2v_log(__m128d);
@@ -116,6 +139,30 @@ CPPWRF_HD inline T powi(T x, int m) {
 }  // namespace cppwrf
 namespace cppwrf::vm {
 CPPWRF_HD inline bool lane(int i, int n) { return n > 1 && !((n & 1) && i == n - 1); }
+#if defined(CPPWRF_GLIBC_MATH)
+// CUDA FP64: libmvec's lanes and the scalar libm as glibc computes them, on the device and the host
+CPPWRF_HD inline double pow(double a, double b, int i, int n) {
+  return lane(i, n) ? glibc::mvec::pow(a, b) : cppwrf::libm::pow_d(a, b);
+}
+CPPWRF_HD inline double log(double a, int i, int n) {
+  return lane(i, n) ? mvec::log(a) : cppwrf::libm::log(a);
+}
+CPPWRF_HD inline double exp(double a, int i, int n) {
+  return lane(i, n) ? glibc::mvec::exp(a) : cppwrf::libm::exp(a);
+}
+CPPWRF_HD inline double atan(double a, int i, int n) {
+  return lane(i, n) ? glibc::mvec::atan(a) : cppwrf::libm::atan(a);
+}
+CPPWRF_HD inline double sin(double a, int i, int n) {
+  return lane(i, n) ? glibc::mvec::sin(a) : cppwrf::libm::sin(a);
+}
+CPPWRF_HD inline double cos(double a, int i, int n) {
+  return lane(i, n) ? glibc::mvec::cos(a) : cppwrf::libm::cos(a);
+}
+CPPWRF_HD inline double log10(double a, int i, int n) {
+  return lane(i, n) ? mvec::log10(a) : cppwrf::libm::log10(a);
+}
+#else
 CPPWRF_HD inline double pow(double a, double b, int i, int n) {
 #if defined(CPPWRF_HAVE_LIBMVEC)
   if (lane(i, n)) return _mm_cvtsd_f64(_ZGVbN2vv_pow(_mm_set1_pd(a), _mm_set1_pd(b)));
@@ -189,6 +236,7 @@ CPPWRF_HD inline double log10(double a, int i, int n) {
   return std::log10(a);
 #endif
 }
+#endif
 CPPWRF_HD inline float pow(float a, float b, int, int) { return rpow(a, b); }
 CPPWRF_HD inline float log(float a, int, int) { return rlog(a); }
 CPPWRF_HD inline float exp(float a, int, int) {
