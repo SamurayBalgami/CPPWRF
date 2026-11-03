@@ -440,7 +440,9 @@ in glibc's vector `log` / `atan`, so they cannot reproduce the Intel-made WRF re
   the bucket with a read-only token (`tools/colab/gcs_token.py`) and then put on Drive. Same options as
   `gcp_run.sh` (`--cases`, `--data`, `--out`, `--slow`), plus `--jobs` / `--threads`, `--rev` (another commit),
   `--keep` / `--session` (reuse a runtime with its chroot and tars). Exit status 0 only for a complete suite
-  without FAIL or SKIP (`tools/gcp/suite_status.sh`, as `gcp_run.sh`).
+  without FAIL or SKIP (`tools/gcp/suite_status.sh`, as `gcp_run.sh`). The full suite takes about 2.5 h on an L4
+  (data from Drive ~25 min, 4 suite jobs x 3 threads; 6 jobs ran out of the 52 GB) and gives the same PASS / FAIL /
+  SKIP lists as the GCP VM.
 - `tools/colab/colab_wrfref.sh REFS.txt` makes WRF references on such a runtime as `tools/gcp/gcp_wrfref.sh`
   (`--check-only`, `--files`, `--cases`; `--stage OBJ:CASE,...` puts the suite's tar of the new references on Drive).
 
