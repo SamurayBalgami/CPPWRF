@@ -107,7 +107,7 @@ done > /dev/null 2>&1 &
 TODRIVE=$!
 df -h / | awk 'NR == 2 {print "disk", $2, "used", $3}' >> $C/versions.txt
 # memory every minute (the runtime has no swap: the kernel kills the largest process when RAM runs out)
-(while sleep 60; do echo "$(date +%H:%M) $(free -m | awk 'NR == 2 {print $3 "/" $2 " MB"}')" \
+(set +x; while sleep 60; do echo "$(date +%H:%M) $(free -m | awk 'NR == 2 {print $3 "/" $2 " MB"}')" \
    "$(ps -eo rss,comm --sort=-rss | awk 'NR > 1 && NR < 5 {printf "%s %d MB, ", $2, $1 / 1024}')"; done) > $C/mem.log 2>&1 &
 MEM=$!
 chroot $R env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin HOME=/root \
