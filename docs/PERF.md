@@ -314,24 +314,33 @@ are candidates).
 `dyn::RK3::step` runs inside a `StepScope` (core/backend.hpp): its launches and device copies are captured into
 CUDA graphs on the one launch stream and replayed with `cudaGraphExecUpdate` (one instantiated graph per domain and
 segment, up to 4 topologies each); an operation that waits for the device ends the segment. The fatal flags of the
-step are copied asynchronously and read once when the host next waits; a single domain's host captures step n + 1
-while the device runs step n. Same kernels, same order, same arguments: P1 has 1 segment of 400 nodes per step
+step are copied asynchronously and read once when the host next waits; the host captures the next step while the
+device runs this one (nests: up to the feedback's wait once per parent step). Same kernels, same order, same arguments: P1 has 1 segment of 400 nodes per step
 (60 launches, 58 updates, 3 instantiations per hour), P4 1 of 652, N3 4 per parent step (d01 and 3 d02 steps).
 `CPPWRF_GRAPHS=0` launches as before (same timings as origin/main), `CPPWRF_GRAPHS=stats` prints the counts.
 
 Stepping s/h, 1 h, no history output, base (origin/main 7aa0970) / new / new with `CPPWRF_GRAPHS=0`, each twice,
-interleaved in one session:
+interleaved in one session per GPU (L4: P1 FP32 with the run_P1_r8 input, two sessions):
 
 | Case | GPU | base | new | speed-up | without graphs |
 |---|---|---|---|---|---|
 | P1 FP32 | G4 | 0.287, 0.287 | 0.255, 0.255 | 1.13x | 0.286, 0.287 |
 | P1 FP64 | G4 | 0.846, 0.846 | 0.812, 0.812 | 1.04x | 0.845, 0.845 |
 | P4 FP64 | G4 | 5.244, 5.244 | 5.189, 5.191 | 1.01x | 5.243, 5.242 |
-| N3 FP64 | G4 | 15.824, 15.830 | 15.690, 15.692 | 1.01x | 15.749, 15.778 |
-| N3 FP32 | G4 | 11.462, 11.461 | 11.401, 11.366 | 1.01x | 11.481, 11.480 |
+| N3 FP64 | G4 | 15.739, 15.752 | 15.540, 15.557 | 1.01x | 15.752, 15.700 |
+| N3 FP32 | G4 | 11.401, 11.406 | 11.266, 11.272 | 1.01x | 11.449, 11.454 |
+| P1 FP32 | L4 | 0.604, 0.626, 0.632, 0.629 | 0.601, 0.609, 0.617, 0.619 | 1.02x | 0.609, 0.622, 0.628, 0.631 |
+| P1 FP64 | L4 | 2.225, 2.313 | 2.218, 2.310 | 1.00x | 2.231, 2.323 |
+| P4 FP64 | L4 | 9.939, 10.091 | 9.944, 10.095 | 1.00x | 9.965, 10.097 |
+| N3 FP64 | L4 | 35.370, 35.879 | 35.485, 35.888 | 1.00x | 35.714, 35.958 |
+| N3 FP32 | L4 | 21.451, 21.443 | 21.482, 21.382 | 1.00x | 21.511, 21.458 |
+
+The L4 was already 95-99 % busy (profile above) and its host (Xeon 2.2 GHz) is slower: the graphs win little there.
+Before the nests stopped waiting after each domain step, N3 on the L4 was 1 % slower with graphs (the capture was
+not overlapped with the device's work).
 
 nsys, P1 FP32 on the G4, per step: kernels 4.15 ms (base) / 4.13 ms (new), 396 kernels either way; the host makes 1
 graph launch instead of 396 kernel launches, 1 event wait instead of 3 `cudaStreamSynchronize` (fatal flags) and 1
 `cudaDeviceSynchronize`. The step now takes 4.25 ms for 4.13 ms of kernels (GPU busy ~97 %, before 87 %), close to
-the bound of the profile above (rank 6). The nests keep their per-step synchronisations (feedback, forcing); with
-physics the GPU was already 96-99 % busy, so the gain there is ~1 %.
+the bound of the profile above (rank 6). With physics the GPU was already 96-99 % busy, so the gain there is ~1 %;
+the nests still wait once per parent step for the feedback.
