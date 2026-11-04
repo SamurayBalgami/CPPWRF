@@ -262,12 +262,34 @@ void copy_dev(void* dst, const void* src, std::size_t bytes);
 void dev_sync();
 const char* backend_name();
 
+// One model time step (dyn::RK3::step). CUDA: the step's launches and device copies are captured into CUDA graphs
+// and replayed (an instantiated graph per domain and segment, updated with the new launch parameters), so the
+// device runs the same kernels in the same order with the same arguments as without graphs. An operation that
+// waits for the device (copy_to_host, copy_to_dev, dev_alloc, dev_free, dev_sync, Reducer) ends the current graph
+// segment, launches it, and the capture resumes after it. Inside the step fatal_check() only copies the device
+// flag asynchronously; the flags are read once, when the host next waits for the step (end() waits for the
+// previous step before it launches this one). CPPWRF_GRAPHS=0 (or CPPWRF_KTIME) launches without graphs;
+// CPPWRF_GRAPHS=stats prints the graph counts at exit. CPU build: no-op.
+class StepScope {
+ public:
+  explicit StepScope(const void* key);
+  ~StepScope();
+  StepScope(const StepScope&) = delete;
+  StepScope& operator=(const StepScope&) = delete;
+  void end();  // launches the step's last segment (does not wait for it)
+
+ private:
+  bool open_ = false;
+};
+bool step_graphs_on();  // the steps run as CUDA graphs (the caller need not wait for each step)
+
 #if defined(CPPWRF_USE_CUDA)
 void cuda_check_launch(const char* where);
-inline void*& cuda_active_stream_raw() {
-  static thread_local void* s = nullptr;
-  return s;
-}
+void* cuda_stream_raw();  // the stream of every launch and copy (created on first use; blocking w.r.t. stream 0)
+namespace detail {
+int* fatal_poll_slot(void (*reset)());  // inside a step: pinned host slot for this check's flag; else nullptr
+void fatal_flush();                     // reads the flags of the launched, unchecked checks (waits for them)
+}  // namespace detail
 // Developer kernel timer: CPPWRF_KTIME=1 synchronises around every parallel_for/column_for and
 // prints the time per kernel type at exit (no performance counters needed). Off: one branch.
 namespace ktime {
@@ -277,7 +299,7 @@ void end(const char* kernel_type);
 }  // namespace ktime
 #if defined(__CUDACC__)
 inline cudaStream_t cuda_launch_stream() {
-  return static_cast<cudaStream_t>(cuda_active_stream_raw());
+  return static_cast<cudaStream_t>(cuda_stream_raw());
 }
 namespace detail {
 template <class K> __global__ void k3d(K k, Range3D r) {
@@ -401,7 +423,24 @@ CPPWRF_HD inline void raise_fatal(int code) {
   __atomic_compare_exchange_n(&fatal_code_host, &expected, code, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
 #endif
 }
+#if defined(CPPWRF_USE_CUDA) && defined(__CUDACC__)
+namespace detail {
+static inline void fatal_reset_dev() {  // clears this translation unit's device flag after a stop
+  const int zero = 0;
+  cudaMemcpyToSymbol(fatal_code_dev, &zero, sizeof(int));
+}
+}  // namespace detail
+#endif
 static inline void fatal_check() {
+#if defined(CPPWRF_USE_CUDA) && defined(__CUDACC__)
+  // inside a time step (StepScope): the flag is copied to a pinned slot on the stream and read at the step's end
+  if (int* slot = detail::fatal_poll_slot(&detail::fatal_reset_dev)) {
+    cudaMemcpyFromSymbolAsync(slot, detail::fatal_code_dev, sizeof(int), 0, cudaMemcpyDeviceToHost,
+                              cuda_launch_stream());
+    return;
+  }
+  detail::fatal_flush();
+#endif
   int code = __atomic_exchange_n(&fatal_code_host, 0, __ATOMIC_RELAXED);
 #if defined(CPPWRF_USE_CUDA) && defined(__CUDACC__)
   int dcode = 0;
@@ -438,7 +477,7 @@ class Reducer {
     if (nk > max_k_) throw std::runtime_error("Reducer: k range exceeds max_k");
 #if defined(CPPWRF_USE_CUDA)
 #if defined(__CUDACC__)
-    detail::kred<F, MAX><<<nk, 256>>>(f, r, dpart_);
+    detail::kred<F, MAX><<<nk, 256, 0, cuda_launch_stream()>>>(f, r, dpart_);
     cuda_check_launch("Reducer");
     copy_to_host(hpart_.data(), dpart_, sizeof(double) * nk);
 #endif

@@ -68,17 +68,230 @@ void cuda_check_launch(const char* where) {
   ck(cudaDeviceSynchronize(), where);
 #endif
 }
+void* cuda_stream_raw() {
+  static cudaStream_t s = [] {
+    cudaStream_t t = nullptr;
+    ck(cudaStreamCreate(&t), "cudaStreamCreate");  // blocking: orders with any work on the legacy stream 0
+    return t;
+  }();
+  return s;
+}
+static cudaStream_t stream() { return static_cast<cudaStream_t>(cuda_stream_raw()); }
+
+// ---- time step graphs (StepScope) and the fatal flags of the step ----
+namespace {
+int graphs_mode() {  // 0 off, 1 on, 2 on with the counts at exit
+  static const int m = [] {
+#ifdef CPPWRF_CUDA_SYNC_CHECK
+    return 0;  // a device synchronisation after every launch cannot be captured
+#endif
+    if (ktime::on()) return 0;
+    const char* e = std::getenv("CPPWRF_GRAPHS");
+    if (!e || !*e) return 1;
+    if (std::strcmp(e, "stats") == 0) return 2;
+    return *e == '0' ? 0 : 1;
+  }();
+  return m;
+}
+struct Poll {
+  int* slot;
+  void (*reset)();
+};
+constexpr int kSlots = 256;  // fatal checks per segment
+struct Graphs {
+  bool in_step = false, capturing = false;
+  const void* key = nullptr;
+  int seg = 0;
+  std::map<std::pair<const void*, int>, std::vector<cudaGraphExec_t>> cache;  // most recently used first
+  int* slots = nullptr;  // pinned, 2 banks of kSlots
+  int bank = 0;
+  std::vector<Poll> cur, pend;  // checks of the open segment; of the launched, unchecked ones
+  cudaEvent_t ev = nullptr;
+  bool ev_pending = false;
+  long n_launch = 0, n_update = 0, n_inst = 0, n_seg_nodes = 0;
+  void init() {
+    if (slots) return;
+    ck(cudaHostAlloc(reinterpret_cast<void**>(&slots), 2 * kSlots * sizeof(int), cudaHostAllocDefault), "cudaHostAlloc");
+    ck(cudaEventCreateWithFlags(&ev, cudaEventDisableTiming), "cudaEventCreate");
+  }
+  void begin_capture() {
+    ck(cudaStreamBeginCapture(stream(), cudaStreamCaptureModeThreadLocal), "cudaStreamBeginCapture");
+    capturing = true;
+  }
+  // the instantiated graph of this domain and segment, updated to g's launch parameters (a step of another
+  // kind has another topology: up to 4 per segment are kept)
+  cudaGraphExec_t exec_for(cudaGraph_t g) {
+    auto& v = cache[{key, seg}];
+    for (std::size_t i = 0; i < v.size(); ++i) {
+      cudaGraphExecUpdateResultInfo info;
+      if (cudaGraphExecUpdate(v[i], g, &info) == cudaSuccess) {
+        ++n_update;
+        std::rotate(v.begin(), v.begin() + long(i), v.begin() + long(i) + 1);
+        return v[0];
+      }
+      (void)cudaGetLastError();  // a failed update is no launch error
+    }
+    cudaGraphExec_t e = nullptr;
+    ck(cudaGraphInstantiate(&e, g, 0), "cudaGraphInstantiate");
+    ++n_inst;
+    if (v.size() >= 4) {
+      cudaGraphExecDestroy(v.back());
+      v.pop_back();
+    }
+    v.insert(v.begin(), e);
+    return e;
+  }
+  // ends the open segment: launches its graph (after the previous segment's flags were read) and records the
+  // event that its fatal checks wait for
+  void segment_point() {
+    bool launched = false;
+    if (capturing) {
+      cudaGraph_t g = nullptr;
+      capturing = false;
+      ck(cudaStreamEndCapture(stream(), &g), "cudaStreamEndCapture");
+      std::size_t nn = 0;
+      ck(cudaGraphGetNodes(g, nullptr, &nn), "cudaGraphGetNodes");
+      cudaGraphExec_t e = nn ? exec_for(g) : nullptr;
+      cudaGraphDestroy(g);
+      flush();  // the previous step or segment is done and its flags are clean before this one runs
+      if (e) {
+        ck(cudaGraphLaunch(e, stream()), "cudaGraphLaunch");
+        launched = true;
+        ++n_launch;
+        n_seg_nodes += long(nn);
+      }
+      ++seg;
+    } else if (!cur.empty()) {
+      flush();
+    }
+    if (launched || !cur.empty()) {  // at most one step or segment in flight unchecked
+      pend.swap(cur);
+      cur.clear();
+      bank ^= 1;
+      ck(cudaEventRecord(ev, stream()), "cudaEventRecord");
+      ev_pending = true;
+    }
+  }
+  // reads the flags of the launched checks in the order of the calls; the first raised code stops the run
+  void flush() {
+    if (!ev_pending) return;
+    ck(cudaEventSynchronize(ev), "cudaEventSynchronize");
+    ev_pending = false;
+    int code = 0;
+    for (const Poll& p : pend)
+      if (*p.slot != 0) {
+        if (code == 0) code = *p.slot;
+        p.reset();
+      }
+    pend.clear();
+    if (code != 0) fatal_stop(code);
+  }
+  void abort() {  // an exception inside the step
+    if (capturing) {
+      cudaGraph_t g = nullptr;
+      cudaStreamEndCapture(stream(), &g);
+      if (g) cudaGraphDestroy(g);
+      (void)cudaGetLastError();
+      capturing = false;
+    }
+    cur.clear();
+    in_step = false;
+  }
+};
+Graphs& graphs() {  // never destroyed: device memory may be freed by static objects at exit
+  static Graphs* gs = new Graphs;
+  return *gs;
+}
+struct GraphStats {
+  ~GraphStats() {
+    const Graphs& g = graphs();
+    if (graphs_mode() == 2 && g.n_launch > 0)
+      std::fprintf(stderr, "cppwrf graphs: %ld launches, %ld updates, %ld instantiations, %.1f nodes per launch\n",
+                   g.n_launch, g.n_update, g.n_inst, double(g.n_seg_nodes) / double(g.n_launch));
+  }
+} graph_stats;
+// an operation that waits for the device: the open segment is launched first, the capture resumes after it
+void sync_begin() { graphs().segment_point(); }
+void sync_end() {
+  Graphs& gs = graphs();
+  gs.flush();
+  if (gs.in_step && graphs_mode() != 0 && !gs.capturing) gs.begin_capture();
+}
+}  // namespace
+
+bool step_graphs_on() { return graphs_mode() != 0; }
+
+StepScope::StepScope(const void* key) {
+  Graphs& gs = graphs();
+  if (gs.in_step) throw std::logic_error("StepScope: a step inside a step");
+  gs.init();
+  gs.in_step = true;
+  gs.key = key;
+  gs.seg = 0;
+  open_ = true;
+  if (graphs_mode() != 0) gs.begin_capture();
+}
+StepScope::~StepScope() {
+  if (open_) graphs().abort();
+}
+void StepScope::end() {
+  Graphs& gs = graphs();
+  open_ = false;
+  gs.in_step = false;
+  gs.segment_point();
+}
+
+namespace detail {
+int* fatal_poll_slot(void (*reset)()) {
+  Graphs& gs = graphs();
+  if (!gs.in_step) return nullptr;
+  // a stop raised by host code (a kernel run on the host): the checks before this one come first, as before
+  if (int hc = __atomic_exchange_n(&fatal_code_host, 0, __ATOMIC_RELAXED)) {
+    sync_begin();
+    gs.flush();
+    fatal_stop(hc);
+  }
+  if (gs.cur.size() >= std::size_t(kSlots)) throw std::runtime_error("fatal_check: too many checks in one step");
+  int* slot = gs.slots + gs.bank * kSlots + int(gs.cur.size());
+  gs.cur.push_back({slot, reset});
+  return slot;
+}
+void fatal_flush() { graphs().flush(); }
+}  // namespace detail
+
 void* dev_alloc(std::size_t bytes) {
+  sync_begin();
   void* p = nullptr;
   ck(cudaMalloc(&p, bytes), "cudaMalloc");
-  ck(cudaMemset(p, 0, bytes), "cudaMemset");
+  ck(cudaMemsetAsync(p, 0, bytes, stream()), "cudaMemset");
+  ck(cudaStreamSynchronize(stream()), "cudaMemset");
+  sync_end();
   return p;
 }
-void dev_free(void* p) { if (p) cudaFree(p); }
-void copy_to_host(void* d, const void* s, std::size_t n) { ck(cudaMemcpy(d, s, n, cudaMemcpyDeviceToHost), "D2H"); }
-void copy_to_dev(void* d, const void* s, std::size_t n) { ck(cudaMemcpy(d, s, n, cudaMemcpyHostToDevice), "H2D"); }
-void copy_dev(void* d, const void* s, std::size_t n) { ck(cudaMemcpyAsync(d, s, n, cudaMemcpyDeviceToDevice, 0), "D2D"); }
-void dev_sync() { ck(cudaDeviceSynchronize(), "sync"); }
+void dev_free(void* p) {
+  if (!p) return;
+  sync_begin();
+  cudaFree(p);
+  sync_end();
+}
+void copy_to_host(void* d, const void* s, std::size_t n) {
+  sync_begin();
+  ck(cudaMemcpyAsync(d, s, n, cudaMemcpyDeviceToHost, stream()), "D2H");
+  ck(cudaStreamSynchronize(stream()), "D2H");
+  sync_end();
+}
+void copy_to_dev(void* d, const void* s, std::size_t n) {
+  sync_begin();
+  ck(cudaMemcpyAsync(d, s, n, cudaMemcpyHostToDevice, stream()), "H2D");
+  ck(cudaStreamSynchronize(stream()), "H2D");
+  sync_end();
+}
+void copy_dev(void* d, const void* s, std::size_t n) { ck(cudaMemcpyAsync(d, s, n, cudaMemcpyDeviceToDevice, stream()), "D2D"); }
+void dev_sync() {
+  sync_begin();
+  ck(cudaDeviceSynchronize(), "sync");
+  sync_end();
+}
 const char* backend_name() { return "cuda"; }
 Reducer::Reducer(int max_k) : max_k_(max_k), hpart_(max_k) { dpart_ = static_cast<double*>(dev_alloc(sizeof(double) * max_k)); }
 Reducer::~Reducer() { dev_free(dpart_); }
@@ -118,6 +331,10 @@ void copy_to_dev(void* d, const void* s, std::size_t n) { par_copy(d, s, n); }
 void copy_dev(void* d, const void* s, std::size_t n) { par_copy(d, s, n); }
 void dev_sync() {}
 const char* backend_name() { return "cpu"; }
+StepScope::StepScope(const void*) {}
+StepScope::~StepScope() {}
+void StepScope::end() {}
+bool step_graphs_on() { return false; }
 Reducer::Reducer(int max_k) : max_k_(max_k), hpart_(max_k) {}
 Reducer::~Reducer() {}
 #endif

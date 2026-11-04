@@ -20,6 +20,16 @@
 namespace cppwrf::dyn {
 
 #ifdef CPPWRF_HAVE_SMALL_STEP
+namespace {
+long vm_dump_step() {  // CPPWRF_VM_DUMP_STEP (1-based), read once
+  static const long n = [] {
+    const char* e = std::getenv("CPPWRF_VM_DUMP_STEP");
+    return e ? std::atol(e) - 1 : 0L;
+  }();
+  return n;
+}
+}  // namespace
+
 class SmallStepHolder {
  public:
   SmallStepHolder(const Grid& g, const AcousticParams& a)
@@ -77,6 +87,7 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
   (void)s; (void)t; (void)b;
   throw std::runtime_error("acoustic small step (src/dyn/small_step.*) not available in this build");
 #else
+  StepScope graph(this);  // CUDA: the step as graphs (the same launches in the same order)
   if (bc_) bc_->advance_time(g_.dt);  // solve_em: dtbc = dtbc + dt
   // time-t state (WRF small_step_prep, rk_step == 1)
   s.u_1.copy_from(s.u_2); s.v_1.copy_from(s.v_2); s.w_1.copy_from(s.w_2);
@@ -92,11 +103,11 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
     if (rk == 1 && on_first_rk_prep) on_first_rk_prep();
     if (rk == 1 && cp_) {  // first_rk_step_part1: init_zero_tendency, then the column physics
       large_.zero_tendf(t);
-      { const char* e = std::getenv("CPPWRF_VM_DUMP_STEP"); vmdump::on() = vm_step_ == (e ? std::atol(e) - 1 : 0); }
+      vmdump::on() = vm_step_ == vm_dump_step();
       cp_->part1(s, b, t);
       vmdump::on() = false;
     }
-    if (rk == 1) { const char* e = std::getenv("CPPWRF_VM_DUMP_STEP"); vmdump::on() = vm_step_ == (e ? std::atol(e) - 1 : 0); }
+    if (rk == 1) vmdump::on() = vm_step_ == vm_dump_step();
     if (rk == 1 && dd_) dd_->prepare(s, b);  // first_rk_step_part2: metrics, deformation, K
     large_.tendencies(s, t, b, rk);  // part2 (diffusion, update_phy_ten) + rk_tendency
     if (on_cfl) {  // w_damp's CFL maxima of this stage (solve_em.F:919-934)
@@ -105,7 +116,7 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
       on_cfl(vert, horiz);
     }
     vmdump::on() = false;
-    { const char* e = std::getenv("CPPWRF_VM_DUMP_STEP"); vmdump::on() = vm_step_ == (e ? std::atol(e) - 1 : 0); }
+    vmdump::on() = vm_step_ == vm_dump_step();
     if (rk == 1 && bc_ && vmdump::on()) {  // debug: boundary slabs (values, tendencies) of T and U, all sides
       if (std::FILE* f = vmdump::open("vm_bdy", 0)) {
         auto* bc = const_cast<LateralBC*>(bc_);
@@ -136,7 +147,7 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
   ++vm_step_;
   if (cp_) cp_->after_rk(s, b);  // phy_prep_part2
   if (phys_ && phys_->params().mp_physics != 0) {  // moist_physics_prep/microphysics/finish, calc_p_rho_phi
-    { const char* e = std::getenv("CPPWRF_VM_DUMP_STEP"); vmdump::on() = vm_step_ - 1 == (e ? std::atol(e) - 1 : 0); }
+    vmdump::on() = vm_step_ - 1 == vm_dump_step();
     phys_->step(s, b, real(dt));
     vmdump::on() = false;
     // solve_em scalar_tile_loop_1ba: calc_p_rho_phi on the tile without the spec zone
@@ -152,6 +163,7 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
   // solve_em: "reset surface w for consistency" (kinematic condition from the new u, v)
   if (!b.ht.uniform()) set_w_surface(s.w_2, s.u_2, s.v_2, b, g_, false);
   if (cp_) cp_->after_all_rk_steps();  // solve_em: after_all_rk_steps (diagnostics_driver)
+  graph.end();
 #endif
 }
 

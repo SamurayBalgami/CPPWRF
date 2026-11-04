@@ -36,10 +36,13 @@ static int run(int argc, char** argv) {
   cases::DomainRunner r(cfg, m, out_dir, "d01");
   if (!r.start()) return 3;
 
+  // CUDA graphs: the host prepares step n + 1 while the device runs step n (every read of device data waits for
+  // it; the step's fatal checks are read before the next step is launched); the last step is waited for
+  const bool overlap = step_graphs_on();
   for (long n = r.start_step + 1; n <= m.nsteps; ++n) {
     r.before_step(n);
     m.rk->step(*m.st, *m.tend, *m.base);
-    dev_sync();
+    if (!overlap || n == m.nsteps) dev_sync();
     if (!r.after_step(n)) return 3;
   }
   r.finish();
