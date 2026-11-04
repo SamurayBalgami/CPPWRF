@@ -120,9 +120,12 @@ enforce them:
   has no floating-point sums over the domain: the w_damping CFL maxima of the adaptive time step and the
   `diag.csv` sums use `Reducer`, which sums each level in a fixed order
   and then the levels in order, whatever the thread count.
-- **CUDA:** nvcc's defaults (`-prec-div=true`, `-prec-sqrt=true`, `-ftz=false`); device code contracts
-  FMAs (`--fmad=true`) except RRTMG's batch kernels, Thompson and the physics drivers (`--fmad=false`). GPU
-  results agree with WRF to roundoff, not bit for bit (the CUDA math library rounds differently from glibc).
+- **CUDA:** nvcc's defaults (`-prec-div=true`, `-prec-sqrt=true`, `-ftz=false`). The FP64 build
+  (`-DCPPWRF_DOUBLE=ON`) is bit-identical to WRF's real*8 build and to the CPU build: `--fmad=false` in every
+  kernel and glibc's libm / libmvec algorithms on the device (`CPPWRF_CUDA_GLIBC_MATH`, default ON; OFF uses
+  CUDA's math library, which agrees with WRF to roundoff). It costs 0 to 7 % of the FP64 stepping time. The FP32
+  build contracts FMAs (`--fmad=true`) except RRTMG's batch kernels, Thompson and the physics drivers, and uses
+  CUDA's math library: it agrees with WRF's single-precision run to roundoff.
 
 ---
 

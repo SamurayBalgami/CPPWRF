@@ -50,8 +50,8 @@ is verified against WRF, and the current results. All numbers come from `tests/v
    wrfinput/wrfbdy files (119 x 89 x 44, 15 km, dt 60 s; nests 120 x 90 x 44 at 5 km). The CPU FP64 cases
    compare CPPWRF's wrfout files with WRF's at tolerance 0 (tests/verify/exact.py: NaN equals only NaN, -0
    differs from +0) in every variable the reference holds, every reference frame up to the case's time, types and
-   attributes, and check that the configuration sets the options of the reference run's namelist.input; the GPU
-   and FP32 cases compare fields by relative L2 over the domain. The comparators' own test
+   attributes, and check that the configuration sets the options of the reference run's namelist.input; so do the
+   CUDA FP64 cases. The FP32 cases compare fields by relative L2 over the domain. The comparators' own test
    (tests/verify/selftest.py: one ulp, NaN, -0, a missing variable or frame must fail) runs before the VM suite.
 3. **WRF output files** (`tests/verify/run_wrf_files_test.sh`, ctest `wrf_files_vs_wrf`): the
    wrfout and wrfrst files of the CPU FP64 runs, and the runs resumed from WRF's restart files,
@@ -169,64 +169,40 @@ RQCBLTEN / RQIBLTEN in runs without qc / qi, and QZ0 / USTM at fractional sea-ic
 surface layer (restart fields). `cppwrf_real` output is identical to real.exe for 41 cases
 ([REAL.md](REAL.md)).
 
-CUDA (relative L2 at 1 h unless noted):
+CUDA FP64 is bit-identical to WRF and to the CPU build: every `cuda_dp` case of the suite (79 runs with the GPU
+restart cases: R1, T1, P1 to P9, A01 to A09, B01, C01, the MYNN, Noah-MP, slab, radar, Dudhia, RRTM, V1 to V3, D0,
+D0V, sst_update, hybrid, nest and ideal cases) passes with tolerance 0 (tests/verify/exact.py, every frame and variable of the history) on Colab's
+L4 (sm_89), RTX PRO 6000 Blackwell "G4" (sm_120) and A100 (sm_80); H100 was not available. The FP64 device code
+computes as WRF's gfortran real*8 build on x86-64:
+
+- no FMA contraction (`--fmad=false` for every CUDA FP64 kernel; gfortran without -march emits none);
+- glibc 2.41's libm (the FMA variants WRF's executable selects) and libmvec (SSE4 2-lane pow, exp, log, atan, sin,
+  cos, log10; the lane of each call as gfortran vectorises the loop) ported to the device (src/core/glibc_math.hpp,
+  CMake option `CPPWRF_CUDA_GLIBC_MATH`, default ON); tools/glibc_math_proof*.cpp prove the port equal to glibc
+  (10^9 inputs per function on the CPU, 10^7 on each GPU against the host);
+- the folds gcc and gfortran make: x**2.0 with a constant exponent as x * x (`rpow2c`), functions of constants as
+  constants;
+- no atomics in floating-point sums; division and sqrt correctly rounded (`-prec-div`, `-prec-sqrt`).
+
+CUDA 13.0's ptxas for sm_120 compiles an integer add of an immediate to the bits of a double register as a
+floating-point add (`mov.b64; add.s64` became `DADD`); log's |x - 1| test then sent inputs near 1 to its table path.
+The device code makes these adds with two 32-bit adds with carry (`glibc::detail::addk`). FP64 stepping time against
+origin/main before this work (1 h, no history; P1 / P4 / D0): L4 +7 % / +2 % / +3 %, G4 +6 % / -4 % / 0 %,
+A100 +5 % / +2 % / +6 %. The CUDA FP32 build is unchanged (CUDA's math library, FMA contraction), against WRF's
+single-precision runs (relative L2 at 1 h):
 
 | Case | Precision | U | W | THM | QV |
 |---|---|---|---|---|---|
-| R1 (5 steps) | FP64 | 2.6e-14 | 5.8e-12 | 3.7e-16 | 1.8e-15 |
-| R1D6 (10 min) | FP64 | 3.1e-14 | 7.7e-12 | 3.9e-16 | 2.9e-15 |
-| W1 (75 min, dt 450 s) | FP64 | 2.2e-12 | 1.3e-11 | 9.2e-15 | |
-| P1 / A01 | FP64 | 1.5e-9 | 2.0e-8 | 1.4e-10 | 8.9e-9 |
-| P1T2 | FP64 | 1.0e-9 | 2.4e-8 | 2.1e-10 | 5.9e-9 |
-| HY1 | FP64 | 1.6e-11 | 3.0e-10 | 2.8e-12 | 1.8e-10 |
-| P3 (RRTMG every step) | FP64 | 1.1e-10 | 1.9e-8 | 1.0e-11 | 4.4e-11 |
-| P8 | FP64 | 3.6e-10 (L4), 8.1e-10 (G4) | 2.0e-8 / 2.2e-8 | 1.2e-10 / 7.8e-10 | 5.4e-9 / 1.5e-7 |
-| P7 | FP64 | 4.7e-7 | 1.1e-5 | 6.0e-8 | 1.2e-5 |
-| P2 | FP64 | 5.2e-5 | 1.8e-3 | 9.4e-7 | 4.0e-5 |
-| P4 | FP64 | 2.2e-4 | 3.6e-3 | 2.7e-6 | 2.1e-4 |
-| A05 / A05C / A05G (G4) | FP64 | 6.4e-4 / 1.6e-5 / 5.4e-4 | 2.5e-2 / 5.5e-4 / 1.3e-2 | 9.9e-6 / 2.7e-7 / 7.7e-6 | 5.8e-4 / 1.9e-5 / 2.7e-4 |
-| P5 (WSM6) | FP64 | 8.4e-5 | 1.1e-3 | 2.6e-6 | 5.1e-4 |
-| P6 (Thompson) | FP64 | 3.2e-5 | 9.0e-4 | 4.0e-7 | 8.5e-6 |
-| C01 (aerosol-aware Thompson, G4) | FP64 | 3.6e-7 | 7.3e-5 | 1.1e-8 | 1.6e-7 |
-| RADW / RADT (radar reflectivity, G4; REFL_10CM 3.4e-3 / 3.9e-4) | FP64 | 1.8e-4 / 3.2e-5 | 4.6e-3 / 9.0e-4 | 3.1e-6 / 4.0e-7 | 1.0e-4 / 8.5e-6 |
-| MYNN | FP64 | 2.6e-4 | 5.8e-3 | 5.5e-6 | 1.1e-4 |
-| MYNNSF1 / MYNNSF2 | FP64 | 2.5e-4 / 2.6e-4 | 5.3e-3 / 5.4e-3 | 5.3e-6 / 5.6e-6 | 2.9e-4 / 1.1e-4 |
-| MYNNX1 / MYNNX2 (largest of L4 and G4) | FP64 | 3.2e-4 / 2.1e-4 | 8.6e-3 / 7.3e-3 | 9.0e-6 / 4.8e-6 | 1.4e-4 / 6.7e-5 |
-| A08 (G4) | FP64 | 1.8e-4 | 4.6e-3 | 3.1e-6 | 1.0e-4 |
-| A09 (G4) | FP64 | 1.8e-4 | 4.6e-3 | 3.1e-6 | 1.0e-4 |
-| KESSKF | FP64 | 6.9e-5 (L4), 9.2e-5 (G4) | 1.2e-3 | 1.1e-6 / 1.2e-6 | 4.4e-5 / 6.2e-5 |
-| SLAB1 / SLAB4 (G4) | FP64 | 4.4e-13 / 3.4e-4 | 7.9e-12 / 4.8e-3 | 7.8e-16 / 5.3e-6 | 2.8e-14 / 2.9e-4 |
-| DUD (Dudhia SW, V1 domain) | FP64 | 5.0e-4 (G4) | 4.0e-2 | 4.4e-6 | 9.9e-5 |
-| RRTM (RRTM LW, V1 domain, G4) | FP64 | 1.5e-4 | 9.8e-3 | 1.6e-6 | 3.6e-5 |
-| A01V (Arctic, V2 domain) | FP64 | 7.8e-5 | 3.2e-3 | 2.4e-6 | 1.8e-4 |
-| V1 / V2 (2 h) | FP64 | 1.8e-3 / 1.1e-4 | 9.4e-2 / 3.8e-3 | 1.6e-5 / 3.6e-6 | 4.7e-4 / 3.5e-4 |
-| V3 (30 min) | FP64 | 2.5e-7 | 5.4e-6 | 7.7e-8 | 1.7e-6 |
-| F1 / F2 | FP64 | 1.3e-4 / 2.1e-4 | 3.4e-3 / 4.6e-3 | 4.8e-6 / 3.7e-6 | 2.3e-4 / 7.9e-4 |
-| SU2 (20 min) | FP64 | 1.3e-5 | 4.1e-4 | 4.7e-7 | 6.1e-5 |
-| N1 (3 min) | FP64 | 1.8e-13 (d01), 2.1e-13 (d02) | 6.3e-12 / 1.0e-11 | 2.3e-16 / 3.3e-16 | 4.7e-15 / 5.1e-15 |
-| N2, N2S1, N2S2 | FP64 | 4.8e-13 (d01), 2.4e-13 (d02) | 6.8e-12 / 9.0e-12 | 9.8e-16 | 4.0e-14 / 2.4e-14 |
-| N3 (largest of L4 and G4) | FP64 | 1.8e-4 (d01), 2.4e-4 (d02) | 4.8e-3 / 5.2e-3 | 2.9e-6 / 2.2e-6 | 9.4e-5 / 1.0e-4 |
 | R0 (dynamics) | FP32 vs WRF FP32 | 1.6e-4 | 4.9e-3 | 1.0e-6 | 2.0e-5 |
 | P1 | FP32 vs WRF FP32 | 1.9e-4 | 3.9e-3 | 7.5e-7 | 4.9e-5 |
 | P3 | FP32 vs WRF FP32 | 1.9e-4 | 4.0e-3 | 7.5e-7 | 5.1e-5 |
 | P4 / P6 / P8 | FP32 vs WRF FP32 | 2.2e-4 to 8.5e-4 | up to 4.0e-2 | up to 1.5e-5 | up to 6.3e-4 |
 | N1 (1 h) | FP32 vs WRF FP32 | 1.9e-4 (d01), 2.8e-4 (d02) | 3.6e-3 / 4.7e-3 | 6.5e-7 / 9.7e-7 | 2.0e-5 / 3.1e-5 |
 
-On the GPU the elementary functions (exp, log, pow) come from the CUDA math library, which rounds
-differently from glibc, so CUDA FP64 agrees with WRF to roundoff rather than bit for bit. Schemes
-with thresholds (the Kain-Fritsch trigger, WSM6 and Thompson saturation adjustments) amplify that
-roundoff over an hour, which is why P2 and P4 show larger CUDA FP64 differences than P1. The CPU
-build is the reference for bit identity. Every CPU FP64 case of the suite has a CUDA twin (FP64, or FP32 against
-WRF's single-precision run), with tolerances of about three times the differences above (Colab L4 and RTX PRO 6000
-Blackwell "G4"). On the GPU a run restarted after its first step reproduces the uninterrupted run bit for bit
+On the GPU a run restarted after its first step reproduces the uninterrupted run bit for bit
 (restart_<case>_fp64_cuda for P1, A01, A05, A05G, P7, P8, P9, NMP1, SLAB1, MYNN, MYNNSF1, MYNNSF2, MYNNX1, MYNNX2, T1), and the
 wrfout / wrfrst files of a GPU run (P1, P4, MYNN, N2, also resumed from WRF's wrfrst) have WRF's variables,
 dimensions, attributes, global attributes and times (run_wrf_files_test.sh with CPPWRF_FILES_NO_VALUES=1).
-The GPU results depend on the GPU architecture only through the compiler: with the same nvcc 13.0 and libdevice,
-the G4 (sm_120) build differs from the L4 (sm_89) build from the first step in two surface fields (ZNT, SFROFF of
-the surface layer and Noah, compiled with FMA contraction), while the compute_89 PTX run on the G4 and builds with
---fmad=false give the L4's result bit for bit on both. P8's Grell-Freitas thresholds amplify that difference to
-QV 1.5e-7 on the G4 (5.4e-9 on the L4); both runs are deterministic.
 
 Ideal cases (CPPWRF's port of WRF's ideal.exe, `run.case = em_*`), CPU FP64 against WRF v4.8.0
 real*8: em_hill2d_x (1 h), em_grav2d_x (Straka, 900 s), em_quarter_ss (Kessler supercell, 2 h, periodic and with open boundaries in x and y) and
@@ -239,9 +215,8 @@ Straka density current and em_squall2d_x (TKE) in x (40 min); in the variant mat
 km_opt 2, km_opt 3 / 4, 6th-order diffusion, h_adv_order 6, moist_adv_opt 0, em_hill2d_x and winds along the walls. A
 wind across a symmetric wall is rejected: WRF keeps the wall value of the normal velocity while the sign of muu flips
 there, and its solution breaks down within a minute.
-On the GPU em_squall2d_x is at roundoff in FP64 (U 1.3e-13 relative L2 at 10 min) and
-within WRF's own single/double difference in FP32 (U 6.8e-5; WRF real*8 vs. WRF FP32: 8.2e-5); the other ideal
-cases (also symmetric, open and diff_opt 2) agree with WRF in CUDA FP64 to 1e-16 .. 5e-11 (W).
+On the GPU the ideal cases (also symmetric, open and diff_opt 2) are bit-identical in FP64, and em_squall2d_x in FP32
+is within WRF's own single/double difference (U 6.8e-5; WRF real*8 vs. WRF FP32: 8.2e-5).
 
 Namelist variants (tools/gcp/gcp_matrix.sh, 3-minute runs from the P1, P4, P6, P8 and P9 inputs, every wrfout
 variable at tolerance 0): kfeta_trigger 3, ysu_topdown_pblmix 0, icloud 0, cldovrlp 0-5 (1-5 with idcor 0 and 1; 0 also with restart files, MYNN and the N3s nest), cu_rad_feedback (Kain-Fritsch: also cudt 5, Kessler, icloud 0, cldovrlp 0, wrfrst at 30 min; Grell-Freitas with WSM6 or Kessler and RRTMG, ishallow 0 and 1, wrfrst at 30 min; Tiedtke and New Tiedtke 1 h; the N3s nest on both or one domain; 3 min and 1 h), shallowcu_forced_ra,

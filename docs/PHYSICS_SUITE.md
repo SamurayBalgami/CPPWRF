@@ -203,10 +203,9 @@ dycore's current t_1 step 2 already differed by 1e-9 (U) from WRF. The different
 WRF's t_1 itself and sets `wrf_t1_lag = false`.
 
 Acceptance against WRF v4.8.0 real*8, run P1_r8 (`configs/real_p1_r8.ini`, tests/verify/wrf_suite.py):
-CPU FP64 is bit-identical to WRF for 1 h (every compared field, including the surface state). CUDA FP64
-agrees to roundoff (U 1.5e-9, THM 1.4e-10 relative L2 at 1 h); the land surface amplifies the
-difference between the CUDA and glibc elementary functions over the hour. CUDA FP32 against
-single-precision WRF: U 1.9e-4, THM 7.5e-7.
+CPU FP64 and CUDA FP64 are bit-identical to WRF for 1 h (every compared field, including the surface state; the
+CUDA FP64 build computes glibc's elementary functions on the device without FMA contraction, docs/STATUS.md).
+CUDA FP32 against single-precision WRF: U 1.9e-4, THM 7.5e-7.
 
 ## 6. Microphysics with the column physics (P5 = P1 + WSM6 + diff_opt 1, km_opt 4)
 
@@ -247,9 +246,10 @@ thresholds), so the CUDA builds differ from WRF by more than in the dry case. Th
 ### Real-data acceptance against WRF v4.8.0 (`run_P2_r8` and `run_P2`)
 
 CPU FP64 is bit-identical to WRF for 1 h (state, RAINC, RAINCV, NCA, W0AVG and the cumulus tendencies).
-CUDA FP64 at 1 h: U 5.2e-5, THM 9.4e-7 relative L2; CUDA FP32 against single-precision WRF: U 8.4e-4.
+CUDA FP64 is bit-identical at 1 h as well; CUDA FP32 against single-precision WRF: U 8.4e-4.
 
-**Why the GPU results drift (a 1-ulp trigger):**
+**Why a 1-ulp difference drifts (a degenerate trigger; the FP32 build, and the FP64 GPU build before it computed
+glibc's functions):**
 In `KF_eta_PARA` (`module_cu_kfeta.F:929-1022`), whenever a 2-layer updraft source layer (`KPBL = LC + 1`) is saturated (`q0 = qes`, so `TLCL = min(TLCL, TMIX) = TMIX`) and has `WKL < 1e-4` (`DTLCL = 0`, `DTRH = 0`), the parcel LCL height is `ZLCL = ZMIX = (dp_0 z_0 + dp_1 z_1)/(dp_0 + dp_1)`, `DLP = (ZLCL - z_0)/(z_1 - z_0) = dp_1/(dp_0 + dp_1)`, and `TENV = T_0 + (T_1 - T_0)*DLP = TMIX = TLCL`. Thus `TLCL + DTLCL + DTRH - TENV == 0` **identically in exact arithmetic**, and the buoyancy test `IF (TLCL + DTLCL + DTRH .LT. TENV) CYCLE usl` tests `0 < 0` up to 1 ULP (`5.68e-14 K`) of floating-point rounding. At step 6 (`t = 300 -> 360 s`), column `(j=77, i=8)` at `lc = 8` satisfies this exact degeneracy (`0.0` vs `-5.68e-14 K`), so that any rounding difference in the inputs (as between the CUDA and glibc math libraries) can switch shallow convection on or off in that column. The CPU build reproduces WRF's arithmetic and makes the same decision.
 
 ## 8. Radiation (P3 = P1 + RRTMG LW/SW)
@@ -319,15 +319,14 @@ What WRF executes (and the port):
 Verification:
 - P4 (wrf_suite real_p4_r8_fp64_cpu and real_p4_r8_fp64_cpu_1h): CPU FP64 bit-identical to WRF for
   1 h, including every physics tendency, the water species, CLDFRA and the effective radii.
-- P4 1 h CUDA FP64 vs WRF (real_p4_r8_fp64_cuda_1h): U 2.2e-4, THM 2.7e-6, QV 2.1e-4 (rel L2), the
-  size of P2's (the cumulus trigger, section 7).
+- P4 1 h CUDA FP64 vs WRF (real_p4_r8_fp64_cuda_1h): bit-identical.
 - Restart (P4, CPU FP64): step 3 straight vs restarted after step 1 bit-identical (CLDFRA,
   RE_* carried).
 - Cloudy RRTMG column by column: debug-WRF dumps of RRTMG_LWRAD / RRTMG_SWRAD at 09 UTC of a 9 h
   P4 run (5431 cloudy columns, WSM6 radii, snow): LW and SW wrappers
   **bit-identical to WRF on 10591/10591 columns**, and cal_cldfra1 equals WRF's CLDFRA exactly.
-  GPU batch path on the same dumps: LW 8884, SW 10490 columns bit-identical, the rest at roundoff
-  (GLW 1e-16, RTHRATENLW 6e-15, GSW 3e-16, RTHRATENSW 3e-14).
+  GPU batch path on the same dumps (CUDA's exp/log at the time): LW 8884, SW 10490 columns bit-identical, the rest
+  at roundoff (GLW 1e-16, RTHRATENLW 6e-15, GSW 3e-16, RTHRATENSW 3e-14).
 
 ## 10. RRTMG on the GPU
 
@@ -353,7 +352,8 @@ staged once, coszen, CAM ozone and cal_cldfra1 per column on the device, no host
 chunks of 2048 columns (~0.7 GB of work arrays) and are compiled with `--fmad=false` (the table
 indices int(tblint*x + 0.5) jump with contracted products): on the same dumps 10484/10591 (LW) and
 10488/10591 (SW) columns bit-identical to WRF, the rest at roundoff (GLW 3e-16, RTHRATENLW 7e-15,
-GSW 2e-15, RTHRATENSW 2e-13; device exp/log). The batch path also runs on the CPU
+GSW 2e-15, RTHRATENSW 2e-13; CUDA's exp/log, before the FP64 build computed glibc's: the P3 and P4 model runs are
+now bit-identical on the GPU). The batch path also runs on the CPU
 (tests/phys/ra_rrtmg_{lw,sw}/batch_check.cpp: bit-identical, but 2.4x slower than the column path
 there because of the column-fastest layout).
 
@@ -425,7 +425,7 @@ restart fields (restart_p7_fp64: bit-identical).
 and 4 of P7, replayed through WRF's compiled cu_ntiedtke_run (r8d8): 10591/10591 columns agree.
 
 **Acceptance** (P7 = P2 with cu_physics = 16, reference run P7_r8, FP32: P7): CPU FP64 bit-identical to
-WRF for 1 h. CUDA FP64 at 1 h: U 4.7e-7, THM 6.0e-8; CUDA FP32 against single-precision WRF: U 4.9e-4.
+WRF for 1 h, CUDA FP64 too; CUDA FP32 against single-precision WRF: U 4.9e-4.
 wrf_suite: real_p7_r8_fp64_cpu, real_p7_r8_fp64_cpu_1h, real_p7_r8_fp64_cuda_1h, real_p7_fp32_1h,
 restart_p7_fp64.
 
@@ -473,9 +473,8 @@ shallow + deep).
 
 **Acceptance** (P8 = P2 with `cu_physics = 3`, `ishallow = 1`; reference run `P8_r8`, FP32: `P8`): CPU
 FP64 bit-identical to WRF for 10 min (`steps/`) and 1 h, and all `wrfout` and `wrfrst` files (`rst_P8_r8`,
-10 minutes) are identical to WRF v4.8.0's (`run_wrf_files_test.sh ... p8`). CUDA FP64 at 1 h: U 3.6e-10,
-W 2.0e-8, THM 1.2e-10, QV 5.4e-9 (L4; a G4 build gives QV 1.5e-7: its sm_120 code contracts other products of
-the surface layer and Noah into FMAs, STATUS.md); CUDA FP32 against single-precision WRF: U 4.3e-4, W 2.2e-2, THM 9.8e-6,
+10 minutes) are identical to WRF v4.8.0's (`run_wrf_files_test.sh ... p8`). CUDA FP64 is bit-identical at 1 h (L4, G4,
+A100); CUDA FP32 against single-precision WRF: U 4.3e-4, W 2.2e-2, THM 9.8e-6,
 QV 2.9e-4. `wrf_suite`: `real_p8_r8_fp64_cpu_10min`, `real_p8_r8_fp64_cpu_1h`,
 `real_p8_r8_fp64_cuda_1h`, `real_p8_fp32_1h`, `restart_p8_fp64`.
 
@@ -533,8 +532,7 @@ categories, multi-layer snow, frozen/unfrozen soil, and daytime/nighttime forcin
   3D dynamical/moist/PBL fields and 2D surface/soil/snow fields (`U`, `V`, `W`, `PH`, `MU`, `P`, `THM`,
   `QVAPOR`, `TSK`, `HFX`, `QFX`, `LH`, `GRDFLX`, `ALBEDO`, `EMISS`, `SNOW`, `SNOWH`, `SNOWC`, `ACSNOM`,
   `TSLB`, `SMOIS`, `SH2O`, etc.).
-- `real_nmp1_r8_fp64_cuda_1h` (1 h CUDA FP64 vs WRF v4.8.0 `-r8`): `U = 4.7e-13`, `W = 7.5e-12`,
-  `THM = 1.0e-15`, `QV = 2.9e-14` relative L2.
+- `real_nmp1_r8_fp64_cuda_1h` (1 h CUDA FP64 vs WRF v4.8.0 `-r8`): bit-identical.
 - `real_nmp1_fp32_1h` (1 h CUDA FP32 vs single-precision WRF v4.8.0): `U = 1.9e-4`, `W = 3.8e-3`,
   `THM = 8.2e-7`, `QV = 3.8e-5` relative L2.
 - `restart_nmp1_fp64`: step 3 straight vs restarted after step 1 **bit-identical**.

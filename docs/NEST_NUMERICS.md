@@ -181,5 +181,5 @@ tests/nest/run_test.sh
 | N1 (`run_N1_r8/steps`) | one-way | CPU FP64 | 3 parent steps, both domains | bit-identical |
 | N2 (`run_N2_r8/steps`) | two-way | CPU FP64 | 3 parent steps, both domains | bit-identical |
 | N2 (`run_N2_r8`) | two-way | CPU FP64 | 1 h, both domains | bit-identical |
-| N2 (`run_N2_r8`) | two-way | CUDA FP64 | 1 h | U 4.8e-13 (d01), 2.3e-13 (d02) relative L2 |
+| N2 (`run_N2_r8`) | two-way | CUDA FP64 | 1 h, both domains | bit-identical |
 | N2 (`run_N2`) | two-way | CUDA FP32 vs WRF FP32 | 1 h | U 1.9e-4 (d01), 2.8e-4 (d02) relative L2 |
