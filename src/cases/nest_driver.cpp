@@ -755,11 +755,14 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
     d.runner->before_step(n);
     d.model.rk->step(*d.model.st, *d.model.tend, *d.model.base);
     d.runner->after_solve(n);
-    dev_sync();
+    // CUDA graphs: no wait per step (one stream; every read of device data waits), except in the run's last
+    // root step (the stepping times end with the device's work)
+    const bool wait = !step_graphs_on() || doms[0].step == doms[0].model.nsteps;
+    if (wait) dev_sync();
 
     for (int c_idx : d.children) {
       med_nest_force(d.model, doms[c_idx].model, doms[c_idx].spec);
-      dev_sync();
+      if (wait) dev_sync();
     }
     const bool stop_time = doms[0].step == doms[0].model.nsteps;
     for (int c_idx : d.children) {
