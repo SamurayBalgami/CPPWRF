@@ -698,10 +698,10 @@ struct YSUKernel {
         real prnum0 = (phih / phim + prfac);
         prnum0 = max(min(prnum0, prmax), prmin);
         // zfac**pfac and (1 - zfac)**pfac with the parameter pfac = 2.0: gfortran (and gcc for the CPU build) folds
-        // pow(x, 2.0) into x * x, which the GPU must compute too (device code has no constant folding of pow)
+        // pow(x, 2.0) into x * x, which the CUDA FP64 build computes too (rpow2c; device code has no constant folding)
         static_assert(pfac == real(2.0));
-        xkzm[k] = wscalek_k * karman * zq[k + 1] * (zfac_k * zfac_k) +
-                  wscalek2_k * karman * (hpbl(i, j) - zq[k + 1]) * ((real(1.0) - zfac_k) * (real(1.0) - zfac_k));
+        xkzm[k] = wscalek_k * karman * zq[k + 1] * rpow2c(zfac_k) +
+                  wscalek2_k * karman * (hpbl(i, j) - zq[k + 1]) * rpow2c(real(1.0) - zfac_k);
 
         if (k == kpbl - 1 && cloudflg && we < real(0.0)) {
           xkzm[k] = real(0.0);
