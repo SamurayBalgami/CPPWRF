@@ -144,7 +144,9 @@ and `phy_init` provide; the test takes it from WRF after `start_domain`).
 - **Fatal stops**: where WRF calls wrf_error_fatal inside a physics kernel (Noah land, sea ice and
   glacial ice: SNEQV / SNOWH > 1; Kain-Fritsch: QG(1) < 0 and ISTOP = 1) the kernel calls
   `raise_fatal` (atomic flag, CPU and CUDA) and the host stops after the call with WRF's message
-  (`fatal_check`, core/backend.hpp; tests/unit/test_fatal.cpp).
+  (`fatal_check`, core/backend.hpp; tests/unit/test_fatal.cpp). CUDA, inside a time step: the flag is copied
+  asynchronously and read once, when the host next waits for the step (before its output); the first raised
+  check in call order gives the message.
 - CHS, CHS2, CQS2 are locals of surface_driver in WRF; CHS is compared through SFCEXC (= CHS),
   CHS2/CQS2 through T2/Q2 (SFCDIAGS divides by them) and Q2SAT/QGH through the Noah outputs.
 

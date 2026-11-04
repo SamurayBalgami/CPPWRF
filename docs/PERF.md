@@ -308,3 +308,30 @@ the GPU waited for. Every wrfout / wrfrst stream of N1, N2 (smooth_option 0, 1, 
 identical before and after at tolerance 0 in both precisions. The remaining 28 device-to-host copies per parent step
 (apart from the fatal-flag reads) were not attributed here (HT_COARSE and d02's native history every 30 nest steps
 are candidates).
+
+## CUDA graphs for the time step (measured, Colab)
+
+`dyn::RK3::step` runs inside a `StepScope` (core/backend.hpp): its launches and device copies are captured into
+CUDA graphs on the one launch stream and replayed with `cudaGraphExecUpdate` (one instantiated graph per domain and
+segment, up to 4 topologies each); an operation that waits for the device ends the segment. The fatal flags of the
+step are copied asynchronously and read once when the host next waits; a single domain's host captures step n + 1
+while the device runs step n. Same kernels, same order, same arguments: P1 has 1 segment of 400 nodes per step
+(60 launches, 58 updates, 3 instantiations per hour), P4 1 of 652, N3 4 per parent step (d01 and 3 d02 steps).
+`CPPWRF_GRAPHS=0` launches as before (same timings as origin/main), `CPPWRF_GRAPHS=stats` prints the counts.
+
+Stepping s/h, 1 h, no history output, base (origin/main 7aa0970) / new / new with `CPPWRF_GRAPHS=0`, each twice,
+interleaved in one session:
+
+| Case | GPU | base | new | speed-up | without graphs |
+|---|---|---|---|---|---|
+| P1 FP32 | G4 | 0.287, 0.287 | 0.255, 0.255 | 1.13x | 0.286, 0.287 |
+| P1 FP64 | G4 | 0.846, 0.846 | 0.812, 0.812 | 1.04x | 0.845, 0.845 |
+| P4 FP64 | G4 | 5.244, 5.244 | 5.189, 5.191 | 1.01x | 5.243, 5.242 |
+| N3 FP64 | G4 | 15.824, 15.830 | 15.690, 15.692 | 1.01x | 15.749, 15.778 |
+| N3 FP32 | G4 | 11.462, 11.461 | 11.401, 11.366 | 1.01x | 11.481, 11.480 |
+
+nsys, P1 FP32 on the G4, per step: kernels 4.15 ms (base) / 4.13 ms (new), 396 kernels either way; the host makes 1
+graph launch instead of 396 kernel launches, 1 event wait instead of 3 `cudaStreamSynchronize` (fatal flags) and 1
+`cudaDeviceSynchronize`. The step now takes 4.25 ms for 4.13 ms of kernels (GPU busy ~97 %, before 87 %), close to
+the bound of the profile above (rank 6). The nests keep their per-step synchronisations (feedback, forcing); with
+physics the GPU was already 96-99 % busy, so the gain there is ~1 %.
