@@ -15,6 +15,10 @@
 #include "cases/model.hpp"
 #include "io/config.hpp"
 
+namespace cppwrf::nest {
+struct FeedbackScratch;
+}
+
 namespace cppwrf::cases {
 
 // Per-domain nesting configuration ([domains] + [d0N] overrides)
@@ -58,8 +62,10 @@ void med_nest_force(Model& parent, Model& child, const NestDomainSpec& child_spe
 // WRF med_nest_feedback(parent, child):
 //   Cell-averages (copy_fcn, spec_zone = 1) + smooths (smooth_option) child interior onto parent
 //   for u_2, v_2, w_2, ph_2, t_2, mu_2, all scalars q_2, and base fields phb, mub, alb, pb, ht,
-//   then refreshes parent halos (update_after_feedback_em).
-void med_nest_feedback(Model& parent, const Model& child, const NestDomainSpec& child_spec);
+//   then refreshes parent halos (update_after_feedback_em). scratch: the smoothers' temporaries on the parent grid,
+//   kept across calls (null: allocated for this call).
+void med_nest_feedback(Model& parent, const Model& child, const NestDomainSpec& child_spec,
+                       nest::FeedbackScratch* scratch = nullptr);
 
 // Build and run a multi-domain nested simulation using DomainRunner per domain.
 // Returns 0 on success, non-zero on error (matching src/main.cpp exit codes).

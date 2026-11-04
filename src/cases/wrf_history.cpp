@@ -746,92 +746,229 @@ void feedback(const std::string& fn, std::vector<double>& c, int cnx, int cny, c
       }
 }
 
+// copy_field's / store_field's checks of a field against NetCDF dims, without the copy
+template <class F>
+bool fits_copy(const F& f, const std::vector<std::size_t>& dims) {
+  const Layout& L = f.layout();
+  std::size_t nk = 1, nj = 1, ni = 1;
+  if (dims.size() == 3) { nk = dims[0]; nj = dims[1]; ni = dims[2]; }
+  else if (dims.size() == 2) { nj = dims[0]; ni = dims[1]; }
+  else return false;
+  const bool pad = dims.size() == 3 && L.nz > 1 && int(nk) == L.nz + 1;
+  const bool sub = f.name() == "defor12" || f.name() == "defor13" || f.name() == "defor23";
+  return !(sub ? (int(ni) > L.nx || int(nj) > L.ny || int(nk) != L.nz)
+               : (int(ni) != L.nx || int(nj) != L.ny || (int(nk) != std::max(1, L.nz) && !pad)));
+}
+template <class F>
+bool fits_store(const F& f, const std::vector<std::size_t>& dims) {
+  const Layout& L = f.layout();
+  std::size_t nk = 1, nj = 1, ni = 1;
+  if (dims.size() == 3) { nk = dims[0]; nj = dims[1]; ni = dims[2]; }
+  else if (dims.size() == 2) { nj = dims[0]; ni = dims[1]; }
+  else return false;
+  const bool pad = dims.size() == 3 && L.nz > 1 && int(nk) == L.nz + 1;
+  return !(int(ni) != L.nx || int(nj) != L.ny || (int(nk) != std::max(1, L.nz) && !pad));
+}
+// the levels copy_field fills from the field (a padded level above kte is 0)
+template <class F>
+int filled_levels(const F& f, const std::vector<std::size_t>& dims) {
+  if (dims.size() != 3) return 1;
+  const int nk = int(dims[0]), nz = f.layout().nz;
+  return nz > 1 && nk == nz + 1 ? nk - 1 : nk;
+}
+
+CPPWRF_HD inline real fb_at(const View3<const real>& v, int i, int j, int k) { return v(i, j, k); }
+CPPWRF_HD inline real fb_at(const View2<const real>& v, int i, int j, int) { return v(i, j); }
+CPPWRF_HD inline int fb_at(const View2<const int>& v, int i, int j, int) { return v(i, j); }
+CPPWRF_HD inline void fb_put(const View3<real>& v, int i, int j, int k, real x) { v(i, j, k) = x; }
+CPPWRF_HD inline void fb_put(const View2<real>& v, int i, int j, int, real x) { v(i, j) = x; }
+
+// feedback() above on the device, in place on the parent field: (i0, j0, k) = 0-based parent point inside the nest,
+// fine levels at or above fnk read 0 (copy_field's padded level). copy_fcn sums real(1/n) * f in real and the
+// terms in double, as feedback() of the copy_field values; store_field's real() of the result.
+template <class CV, class FV>
+struct KFeedbackReal {
+  CV c;
+  FV f;
+  int ipos, jpos, nri, nrj, fnk;
+  bool point, xstag, ystag;
+  CPPWRF_HD void operator()(int i0, int j0, int k) const {
+    const int ci = i0 + 1, cj = j0 + 1;
+    const int istag = xstag ? 0 : 1, jstag = ystag ? 0 : 1;
+    auto F = [&](int ni0, int nj0) { return k < fnk ? fb_at(f, ni0, nj0, k) : real(0); };
+    if (point) {
+      if (nrj % 2 != 0) fb_put(c, i0, j0, k, F((ci - ipos) * nri + istag, (cj - jpos) * nrj + jstag));
+      else fb_put(c, i0, j0, k, F((ci - ipos) * nri + nri / 2 - 1, (cj - jpos) * nrj + nrj / 2 - 1));
+      return;
+    }
+    double sum = 0.0;
+    if (!xstag && !ystag) {
+      const real inv = real(1.0) / real(nri * nrj);
+      for (int dj = 0; dj < nrj; ++dj)
+        for (int di = 0; di < nri; ++di) sum += double(inv * F((ci - ipos) * nri + di, (cj - jpos) * nrj + dj));
+    } else if (xstag) {
+      const real inv = real(1.0) / real(nrj);
+      for (int dj = 0; dj < nrj; ++dj) sum += double(inv * F((ci - ipos) * nri, (cj - jpos) * nrj + dj));
+    } else {
+      const real inv = real(1.0) / real(nri);
+      for (int di = 0; di < nri; ++di) sum += double(inv * F((ci - ipos) * nri + di, (cj - jpos) * nrj));
+    }
+    fb_put(c, i0, j0, k, real(sum));
+  }
+};
+
+// the integer fields (copy_fcni / copy_fcnm; copy_fcn's average rounded with lround as the host path did)
+struct KFeedbackInt {
+  View2<int> c;
+  View2<const int> f;
+  int ipos, jpos, nri, nrj;
+  bool point;
+  CPPWRF_HD void operator()(int i0, int j0, int) const {
+    const int ci = i0 + 1, cj = j0 + 1;
+    if (point) {
+      if (nrj % 2 != 0) c(i0, j0) = f((ci - ipos) * nri + 1, (cj - jpos) * nrj + 1);
+      else c(i0, j0) = f((ci - ipos) * nri + nri / 2 - 1, (cj - jpos) * nrj + nrj / 2 - 1);
+      return;
+    }
+    const real inv = real(1.0) / real(nri * nrj);
+    double sum = 0.0;
+    for (int dj = 0; dj < nrj; ++dj)
+      for (int di = 0; di < nri; ++di) sum += double(inv * real(f((ci - ipos) * nri + di, (cj - jpos) * nrj + dj)));
+    c(i0, j0) = int(std::lround(sum));
+  }
+};
+
+// One parent / nest field pair of feedback_physics: the parent field (2-D, 3-D or integer), the nest's, the
+// feedback function and the parent's NetCDF extents
+struct FbPair {
+  Field2* p2 = nullptr;
+  const Field2* c2 = nullptr;
+  Field3* p3 = nullptr;
+  const Field3* c3 = nullptr;
+  phys::driver::IntField2* pi = nullptr;
+  const phys::driver::IntField2* ci = nullptr;
+  bool point = false, xs = false, ys = false;
+  int cnx = 0, cny = 0, nk = 1, fnk = 1;
+};
+
 }  // namespace
 
-// Also without column physics: the microphysics accumulations and h_diabatic are fed back as well
+struct WrfHistory::FeedbackCache {
+  int num_land_cat = 0;  // domain_atts sets it from the input file: the stream fields depend on it
+  std::vector<wrf_io::OutVar> vars;  // history fields, then the restart stream's others
+  std::map<const WrfHistory*, std::vector<FbPair>> pairs;  // per nest
+  std::vector<signed char> model;  // per var: value() of the model (-1: not asked yet)
+};
+
+WrfHistory::FeedbackCache& WrfHistory::feedback_cache() {
+  const int nlc = wc_->integer("num_land_cat");
+  if (fb_cache_ && fb_cache_->num_land_cat == nlc) return *fb_cache_;
+  fb_cache_ = std::make_unique<FeedbackCache>();
+  fb_cache_->num_land_cat = nlc;
+  const Grid& g = m_.g;
+  std::vector<wrf_io::OutVar>& vars = fb_cache_->vars;
+  vars = fb_schema_->history_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real)));
+  std::set<std::string> have;
+  for (const wrf_io::OutVar& v : vars) have.insert(v.name);
+  for (wrf_io::OutVar& v : fb_schema_->restart_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real))))
+    if (!have.count(v.name)) vars.push_back(std::move(v));
+  fb_cache_->model.assign(vars.size(), -1);
+  return *fb_cache_;
+}
+
+// Also without column physics: the microphysics accumulations and h_diabatic are fed back as well. The field pairs
+// are found once per nest; the feedback runs on the device on the fields themselves.
 void WrfHistory::feedback_physics(WrfHistory& child, int ipos, int jpos, int ratio) {
   const Grid& g = m_.g;
   const Grid& cg = child.m_.g;
-  std::vector<wrf_io::OutVar> vars = fb_schema_->history_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real)));
-  {
-    std::set<std::string> have;
-    for (const wrf_io::OutVar& v : vars) have.insert(v.name);
-    for (wrf_io::OutVar& v : fb_schema_->restart_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real))))
-      if (!have.count(v.name)) vars.push_back(std::move(v));
-  }
+  FeedbackCache& fc = feedback_cache();
   const int spec_zone = std::max(1, wc_->integer("spec_zone"));
-  std::set<std::string> done;
-  for (const wrf_io::OutVar& v : vars) {
-    if (!v.var || v.var->nest_up.empty() || v.dimlens.size() < 2 || !done.insert(v.var->varname).second) continue;
-    const std::string fn = v.var->nest_up.substr(0, v.var->nest_up.find(':'));
-    if (fn == "mark_domain") continue;
-    const std::string vn = to_lower(v.var->varname);
-    // the suite's fields, the microphysics accumulations and h_diabatic (state of the dycore)
-    auto find2 = [&](const Model& m, const std::vector<const Field2*>& l) -> Field2* {
-      for (const Field2* f : l)
-        if (f->name() == vn) return const_cast<Field2*>(f);
-      if (m.rk && m.rk->physics()) {
-        dyn::PhysicsCoupling& pc = *m.rk->physics();
-        for (Field2* f : {&pc.rainnc, &pc.snownc, &pc.graupelnc})
-          if (f->name() == vn && f->layout().total > 0) return f;
-      }
-      return nullptr;
-    };
-    auto find3 = [&](const Model& m, const std::vector<const Field3*>& l) -> Field3* {
-      for (const Field3* f : l)
-        if (f->name() == vn) return const_cast<Field3*>(f);
-      if (vn == "h_diabatic" && m.st->n_moist > 0) return &m.st->h_diabatic;
-      return nullptr;
-    };
-    Field2* p2 = find2(m_, f2_);
-    Field3* p3 = p2 ? nullptr : find3(m_, f3_);
-    if (!p2 && !p3) {  // integer fields (copy_fcni / copy_fcnm): land-use and soil categories, Noah-MP's
-      auto ifield = [&](const Model& m) -> phys::driver::IntField2* {
-        if (!m.suite) return nullptr;
-        phys::driver::PhysicsSuite& su = *m.suite;
-        if (v.name == "IVGTYP") return &su.ivgtyp;
-        if (v.name == "ISLTYP") return &su.isltyp;
-        if (su.options().sf_surface_physics == 4) {
-          if (v.name == "ISNOWXY") return &su.isnowxy;
-          if (v.name == "CROPCAT") return &su.cropcat;
-          if (v.name == "PGSXY") return &su.pgsxy;
+  auto it = fc.pairs.find(&child);
+  if (it == fc.pairs.end()) {
+    std::vector<FbPair>& pairs = fc.pairs[&child];
+    std::set<std::string> done;
+    for (const wrf_io::OutVar& v : fc.vars) {
+      if (!v.var || v.var->nest_up.empty() || v.dimlens.size() < 2 || !done.insert(v.var->varname).second) continue;
+      const std::string fn = v.var->nest_up.substr(0, v.var->nest_up.find(':'));
+      if (fn == "mark_domain") continue;
+      const std::string vn = to_lower(v.var->varname);
+      // the suite's fields, the microphysics accumulations and h_diabatic (state of the dycore)
+      auto find2 = [&](const Model& m, const std::vector<const Field2*>& l) -> Field2* {
+        for (const Field2* f : l)
+          if (f->name() == vn) return const_cast<Field2*>(f);
+        if (m.rk && m.rk->physics()) {
+          dyn::PhysicsCoupling& pc = *m.rk->physics();
+          for (Field2* f : {&pc.rainnc, &pc.snownc, &pc.graupelnc})
+            if (f->name() == vn && f->layout().total > 0) return f;
         }
-        return su.bucket_int(to_lower(v.name));
+        return nullptr;
       };
-      phys::driver::IntField2* pi = ifield(m_);
-      const phys::driver::IntField2* ci = ifield(child.m_);
-      if (!pi || !ci || v.dimlens.size() != 2) continue;
-      auto get = [](const phys::driver::IntField2& fi, int ni, int nj) {
-        std::vector<int> h;
-        fi.download(h);
-        std::vector<double> o(std::size_t(ni) * nj);
-        for (int j = 0; j < nj; ++j)
-          for (int i = 0; i < ni; ++i) o[std::size_t(j) * ni + i] = double(h[fi.layout().index(i, j, 0)]);
-        return o;
+      auto find3 = [&](const Model& m, const std::vector<const Field3*>& l) -> Field3* {
+        for (const Field3* f : l)
+          if (f->name() == vn) return const_cast<Field3*>(f);
+        if (vn == "h_diabatic" && m.st->n_moist > 0) return &m.st->h_diabatic;
+        return nullptr;
       };
-      std::vector<double> c = get(*pi, g.nx, g.ny), f = get(*ci, cg.nx, cg.ny);
-      feedback(fn, c, g.nx, g.ny, f, cg.nx, cg.ny, 1, ipos, jpos, ratio, ratio, false, false, spec_zone, cg.nx + 1,
-               cg.ny + 1);
-      std::vector<int> h;
-      pi->download(h);
-      for (int j = 0; j < g.ny; ++j)
-        for (int i = 0; i < g.nx; ++i) h[pi->layout().index(i, j, 0)] = int(std::lround(c[std::size_t(j) * g.nx + i]));
-      pi->upload(h);
-      continue;
+      FbPair e;
+      e.point = fn == "copy_fcnm" || fn == "copy_fcni";
+      Field2* p2 = find2(m_, f2_);
+      Field3* p3 = p2 ? nullptr : find3(m_, f3_);
+      if (!p2 && !p3) {  // integer fields (copy_fcni / copy_fcnm): land-use and soil categories, Noah-MP's
+        auto ifield = [&](const Model& m) -> phys::driver::IntField2* {
+          if (!m.suite) return nullptr;
+          phys::driver::PhysicsSuite& su = *m.suite;
+          if (v.name == "IVGTYP") return &su.ivgtyp;
+          if (v.name == "ISLTYP") return &su.isltyp;
+          if (su.options().sf_surface_physics == 4) {
+            if (v.name == "ISNOWXY") return &su.isnowxy;
+            if (v.name == "CROPCAT") return &su.cropcat;
+            if (v.name == "PGSXY") return &su.pgsxy;
+          }
+          return su.bucket_int(to_lower(v.name));
+        };
+        e.pi = ifield(m_);
+        e.ci = ifield(child.m_);
+        if (!e.pi || !e.ci || v.dimlens.size() != 2) continue;
+        e.cnx = g.nx;
+        e.cny = g.ny;
+        pairs.push_back(e);
+        continue;
+      }
+      if (!(p2 ? fits_copy(*p2, v.dimlens) && fits_store(*p2, v.dimlens)
+               : fits_copy(*p3, v.dimlens) && fits_store(*p3, v.dimlens)))
+        continue;
+      e.xs = v.stagger == "X";
+      e.ys = v.stagger == "Y";
+      std::vector<std::size_t> cd = v.dimlens;
+      cd[cd.size() - 1] = std::size_t(cg.nx + (e.xs ? 1 : 0));
+      cd[cd.size() - 2] = std::size_t(cg.ny + (e.ys ? 1 : 0));
+      const Field2* c2 = p2 ? find2(child.m_, child.f2_) : nullptr;
+      const Field3* c3 = p3 ? find3(child.m_, child.f3_) : nullptr;
+      if (!(c2 ? fits_copy(*c2, cd) : c3 && fits_copy(*c3, cd))) continue;
+      e.p2 = p2; e.c2 = c2; e.p3 = p3; e.c3 = c3;
+      e.cnx = int(v.dimlens.back());
+      e.cny = int(v.dimlens[v.dimlens.size() - 2]);
+      e.nk = p2 ? filled_levels(*p2, v.dimlens) : filled_levels(*p3, v.dimlens);
+      e.fnk = c2 ? filled_levels(*c2, cd) : filled_levels(*c3, cd);
+      pairs.push_back(e);
     }
-    std::vector<double> c, f;
-    if (!(p2 ? copy_field(*p2, v.dimlens, c) : copy_field(*p3, v.dimlens, c))) continue;
-    const bool xs = v.stagger == "X", ys = v.stagger == "Y";
-    std::vector<std::size_t> cd = v.dimlens;
-    cd[cd.size() - 1] = std::size_t(cg.nx + (xs ? 1 : 0));
-    cd[cd.size() - 2] = std::size_t(cg.ny + (ys ? 1 : 0));
-    const Field2* c2 = p2 ? find2(child.m_, child.f2_) : nullptr;
-    const Field3* c3 = p3 ? find3(child.m_, child.f3_) : nullptr;
-    if (!(c2 ? copy_field(*c2, cd, f) : c3 && copy_field(*c3, cd, f))) continue;
-    const int nk = v.dimlens.size() == 3 ? int(v.dimlens[0]) : 1;
-    feedback(fn, c, int(v.dimlens.back()), int(v.dimlens[v.dimlens.size() - 2]), f, int(cd.back()),
-             int(cd[cd.size() - 2]), nk, ipos, jpos, ratio, ratio, xs, ys, spec_zone, cg.nx + 1, cg.ny + 1);
-    if (p2) store_field(*p2, v.dimlens, c); else store_field(*p3, v.dimlens, c);
+    it = fc.pairs.find(&child);
+  }
+  // feedback()'s bounds: the nest's interior on the parent without spec_zone rows (fine ide = nx + 1)
+  for (const FbPair& e : it->second) {
+    const int istag = e.xs ? 0 : 1, jstag = e.ys ? 0 : 1;
+    const int ci0 = std::max(ipos + spec_zone, 1), ci1 = std::min(ipos + cg.nx / ratio - istag - spec_zone, e.cnx);
+    const int cj0 = std::max(jpos + spec_zone, 1), cj1 = std::min(jpos + cg.ny / ratio - jstag - spec_zone, e.cny);
+    const Range3D r{ci0 - 1, ci1, cj0 - 1, cj1, 0, e.nk};
+    if (e.pi) {
+      parallel_for(r, KFeedbackInt{e.pi->view(), e.ci->cview(), ipos, jpos, ratio, ratio, e.point});
+    } else if (e.p2) {
+      using K = KFeedbackReal<View2<real>, View2<const real>>;
+      parallel_for(r, K{e.p2->view(), e.c2->cview(), ipos, jpos, ratio, ratio, e.fnk, e.point, e.xs, e.ys});
+    } else {
+      using K = KFeedbackReal<View3<real>, View3<const real>>;
+      parallel_for(r, K{e.p3->view(), e.c3->cview(), ipos, jpos, ratio, ratio, e.fnk, e.point, e.xs, e.ys});
+    }
   }
 }
 
@@ -850,18 +987,12 @@ void WrfHistory::keep_ht_coarse() {
 }
 
 void WrfHistory::feedback_from(WrfHistory& child, int ipos, int jpos, int ratio) {
-  const Grid& g = m_.g;
   const Grid& cg = child.m_.g;
   // history and restart fields (the restart stream carries more of them)
-  std::vector<wrf_io::OutVar> vars = fb_schema_->history_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real)));
-  {
-    std::set<std::string> have;
-    for (const wrf_io::OutVar& v : vars) have.insert(v.name);
-    for (wrf_io::OutVar& v : fb_schema_->restart_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real))))
-      if (!have.count(v.name)) vars.push_back(std::move(v));
-  }
+  FeedbackCache& fc = feedback_cache();
   const int spec_zone = std::max(1, wc_->integer("spec_zone"));
-  for (const wrf_io::OutVar& v : vars) {
+  for (std::size_t iv = 0; iv < fc.vars.size(); ++iv) {
+    const wrf_io::OutVar& v = fc.vars[iv];
     if (v.name == "HT_COARSE") {  // med_feedback_domain: parent%ht_coarse = parent%ht
       std::vector<double> h;
       if (value("HGT", "ht", v.dimlens, h)) fed_[v.name] = std::move(h);
@@ -869,11 +1000,15 @@ void WrfHistory::feedback_from(WrfHistory& child, int ipos, int jpos, int ratio)
     }
     if (!v.var || v.var->nest_up.empty() || v.dimlens.size() < 2) continue;
     const std::string fn = v.var->nest_up.substr(0, v.var->nest_up.find(':'));
-    std::vector<double> tmp;
-    model_only_ = true;
-    const bool model = value(v.name, v.var->varname, v.dimlens, tmp);
-    model_only_ = false;
-    if (model) continue;  // the model feeds back its own fields
+    // whether value() takes it from the model depends on the configuration only (the fields' names and extents):
+    // asked once
+    if (fc.model[iv] < 0) {
+      std::vector<double> tmp;
+      model_only_ = true;
+      fc.model[iv] = value(v.name, v.var->varname, v.dimlens, tmp) ? 1 : 0;
+      model_only_ = false;
+    }
+    if (fc.model[iv]) continue;  // the model feeds back its own fields
     std::vector<double> c;
     // med_feedback_domain: grid%nest_mask = 0. before each nest's feedback (mediation_feedback_domain.F:115), so
     // NEST_MASK marks the last nest fed back only (NEST_POS keeps every sibling's)

@@ -77,6 +77,12 @@ class WrfHistory {
   void start_em_slopes();
   bool from_wrfinput(const std::string& name, std::size_t n, std::vector<double>& out);
 
+  // nest feedback: the Registry fields with a u= function (history and restart streams) and, per nest, the
+  // parent / nest field pairs of feedback_physics and the fields feedback_from leaves to the model
+  struct FeedbackCache;
+  FeedbackCache& feedback_cache();
+  std::unique_ptr<FeedbackCache> fb_cache_;
+
   const Model& m_;
   std::string out_dir_, domain_tag_, start_date_, wrfinput_, hist_outname_, rst_outname_;
   std::vector<const Field2*> f2_;

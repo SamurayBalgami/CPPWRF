@@ -565,7 +565,8 @@ void med_nest_force(Model& parent, Model& child, const NestDomainSpec& child_spe
   }
 }
 
-void med_nest_feedback(Model& parent, const Model& child, const NestDomainSpec& child_spec) {
+void med_nest_feedback(Model& parent, const Model& child, const NestDomainSpec& child_spec,
+                       nest::FeedbackScratch* scratch) {
   const Grid& pg = parent.g;
   const Grid& cg = child.g;
   const int n_nx = cg.nx, n_ny = cg.ny, n_nz = cg.nz;
@@ -576,26 +577,26 @@ void med_nest_feedback(Model& parent, const Model& child, const NestDomainSpec& 
   const int sm = child_spec.smooth_option;
 
   // Note: WRF med_feedback_domain operates directly on UNCOUPLED fields (no couple_or_uncouple_em call)
-  nest::feedback_field3(pg, parent.st->u_2, child.st->u_2, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, true, false, sm);
-  nest::feedback_field3(pg, parent.st->v_2, child.st->v_2, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, true, sm);
-  nest::feedback_field3(pg, parent.st->w_2, child.st->w_2, n_nx, n_ny, n_nz + 1, ipos, jpos, nri, nrj, false, false, sm);
-  nest::feedback_field3(pg, parent.st->ph_2, child.st->ph_2, n_nx, n_ny, n_nz + 1, ipos, jpos, nri, nrj, false, false, sm);
-  nest::feedback_field3(pg, parent.st->t_2, child.st->t_2, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm);
-  nest::feedback_field2(pg, parent.st->mu_2, child.st->mu_2, n_nx, n_ny, ipos, jpos, nri, nrj, sm);
+  nest::feedback_field3(pg, parent.st->u_2, child.st->u_2, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, true, false, sm, 1, scratch);
+  nest::feedback_field3(pg, parent.st->v_2, child.st->v_2, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, true, sm, 1, scratch);
+  nest::feedback_field3(pg, parent.st->w_2, child.st->w_2, n_nx, n_ny, n_nz + 1, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
+  nest::feedback_field3(pg, parent.st->ph_2, child.st->ph_2, n_nx, n_ny, n_nz + 1, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
+  nest::feedback_field3(pg, parent.st->t_2, child.st->t_2, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
+  nest::feedback_field2(pg, parent.st->mu_2, child.st->mu_2, n_nx, n_ny, ipos, jpos, nri, nrj, sm, 1, scratch);
 
   const int n_scalars = std::min(parent.st->n_scalars(), child.st->n_scalars());
   for (int s = 0; s < n_scalars; ++s) {
     if (s == parent.st->P_TKE) continue;  // tke is not fed back (Registry: no u flag)
-    nest::feedback_field3(pg, parent.st->q_2[s], child.st->q_2[s], n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm);
+    nest::feedback_field3(pg, parent.st->q_2[s], child.st->q_2[s], n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
   }
 
   // Base-state fields fed back in inc/nest_feedbackup_interp.inc; inc/nest_feedbackup_smooth.inc smooths them
   // and ht as well (map factors, f, e, sina, cosa are fed back without smoothing)
-  nest::feedback_field3(pg, parent.base->phb, child.base->phb, n_nx, n_ny, n_nz + 1, ipos, jpos, nri, nrj, false, false, sm);
-  nest::feedback_field2(pg, parent.base->mub, child.base->mub, n_nx, n_ny, ipos, jpos, nri, nrj, sm);
-  nest::feedback_field3(pg, parent.base->alb, child.base->alb, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm);
-  nest::feedback_field3(pg, parent.base->pb, child.base->pb, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm);
-  nest::feedback_field2(pg, parent.base->ht, child.base->ht, n_nx, n_ny, ipos, jpos, nri, nrj, sm);
+  nest::feedback_field3(pg, parent.base->phb, child.base->phb, n_nx, n_ny, n_nz + 1, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
+  nest::feedback_field2(pg, parent.base->mub, child.base->mub, n_nx, n_ny, ipos, jpos, nri, nrj, sm, 1, scratch);
+  nest::feedback_field3(pg, parent.base->alb, child.base->alb, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
+  nest::feedback_field3(pg, parent.base->pb, child.base->pb, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
+  nest::feedback_field2(pg, parent.base->ht, child.base->ht, n_nx, n_ny, ipos, jpos, nri, nrj, sm, 1, scratch);
 
   if (parent.base->mapped && child.base->mapped) {
     nest::feedback_field2_fcnm(parent.base->msftx, child.base->msftx, n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
@@ -627,6 +628,7 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
     Model model;
     std::unique_ptr<DomainRunner> runner;
     std::vector<int> children;  // 0-based indices into doms
+    nest::FeedbackScratch fb_scratch;  // the feedback smoothers' temporaries on this domain (a parent) grid
     long step = 0;
     bool started = false;
   };
@@ -726,7 +728,7 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
 
   auto feedback = [&](DomInstance& d, DomInstance& c) {
     if (c.spec.feedback == 0) return;
-    med_nest_feedback(d.model, c.model, c.spec);
+    med_nest_feedback(d.model, c.model, c.spec, &d.fb_scratch);
     dev_sync();
 #ifdef CPPWRF_HAVE_NETCDF
     if (d.runner->history() && c.runner->history()) {  // the physics state, then history-only fields (Registry u=)

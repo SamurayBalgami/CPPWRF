@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <vector>
 #include <cstdint>
+#include <memory>
 #include "core/backend.hpp"
 #include "core/field.hpp"
 
@@ -383,7 +384,28 @@ struct KSmdsmI2D {
   }
 };
 
+// The smoothers' temporary arrays (cfldnew of sm121 / smdsm), kept per stagger across feedback calls so that the
+// time loop allocates nothing: every point of a temporary the smoother reads is written by the same call first.
+struct FeedbackScratch {
+  std::unique_ptr<Field3> f3[4];  // M, U, V, W
+  std::unique_ptr<Field2> f2;
+  Field3& field3(const Grid& g, Stagger s) {
+    std::unique_ptr<Field3>& f = f3[s == Stagger::M ? 0 : s == Stagger::U ? 1 : s == Stagger::V ? 2 : 3];
+    if (!f || !same_layout(f->layout(), Layout::make(g, s, 3))) f = std::make_unique<Field3>(g, s, "fb_tmp3");
+    return *f;
+  }
+  Field2& field2(const Grid& g) {
+    if (!f2 || !same_layout(f2->layout(), Layout::make(g, Stagger::M, 2))) f2 = std::make_unique<Field2>(g, Stagger::M, "fb_tmp2");
+    return *f2;
+  }
+  static bool same_layout(const Layout& a, const Layout& b) {
+    return a.nx == b.nx && a.ny == b.ny && a.nz == b.nz && a.sj == b.sj && a.sk == b.sk && a.offset == b.offset &&
+           a.total == b.total;
+  }
+};
+
 // Single-source View-based feedback + optional smoother for Field3 / BaseField3
+// (scratch: the temporaries of the smoother, else allocated for this call)
 template <class Field3T>
 inline void feedback_field3(
     const Grid& c_grid,
@@ -394,7 +416,8 @@ inline void feedback_field3(
     int nri, int nrj,
     bool xstag, bool ystag,
     int smooth_option = 0,
-    int spec_zone = 1) {
+    int spec_zone = 1,
+    FeedbackScratch* scratch = nullptr) {
 
   const int ci0_begin = (ipos - 1) + spec_zone;
   const int ci0_end   = (ipos - 1) + n_nx / nri - spec_zone + (xstag ? 1 : 0);
@@ -413,7 +436,9 @@ inline void feedback_field3(
     const int s_j1 = (jpos - 1) + n_ny / nrj - 2 + (ystag ? 1 : 0);
     if (s_i0 < s_i1 && s_j0 < s_j1) {
       Stagger stag = xstag ? Stagger::U : (ystag ? Stagger::V : ((nk == c_grid.nz + 1) ? Stagger::W : Stagger::M));
-      Field3 tmp(c_grid, stag, "fb_tmp3");
+      std::unique_ptr<Field3> own;
+      if (!scratch) own = std::make_unique<Field3>(c_grid, stag, "fb_tmp3");
+      Field3& tmp = scratch ? scratch->field3(c_grid, stag) : *own;
       auto tv = tmp.view();
       auto tcv = tmp.cview();
       auto ccv = const_view3(cfld);
@@ -445,7 +470,8 @@ inline void feedback_field2(
     int ipos, int jpos,
     int nri, int nrj,
     int smooth_option = 0,
-    int spec_zone = 1) {
+    int spec_zone = 1,
+    FeedbackScratch* scratch = nullptr) {
 
   const int ci0_begin = (ipos - 1) + spec_zone;
   const int ci0_end   = (ipos - 1) + n_nx / nri - spec_zone;
@@ -463,7 +489,9 @@ inline void feedback_field2(
     const int s_j0 = jpos + 1;
     const int s_j1 = (jpos - 1) + n_ny / nrj - 2;
     if (s_i0 < s_i1 && s_j0 < s_j1) {
-      Field2 tmp(c_grid, Stagger::M, "fb_tmp2");
+      std::unique_ptr<Field2> own;
+      if (!scratch) own = std::make_unique<Field2>(c_grid, Stagger::M, "fb_tmp2");
+      Field2& tmp = scratch ? scratch->field2(c_grid) : *own;
       auto tv = tmp.view();
       auto tcv = tmp.cview();
       auto ccv = const_view2(cfld);
