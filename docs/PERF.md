@@ -290,3 +290,21 @@ stated); none is measured after a change yet.
 | 9 | 8 | Allocate suite fields by package | P1 3.4 GB FP64 (7.3 KB per cell incl. context) | memory only | memory -20..-40 % |
 | 10 | 9 | Fused asynchronous diagnostics | not in the bench runs (diag_interval off); 1 + n_q blocking reductions every 10 steps | <= 1-3 % | 1-3 % |
 | 11 | 10 | Shared device table cache | start-up and nest memory | memory / start-up only | - |
+
+### Nest feedback on the device (AR1 rank 1, F02; measured)
+
+`med_nest_feedback`'s smoothers keep their temporaries per parent grid (`nest::FeedbackScratch`), and the physics-state
+feedback of the history view (`WrfHistory::feedback_physics`) runs as device kernels on the parent's and the nest's
+fields (pairs found once per nest, integer fields on the device); `feedback_from` asks once which fields the model
+carries. N3 on the G4 (commit 7aa0970 vs the change, same session, each run twice, as the table above):
+
+| Case | before s/h | after s/h | gain | D2H / H2D / memset per parent step (nsys) | malloc+free/step |
+|---|---|---|---|---|---|
+| N3 FP64 | 15.78, 15.86 | 14.46, 14.49 | 1.09x | 327 (140.5 MB) / 71 / 17 -> 28 (20.0 MB) / 0 / 0 | 34 -> 0 |
+| N3 FP32 | 11.48, 11.49 | 10.02, 10.02 | 1.15x | (not profiled) | 34 -> 0 |
+
+Kernel time per parent step is unchanged (227.0 / 227.2 ms, +71 small feedback launches): the gain is the host time
+the GPU waited for. Every wrfout / wrfrst stream of N1, N2 (smooth_option 0, 1, 2) and N3 (1 h, wrfrst at 30 min) is
+identical before and after at tolerance 0 in both precisions. The remaining 28 device-to-host copies per parent step
+(apart from the fatal-flag reads) were not attributed here (HT_COARSE and d02's native history every 30 nest steps
+are candidates).
