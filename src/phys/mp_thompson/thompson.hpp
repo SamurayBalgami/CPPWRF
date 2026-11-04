@@ -2204,8 +2204,10 @@ struct ThompsonKernel {
                     int nu_idx = nu_c - 1;
                     Real lamc = libm::pow(nc[k] * Real(am_r) * tables.ccg[1][nu_idx] * tables.ocg1[nu_idx] / rc[k], obmr);
                     Real ilamc = Real(1.0) / lamc;
-                    vtck[k] = rhof[k] * Real(av_c) * tables.ccg[4][nu_idx] * tables.ocg2[nu_idx] * libm::pow(ilamc, Real(bv_c));
-                    vtnck[k] = rhof[k] * Real(av_c) * tables.ccg[3][nu_idx] * tables.ocg1[nu_idx] * libm::pow(ilamc, Real(bv_c));
+                    // ilamc**bv_c with the parameter bv_c = 2.0: x * x as gfortran folds it (rpow2c)
+                    static_assert(bv_c == 2.0);
+                    vtck[k] = rhof[k] * Real(av_c) * tables.ccg[4][nu_idx] * tables.ocg2[nu_idx] * rpow2c(ilamc);
+                    vtnck[k] = rhof[k] * Real(av_c) * tables.ccg[3][nu_idx] * tables.ocg1[nu_idx] * rpow2c(ilamc);
                 }
             }
         }
