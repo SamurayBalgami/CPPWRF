@@ -283,102 +283,122 @@ void LateralBC::relax_dry(const State& s, Tendencies& t, const BaseState& b) con
   const int nb = relax_zone_ - 1;  // rows spec_zone .. spec_zone + relax_zone - 2
   auto sl = [&](Var v) { return slabs(data_[v], off_[v], nk_[v], npos(v, XS), npos(v, YS)); };
   const real dtbc_r = real(dtbc);
+  LaunchBatch<KRelax, 6> relax;  // one launch: every variable writes its own tendency
   {  // ru -> ru_tendf (u_save * msfuy)
     const Ring r = ring_for(g_, 'u', spec_zone_);
-    parallel_for(ring_range(r, g_.nz, nb), KRelax{t.ru_tendf.view(), {}, s.ru.cview(), {}, false, {}, {}, {}, false,
-                                                  b.msfuy.view(), true, sl(U), r, fcx, gcx, dtbc_r});
+    relax.add(ring_range(r, g_.nz, nb), KRelax{t.ru_tendf.view(), {}, s.ru.cview(), {}, false, {}, {}, {}, false,
+                                               b.msfuy.view(), true, sl(U), r, fcx, gcx, dtbc_r});
   }
   {
     const Ring r = ring_for(g_, 'v', spec_zone_);
-    parallel_for(ring_range(r, g_.nz, nb), KRelax{t.rv_tendf.view(), {}, s.rv.cview(), {}, false, {}, {}, {}, false,
-                                                  b.msfvx.view(), true, sl(V), r, fcx, gcx, dtbc_r});
+    relax.add(ring_range(r, g_.nz, nb), KRelax{t.rv_tendf.view(), {}, s.rv.cview(), {}, false, {}, {}, {}, false,
+                                               b.msfvx.view(), true, sl(V), r, fcx, gcx, dtbc_r});
   }
   {  // ph, mass-weighted with c1f/c2f and mut (nz+1 levels)
     const Ring r = ring_for(g_, 'h', spec_zone_);
-    parallel_for(ring_range(r, g_.nz + 1, nb),
-                 KRelax{t.ph_tendf.view(), {}, s.ph_2.cview(), {}, false, s.mut.cview(), b.c1f.view(), b.c2f.view(),
-                        true, {}, false, sl(PH), r, fcx, gcx, dtbc_r});
+    relax.add(ring_range(r, g_.nz + 1, nb),
+              KRelax{t.ph_tendf.view(), {}, s.ph_2.cview(), {}, false, s.mut.cview(), b.c1f.view(), b.c2f.view(),
+                     true, {}, false, sl(PH), r, fcx, gcx, dtbc_r});
   }
   {  // t, mass-weighted with c1h/c2h
     const Ring r = ring_for(g_, 't', spec_zone_);
-    parallel_for(ring_range(r, g_.nz, nb),
-                 KRelax{t.t_tendf.view(), {}, s.t_2.cview(), {}, false, s.mut.cview(), b.c1h.view(), b.c2h.view(), true,
-                        {}, false, sl(T), r, fcx, gcx, dtbc_r});
+    relax.add(ring_range(r, g_.nz, nb),
+              KRelax{t.t_tendf.view(), {}, s.t_2.cview(), {}, false, s.mut.cview(), b.c1h.view(), b.c2h.view(), true,
+                     {}, false, sl(T), r, fcx, gcx, dtbc_r});
   }
   {  // mu -> mu_tend (2D)
     const Ring r = ring_for(g_, 'm', spec_zone_);
-    parallel_for(ring_range(r, 1, nb), KRelax{{}, t.mu_tend.view(), {}, s.mu_2.cview(), true, {}, {}, {}, false, {},
-                                              false, sl(MU), r, fcx, gcx, dtbc_r});
+    relax.add(ring_range(r, 1, nb), KRelax{{}, t.mu_tend.view(), {}, s.mu_2.cview(), true, {}, {}, {}, false, {},
+                                           false, sl(MU), r, fcx, gcx, dtbc_r});
   }
   if (nested_ && have_[W]) {  // nests: w mass-weighted (c1f, c2f, mut) -> w_save -> rw_tendf (* msfty)
     const Ring r = ring_for(g_, 'h', spec_zone_);
-    parallel_for(ring_range(r, g_.nz + 1, nb),
-                 KRelax{t.rw_tendf.view(), {}, s.w_2.cview(), {}, false, s.mut.cview(), b.c1f.view(), b.c2f.view(),
-                        true, b.msfty.view(), true, sl(W), r, fcx, gcx, dtbc_r});
+    relax.add(ring_range(r, g_.nz + 1, nb),
+              KRelax{t.rw_tendf.view(), {}, s.w_2.cview(), {}, false, s.mut.cview(), b.c1f.view(), b.c2f.view(),
+                     true, b.msfty.view(), true, sl(W), r, fcx, gcx, dtbc_r});
   }
+  relax.run();
 }
 
 void LateralBC::spec_dry(Tendencies& t) const {
   auto sl = [&](Var v) { return slabs(data_[v], off_[v], nk_[v], npos(v, XS), npos(v, YS)); };
   const int nb = spec_zone_;
   auto r = [&](char c) { return ring_for(g_, c, 0); };
-  parallel_for(ring_range(r('u'), g_.nz, nb), KSpecTend{t.ru_tend.view(), {}, false, sl(U), r('u')});
-  parallel_for(ring_range(r('v'), g_.nz, nb), KSpecTend{t.rv_tend.view(), {}, false, sl(V), r('v')});
-  parallel_for(ring_range(r('h'), g_.nz + 1, nb), KSpecTend{t.ph_tend.view(), {}, false, sl(PH), r('h')});
-  parallel_for(ring_range(r('t'), g_.nz, nb), KSpecTend{t.t_tend.view(), {}, false, sl(T), r('t')});
-  parallel_for(ring_range(r('m'), 1, nb), KSpecTend{{}, t.mu_tend.view(), true, sl(MU), r('m')});
+  LaunchBatch<KSpecTend, 6> spec;  // one launch: every variable sets its own tendency
+  spec.add(ring_range(r('u'), g_.nz, nb), KSpecTend{t.ru_tend.view(), {}, false, sl(U), r('u')});
+  spec.add(ring_range(r('v'), g_.nz, nb), KSpecTend{t.rv_tend.view(), {}, false, sl(V), r('v')});
+  spec.add(ring_range(r('h'), g_.nz + 1, nb), KSpecTend{t.ph_tend.view(), {}, false, sl(PH), r('h')});
+  spec.add(ring_range(r('t'), g_.nz, nb), KSpecTend{t.t_tend.view(), {}, false, sl(T), r('t')});
+  spec.add(ring_range(r('m'), 1, nb), KSpecTend{{}, t.mu_tend.view(), true, sl(MU), r('m')});
   if (nested_ && have_[W])  // spec_bdytend rw_tend (nests)
-    parallel_for(ring_range(r('h'), g_.nz + 1, nb), KSpecTend{t.rw_tend.view(), {}, false, sl(W), r('h')});
+    spec.add(ring_range(r('h'), g_.nz + 1, nb), KSpecTend{t.rw_tend.view(), {}, false, sl(W), r('h')});
+  spec.run();
 }
 
 void LateralBC::update_uv(State& s, const Tendencies& t, real dts) const {
   const int nb = spec_zone_;
   const Ring ru = ring_for(g_, 'u', 0), rv = ring_for(g_, 'v', 0);
-  parallel_for(ring_range(ru, g_.nz, nb), KUpdate{s.u_2.view(), t.ru_tend.cview(), {}, {}, false, ru, dts});
-  parallel_for(ring_range(rv, g_.nz, nb), KUpdate{s.v_2.view(), t.rv_tend.cview(), {}, {}, false, rv, dts});
+  LaunchBatch<KUpdate, 2> up;  // u and v in one launch
+  up.add(ring_range(ru, g_.nz, nb), KUpdate{s.u_2.view(), t.ru_tend.cview(), {}, {}, false, ru, dts});
+  up.add(ring_range(rv, g_.nz, nb), KUpdate{s.v_2.view(), t.rv_tend.cview(), {}, {}, false, rv, dts});
+  up.run();
 }
 
 void LateralBC::update_mu_t(State& s, const Tendencies& t, real dts) const {
   const int nb = spec_zone_;
   const Ring rm = ring_for(g_, 't', 0);
-  parallel_for(ring_range(rm, g_.nz, nb), KUpdate{s.t_2.view(), t.t_tend.cview(), {}, {}, false, rm, dts});
-  parallel_for(ring_range(rm, 1, nb), KUpdate{{}, {}, s.mu_2.view(), t.mu_tend.cview(), true, rm, dts});
-  parallel_for(ring_range(rm, 1, nb), KUpdate{{}, {}, s.muts.view(), t.mu_tend.cview(), true, rm, dts});
+  LaunchBatch<KUpdate, 3> up;  // t, mu and muts in one launch (mu_tend is only read)
+  up.add(ring_range(rm, g_.nz, nb), KUpdate{s.t_2.view(), t.t_tend.cview(), {}, {}, false, rm, dts});
+  up.add(ring_range(rm, 1, nb), KUpdate{{}, {}, s.mu_2.view(), t.mu_tend.cview(), true, rm, dts});
+  up.add(ring_range(rm, 1, nb), KUpdate{{}, {}, s.muts.view(), t.mu_tend.cview(), true, rm, dts});
+  up.run();
 }
 
 void LateralBC::update_ph_w(State& s, const Field3& ph_save, const Tendencies& t, const BaseState& b, real dts) const {
   const int nb = spec_zone_;
   const Ring rh = ring_for(g_, 'h', 0);
-  parallel_for(ring_range(rh, g_.nz + 1, nb), KUpdatePh{s.ph_2.view(), ph_save.cview(), t.ph_tend.cview(),
-                                                         t.mu_tend.cview(), s.muts.cview(), b.c1f.view(),
-                                                         b.c2f.view(), rh, dts});
+  const Range3D rr = ring_range(rh, g_.nz + 1, nb);
+  const KUpdatePh kph{s.ph_2.view(), ph_save.cview(), t.ph_tend.cview(), t.mu_tend.cview(), s.muts.cview(),
+                      b.c1f.view(), b.c2f.view(), rh, dts};
+  // ph and w in one launch (w's update reads only w and rw_tend)
   if (nested_ && have_[W])  // nests: spec_bdyupdate(w, rw_tend) (solve_em 1603)
-    parallel_for(ring_range(rh, g_.nz + 1, nb), KUpdate{s.w_2.view(), t.rw_tend.cview(), {}, {}, false, rh, dts});
+    parallel_fused(part(rr, kph), part(rr, KUpdate{s.w_2.view(), t.rw_tend.cview(), {}, {}, false, rh, dts}));
   else
-    parallel_for(ring_range(rh, g_.nz + 1, nb), KZeroGrad{s.w_2.view(), rh});
+    parallel_fused(part(rr, kph), part(rr, KZeroGrad{s.w_2.view(), rh}));
 }
 
-void LateralBC::relax_scalar(int n, Field3& q_tend, const Field3& q, const State& s, const BaseState& b) const {
-  if (!has_scalar(n)) return;
+void LateralBC::relax_scalars(const std::vector<int>& ns, Tendencies& t, const State& s, const BaseState& b) const {
   const A1 fcx{coef_.get()}, gcx{coef_.get() + width_};
   const Ring r = ring_for(g_, 'q', spec_zone_);
-  const ScalarData& d = sdata_[n];
-  parallel_for(ring_range(r, g_.nz, relax_zone_ - 1),
-               KRelax{q_tend.view(), {}, q.cview(), {}, false, s.mut.cview(), b.c1h.view(), b.c2h.view(), true, {},
-                      false, scalar_slabs(d.data, d.off, g_.nz, g_.ny, g_.nx), r, fcx, gcx, real(dtbc), true});
+  LaunchBatch<KRelax, 8> relax;  // each species its own tendency
+  for (int n : ns) {
+    if (!has_scalar(n)) continue;
+    const ScalarData& d = sdata_[n];
+    relax.add(ring_range(r, g_.nz, relax_zone_ - 1),
+              KRelax{t.q_tendf[n].view(), {}, s.q_2[n].cview(), {}, false, s.mut.cview(), b.c1h.view(), b.c2h.view(),
+                     true, {}, false, scalar_slabs(d.data, d.off, g_.nz, g_.ny, g_.nx), r, fcx, gcx, real(dtbc), true});
+  }
+  relax.run();
 }
 
-void LateralBC::spec_scalar(int n, Field3& q_tend) const {
-  if (!has_scalar(n)) return;
+void LateralBC::spec_scalars(const std::vector<int>& ns, Tendencies& t) const {
   const Ring r = ring_for(g_, 'q', 0);
-  const ScalarData& d = sdata_[n];
-  parallel_for(ring_range(r, g_.nz, spec_zone_),
-               KSpecTend{q_tend.view(), {}, false, scalar_slabs(d.data, d.off, g_.nz, g_.ny, g_.nx), r});
+  LaunchBatch<KSpecTend, 8> spec;
+  for (int n : ns) {
+    if (!has_scalar(n)) continue;
+    const ScalarData& d = sdata_[n];
+    spec.add(ring_range(r, g_.nz, spec_zone_),
+             KSpecTend{t.q_tendf[n].view(), {}, false, scalar_slabs(d.data, d.off, g_.nz, g_.ny, g_.nx), r});
+  }
+  spec.run();
 }
 
-void LateralBC::flow_dep(Field3& q, const State& s) const {
+void LateralBC::flow_dep(const std::vector<int>& ns, State& s) const {
   const Ring r = ring_for(g_, 'q', 0);
-  parallel_for(ring_range(r, g_.nz, spec_zone_), KFlowDep{q.view(), s.ru_m.cview(), s.rv_m.cview(), r});
+  LaunchBatch<KFlowDep, 8> fd;  // each species reads and writes only itself
+  for (int n : ns)
+    if (!has_scalar(n)) fd.add(ring_range(r, g_.nz, spec_zone_), KFlowDep{s.q_2[n].view(), s.ru_m.cview(), s.rv_m.cview(), r});
+  fd.run();
 }
 
 void LateralBC::final(State& s, const BaseState& b) const {
@@ -386,26 +406,30 @@ void LateralBC::final(State& s, const BaseState& b) const {
   const int nb = spec_zone_;
   const real d = real(dtbc);
   auto r = [&](char c) { return ring_for(g_, c, 0); };
-  parallel_for(ring_range(r('u'), g_.nz, nb), KFinal{s.u_2.view(), {}, false, s.muus.cview(), b.c1h.view(),
-                                                     b.c2h.view(), true, b.msfuy.view(), true, sl(U), r('u'), d});
-  parallel_for(ring_range(r('v'), g_.nz, nb), KFinal{s.v_2.view(), {}, false, s.muvs.cview(), b.c1h.view(),
-                                                     b.c2h.view(), true, b.msfvx.view(), true, sl(V), r('v'), d});
-  parallel_for(ring_range(r('t'), g_.nz, nb), KFinal{s.t_2.view(), {}, false, s.muts.cview(), b.c1h.view(),
-                                                     b.c2h.view(), true, b.msfty.view(), false, sl(T), r('t'), d});
-  parallel_for(ring_range(r('h'), g_.nz + 1, nb), KFinal{s.ph_2.view(), {}, false, s.muts.cview(), b.c1f.view(),
-                                                         b.c2f.view(), true, b.msfty.view(), false, sl(PH), r('h'), d});
-  parallel_for(ring_range(r('m'), 1, nb), KFinal{{}, s.mu_2.view(), true, s.muts.cview(), b.c1h.view(), b.c2h.view(),
-                                                 false, b.msfty.view(), false, sl(MU), r('m'), d});
+  // every field is set from its boundary data and the stage masses (muus, muvs, muts): independent, one launch
+  // per 16 fields
+  LaunchBatch<KFinal, 16> fin;
+  fin.add(ring_range(r('u'), g_.nz, nb), KFinal{s.u_2.view(), {}, false, s.muus.cview(), b.c1h.view(),
+                                                b.c2h.view(), true, b.msfuy.view(), true, sl(U), r('u'), d});
+  fin.add(ring_range(r('v'), g_.nz, nb), KFinal{s.v_2.view(), {}, false, s.muvs.cview(), b.c1h.view(),
+                                                b.c2h.view(), true, b.msfvx.view(), true, sl(V), r('v'), d});
+  fin.add(ring_range(r('t'), g_.nz, nb), KFinal{s.t_2.view(), {}, false, s.muts.cview(), b.c1h.view(),
+                                                b.c2h.view(), true, b.msfty.view(), false, sl(T), r('t'), d});
+  fin.add(ring_range(r('h'), g_.nz + 1, nb), KFinal{s.ph_2.view(), {}, false, s.muts.cview(), b.c1f.view(),
+                                                    b.c2f.view(), true, b.msfty.view(), false, sl(PH), r('h'), d});
+  fin.add(ring_range(r('m'), 1, nb), KFinal{{}, s.mu_2.view(), true, s.muts.cview(), b.c1h.view(), b.c2h.view(),
+                                            false, b.msfty.view(), false, sl(MU), r('m'), d});
   for (int n = 0; n < s.n_scalars() && n < int(sdata_.size()); ++n) {  // moist species with data ('t' type)
     if (!has_scalar(n)) continue;
     const ScalarData& sd = sdata_[n];
-    parallel_for(ring_range(r('t'), g_.nz, nb),
-                 KFinal{s.q_2[n].view(), {}, false, s.muts.cview(), b.c1h.view(), b.c2h.view(), true, b.msfty.view(),
-                        false, scalar_slabs(sd.data, sd.off, g_.nz, g_.ny, g_.nx), r('t'), d});
+    fin.add(ring_range(r('t'), g_.nz, nb),
+            KFinal{s.q_2[n].view(), {}, false, s.muts.cview(), b.c1h.view(), b.c2h.view(), true, b.msfty.view(),
+                   false, scalar_slabs(sd.data, sd.off, g_.nz, g_.ny, g_.nx), r('t'), d});
   }
   if (nested_ && have_[W])  // spec_bdy_final 'w': mu (c1f, c2f) and msfty coupled
-    parallel_for(ring_range(r('h'), g_.nz + 1, nb), KFinal{s.w_2.view(), {}, false, s.muts.cview(), b.c1f.view(),
-                                                           b.c2f.view(), true, b.msfty.view(), true, sl(W), r('h'), d});
+    fin.add(ring_range(r('h'), g_.nz + 1, nb), KFinal{s.w_2.view(), {}, false, s.muts.cview(), b.c1f.view(),
+                                                      b.c2f.view(), true, b.msfty.view(), true, sl(W), r('h'), d});
+  fin.run();
 }
 
 }  // namespace cppwrf::dyn

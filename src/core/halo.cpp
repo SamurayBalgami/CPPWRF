@@ -81,7 +81,7 @@ struct HaloMulti {
   real* p[kMaxFields];
   std::ptrdiff_t st[kMaxFields], sk[kMaxFields];
   int nk[kMaxFields], nt[kMaxFields];
-  bool face[kMaxFields], odd[kMaxFields];
+  bool face[kMaxFields], odd[kMaxFields], odd_face[kMaxFields];
   std::ptrdiff_t sn;  // stride along the filled direction (1 for x, pitch for y): per field below
   std::ptrdiff_t snf[kMaxFields];
   int n; bool periodic, ydir, flat;
@@ -94,7 +94,7 @@ struct HaloMulti {
     const int na = face[f] ? 8 : 6;
     if (a >= na) return;
     if (ydir ? (b < -3 || b >= nt[f] + 3) : (b >= nt[f])) return;
-    HaloLine h{p[f], snf[f], st[f], sk[f], n, face[f], periodic, odd[f], flat};
+    HaloLine h{p[f], snf[f], st[f], sk[f], n, face[f], periodic, odd[f], flat, odd_face[f]};
     h(a, b, k);
   }
 };
@@ -114,25 +114,25 @@ void fill_impl(real* p, const Layout& L, const Grid& g, bool ux, bool vy, Parity
 }
 }  // namespace
 
-template <class F> static void fill_many(const std::vector<F*>& v, const Grid& g) {
+static void fill_many(const std::vector<HaloField>& v, const Grid& g) {
   for (std::size_t s0 = 0; s0 < v.size(); s0 += kMaxFields) {
     const int nf = int(std::min<std::size_t>(kMaxFields, v.size() - s0));
     HaloMulti hx{}, hy{};
     int nkmax = 1, ntx = 1, nty = 1;
     for (int f = 0; f < nf; ++f) {
-      F& fld = *v[s0 + f];
-      const Layout& L = fld.layout();
-      const bool ux = fld.stagger() == Stagger::U, vy = fld.stagger() == Stagger::V;
+      const HaloField& fld = v[s0 + f];
+      const Layout& L = fld.L;
+      const bool ux = fld.st == Stagger::U, vy = fld.st == Stagger::V;
       nkmax = std::max(nkmax, L.nz);
-      hx.p[f] = hy.p[f] = fld.data();
+      hx.p[f] = hy.p[f] = fld.p;
       hx.sk[f] = hy.sk[f] = L.sk;
       hx.nk[f] = hy.nk[f] = L.nz;
-      // x pass: along i (stride 1), tangential j over interior rows
-      // default parity as fill_halo(f, g): Field3 U odd in x, V odd in y; Field2 always even
-      constexpr bool is3 = std::is_same_v<F, Field3>;
-      hx.snf[f] = 1; hx.st[f] = L.sj; hx.nt[f] = L.ny; hx.face[f] = ux; hx.odd[f] = is3 && ux;
+      // x pass: along i (stride 1), tangential j over interior rows (as fill_impl)
+      hx.snf[f] = 1; hx.st[f] = L.sj; hx.nt[f] = L.ny; hx.face[f] = ux;
+      hx.odd[f] = fld.px != Parity::Even; hx.odd_face[f] = fld.px == Parity::OddFace;
       // y pass: along j (stride sj), tangential i over the full x extent incl. halos
-      hy.snf[f] = L.sj; hy.st[f] = 1; hy.nt[f] = L.nx; hy.face[f] = vy; hy.odd[f] = is3 && vy;
+      hy.snf[f] = L.sj; hy.st[f] = 1; hy.nt[f] = L.nx; hy.face[f] = vy;
+      hy.odd[f] = fld.py != Parity::Even; hy.odd_face[f] = fld.py == Parity::OddFace;
       ntx = std::max(ntx, L.ny);
       nty = std::max(nty, L.nx);
     }
@@ -145,9 +145,18 @@ template <class F> static void fill_many(const std::vector<F*>& v, const Grid& g
   }
 }
 
-void fill_halos(std::initializer_list<Field3*> fs, const Grid& g) { fill_many(std::vector<Field3*>(fs), g); }
-void fill_halos(const std::vector<Field3*>& fs, const Grid& g) { fill_many(fs, g); }
-void fill_halos(std::initializer_list<Field2*> fs, const Grid& g) { fill_many(std::vector<Field2*>(fs), g); }
+template <class F> static void fill_ptrs(const std::vector<F*>& fs, const Grid& g) {
+  std::vector<HaloField> v;
+  v.reserve(fs.size());
+  for (F* f : fs) v.emplace_back(*f);
+  fill_many(v, g);
+}
+
+void fill_halos(std::initializer_list<Field3*> fs, const Grid& g) { fill_ptrs(std::vector<Field3*>(fs), g); }
+void fill_halos(const std::vector<Field3*>& fs, const Grid& g) { fill_ptrs(fs, g); }
+void fill_halos(std::initializer_list<Field2*> fs, const Grid& g) { fill_ptrs(std::vector<Field2*>(fs), g); }
+void fill_halos(std::initializer_list<HaloField> fs, const Grid& g) { fill_many(std::vector<HaloField>(fs), g); }
+void fill_halos(const std::vector<HaloField>& fs, const Grid& g) { fill_many(fs, g); }
 
 void fill_halo(Field3& f, const Grid& g, Parity px, Parity py) {
   fill_impl(f.data(), f.layout(), g, f.stagger() == Stagger::U, f.stagger() == Stagger::V, px, py);

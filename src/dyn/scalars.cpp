@@ -2,6 +2,8 @@
 
 #include "core/vm_dump.hpp"
 
+#include <algorithm>
+#include <memory>
 #include <stdexcept>
 #include <vector>
 
@@ -256,60 +258,135 @@ struct KUpdatePD {
 
 }  // namespace
 
-ScalarTransport::ScalarTransport(const Grid& g, const ScalarParams& p)
-    : g_(g), p_(p), q_new_(g, Stagger::M, "q_new"), scale_(g, Stagger::M, "pd_scale"),
-      dhx_(g, Stagger::U, "pd_dhx"), lox_(g, Stagger::U, "pd_lox"), dhy_(g, Stagger::V, "pd_dhy"),
-      loy_(g, Stagger::V, "pd_loy"), dhz_(g, Stagger::W, "pd_dhz"), loz_(g, Stagger::W, "pd_loz") {}
+ScalarTransport::Work::Work(const Grid& g)
+    : q_new(g, Stagger::M, "q_new"), scale(g, Stagger::M, "pd_scale"), dhx(g, Stagger::U, "pd_dhx"),
+      lox(g, Stagger::U, "pd_lox"), dhy(g, Stagger::V, "pd_dhy"), loy(g, Stagger::V, "pd_loy"),
+      dhz(g, Stagger::W, "pd_dhz"), loz(g, Stagger::W, "pd_loz") {}
+
+ScalarTransport::ScalarTransport(const Grid& g, const ScalarParams& p) : g_(g), p_(p) {}
+
+void ScalarTransport::reserve(int n_scalars) {
+  const int n = n_scalars < kBatch ? n_scalars : kBatch;
+  while (int(work_.size()) < n) work_.push_back(std::make_unique<Work>(g_));
+}
+
+// rk_scalar_tend + rk_update_scalar (pd = false) or rk_update_scalar_pd (pd = true) of the species ns, kBatch at a
+// time: each kernel runs for all species of a batch in one launch. The species are independent (each reads its
+// own q_1, q_2, tendency and work fields and the common mass fluxes / masses, and writes only its own), so the
+// values are those of the species one after the other (WRF's loop over the species).
+void ScalarTransport::update(State& s, Tendencies& t, const BaseState& b, const std::vector<int>& ns, bool pd, int rk,
+                             real dt_rk) {
+  const Grid& g = g_;
+  const VCoef c = VCoef::from(b);
+  const Range3D mr = g.mass_cells();
+  const bool do_y = !g.two_d();
+  const real hup = p_.h_adv_order == 5 ? real(1) : real(0), vup = p_.v_adv_order == 3 ? real(1) : real(0);
+  // debug (CPPWRF_VM_DUMP): the qv advection tendency * msfty
+  if (vmdump::on() && !qvf_ && !dbg_qvf_) dbg_qvf_ = std::make_unique<Field3>(g, Stagger::M, "dbg_qvf");
+  Field3* fsink = qvf_ ? qvf_ : (vmdump::on() ? dbg_qvf_.get() : nullptr);
+  reserve(int(ns.size()));
+  for (std::size_t n0 = 0; n0 < ns.size(); n0 += kBatch) {
+    const int nb = int(std::min<std::size_t>(kBatch, ns.size() - n0));
+    auto species = [&](int m) { return ns[n0 + m]; };
+    auto fluxes = [&](int n) {
+      Fluxes fl{s.q_2[n].cview(), s.q_1[n].cview(), s.ru_m.cview(), s.rv_m.cview(), s.ww_m.cview(), s.muts.cview(), c,
+                real(b.rdx), real(b.rdy), dt_rk, hup, vup, g.nz, do_y, b.msftx.view(), b.msfty.view(),
+                kern::Spec::of(g)};
+      fl.pd = pd;
+      return fl;
+    };
+    auto ften = [&](int n) { return fsink != nullptr && n == s.P_QV ? fsink->view() : V3{}; };
+    if (!pd) {
+      LaunchBatch<KUpdate, kBatch> up;
+      for (int m = 0; m < nb; ++m) {
+        const int n = species(m);
+        up.add(mr, KUpdate{fluxes(n), s.q_1[n].cview(), t.q_tendf[n].cview(), s.mu_1.cview(), s.mu_2.cview(),
+                           b.mub.view(), work_[m]->q_new.view(), dt_rk, true, ften(n), ften(n).p != nullptr});
+      }
+      up.run();
+    } else {
+      LaunchBatch<KPreUpdatePD, kBatch> pre;
+      std::vector<Field3*> q1s;
+      for (int m = 0; m < nb; ++m) {
+        const int n = species(m);
+        pre.add(mr, KPreUpdatePD{s.q_1[n].view(), t.q_tendf[n].cview(), s.mu_1.cview(), b.mub.view(), c, dt_rk});
+        q1s.push_back(&s.q_1[n]);
+      }
+      pre.run();
+      fill_halos(q1s, g);
+      {
+        LaunchBatch<KFacePDX, kBatch> fx;
+        LaunchBatch<KFacePDY, kBatch> fy;
+        LaunchBatch<KFacePDZ, kBatch> fz;
+        for (int m = 0; m < nb; ++m) {
+          Work& w = *work_[m];
+          const Fluxes fl = fluxes(species(m));
+          fx.add(Range3D{0, g.nx + 1, 0, g.ny, 0, g.nz}, KFacePDX{fl, w.dhx.view(), w.lox.view()});
+          if (do_y) fy.add(Range3D{0, g.nx, 0, g.ny + 1, 0, g.nz}, KFacePDY{fl, w.dhy.view(), w.loy.view()});
+          fz.add(Range3D{0, g.nx, 0, g.ny, 0, g.nz + 1}, KFacePDZ{fl, w.dhz.view(), w.loz.view()});
+        }
+        fx.run();
+        fy.run();
+        fz.run();
+      }
+      auto faces = [&](const Work& w) {
+        return FacesPD{w.dhx.cview(), w.lox.cview(), w.dhy.cview(), w.loy.cview(), w.dhz.cview(), w.loz.cview()};
+      };
+      LaunchBatch<KScalePD, kBatch> sc;
+      std::vector<Field3*> scales;
+      for (int m = 0; m < nb; ++m) {
+        Work& w = *work_[m];
+        sc.add(mr, KScalePD{fluxes(species(m)), faces(w), s.mu_1.cview(), b.mub.view(), w.scale.view()});
+        scales.push_back(&w.scale);
+      }
+      sc.run();
+      fill_halos(scales, g);
+      LaunchBatch<KUpdatePD, kBatch> up;
+      for (int m = 0; m < nb; ++m) {
+        const int n = species(m);
+        const Work& w = *work_[m];
+        up.add(mr, KUpdatePD{fluxes(n), faces(w), w.scale.cview(), s.q_1[n].cview(), s.mu_1.cview(), s.mu_2.cview(),
+                             b.mub.view(), w.q_new.view(), dt_rk, ften(n), ften(n).p != nullptr});
+      }
+      up.run();
+    }
+    std::vector<int> fd;  // species of this batch for flow_dep_bdy
+    for (int m = 0; m < nb; ++m) {
+      const int n = species(m);
+      if (n == s.P_QV && fsink != nullptr && vmdump::on()) vmdump::dump("vm_qv_rk", rk, {&s.q_1[n], fsink});
+      swap(s.q_2[n], work_[m]->q_new);
+      if (n == s.P_TKE && dd_) dd_->bound_tke(s.q_2[n]);
+      fd.push_back(n);
+    }
+    if (bc_) bc_->flow_dep(fd, s);  // the species without boundary data (have_bcs_moist/scalar = .false.)
+  }
+}
 
 void ScalarTransport::run_stage(State& s, Tendencies& t, const BaseState& b, int rk, real dt_rk) {
   const Grid& g = g_;
   const int ns = s.n_scalars();
   if (ns == 0) return;
   if (int(t.q_tendf.size()) != ns) throw std::runtime_error("Tendencies: q_tendf not registered for all scalars");
-  const VCoef c = VCoef::from(b);
-  const Range3D mr = g.mass_cells();
-  const bool do_y = !g.two_d();
-  const real hup = p_.h_adv_order == 5 ? real(1) : real(0), vup = p_.v_adv_order == 3 ? real(1) : real(0);
+  // WRF's species loop (rk_scalar_tend, then rk_update_scalar(_pd) of each species) as the same steps per kernel for
+  // all species: every step of a species reads and writes only that species' fields (and the common masses and
+  // fluxes), so each species gets the same values in the same order of its own operations
+  std::vector<int> all(ns), pd_n, plain_n;
   for (int n = 0; n < ns; ++n) {
-    Field3 &q1 = s.q_1[n], &q2 = s.q_2[n], &tf = t.q_tendf[n];
+    all[n] = n;
     const bool moist = n < s.n_moist;
     const bool is_tke = n == s.P_TKE;
     const bool pd = rk == 3 && (is_tke ? p_.tke_adv_opt : (moist ? p_.moist_adv_opt : p_.scalar_adv_opt)) == 1;
-    // debug (CPPWRF_VM_DUMP): the qv advection tendency * msfty
-    if (vmdump::on() && !qvf_ && !dbg_qvf_) dbg_qvf_ = std::make_unique<Field3>(g, Stagger::M, "dbg_qvf");
-    Field3* fsink = qvf_ ? qvf_ : (vmdump::on() ? dbg_qvf_.get() : nullptr);
-    const bool want_ften = fsink != nullptr && n == s.P_QV;
-    const V3 ften = want_ften ? fsink->view() : V3{};
-    if (rk == 1) {  // rk_scalar_tend, rk_step == 1: diffusion into the held tendency (diff_opt = 1)
-      // q_tendf was zeroed by zero_tendf and holds the physics tendencies (update_phy_ten)
-      if (dd_) dd_->scalar(s, b, n, tf, dt_rk);  // diff_opt 1 / sixth order (rk_scalar_tend, rk_step 1)
-      if (bc_) bc_->relax_scalar(n, tf, q2, s, b);  // relax_bdy_scalar (rk 1): scalars with boundary data
-    }
-    if (bc_) bc_->spec_scalar(n, tf);  // spec_bdy_scalar (every stage)
-    Fluxes fl{q2.cview(), q1.cview(), s.ru_m.cview(), s.rv_m.cview(), s.ww_m.cview(), s.muts.cview(), c,
-              real(b.rdx), real(b.rdy), dt_rk, hup, vup, g.nz, do_y, b.msftx.view(), b.msfty.view(),
-              kern::Spec::of(g)};
-    fl.pd = pd;
-    if (!pd) {
-      parallel_for(mr, KUpdate{fl, q1.cview(), tf.cview(), s.mu_1.cview(), s.mu_2.cview(), b.mub.view(),
-                               q_new_.view(), dt_rk, true, ften, want_ften});
-    } else {
-      parallel_for(mr, KPreUpdatePD{q1.view(), tf.cview(), s.mu_1.cview(), b.mub.view(), c, dt_rk});
-      fill_halo(q1, g);
-      parallel_for(Range3D{0, g.nx + 1, 0, g.ny, 0, g.nz}, KFacePDX{fl, dhx_.view(), lox_.view()});
-      if (do_y) parallel_for(Range3D{0, g.nx, 0, g.ny + 1, 0, g.nz}, KFacePDY{fl, dhy_.view(), loy_.view()});
-      parallel_for(Range3D{0, g.nx, 0, g.ny, 0, g.nz + 1}, KFacePDZ{fl, dhz_.view(), loz_.view()});
-      const FacesPD fa{dhx_.cview(), lox_.cview(), dhy_.cview(), loy_.cview(), dhz_.cview(), loz_.cview()};
-      parallel_for(mr, KScalePD{fl, fa, s.mu_1.cview(), b.mub.view(), scale_.view()});
-      fill_halo(scale_, g);
-      parallel_for(mr, KUpdatePD{fl, fa, scale_.cview(), q1.cview(), s.mu_1.cview(), s.mu_2.cview(), b.mub.view(),
-                                 q_new_.view(), dt_rk, ften, want_ften});
-    }
-    if (want_ften && vmdump::on()) vmdump::dump("vm_qv_rk", rk, {&q1, fsink});
-    swap(q2, q_new_);
-    if (is_tke && dd_) dd_->bound_tke(q2);
-    if (bc_ && !bc_->has_scalar(n)) bc_->flow_dep(q2, s);  // no boundary data (have_bcs_moist/scalar = .false.)
+    (pd ? pd_n : plain_n).push_back(n);
   }
+  if (rk == 1) {  // rk_scalar_tend, rk_step == 1: diffusion into the held tendency (diff_opt = 1)
+    // q_tendf was zeroed by zero_tendf and holds the physics tendencies (update_phy_ten)
+    if (dd_)
+      for (int n = 0; n < ns; ++n) dd_->scalar(s, b, n, t.q_tendf[n], dt_rk);  // diff_opt 1 / sixth order
+    if (bc_) bc_->relax_scalars(all, t, s, b);  // relax_bdy_scalar (rk 1): scalars with boundary data
+  }
+  if (bc_) bc_->spec_scalars(all, t);  // spec_bdy_scalar (every stage)
+  if (!plain_n.empty()) update(s, t, b, plain_n, false, rk, dt_rk);
+  if (!pd_n.empty()) update(s, t, b, pd_n, true, rk, dt_rk);
   std::vector<Field3*> qs;  // halos of the new scalars, batched (one launch per 8 fields)
   for (int n = 0; n < ns; ++n) qs.push_back(&s.q_2[n]);
   fill_halos(qs, g);

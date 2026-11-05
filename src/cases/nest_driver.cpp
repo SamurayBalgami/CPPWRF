@@ -498,6 +498,16 @@ void med_nest_initial(const io::Config& parent_cfg, Model& parent,
 #endif
 }
 
+namespace {
+// u, v, w, ph, t and the scalars of a domain, batched (one launch per direction for 8 fields; the same values as
+// filling them one by one)
+void fill_state_halos(dyn::State& st, const Grid& g) {
+  std::vector<Field3*> fs{&st.u_2, &st.v_2, &st.w_2, &st.ph_2, &st.t_2};
+  for (int s = 0; s < st.n_scalars(); ++s) fs.push_back(&st.q_2[s]);
+  fill_halos(fs, g);
+}
+}  // namespace
+
 void med_nest_force(Model& parent, Model& child, const NestDomainSpec& child_spec) {
   const Grid& pg = parent.g;
   const Grid& cg = child.g;
@@ -509,10 +519,7 @@ void med_nest_force(Model& parent, Model& child, const NestDomainSpec& child_spe
 
   // 1. Couple parent in-place
   nest::couple_or_uncouple_state(pg, *parent.st, *parent.base, true);
-  fill_halos({&parent.st->u_2, &parent.st->v_2, &parent.st->w_2, &parent.st->ph_2, &parent.st->t_2}, pg);
-  for (int s = 0; s < parent.st->n_scalars(); ++s) {
-    fill_halo(parent.st->q_2[s], pg);
-  }
+  fill_state_halos(*parent.st, pg);
   // mu_2's halo is left as the dycore's halo schedule had it (WRF's uncouple reads it at ids/jds)
 
   // 2. Couple child in-place
@@ -555,14 +562,8 @@ void med_nest_force(Model& parent, Model& child, const NestDomainSpec& child_spe
   nest::couple_or_uncouple_state(cg, *child.st, *child.base, false);
   nest::couple_or_uncouple_state(pg, *parent.st, *parent.base, false);
 
-  fill_halos({&child.st->u_2, &child.st->v_2, &child.st->w_2, &child.st->ph_2, &child.st->t_2}, cg);
-  for (int s = 0; s < child.st->n_scalars(); ++s) {
-    fill_halo(child.st->q_2[s], cg);
-  }
-  fill_halos({&parent.st->u_2, &parent.st->v_2, &parent.st->w_2, &parent.st->ph_2, &parent.st->t_2}, pg);
-  for (int s = 0; s < parent.st->n_scalars(); ++s) {
-    fill_halo(parent.st->q_2[s], pg);
-  }
+  fill_state_halos(*child.st, cg);
+  fill_state_halos(*parent.st, pg);
 }
 
 void med_nest_feedback(Model& parent, const Model& child, const NestDomainSpec& child_spec,

@@ -49,6 +49,7 @@ struct KAccum2 {  // ac = ac + x*dt
   C2 x;
   real dt;
   CPPWRF_HD void operator()(int i, int j) const { ac(i, j) = ac(i, j) + x(i, j) * dt; }
+  CPPWRF_HD void operator()(int i, int j, int) const { (*this)(i, j); }  // as a batched 3-D launch (one level)
 };
 
 // phys/module_diag_misc.F diagnostic_output_calc: the buckets (lines 295-428) and the precipitation over
@@ -811,9 +812,11 @@ void PhysicsSuite::part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies
   }
   if (rad_) {  // radiation_driver: accumulated fluxes, every step (DTaccum = DT)
     const real dt = real(g_.dt);
-    const Range2D cols{0, g_.nx, 0, g_.ny};
+    const Range3D cols{0, g_.nx, 0, g_.ny, 0, 1};
+    LaunchBatch<KAccum2, 16> acc;  // 16 independent sums, one launch
     for (auto [ac, x] : std::initializer_list<std::pair<Field2*, const Field2*>>{{&aclwupt, &lwupt}, {&aclwuptc, &lwuptc}, {&aclwdnt, &lwdnt}, {&aclwdntc, &lwdntc}, {&aclwupb, &lwupb}, {&aclwupbc, &lwupbc}, {&aclwdnb, &lwdnb}, {&aclwdnbc, &lwdnbc}, {&acswupt, &swupt}, {&acswuptc, &swuptc}, {&acswdnt, &swdnt}, {&acswdntc, &swdntc}, {&acswupb, &swupb}, {&acswupbc, &swupbc}, {&acswdnb, &swdnb}, {&acswdnbc, &swdnbc}})
-      column_for(cols, KAccum2{ac->view(), x->cview(), dt});
+      acc.add(cols, KAccum2{ac->view(), x->cview(), dt});
+    acc.run();
   }
   vmdump::dump("vm_phy_prep", 1,
                {&prep.th_phy, &prep.pi_phy, &prep.t_phy, &prep.p_hyd, &prep.p_hyd_w, &prep.p8w, &prep.t8w, &prep.rho,

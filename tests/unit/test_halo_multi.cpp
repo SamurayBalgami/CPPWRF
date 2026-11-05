@@ -1,5 +1,6 @@
 // fill_halos (several fields, one launch per direction) must give exactly the same halos as
-// fill_halo field by field: all staggers, Field2 and Field3, periodic and symmetric, 2D and 3D.
+// fill_halo field by field: all staggers, Field2 and Field3 (also mixed in one batch, with explicit parities),
+// periodic, symmetric and specified, 2D and 3D.
 #include <cstdio>
 #include <vector>
 
@@ -28,6 +29,32 @@ static void run(int nx, int ny, int nz, BC bx, BC by) {
   for (auto [x, y] : p3) bad += host(*x) != host(*y);
   bad += host(e1) != host(e2);
   bad += host(f1) != host(f2);
+  {  // one batch of both ranks with explicit parities (fill_halos of HaloField) = fill_halo with those parities
+    Field3 g1(g, Stagger::U, "u"), h1(g, Stagger::V, "v"), g2(g, Stagger::U, "u"), h2(g, Stagger::V, "v");
+    Field2 u1(g, Stagger::U, "muu"), v1(g, Stagger::V, "muv"), u2(g, Stagger::U, "muu"), v2(g, Stagger::V, "muv");
+    for (Field3* f : {&g1, &h1, &g2, &h2}) f->fill_host(val);
+    for (Field2* f : {&u1, &v1, &u2, &v2}) f->fill_host(val);
+    fill_halo(g1, g, Parity::OddFace, Parity::Even);
+    fill_halo(h1, g, Parity::Even, Parity::OddFace);
+    fill_halo(u1, g, Parity::OddFace, Parity::Even);
+    fill_halo(v1, g, Parity::Even, Parity::Odd);
+    fill_halos({HaloField(g2, Parity::OddFace, Parity::Even), HaloField(h2, Parity::Even, Parity::OddFace),
+                HaloField(u2, Parity::OddFace, Parity::Even), HaloField(v2, Parity::Even, Parity::Odd)}, g);
+    bad += host(g1) != host(g2);
+    bad += host(h1) != host(h2);
+    bad += host(u1) != host(u2);
+    bad += host(v1) != host(v2);
+  }
+  {  // default parities, both ranks in one batch
+    Field3 m1(g, Stagger::W, "w"), m2(g, Stagger::W, "w");
+    Field2 n1(g, Stagger::M, "mu"), n2(g, Stagger::M, "mu");
+    m1.fill_host(val); m2.fill_host(val); n1.fill_host(val); n2.fill_host(val);
+    fill_halo(m1, g);
+    fill_halo(n1, g);
+    fill_halos({m2, n2}, g);
+    bad += host(m1) != host(m2);
+    bad += host(n1) != host(n2);
+  }
   if (bx == BC::Specified) {  // flat copy outward (WRF set_physical_bc for specified)
     std::vector<real> hm = host(a1), hu = host(b1);
     const Layout &Lm = a1.layout(), &Lu = b1.layout();

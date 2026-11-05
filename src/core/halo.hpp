@@ -24,5 +24,22 @@ void fill_halo(Field2& f, const Grid& g);
 void fill_halos(std::initializer_list<Field3*> fs, const Grid& g);
 void fill_halos(std::initializer_list<Field2*> fs, const Grid& g);
 void fill_halos(const std::vector<Field3*>& fs, const Grid& g);
+// One field of a batched fill: 3-D or 2-D, the parities of fill_halo(f, g) or the given ones.
+struct HaloField {
+  real* p;
+  Layout L;
+  Stagger st;
+  Parity px, py;
+  HaloField(Field3& f, Parity x, Parity y) : p(f.data()), L(f.layout()), st(f.stagger()), px(x), py(y) {}
+  HaloField(Field2& f, Parity x, Parity y) : p(f.data()), L(f.layout()), st(f.stagger()), px(x), py(y) {}
+  HaloField(Field3& f)  // NOLINT: implicit, as the field itself in a list
+      : HaloField(f, f.stagger() == Stagger::U ? Parity::Odd : Parity::Even,
+                  f.stagger() == Stagger::V ? Parity::Odd : Parity::Even) {}
+  HaloField(Field2& f) : HaloField(f, Parity::Even, Parity::Even) {}  // NOLINT
+};
+// Several fields of either rank and any parities, one launch per direction for up to 8 fields: the same values
+// as fill_halo of each field in turn (each field's x pass before its y pass; the fields must be distinct).
+void fill_halos(std::initializer_list<HaloField> fs, const Grid& g);
+void fill_halos(const std::vector<HaloField>& fs, const Grid& g);
 
 }  // namespace cppwrf

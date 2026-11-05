@@ -95,12 +95,14 @@ void DiffusionDriver::prepare(const State& s, const BaseState& b) {
   }
   dif::compute_diff_metrics(p_, s.ph_2.cview(), b.phb.view(), z_.view(), rdz_.view(), rdzw_.view(), zx_.view(),
                             zy_.view(), rdx, rdy, g.nx, g.ny, g.nz, true);
-  fill_halos({&z_, &rdz_, &rdzw_}, g);
-  fill_halo(zx_, gp_, Parity::Even, Parity::Even);
-  fill_halo(zy_, gp_, Parity::Even, Parity::Even);
+  // zx, zy (one more level, gp_): the halo fill reads nx, ny and the boundaries of the grid, the levels of the field
+  std::vector<HaloField> hf{z_, rdz_, rdzw_, HaloField(zx_, Parity::Even, Parity::Even),
+                            HaloField(zy_, Parity::Even, Parity::Even)};
   if (suite_) {
-    fill_halos({&suite_->ustm, &suite_->ust}, g);
+    hf.emplace_back(suite_->ustm);
+    hf.emplace_back(suite_->ust);
   }
+  fill_halos(hf, g);
   dif::cal_deform_and_div(p_, s.u_2.cview(), s.v_2.cview(), s.w_2.cview(), b.u_base.view(), b.v_base.view(),
                           zx_.cview(), zy_.cview(), rdz_.cview(), rdzw_.cview(), b.msftx.view(), b.msfty.view(),
                           b.msfux.view(), b.msfuy.view(), b.msfvx.view(), b.msfvy.view(), b.fnm.view(), b.fnp.view(),
@@ -138,9 +140,8 @@ void DiffusionDriver::prepare(const State& s, const BaseState& b) {
   fill_halos({&xkmh_, &xkmv_, &xkhh_, &xkhv_}, g);
   if (c_.diff_opt == 2) {
     Field3& rho_f = suite_ ? suite_->prep.rho : prep_->rho;
-    fill_halos({&div_, &d11_, &d22_, &d33_, &rho_f}, g);
-    fill_halo(d13_, gp_, Parity::Even, Parity::Even);
-    fill_halo(d23_, gp_, Parity::Even, Parity::Even);
+    fill_halos({div_, d11_, d22_, d33_, rho_f, HaloField(d13_, Parity::Even, Parity::Even),
+                HaloField(d23_, Parity::Even, Parity::Even)}, g);
   }
   vmdump::dump("vm_xk", 0, {&xkhh_, &xkmh_});
 }

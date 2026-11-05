@@ -549,12 +549,16 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                            t_2save.view(), s.ru_m.view(), s.rv_m.view(), s.muu.cview(), s.muv.cview(),
                                            c, dts, real(b.rdx), real(b.rdy), nz, it, n_small, do_y, b.msftx.view(),
                                            b.msfty.view(), b.msfuy.view(), b.msfvx_inv.view(), ed});
-    if (ed.x || ed.ox)
-      parallel_for(Range3D{0, ny, 0, nz, 0, 1}, KSumEdge{s.ru_m.view(), s.u_2.cview(), u_save.cview(), s.muu.cview(), c,
+    {
+      LaunchBatch<KSumEdge, 2> edge;  // ru_m and rv_m in one launch
+      if (ed.x || ed.ox)
+        edge.add(Range3D{0, ny, 0, nz, 0, 1}, KSumEdge{s.ru_m.view(), s.u_2.cview(), u_save.cview(), s.muu.cview(), c,
                                                        b.msfuy.view(), true, nx, ny, it, n_small});
-    if (ed.y || ed.oy)
-      parallel_for(Range3D{0, nx, 0, nz, 0, 1}, KSumEdge{s.rv_m.view(), s.v_2.cview(), v_save.cview(), s.muv.cview(), c,
+      if (ed.y || ed.oy)
+        edge.add(Range3D{0, nx, 0, nz, 0, 1}, KSumEdge{s.rv_m.view(), s.v_2.cview(), v_save.cview(), s.muv.cview(), c,
                                                        b.msfvx_inv.view(), false, nx, ny, it, n_small});
+      edge.run();
+    }
     if (bc_) bc_->update_mu_t(s, tend, dts);  // spec_bdyupdate t, mu, muts
     fill_halos({&s.mu_2, &mudf, &s.muts}, g);
     if (it == 1) vmdump::dump("vm_s2_rk", stage_, {&s.t_2, &s.ww}, {&s.mu_2, &s.muts});
@@ -581,8 +585,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
     if (it == 1) vmdump::dump("vm_s3_rk", stage_, {&s.w_2, &s.ph_2, &s.p, &s.al});
   }
 
-  fill_halo(s.muts, g);
-  fill_halos({&s.ru_m, &s.rv_m, &s.ww_m}, g);
+  fill_halos({s.muts, s.ru_m, s.rv_m, s.ww_m}, g);
   parallel_for(Range3D{0, nx + 1, 0, nyv, 0, nz + 1},
                KFinish{s.u_2.view(), s.v_2.view(), s.w_2.view(), s.t_2.view(), s.ph_2.view(), s.ww.view(),
                        u_save.cview(), v_save.cview(), w_save.cview(), t_save.cview(), ph_save.cview(), ww1.cview(),
@@ -591,8 +594,7 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                        b.msfuy.view(), b.msfvx.view(), b.msfty.view()});
   parallel_for(Range3D{0, nx + 1, 0, nyv, 0, 1}, KFinishMu{s.mu_2.view(), s.muus.view(), s.muvs.view(),
                                                             mu_save.cview(), s.muts.cview(), nx, ny, nyv});
-  fill_halos({&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2, &s.ww}, g);
-  fill_halo(s.mu_2, g);
+  fill_halos({s.u_2, s.v_2, s.w_2, s.t_2, s.ph_2, s.ww, s.mu_2}, g);
 }
 
 void SmallStep::calc_p_rho_phi(State& s, const BaseState& b) {
@@ -602,8 +604,7 @@ void SmallStep::calc_p_rho_phi(State& s, const BaseState& b) {
                                         s.muts.cview(), b.alb.view(), b.pb.view(), c, p_.hypsometric_opt,
                                         b.phb.view(), b.c3h.view(), b.c4h.view(), b.c3f.view(), b.c4f.view(),
                                         real(b.p_top), g.nx});
-  fill_halo(s.p, g);
-  fill_halo(s.al, g);
+  fill_halos({&s.p, &s.al}, g);
 }
 
 // solve_em after spec_bdy_final: calc_p_rho_phi again on the interior (its = ids+spec_zone ..
@@ -619,8 +620,7 @@ void SmallStep::calc_p_rho_phi_interior(State& s, const BaseState& b, int sz) {
              b.c4f.view(), real(b.p_top), i1 - i0};
   k.i0 = i0;
   parallel_for(Range3D{i0, i1, j0, j1, 0, g.nz}, k);
-  fill_halo(s.p, g);
-  fill_halo(s.al, g);
+  fill_halos({&s.p, &s.al}, g);
 }
 
 }  // namespace cppwrf::dyn

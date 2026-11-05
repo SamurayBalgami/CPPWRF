@@ -665,10 +665,10 @@ VCoef VCoef::from(const BaseState& b) {
 void LargeStep::prep(State& s, const BaseState& b) const {
   const Grid& g = g_;
   const int nyv = g.nys(Stagger::V);
-  fill_halos({&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2, &s.p, &s.al}, g);
   // mu_2: WRF does not refresh its halo before rk_step_prep (calc_ww_cp reads it); the halo column
   // follows small_step_finish there, and the boundary copy only after small_step_prep
-  if (!g.specified()) fill_halo(s.mu_2, g);
+  if (!g.specified()) fill_halos({s.u_2, s.v_2, s.w_2, s.t_2, s.ph_2, s.p, s.al, s.mu_2}, g);
+  else fill_halos({&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2, &s.p, &s.al}, g);
   VCoef c = VCoef::from(b);
   parallel_for(Range3D{0, g.nx + 1, 0, nyv, 0, 1},
                KMu{s.mu_2.cview(), b.mub.view(), s.mut.view(), s.muu.view(), s.muv.view(), g.nx, g.ny, nyv,
@@ -679,11 +679,10 @@ void LargeStep::prep(State& s, const BaseState& b) const {
                       s.muv.cview(), s.mut.cview(), b.alb.view(), b.phb.view(), b.msfuy.view(), b.msfvx_inv.view(),
                       b.msfty.view(), c, s.ru.view(), s.rv.view(),
                       s.rw.view(), s.alt.view(), s.php.view(), g.nx, g.ny, nyv, g.nz});
-  fill_halos({&s.ru, &s.rv, &s.rw, &s.alt, &s.php}, g);
   // rk_phys_bc_dry_1 after ru / rv: set_physical_bc2d(muu, 'u') / (muv, 'v') are odd in their staggered
   // direction on symmetric sides, and the 'u' loop also flips the sign of muu on the walls
-  fill_halo(s.muu, g, Parity::OddFace, Parity::Even);
-  fill_halo(s.muv, g, Parity::Even, Parity::Odd);
+  fill_halos({s.ru, s.rv, s.rw, s.alt, s.php, HaloField(s.muu, Parity::OddFace, Parity::Even),
+              HaloField(s.muv, Parity::Even, Parity::Odd)}, g);
   column_for(g.columns(), KWW{s.u_2.cview(), s.v_2.cview(), s.mu_2.cview(), b.mub.view(), s.ww.view(), b.msftx.view(),
                               b.msfuy.view(), b.msfvx_inv.view(), c, real(b.rdx), real(b.rdy), g.nz});
   fill_halo(s.ww, g);
@@ -775,14 +774,20 @@ void LargeStep::cfl_max(const State& s, const BaseState& b, double dt, real& ver
   horiz = h > 0.0 ? real(h) : real(0);
 }
 
-// WRF init_zero_tendency (first_rk_step_part1): the held stage-1 tendencies, scalars included.
+namespace {
+struct KZero {
+  V3 v;
+  CPPWRF_HD void operator()(int i, int j, int k) const { v(i, j, k) = 0; }
+};
+}  // namespace
+
+// WRF init_zero_tendency (first_rk_step_part1): the held stage-1 tendencies, scalars included (one launch).
 void LargeStep::zero_tendf(Tendencies& t) const {
-  std::vector<Field3*> fs{&t.ph_tendf, &t.ru_tendf, &t.rv_tendf, &t.rw_tendf, &t.t_tendf};
-  for (Field3& q : t.q_tendf) fs.push_back(&q);
-  for (Field3* f : fs) {
-    V3 v = f->view();
-    parallel_for(g_.cells(f->stagger()), [=] CPPWRF_HD(int i, int j, int k) { v(i, j, k) = 0; });
-  }
+  LaunchBatch<KZero, 16> zero;
+  for (Field3* f : {&t.ph_tendf, &t.ru_tendf, &t.rv_tendf, &t.rw_tendf, &t.t_tendf})
+    zero.add(g_.cells(f->stagger()), KZero{f->view()});
+  for (Field3& q : t.q_tendf) zero.add(g_.cells(q.stagger()), KZero{q.view()});
+  zero.run();
 }
 
 }  // namespace cppwrf::dyn

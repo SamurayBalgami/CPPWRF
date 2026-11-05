@@ -45,6 +45,49 @@ struct KAddA2CV {
     lvar(i, j, k) = lvar(i, j, k) + real(0.5) * (rvar(i, j, k) + rvar(i, j - 1, k));
   }
 };
+// add_a2a / add_a2c_u / add_a2c_v of one tendency (the kernels above), for a batched launch
+struct KAdd {
+  enum Kind : int { A2A, A2CU, A2CV };
+  V3 lvar;
+  C3 rvar;
+  Kind kind;
+  CPPWRF_HD void operator()(int i, int j, int k) const {
+    if (kind == A2A) KAddA2A{lvar, rvar}(i, j, k);
+    else if (kind == A2CU) KAddA2CU{lvar, rvar}(i, j, k);
+    else KAddA2CV{lvar, rvar}(i, j, k);
+  }
+};
+// The additions of update_phy_ten in launches of independent additions: an addition goes into the launch after the
+// last one that adds to the same tendency, so every tendency gets its terms in WRF's order (the sources are only
+// read); additions to different tendencies are independent.
+class AddLaunches {
+ public:
+  void add(const Range3D& r, KAdd::Kind kind, Field3& lvar, const Field3& rvar) {
+    int w = 0;
+    for (const Op& o : ops_)
+      if (o.k.lvar.p == lvar.data() && o.wave >= w) w = o.wave + 1;
+    ops_.push_back(Op{r, KAdd{lvar.view(), rvar.cview(), kind}, w});
+    if (w + 1 > nwave_) nwave_ = w + 1;
+  }
+  void run() {
+    for (int w = 0; w < nwave_; ++w) {
+      LaunchBatch<KAdd, 16> b;
+      for (const Op& o : ops_)
+        if (o.wave == w) b.add(o.r, o.k);
+      b.run();
+    }
+  }
+
+ private:
+  struct Op {
+    Range3D r;
+    KAdd k;
+    int wave;
+  };
+  std::vector<Op> ops_;
+  int nwave_ = 0;
+};
+
 struct KConvTMoist {
   V3 t_tendf;
   C3 t_1, moist_old, moist_tend;
@@ -96,7 +139,8 @@ PhysicsTendencies::PhysicsTendencies(const Grid& g)
 void calculate_phy_tend(PhysicsTendencies& pt, const dyn::State& s, const dyn::BaseState& b, const Grid& g,
                         const CouplingFlags& f) {
   const Range3D mr = g.mass_cells();
-  auto couple = [&](Field3& x) { parallel_for(mr, KCouple{x.view(), s.mut.cview(), b.c1h.view(), b.c2h.view()}); };
+  LaunchBatch<KCouple, 16> batch;  // every tendency once: independent, one launch
+  auto couple = [&](Field3& x) { batch.add(mr, KCouple{x.view(), s.mut.cview(), b.c1h.view(), b.c2h.view()}); };
   if (f.radiation) couple(pt.rthraten);
   if (f.cu_physics > 0) {
     couple(pt.rucuten);
@@ -116,44 +160,48 @@ void calculate_phy_tend(PhysicsTendencies& pt, const dyn::State& s, const dyn::B
     if (s.P_QC >= 0) couple(pt.rqcblten);
     if (s.P_QI >= 0) couple(pt.rqiblten);
   }
+  batch.run();
 }
 
 void update_phy_ten(dyn::Tendencies& t, PhysicsTendencies& pt, const dyn::State& s, const Grid& g,
                     const CouplingFlags& f) {
   const Range3D ar = a2a_range(g);
-  if (f.radiation) parallel_for(ar, KAddA2A{t.t_tendf.view(), pt.rthraten.cview()});  // phy_ra_ten
+  // periodic: i-1 / j-1 neighbours of the momentum tendencies (before the additions, which only read them)
+  if (f.pbl && !g.specified()) fill_halos({&pt.rublten, &pt.rvblten}, g);
+  if ((f.cu_physics == 16 || f.cu_physics == 6) && !g.specified()) fill_halos({&pt.rucuten, &pt.rvcuten}, g);
+  AddLaunches add;
+  if (f.radiation) add.add(ar, KAdd::A2A, t.t_tendf, pt.rthraten);  // phy_ra_ten
   if (f.pbl) {  // phy_bl_ten, YSUSCHEME
-    if (!g.specified()) fill_halos({&pt.rublten, &pt.rvblten}, g);  // periodic: i-1 / j-1 neighbours
-    parallel_for(ar, KAddA2A{t.t_tendf.view(), pt.rthblten.cview()});
-    parallel_for(a2c_u_range(g), KAddA2CU{t.ru_tendf.view(), pt.rublten.cview()});
-    parallel_for(a2c_v_range(g), KAddA2CV{t.rv_tendf.view(), pt.rvblten.cview()});
-    if (s.P_QV >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QV].view(), pt.rqvblten.cview()});
-    if (s.P_QC >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QC].view(), pt.rqcblten.cview()});
-    if (s.P_QI >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QI].view(), pt.rqiblten.cview()});
+    add.add(ar, KAdd::A2A, t.t_tendf, pt.rthblten);
+    add.add(a2c_u_range(g), KAdd::A2CU, t.ru_tendf, pt.rublten);
+    add.add(a2c_v_range(g), KAdd::A2CV, t.rv_tendf, pt.rvblten);
+    if (s.P_QV >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QV], pt.rqvblten);
+    if (s.P_QC >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QC], pt.rqcblten);
+    if (s.P_QI >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QI], pt.rqiblten);
   }
   if (f.cu_physics == 1) {  // phy_cu_ten, KFETASCHEME
-    parallel_for(ar, KAddA2A{t.t_tendf.view(), pt.rthcuten.cview()});
-    if (s.P_QV >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QV].view(), pt.rqvcuten.cview()});
-    if (s.P_QC >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QC].view(), pt.rqccuten.cview()});
-    if (s.P_QR >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QR].view(), pt.rqrcuten.cview()});
-    if (s.P_QI >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QI].view(), pt.rqicuten.cview()});
-    if (s.P_QS >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QS].view(), pt.rqscuten.cview()});
+    add.add(ar, KAdd::A2A, t.t_tendf, pt.rthcuten);
+    if (s.P_QV >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QV], pt.rqvcuten);
+    if (s.P_QC >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QC], pt.rqccuten);
+    if (s.P_QR >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QR], pt.rqrcuten);
+    if (s.P_QI >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QI], pt.rqicuten);
+    if (s.P_QS >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QS], pt.rqscuten);
   }
   if (f.cu_physics == 3) {  // phy_cu_ten, GFLSCHEME: no momentum (RUCUTEN/RVCUTEN are not added)
-    parallel_for(ar, KAddA2A{t.t_tendf.view(), pt.rthcuten.cview()});
-    if (s.P_QV >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QV].view(), pt.rqvcuten.cview()});
-    if (s.P_QC >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QC].view(), pt.rqccuten.cview()});
-    if (s.P_QI >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QI].view(), pt.rqicuten.cview()});
+    add.add(ar, KAdd::A2A, t.t_tendf, pt.rthcuten);
+    if (s.P_QV >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QV], pt.rqvcuten);
+    if (s.P_QC >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QC], pt.rqccuten);
+    if (s.P_QI >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QI], pt.rqicuten);
   }
   if (f.cu_physics == 16 || f.cu_physics == 6) {  // phy_cu_ten, TIEDTKESCHEME and NTIEDTKESCHEME
-    if (!g.specified()) fill_halos({&pt.rucuten, &pt.rvcuten}, g);
-    parallel_for(a2c_u_range(g), KAddA2CU{t.ru_tendf.view(), pt.rucuten.cview()});
-    parallel_for(a2c_v_range(g), KAddA2CV{t.rv_tendf.view(), pt.rvcuten.cview()});
-    parallel_for(ar, KAddA2A{t.t_tendf.view(), pt.rthcuten.cview()});
-    if (s.P_QV >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QV].view(), pt.rqvcuten.cview()});
-    if (s.P_QC >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QC].view(), pt.rqccuten.cview()});
-    if (s.P_QI >= 0) parallel_for(ar, KAddA2A{t.q_tendf[s.P_QI].view(), pt.rqicuten.cview()});
+    add.add(a2c_u_range(g), KAdd::A2CU, t.ru_tendf, pt.rucuten);
+    add.add(a2c_v_range(g), KAdd::A2CV, t.rv_tendf, pt.rvcuten);
+    add.add(ar, KAdd::A2A, t.t_tendf, pt.rthcuten);
+    if (s.P_QV >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QV], pt.rqvcuten);
+    if (s.P_QC >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QC], pt.rqccuten);
+    if (s.P_QI >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QI], pt.rqicuten);
   }
+  add.run();
 }
 
 void conv_t_tendf_to_moist(dyn::Tendencies& t, const Field3& t_1, const dyn::State& s, const Grid& g) {
@@ -164,9 +212,8 @@ void conv_t_tendf_to_moist(dyn::Tendencies& t, const Field3& t_1, const dyn::Sta
 void phy_prep_part2(PhysicsTendencies& pt, const dyn::State& s, const dyn::BaseState& b, const Grid& g,
                     const CouplingFlags& f) {
   const Range3D mr = g.mass_cells();
-  auto decouple = [&](Field3& x) {
-    parallel_for(mr, KDecouple{x.view(), s.muts.cview(), b.c1h.view(), b.c2h.view()});
-  };
+  LaunchBatch<KDecouple, 16> batch;  // every tendency once: independent, one launch per 16
+  auto decouple = [&](Field3& x) { batch.add(mr, KDecouple{x.view(), s.muts.cview(), b.c1h.view(), b.c2h.view()}); };
   if (f.radiation) decouple(pt.rthraten);
   if (f.cu_physics > 0) {
     decouple(pt.rucuten);
@@ -190,6 +237,9 @@ void phy_prep_part2(PhysicsTendencies& pt, const dyn::State& s, const dyn::BaseS
   if (f.cu_physics == 16 || f.cu_physics == 3) {  // advective forcing of the cumulus scheme
     if (s.P_QV >= 0) decouple(pt.rqvften);
     decouple(pt.rthften);
+  }
+  batch.run();
+  if (f.cu_physics == 16 || f.cu_physics == 3) {
     if (f.theta_m)
       parallel_for(mr, KDryThetaForcing{pt.rthften.view(), pt.rqvften.cview(), s.t_2.cview(), s.q_2[s.P_QV].cview()});
   }

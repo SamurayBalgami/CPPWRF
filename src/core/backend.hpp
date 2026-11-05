@@ -379,6 +379,144 @@ template <class K> void column_for(const Range2D& r, const K& k) {
 }
 #endif
 
+// ---- launch fusion: independent kernels in one launch ----
+// LaunchBatch<K, N> collects up to N kernels of the type K, each with its own range, and launches them as one CUDA
+// kernel (a full batch launches by itself, run() launches the rest); parallel_fused(part(r1, k1), part(r2, k2), ...)
+// does the same for kernels of different types. Every part computes what its own parallel_for computes: part m
+// takes the blocks z0[m] <= blockIdx.z < z0[m + 1] (its k range) with parallel_for's thread mapping in x and y.
+// The parts must be independent (no part reads or writes what another part writes): on the GPU their cells run
+// in any order. The CPU build runs each part at once as its own parallel_for, in the order given.
+#if !defined(CPPWRF_USE_CUDA) || defined(__CUDACC__)
+template <class K> struct Part {
+  Range3D r;
+  K k;
+};
+template <class K> Part<K> part(const Range3D& r, const K& k) { return Part<K>{r, k}; }
+namespace detail {
+inline bool range_empty(const Range3D& r) { return r.i1 <= r.i0 || r.j1 <= r.j0 || r.k1 <= r.k0; }
+#if defined(CPPWRF_USE_CUDA)
+struct LaunchShape {  // the grid over every part: x and y as the largest part, z = the parts' k ranges in turn
+  unsigned int gx = 0, nj = 0, nz = 0;
+  void add(const Range3D& r) {
+    if (range_empty(r)) return;
+    const unsigned int x = unsigned(r.i1 - r.i0 + 63) / 64u, y = unsigned(r.j1 - r.j0);
+    gx = x > gx ? x : gx;
+    nj = y > nj ? y : nj;
+    nz += unsigned(r.k1 - r.k0);
+  }
+  unsigned int by() const { return nj == 1 ? 1u : 2u; }
+};
+template <class K, int N> struct BatchArgs {
+  K k[N];
+  Range3D r[N];
+  int z0[N + 1];
+  int n;
+};
+// compile-time part indices only: a run-time index into the kernel parameters would copy them to local memory
+template <int M, class K, int N> __device__ __forceinline__ void batch_call(const BatchArgs<K, N>& a, int z) {
+  if (M + 1 == N || M + 1 >= a.n || z < a.z0[M + 1]) {
+    const Range3D& r = a.r[M];
+    const int i = r.i0 + blockIdx.x * blockDim.x + threadIdx.x;
+    const int j = r.j0 + blockIdx.y * blockDim.y + threadIdx.y;
+    if (i < r.i1 && j < r.j1) a.k[M](i, j, r.k0 + (z - a.z0[M]));
+  } else if constexpr (M + 1 < N) {
+    batch_call<M + 1>(a, z);
+  }
+}
+template <class K, int N> __global__ void kbatch(const BatchArgs<K, N> a) { batch_call<0>(a, int(blockIdx.z)); }
+template <class... K> struct FusedArgs {};
+template <class K0, class... R> struct FusedArgs<K0, R...> {
+  K0 k;
+  Range3D r;
+  int z0, z1;
+  FusedArgs<R...> rest;
+};
+template <class K0, class... R> __device__ __forceinline__ void fused_call(const FusedArgs<K0, R...>& a, int z) {
+  if (z >= a.z0 && z < a.z1) {
+    const int i = a.r.i0 + blockIdx.x * blockDim.x + threadIdx.x;
+    const int j = a.r.j0 + blockIdx.y * blockDim.y + threadIdx.y;
+    if (i < a.r.i1 && j < a.r.j1) a.k(i, j, a.r.k0 + (z - a.z0));
+  } else if constexpr (sizeof...(R) > 0) {
+    fused_call(a.rest, z);
+  }
+}
+template <class... K> __global__ void kfused(const FusedArgs<K...> a) { fused_call(a, int(blockIdx.z)); }
+inline void fused_fill(FusedArgs<>&, LaunchShape&) {}
+template <class K0, class... R>
+void fused_fill(FusedArgs<K0, R...>& a, LaunchShape& s, const Part<K0>& p, const Part<R>&... rest) {
+  a.k = p.k;
+  a.r = p.r;
+  a.z0 = int(s.nz);
+  s.add(p.r);
+  a.z1 = int(s.nz);
+  fused_fill(a.rest, s, rest...);
+}
+#endif
+}  // namespace detail
+
+template <class K, int N = 8> class LaunchBatch {
+  static_assert(std::is_trivially_copyable_v<K>, "kernels are copied to the device: trivially copyable structs only");
+
+ public:
+  LaunchBatch() = default;
+  LaunchBatch(const LaunchBatch&) = delete;
+  LaunchBatch& operator=(const LaunchBatch&) = delete;
+#if defined(CPPWRF_USE_CUDA)
+  static_assert(sizeof(detail::BatchArgs<K, N>) <= 32000, "kernel parameters too large: use a smaller batch");
+  ~LaunchBatch() { run(); }
+  void add(const Range3D& r, const K& k) {
+    if (detail::range_empty(r)) return;
+    a_.k[a_.n] = k;
+    a_.r[a_.n] = r;
+    if (++a_.n == N) run();
+  }
+  void run() {
+    if (a_.n == 0) return;
+    detail::LaunchShape s;
+    for (int m = 0; m < a_.n; ++m) {
+      a_.z0[m] = int(s.nz);
+      s.add(a_.r[m]);
+    }
+    a_.z0[a_.n] = int(s.nz);
+    const unsigned int by = s.by();
+    const dim3 b(64, by, 1), g(s.gx, (s.nj + by - 1) / by, s.nz);
+    const bool kt = ktime::on();
+    if (kt) ktime::begin();
+    detail::kbatch<K, N><<<g, b, 0, cuda_launch_stream()>>>(a_);
+    a_.n = 0;
+    cuda_check_launch("LaunchBatch");
+    if (kt) ktime::end(typeid(K).name());
+  }
+
+ private:
+  detail::BatchArgs<K, N> a_{};
+#else
+  void add(const Range3D& r, const K& k) { parallel_for(r, k); }
+  void run() {}
+#endif
+};
+
+template <class... K> void parallel_fused(const Part<K>&... parts) {
+#if defined(CPPWRF_USE_CUDA)
+  using Args = detail::FusedArgs<K...>;
+  static_assert(sizeof(Args) <= 32000, "kernel parameters too large");
+  Args a{};
+  detail::LaunchShape s;
+  detail::fused_fill(a, s, parts...);
+  if (s.nz == 0) return;
+  const unsigned int by = s.by();
+  const dim3 b(64, by, 1), g(s.gx, (s.nj + by - 1) / by, s.nz);
+  const bool kt = ktime::on();
+  if (kt) ktime::begin();
+  detail::kfused<K...><<<g, b, 0, cuda_launch_stream()>>>(a);
+  cuda_check_launch("parallel_fused");
+  if (kt) ktime::end(typeid(Args).name());
+#else
+  (parallel_for(parts.r, parts.k), ...);
+#endif
+}
+#endif
+
 // WRF's wrf_error_fatal inside a physics kernel. A kernel cannot stop the run: it records the
 // condition (raise_fatal; the first code wins, atomic on host and device) and the host calls
 // fatal_check() right after the physics call, which prints WRF's FATAL block and throws FatalError.

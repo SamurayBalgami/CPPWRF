@@ -87,6 +87,7 @@ void RK3::step(State& s, Tendencies& t, const BaseState& b) {
   (void)s; (void)t; (void)b;
   throw std::runtime_error("acoustic small step (src/dyn/small_step.*) not available in this build");
 #else
+  scalars_.reserve(s.n_scalars());  // work fields (first step only; not inside the step's graphs)
   StepScope graph(this);  // CUDA: the step as graphs (the same launches in the same order)
   if (bc_) bc_->advance_time(g_.dt);  // solve_em: dtbc = dtbc + dt
   // time-t state (WRF small_step_prep, rk_step == 1)

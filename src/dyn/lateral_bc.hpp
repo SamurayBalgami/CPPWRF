@@ -61,11 +61,13 @@ class LateralBC {
   void update_uv(State& s, const Tendencies& t, real dts) const;
   void update_mu_t(State& s, const Tendencies& t, real dts) const;
   void update_ph_w(State& s, const Field3& ph_save, const Tendencies& t, const BaseState& b, real dts) const;
-  void relax_scalar(int n, Field3& q_tend, const Field3& q, const State& s, const BaseState& b) const;
-  void spec_scalar(int n, Field3& q_tend) const;
-  // flow_dep_bdy for a moist species without boundary data (have_bcs_moist = .false.): spec zone
+  // relax_bdy_scalar / spec_bdy_scalar of the scalars ns that have boundary data (the others are skipped): into
+  // t.q_tendf[n] from s.q_2[n]; one launch for up to 8 species
+  void relax_scalars(const std::vector<int>& ns, Tendencies& t, const State& s, const BaseState& b) const;
+  void spec_scalars(const std::vector<int>& ns, Tendencies& t) const;
+  // flow_dep_bdy on s.q_2[n] for the scalars ns without boundary data (have_bcs_moist = .false.): spec zone
   // = inner neighbour at outflow, 0 at inflow, by the sign of the averaged fluxes ru_m, rv_m.
-  void flow_dep(Field3& q, const State& s) const;
+  void flow_dep(const std::vector<int>& ns, State& s) const;
   void final(State& s, const BaseState& b) const;
 
  private:

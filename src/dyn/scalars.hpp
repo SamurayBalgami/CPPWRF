@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <vector>
 // Scalar transport (moist species and passive tracers), WRF solve_em scalar section:
 // rk_scalar_tend (advect_scalar / advect_scalar_pd with the acoustic-step-averaged mass fluxes
 // ru_m, rv_m, ww_m; stage-1 diffusion into *_tendf) followed by rk_update_scalar
@@ -31,6 +32,9 @@ class ScalarTransport {
   void set_diffusion(const DiffusionDriver* d) { dd_ = d; }
   // RQVFTEN = qv advection tendency * msfty (set_tend in rk_scalar_tend); nullptr: off
   void set_qv_forcing(Field3* f) { qvf_ = f; }
+  // the work fields of n_scalars species (allocated before the time step that needs them, not inside it)
+  void reserve(int n_scalars);
+  static constexpr int kBatch = 8;  // species per launch
 
  private:
   Grid g_;
@@ -39,8 +43,13 @@ class ScalarTransport {
   const DiffusionDriver* dd_ = nullptr;
   Field3* qvf_ = nullptr;
   std::unique_ptr<Field3> dbg_qvf_;  // debug (CPPWRF_VM_DUMP): qv advection tendency sink
-  Field3 q_new_, scale_;
-  Field3 dhx_, lox_, dhy_, loy_, dhz_, loz_;  // advect_scalar_pd face fluxes (high - low, low)
+  struct Work {  // one species of a batch
+    Field3 q_new, scale;
+    Field3 dhx, lox, dhy, loy, dhz, loz;  // advect_scalar_pd face fluxes (high - low, low)
+    explicit Work(const Grid& g);
+  };
+  std::vector<std::unique_ptr<Work>> work_;  // min(n_scalars, kBatch)
+  void update(State& s, Tendencies& t, const BaseState& b, const std::vector<int>& ns, bool pd, int rk, real dt_rk);
 };
 
 }  // namespace cppwrf::dyn
