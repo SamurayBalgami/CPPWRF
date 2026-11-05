@@ -98,29 +98,26 @@ struct KSwFinish {
 
 }  // namespace
 
-RrtmgSwBatch::RrtmgSwBatch(const RrtmgSwTables& tables, int nlayers, int max_chunk)
-    : lay_(nlayers), chunk_(std::max(1, max_chunk)) {
+RrtmgSwBatch::RrtmgSwBatch(const RrtmgSwTables& tables, int nlayers, int ncol)
+    : lay_(nlayers), chunk_(rrtmg_chunk_columns(ncol, lay_.nd * sizeof(double) + lay_.ni * sizeof(int))) {
   if (nlayers > RRTMG_SW_COL_MAX) throw std::runtime_error("RRTMG SW: too many layers");
-  d_tables_ = static_cast<RrtmgSwTables*>(dev_alloc(sizeof(RrtmgSwTables)));
-  copy_to_dev(d_tables_, &tables, sizeof(RrtmgSwTables));
-  d_consts_ = static_cast<RrtmgLwConsts*>(dev_alloc(sizeof(RrtmgLwConsts)));
-  copy_to_dev(d_consts_, &rrtmg_lw_consts(), sizeof(RrtmgLwConsts));
-  d_ = static_cast<double*>(dev_alloc(lay_.nd * std::size_t(chunk_) * sizeof(double)));
-  i_ = static_cast<int*>(dev_alloc(lay_.ni * std::size_t(chunk_) * sizeof(int)));
+  d_tables_ = static_cast<RrtmgSwTables*>(rrtmg_shared_dev_copy(&tables, sizeof(RrtmgSwTables)));
+  d_consts_ = static_cast<RrtmgLwConsts*>(rrtmg_shared_dev_copy(&rrtmg_lw_consts(), sizeof(RrtmgLwConsts)));
+  work_ = std::make_unique<RrtmgScratch>(lay_.nd * std::size_t(chunk_), lay_.ni * std::size_t(chunk_));
 }
 
 RrtmgSwBatch::~RrtmgSwBatch() {
-  dev_free(d_tables_);
-  dev_free(d_consts_);
-  dev_free(d_);
-  dev_free(i_);
+  rrtmg_shared_dev_release(d_tables_);
+  rrtmg_shared_dev_release(d_consts_);
 }
 
 void RrtmgSwBatch::run(const RrtmgSwCallConfig& c, const SwBatchInput& in, const SwBatchOutput& out) {
   if (c.nlayers != lay_.nl) throw std::runtime_error("RrtmgSwBatch: nlayers differs from the constructor's");
+  double* const d = work_->d();
+  int* const ip = work_->i();
   for (int col0 = 0; col0 < in.ncol; col0 += chunk_) {
     const int n = std::min(chunk_, in.ncol - col0);
-    const SwChunk ch{lay_, d_, i_, n, col0};
+    const SwChunk ch{lay_, d, ip, n, col0};
     parallel_for(sw_range(n, 1), KSwPrep{ch, c, in, d_tables_, d_consts_});
     if (c.nlayers <= 48)
       parallel_for(sw_range(n, 112), KSwGpoint<48>{ch, c, d_tables_});

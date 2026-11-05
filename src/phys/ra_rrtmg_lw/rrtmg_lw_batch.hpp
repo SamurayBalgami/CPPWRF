@@ -1,10 +1,13 @@
 #pragma once
 // RRTMG_LWRAD for all columns of a domain on the device (CPU builds: OpenMP), the stages of
 // rrtmg_lw_stages.hpp run as kernels over (column), (column, layer), (column, band) and
-// (column, level). Columns are processed in chunks so that the work arrays stay below ~1 GB.
+// (column, level). All columns in one chunk where the device memory allows (rrtmg_chunk_columns), the work
+// arrays shared with the other batches (batch_memory.hpp).
 // Inputs and outputs are device arrays with the column index fastest: x[k*ncol + col].
 #include <cstddef>
+#include <memory>
 
+#include "phys/ra_rrtmg_common/batch_memory.hpp"
 #include "phys/ra_rrtmg_lw/rrtmg_lw_stages.hpp"
 
 namespace cppwrf::phys {
@@ -32,19 +35,19 @@ struct LwBatchOutput {
 
 class RrtmgLwBatch {
  public:
-  RrtmgLwBatch(const RrtmgLwTables& tables, int nlayers, int max_chunk = 4096);
+  // ncol: the domain's columns (they set the chunk size, rrtmg_chunk_columns)
+  RrtmgLwBatch(const RrtmgLwTables& tables, int nlayers, int ncol);
   ~RrtmgLwBatch();
   RrtmgLwBatch(const RrtmgLwBatch&) = delete;
   RrtmgLwBatch& operator=(const RrtmgLwBatch&) = delete;
   void run(const RrtmgLwCallConfig& c, const LwBatchInput& in, const LwBatchOutput& out);
 
  private:
-  RrtmgLwTables* d_tables_ = nullptr;
+  RrtmgLwTables* d_tables_ = nullptr;  // shared device copies (rrtmg_shared_dev_copy)
   RrtmgLwConsts* d_consts_ = nullptr;
   LwLayout lay_;
   int chunk_;
-  double* d_ = nullptr;
-  int* i_ = nullptr;
+  std::unique_ptr<RrtmgScratch> work_;  // the shared work arrays
 };
 
 }  // namespace cppwrf::phys

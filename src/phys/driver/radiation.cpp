@@ -364,8 +364,9 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
     RrtmgLwConfig lc;
     lc.p_top = o.p_top;
     if (rrtmg_lw)
-      q.lwb = std::make_unique<RrtmgLwBatch>(*q.lw, rrtmg_lw_call_config(g.nz, lc, false, false, false).nlayers, 2048);
-    if (rrtmg_sw) q.swb = std::make_unique<RrtmgSwBatch>(*q.sw, g.nz + 1, 2048);
+      q.lwb = std::make_unique<RrtmgLwBatch>(*q.lw, rrtmg_lw_call_config(g.nz, lc, false, false, false).nlayers,
+                                             int(nc));
+    if (rrtmg_sw) q.swb = std::make_unique<RrtmgSwBatch>(*q.sw, g.nz + 1, int(nc));
     for (double** a : {&q.qr, &q.qg}) *a = q.dev(n3);
     q.ht = q.dev(nc);
   }

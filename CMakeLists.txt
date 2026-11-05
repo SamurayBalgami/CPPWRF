@@ -95,6 +95,7 @@ list(APPEND CPPWRF_SOURCES
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_sw/rrtmg_sw_tables.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/cam_gases.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/cam_ozone.cpp
+  ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtmg_common/batch_memory.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtm_lw/rrtm_lw.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/ra_rrtm_lw/rrtm_lw_tables.cpp
   ${CMAKE_SOURCE_DIR}/src/phys/sf_sfclayrev/sfclayrev.cpp
