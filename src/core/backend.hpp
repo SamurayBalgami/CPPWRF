@@ -261,6 +261,8 @@ void copy_to_dev(void* dst, const void* src, std::size_t bytes);
 void copy_dev(void* dst, const void* src, std::size_t bytes);
 void dev_sync();
 const char* backend_name();
+// CPPWRF_MEMINFO=1: prints the device memory in use and the stack (local memory) reserved per GPU thread
+void device_memory_report(const char* when);
 
 // One model time step (dyn::RK3::step). CUDA: the step's launches and device copies are captured into CUDA graphs
 // and replayed (an instantiated graph per domain and segment, updated with the new launch parameters), so the
@@ -287,6 +289,10 @@ bool step_graphs_on();  // the steps run as CUDA graphs (the caller need not wai
 void cuda_check_launch(const char* where);
 void* cuda_stream_raw();  // the stream of every launch and copy (created on first use; blocking w.r.t. stream 0)
 namespace detail {
+// Before the first launch of a kernel: the driver reserves the kernel's local memory (its stack frame) for every
+// thread the GPU can hold at once and never gives it back; the stack limit (cudaLimitStackSize) is raised to the
+// largest frame launched so far, with an error naming the kernel when the device memory is short for it.
+void reserve_local_memory(const void* kernel, const char* kernel_type);
 int* fatal_poll_slot(void (*reset)());  // inside a step: pinned host slot for this check's flag; else nullptr
 void fatal_flush();                     // reads the flags of the launched, unchecked checks (waits for them)
 }  // namespace detail
@@ -343,6 +349,8 @@ template <class K> void parallel_for(const Range3D& r, const K& k) {
   const unsigned int by = (r.j1 - r.j0 == 1) ? 1u : 2u;
   dim3 b(64, by, 1);
   dim3 g((r.i1 - r.i0 + 63) / 64, (r.j1 - r.j0 + by - 1) / by, r.k1 - r.k0);
+  static const bool reserved = (detail::reserve_local_memory(reinterpret_cast<const void*>(&detail::k3d<K>), typeid(K).name()), true);
+  (void)reserved;
   const bool kt = ktime::on();
   if (kt) ktime::begin();
   detail::k3d<<<g, b, 0, cuda_launch_stream()>>>(k, r);
@@ -355,6 +363,8 @@ template <class K> void column_for(const Range2D& r, const K& k) {
   if (r.i1 <= r.i0 || r.j1 <= r.j0) return;
   dim3 b(64, 2, 1);
   dim3 g((r.i1 - r.i0 + 63) / 64, (r.j1 - r.j0 + 1) / 2, 1);
+  static const bool reserved = (detail::reserve_local_memory(reinterpret_cast<const void*>(&detail::k2d<K>), typeid(K).name()), true);
+  (void)reserved;
   const bool kt = ktime::on();
   if (kt) ktime::begin();
   detail::k2d<<<g, b, 0, cuda_launch_stream()>>>(k, r);

@@ -7,6 +7,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -257,12 +258,66 @@ int* fatal_poll_slot(void (*reset)()) {
   return slot;
 }
 void fatal_flush() { graphs().flush(); }
+
+void reserve_local_memory(const void* kernel, const char* kernel_type) {
+  cudaFuncAttributes a{};
+  ck(cudaFuncGetAttributes(&a, kernel), "cudaFuncGetAttributes");
+  static std::mutex m;
+  static std::size_t reserved = 0;  // the largest frame of the process's launches (one device)
+  std::lock_guard<std::mutex> lk(m);
+  if (a.localSizeBytes <= reserved) return;
+  std::size_t limit = 0;
+  ck(cudaDeviceGetLimit(&limit, cudaLimitStackSize), "cudaDeviceGetLimit");
+  if (a.localSizeBytes <= limit) {
+    reserved = a.localSizeBytes;
+    return;
+  }
+  int dev = 0, sms = 0, tpsm = 0;
+  ck(cudaGetDevice(&dev), "cudaGetDevice");
+  ck(cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, dev), "cudaDeviceGetAttribute");
+  ck(cudaDeviceGetAttribute(&tpsm, cudaDevAttrMaxThreadsPerMultiProcessor, dev), "cudaDeviceGetAttribute");
+  sync_begin();  // inside a step: the captured part runs first (as for an allocation)
+  std::size_t free_b = 0, total_b = 0;
+  const cudaError_t mi = cudaMemGetInfo(&free_b, &total_b);
+  const cudaError_t e = cudaDeviceSetLimit(cudaLimitStackSize, a.localSizeBytes);
+  if (e != cudaSuccess) (void)cudaGetLastError();
+  sync_end();
+  if (e != cudaSuccess) {
+    int st = 0;
+    char* dm = abi::__cxa_demangle(kernel_type, nullptr, nullptr, &st);
+    const std::string name = (st == 0 && dm) ? dm : kernel_type;
+    std::free(dm);
+    const double mib = 1024. * 1024.;
+    char msg[640];
+    std::snprintf(msg, sizeof msg,
+                  "device memory too small: the kernel %.200s keeps %zu bytes per thread in local memory, which the GPU "
+                  "reserves for each of its %d x %d resident threads (%.0f MiB in all, %.0f MiB of it reserved so far); %.0f MiB of "
+                  "%.0f MiB are free (%s). Use a smaller domain, fewer levels or a GPU with more memory.",
+                  name.c_str(), std::size_t(a.localSizeBytes), sms, tpsm,
+                  double(a.localSizeBytes) * sms * tpsm / mib, double(limit) * sms * tpsm / mib,
+                  mi == cudaSuccess ? double(free_b) / mib : 0., mi == cudaSuccess ? double(total_b) / mib : 0.,
+                  cudaGetErrorString(e));
+    throw std::runtime_error(msg);
+  }
+  reserved = a.localSizeBytes;
+}
 }  // namespace detail
 
 void* dev_alloc(std::size_t bytes) {
   sync_begin();
   void* p = nullptr;
-  ck(cudaMalloc(&p, bytes), "cudaMalloc");
+  if (const cudaError_t e = cudaMalloc(&p, bytes); e != cudaSuccess) {
+    (void)cudaGetLastError();
+    std::size_t free_b = 0, total_b = 0;
+    cudaMemGetInfo(&free_b, &total_b);
+    const double mib = 1024. * 1024.;
+    char msg[320];
+    std::snprintf(msg, sizeof msg,
+                  "device memory too small: an allocation of %.0f MiB failed (%s); %.0f MiB of %.0f MiB are free. Use "
+                  "a smaller domain, fewer levels or a GPU with more memory.",
+                  double(bytes) / mib, cudaGetErrorString(e), double(free_b) / mib, double(total_b) / mib);
+    throw std::runtime_error(msg);
+  }
   ck(cudaMemsetAsync(p, 0, bytes, stream()), "cudaMemset");
   ck(cudaStreamSynchronize(stream()), "cudaMemset");
   sync_end();
@@ -293,6 +348,23 @@ void dev_sync() {
   sync_end();
 }
 const char* backend_name() { return "cuda"; }
+void device_memory_report(const char* when) {
+  static const bool on = [] { const char* e = std::getenv("CPPWRF_MEMINFO"); return e && *e && *e != '0'; }();
+  if (!on) return;
+  dev_sync();
+  std::size_t free_b = 0, total_b = 0, limit = 0;
+  int dev = 0, sms = 0, tpsm = 0;
+  ck(cudaMemGetInfo(&free_b, &total_b), "cudaMemGetInfo");
+  ck(cudaDeviceGetLimit(&limit, cudaLimitStackSize), "cudaDeviceGetLimit");
+  ck(cudaGetDevice(&dev), "cudaGetDevice");
+  ck(cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, dev), "cudaDeviceGetAttribute");
+  ck(cudaDeviceGetAttribute(&tpsm, cudaDevAttrMaxThreadsPerMultiProcessor, dev), "cudaDeviceGetAttribute");
+  const double mib = 1024. * 1024.;
+  std::printf("cppwrf: device memory %s: %.0f MiB used of %.0f MiB; stack limit %zu bytes x %d resident threads "
+              "(%.0f MiB)\n",
+              when, double(total_b - free_b) / mib, double(total_b) / mib, limit, sms * tpsm,
+              double(limit) * sms * tpsm / mib);
+}
 Reducer::Reducer(int max_k) : max_k_(max_k), hpart_(max_k) { dpart_ = static_cast<double*>(dev_alloc(sizeof(double) * max_k)); }
 Reducer::~Reducer() { dev_free(dpart_); }
 #else
@@ -331,6 +403,7 @@ void copy_to_dev(void* d, const void* s, std::size_t n) { par_copy(d, s, n); }
 void copy_dev(void* d, const void* s, std::size_t n) { par_copy(d, s, n); }
 void dev_sync() {}
 const char* backend_name() { return "cpu"; }
+void device_memory_report(const char*) {}
 StepScope::StepScope(const void*) {}
 StepScope::~StepScope() {}
 void StepScope::end() {}

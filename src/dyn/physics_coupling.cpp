@@ -129,11 +129,6 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
       radar_ = std::make_shared<const phys::radar::RadarDeviceTables<real>>(phys::radar::radar_init<real>(
           wp_.pi * wp_.denr / real(6.), real(3.), real(0.), wp_.pi * wp_.dens / real(6.), real(3.), real(0.),
           wp_.pi * wp_.deng / real(6.), real(3.), real(0.)));
-#if defined(CPPWRF_USE_CUDA)
-    // the WSM6 column kernel keeps ~11 columns of kMaxLevels in per-thread local memory
-    if (cudaDeviceSetLimit(cudaLimitStackSize, 64 * 1024) != cudaSuccess)
-      throw std::runtime_error("WSM6: cudaDeviceSetLimit(cudaLimitStackSize, 64 KB) failed");
-#endif
   }
   if (p_.do_radar_ref == 1 && (p_.mp_physics == 6 || thompson())) refl_10cm = Field3(g, Stagger::M, "refl_10cm");
   if (thompson()) {
@@ -148,16 +143,16 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
       qnifa2d = Field2(g, Stagger::M, "qnifa2d");
     }
     tp_ = thompson_tables(p_.table_dir, p_.force_read_thompson, p_.mp_physics == 28);
+    {  // the column arrays' work buffer on the GPU, for step()'s mp_cols
+      const int sx = g.bc_x == BC::Specified ? 1 : 0, sy = g.bc_y == BC::Specified ? 1 : 0;
+      phys::mp_thompson::thompson_reserve<real>(Range2D{sx, g.nx - sx, sy, g.ny - sy}, g.nz);
+    }
     if (p_.do_radar_ref == 1) {  // thompson_init (calc_refl10cm reads only the bins, K_w, PI5, lamda4, m_w_0, m_i_0)
       namespace mt = phys::mp_thompson;
       radar_ = std::make_shared<const phys::radar::RadarDeviceTables<real>>(phys::radar::radar_init<real>(
           real(mt::am_r), real(mt::bm_r), real(mt::mu_r), real(mt::am_s), real(mt::bm_s), real(mt::mu_s),
           real(mt::am_g5), real(mt::bm_g), real(mt::mu_g)));
     }
-#if defined(CPPWRF_USE_CUDA)
-    if (cudaDeviceSetLimit(cudaLimitStackSize, 64 * 1024) != cudaSuccess)
-      throw std::runtime_error("Thompson: cudaDeviceSetLimit(cudaLimitStackSize, 64 KB) failed");
-#endif
   }
 }
 
@@ -189,12 +184,18 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
     vmdump::dump("vm_mp_in", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS],
                                  &s.q_2[s.P_QG], &rho, &pii, &p_phy, &dz8w},
                  {&rainnc, &rainncv, &snownc, &snowncv, &graupelnc, &graupelncv, &sr});
-    column_for(mp_cols,
-               phys::wsm6::Wsm6Kernel<real>{wp_, dt, g.nz, th_phy.view(), qv.view(), s.q_2[s.P_QC].view(),
-                                            s.q_2[s.P_QR].view(), s.q_2[s.P_QI].view(), s.q_2[s.P_QS].view(),
-                                            s.q_2[s.P_QG].view(), rho.cview(), pii.cview(), p_phy.cview(),
-                                            dz8w.cview(), rainnc.view(), rainncv.view(), snownc.view(),
-                                            snowncv.view(), graupelnc.view(), graupelncv.view(), sr.view()});
+    // the column arrays sized to the next tier above nz (CUDA reserves a kernel's stack frame for every resident
+    // thread of the GPU: FP64 49 KB per thread with 128 levels, 19 KB with 48)
+    auto wsm6 = [&](auto nl) {
+      column_for(mp_cols, phys::wsm6::Wsm6Kernel<real, decltype(nl)::value>{
+                              wp_, dt, g.nz, th_phy.view(), qv.view(), s.q_2[s.P_QC].view(), s.q_2[s.P_QR].view(),
+                              s.q_2[s.P_QI].view(), s.q_2[s.P_QS].view(), s.q_2[s.P_QG].view(), rho.cview(),
+                              pii.cview(), p_phy.cview(), dz8w.cview(), rainnc.view(), rainncv.view(), snownc.view(),
+                              snowncv.view(), graupelnc.view(), graupelncv.view(), sr.view()});
+    };
+    if (g.nz <= 48) wsm6(std::integral_constant<int, 48>{});
+    else if (g.nz <= 64) wsm6(std::integral_constant<int, 64>{});
+    else wsm6(std::integral_constant<int, phys::wsm6::kMaxLevels>{});
     if (p_.microp_re)
       parallel_for(Range3D{mp_cols.i0, mp_cols.i1, mp_cols.j0, mp_cols.j1, 0, g.nz},
                    phys::wsm6::Wsm6EffRadKernel<real>{

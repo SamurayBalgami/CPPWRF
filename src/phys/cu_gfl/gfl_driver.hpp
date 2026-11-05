@@ -1,4 +1,3 @@
-#pragma once
 // Grell-Freitas-Li WRF driver: WRF 4.8.0 phys/GFL/WRF/module_cu_gfl_wrf.F90
 // cu_grell_freitas_li for one column (imid = 0, sub3d = 0, dicycle = 0,
 // nranflag = 0, do_capsuppress = 0, ccnclean = 250., ccn = 1500., tcrit = 258.).
@@ -6,10 +5,7 @@
 // In module_cumulus_driver.F, cu_grell_freitas_li receives WRF's model constants
 // (xlv = 2.5e6, cp = 1004.5, g = 9.81, r_v = 461.6) as real(kind=kind_phys).
 
-#include "phys/cu_gfl/gfl_deep.hpp"
-#include "phys/cu_gfl/gfl_shallow.hpp"
-
-namespace cppwrf::phys::cu_gfl {
+// A part of phys/cu_gfl/gfl.hpp, which includes it inside a level tier's namespace (KM defined there).
 
 #define R(x) static_cast<real>(x)
 
@@ -232,5 +228,3 @@ CPPWRF_HOST_DEVICE inline void gfl_column(const GflDrvColumn<real>& c,
 }
 
 #undef R
-
-}  // namespace cppwrf::phys::cu_gfl

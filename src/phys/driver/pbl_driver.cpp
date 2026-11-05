@@ -100,10 +100,12 @@ struct KMynnPbl {
   View2<int> kpbl;
   V3 qke_adv_1, qke_adv_2;  // the scalar qke_adv (State q_1 / q_2), when present
   bool has_qke_adv = false;
+  ColumnWork work{};  // DMP_mf's plume arrays on the GPU (column_for_work)
   // K: the column arrays' size (>= nz); the scheme's per-thread arrays take ~1.6 KB per level in FP64
   template <int K>
   CPPWRF_HD void column(int i, int j) const {
     using namespace mynnedmf;
+    CPPWRF_COLUMN_SLOTS(work, i, j)
     Column<K> c;
     real qv1[K + 2], qc1[K + 2], qi1[K + 2], qs1[K + 2];
     c.kte = nz;
@@ -140,7 +142,7 @@ struct KMynnPbl {
       c.sqs[k] = qs1[k] / (one + qv1[k]);
     }
     mynnedmf::mynnedmf<K>(c, op, tke_budget, initflag, delt, dx, xland(i, j), tsk(i, j), psfc(i, j), ust(i, j), hfx1,
-                          qfx1, wspd(i, j), uoce(i, j), voce(i, j));
+                          qfx1, wspd(i, j), uoce(i, j), voce(i, j), cppwrf_cw_);
     for (int k = 1; k <= nz; ++k) {  // mynnedmf_post_run
       const real sq = qv1[k] / (one + qv1[k]);
       const real sqv = sq + c.dqv[k] * delt;
@@ -186,7 +188,9 @@ struct KMynnPbl {
 template <int K>
 struct KMynnPblRunner {
   KMynnPbl k;
+  static constexpr std::size_t kWorkBytes = mynnedmf::kMfWorkBytes<K>;
   CPPWRF_HD void operator()(int i, int j) const { k.template column<K>(i, j); }
+  void set_work(const ColumnWork& w) { k.work = w; }
 };
 
 
@@ -289,9 +293,9 @@ void PhysicsSuite::pbl_driver(dyn::State& s, const dyn::BaseState& b) {
       throw std::runtime_error("bl_mynn_tkeadvect: the scalar qke_adv is missing");
     if (k.has_qke_adv) { k.qke_adv_1 = s.q_1[s.P_QKE_ADV].view(); k.qke_adv_2 = s.q_2[s.P_QKE_ADV].view(); }
     if (g_.nz <= 48)  // CUDA reserves the kernel's local memory for every resident thread: size it to the column
-      column_for(cols, KMynnPblRunner<48>{k});
+      column_for_work(cols, KMynnPblRunner<48>{k});
     else
-      column_for(cols, KMynnPblRunner<mynnedmf::kMaxLevels>{k});
+      column_for_work(cols, KMynnPblRunner<mynnedmf::kMaxLevels>{k});
   }
   if (o_.gwd_opt == 1) {
     using namespace wrfc;

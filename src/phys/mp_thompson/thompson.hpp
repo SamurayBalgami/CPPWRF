@@ -8,6 +8,7 @@
 #include <iostream>
 
 #include "core/backend.hpp"
+#include "core/column_work.hpp"
 #include "core/field.hpp"
 #include "phys/mp_radar/radar.hpp"
 #include "phys/mp_thompson/thompson_tables.hpp"
@@ -315,7 +316,67 @@ CPPWRF_HD inline Real ice_koop(Real temp, Real qv, Real qvs, Real naero, Real dt
     return c_max(Real(0.0), xni);
 }
 
-// Single-source Thompson column kernel; NL >= nz sizes the column arrays (thread-local memory on the GPU)
+// mp_thompson's column arrays (ThompsonKernel::operator()): on the GPU in the shared work buffer
+// (core/column_work.hpp): 64 KB per column in FP64 with 48 levels (69 KB with calc_refl10cm), which as local
+// arrays the driver would reserve for every resident thread.
+#define CPPWRF_THOMPSON_COLUMN(X) \
+    X(Real, temp, NL) X(Real, rc, NL) X(Real, ri, NL) X(Real, rr, NL) \
+    X(Real, rs, NL) X(Real, rg, NL) X(Real, ni_loc, NL) X(Real, nr_loc, NL) \
+    X(Real, nc, NL) X(Real, ng, NL) X(Real, rho, NL) X(Real, vtik, NL + 1) \
+    X(Real, vtnik, NL + 1) X(Real, vtrk, NL + 1) X(Real, vtnrk, NL + 1) X(Real, vtsk, NL + 1) \
+    X(Real, vtgk, NL + 1) X(Real, vtngk, NL + 1) X(Real, vtck, NL + 1) X(Real, vtnck, NL + 1) \
+    X(Real, sed_r, NL) X(Real, sed_s, NL) X(Real, sed_g, NL) X(Real, sed_i, NL) \
+    X(Real, sed_n, NL) X(Real, sed_c, NL) X(Real, qcten, NL) X(Real, qiten, NL) \
+    X(Real, qrten, NL) X(Real, qsten, NL) X(Real, qgten, NL) X(Real, niten, NL) \
+    X(Real, nrten, NL) X(Real, ncten, NL) X(Real, ngten, NL) \
+    X(Real, twet, NL) X(Real, pres, NL) X(Real, qv_loc, NL) X(Real, qc1d, NL) \
+    X(Real, qi1d, NL) X(Real, qr1d, NL) X(Real, qs1d, NL) X(Real, qg1d, NL) \
+    X(Real, qb1d, NL) X(Real, nc1d, NL) X(Real, ni1d, NL) X(Real, nr1d, NL) \
+    X(Real, ng1d, NL) X(Real, rb, NL) X(Real, ns, NL) X(Real, rhof, NL) \
+    X(Real, rhof2, NL) X(Real, qvs, NL) X(Real, qvsi, NL) X(Real, delQvs, NL) \
+    X(Real, satw, NL) X(Real, sati, NL) X(Real, ssatw, NL) X(Real, ssati, NL) \
+    X(Real, diffu, NL) X(Real, visco, NL) X(Real, vsc2, NL) X(Real, tcond, NL) \
+    X(Real, lvap, NL) X(Real, ocp, NL) X(Real, lvt2, NL) X(Real, ilamr, NL) \
+    X(Real, ilamg, NL) X(Real, N0_r, NL) X(Real, N0_g, NL) X(Real, mvd_r, NL) \
+    X(Real, mvd_c, NL) X(Real, mvd_g, NL) X(Real, smo0, NL) X(Real, smo1, NL) \
+    X(Real, smo2, NL) X(Real, smob, NL) X(Real, smoc, NL) X(Real, smod, NL) \
+    X(Real, smoe, NL) X(Real, smof, NL) X(Real, smog, NL) X(Real, vts_boost, NL) \
+    X(Real, sed_b, NL) X(Real, tten, NL) X(Real, qvten, NL) X(Real, qbten, NL) \
+    X(Real, prw_vcd, NL) X(Real, pnc_wcd, NL) X(Real, pnc_wau, NL) X(Real, pnc_rcw, NL) \
+    X(Real, pnc_scw, NL) X(Real, pnc_gcw, NL) X(Real, prr_wau, NL) X(Real, prr_rcw, NL) \
+    X(Real, prr_rcs, NL) X(Real, prr_rcg, NL) X(Real, prr_sml, NL) X(Real, prr_gml, NL) \
+    X(Real, prr_rci, NL) X(Real, prv_rev, NL) X(Real, pnr_wau, NL) X(Real, pnr_rcs, NL) \
+    X(Real, pnr_rcg, NL) X(Real, pnr_rci, NL) X(Real, pnr_sml, NL) X(Real, pnr_gml, NL) \
+    X(Real, pnr_rev, NL) X(Real, pnr_rcr, NL) X(Real, pnr_rfz, NL) X(Real, pri_inu, NL) \
+    X(Real, pni_inu, NL) X(Real, pri_ihm, NL) X(Real, pni_ihm, NL) X(Real, pri_wfz, NL) \
+    X(Real, pni_wfz, NL) X(Real, pri_rfz, NL) X(Real, pni_rfz, NL) X(Real, pri_ide, NL) \
+    X(Real, pni_ide, NL) X(Real, pri_rci, NL) X(Real, pni_rci, NL) X(Real, pni_sci, NL) \
+    X(Real, pni_iau, NL) X(Real, pri_iha, NL) X(Real, pni_iha, NL) X(Real, prs_iau, NL) \
+    X(Real, prs_sci, NL) X(Real, prs_rcs, NL) X(Real, prs_scw, NL) X(Real, prs_sde, NL) \
+    X(Real, prs_ihm, NL) X(Real, prs_ide, NL) X(Real, prg_scw, NL) X(Real, prg_rfz, NL) \
+    X(Real, prg_gde, NL) X(Real, prg_gcw, NL) X(Real, prg_rci, NL) X(Real, prg_rcs, NL) \
+    X(Real, prg_rcg, NL) X(Real, prg_ihm, NL) X(Real, png_scw, NL) X(Real, png_rcs, NL) \
+    X(Real, png_rcg, NL) X(Real, png_gde, NL) X(Real, pbg_scw, NL) X(Real, pbg_rfz, NL) \
+    X(Real, pbg_gcw, NL) X(Real, pbg_rci, NL) X(Real, pbg_rcs, NL) X(Real, pbg_rcg, NL) \
+    X(Real, pbg_sml, NL) X(Real, pbg_gml, NL) /* aerosol aware: nwfa1d / nifa1d [#/kg], nwfa / nifa [#/m3], wet scavenging by rain, snow and graupel */ X(Real, nwfa1d, NL) X(Real, nifa1d, NL) \
+    X(Real, nwfa, NL) X(Real, nifa, NL) X(Real, nwfaten, NL) X(Real, nifaten, NL) \
+    X(Real, pna_rca, NL) X(Real, pna_sca, NL) X(Real, pna_gca, NL) X(Real, pnd_rcd, NL) \
+    X(Real, pnd_scd, NL) X(Real, pnd_gcd, NL) X(bool, L_qc, NL) X(bool, L_qi, NL) \
+    X(bool, L_qr, NL) X(bool, L_qs, NL) X(bool, L_qg, NL)
+// calc_refl10cm's column arrays
+#define CPPWRF_THOMPSON_REFL(X) \
+    X(Real, temp, NL) X(Real, rr, NL) X(Real, rs, NL) X(Real, rg, NL) \
+    X(Real, ng, NL) X(Real, smob, NL) X(Real, smoc, NL) X(Real, smoz, NL) \
+    X(Real, ze_rain, NL) X(Real, ze_snow, NL) X(Real, ze_graupel, NL) X(double, ilamr, NL) \
+    X(double, ilamg, NL) X(double, N0_r, NL) X(double, N0_g, NL) X(bool, L_qr, NL) \
+    X(bool, L_qs, NL) X(bool, L_qg, NL)
+// calc_effectRad's column arrays
+#define CPPWRF_THOMPSON_EFFRAD(X) \
+    X(Real, rc, NL) X(Real, ri, NL) X(Real, ni_c, NL) X(Real, rs, NL) \
+    X(Real, ncl, NL)
+
+// Single-source Thompson column kernel; NL >= nz sizes the column arrays (local arrays on the CPU, a shared device
+// work buffer on the GPU: core/column_work.hpp)
 template <typename Real, int NL = kMaxLevels>
 struct ThompsonKernel {
     ThompsonTablesView<Real> tables;
@@ -361,14 +422,24 @@ struct ThompsonKernel {
     const radar::RadarTables<Real>* rtab = nullptr;
     View3<Real> refl;
 
+    // the GPU's column arrays (column_for_work); per column: the kernel's, then those of calc_refl10cm or
+    // calc_effectRad
+    ColumnWork work{};
+    static constexpr std::size_t kRefl = 0 CPPWRF_THOMPSON_REFL(CPPWRF_COLUMN_BYTES);
+    static constexpr std::size_t kEffRad = 0 CPPWRF_THOMPSON_EFFRAD(CPPWRF_COLUMN_BYTES);
+    static constexpr std::size_t kWorkBytes =
+        0 CPPWRF_THOMPSON_COLUMN(CPPWRF_COLUMN_BYTES) + (kRefl > kEffRad ? kRefl : kEffRad);
+
     // module_mp_thompson.F calc_effectRad and the driver's limits; t1d, p1d and the moist arrays are the column
     // after mp_thompson, nc1d its droplet number (not aerosol aware: nc = Nt_c)
-    CPPWRF_HD void effect_rad(int i, int j, const Real* t1d, const Real* p1d, const Real* nc1d) const {
+    template <class T1, class P1, class N1>
+    CPPWRF_HD void effect_rad(int i, int j, const T1& t1d, const P1& p1d, const N1& nc1d,
+                              [[maybe_unused]] ColumnSlots cppwrf_cw_) const {
         constexpr Real g_ratio[15] = {24, 60, 120, 210, 336, 504, 720, 990, 1320, 1716, 2184, 2730, 3360, 4080, 4896};
         constexpr Real re_qc_bg = Real(2.49E-6), re_qi_bg = Real(4.99E-6), re_qs_bg = Real(9.99E-6);
         const Real obmr = Real(1.0) / Real(bm_r);
         const Real obmi = Real(1.0) / Real(bm_i);
-        Real rc[NL], ri[NL], ni_c[NL], rs[NL], ncl[NL];
+        CPPWRF_THOMPSON_EFFRAD(CPPWRF_COLUMN_ARRAY)
         bool has_qc = false, has_qi = false, has_qs = false;
         for (int k = 0; k < nz; ++k) {  // re_qc1d etc. live in re_cloud, re_ice, re_snow
             re_cloud(i, j, k) = re_qc_bg;
@@ -440,7 +511,8 @@ struct ThompsonKernel {
 
     // mp_gt_driver after mp_thompson: the surface emissions into the lowest level (nwfa2d, nifa2d are number
     // tendencies), then nc, nwfa, nifa (and nbca = 0) back to the fields
-    CPPWRF_HD void aero_out(int i, int j, const Real* nc1d, Real* nwfa1d, Real* nifa1d) const {
+    template <class N1, class W1, class I1>
+    CPPWRF_HD void aero_out(int i, int j, const N1& nc1d, W1&& nwfa1d, I1&& nifa1d) const {
         nwfa1d[0] = nwfa1d[0] + nwfa2d(i, j) * dt;
         nifa1d[0] = nifa1d[0] + nifa2d(i, j) * dt;
         for (int k = 0; k < nz; ++k) {
@@ -454,12 +526,11 @@ struct ThompsonKernel {
     // module_mp_thompson.F calc_refl10cm (ke_diag = kte: the reflectivity at every level), called by mp_gt_driver
     // after mp_thompson with the column of its final update: qv, qr, nr, qs, qg as written back, t1d, p1d and the
     // graupel number ng1d; REFL_10CM = MAX(-35., dBZ). Not hail aware: idx_bg = idx_bg1 everywhere (qb1d unused).
-    CPPWRF_HD void refl10cm(int i, int j, const Real* t1d, const Real* p1d, const Real* ng1d) const {
+    template <class T1, class P1, class G1>
+    CPPWRF_HD void refl10cm(int i, int j, const T1& t1d, const P1& p1d, const G1& ng1d,
+                            [[maybe_unused]] ColumnSlots cppwrf_cw_) const {
         const radar::RadarTables<Real>& rt = *rtab;
-        Real temp[NL], rr[NL], rs[NL], rg[NL], ng[NL], smob[NL], smoc[NL], smoz[NL];
-        Real ze_rain[NL], ze_snow[NL], ze_graupel[NL];
-        double ilamr[NL], ilamg[NL], N0_r[NL], N0_g[NL];
-        bool L_qr[NL], L_qs[NL], L_qg[NL];
+        CPPWRF_THOMPSON_REFL(CPPWRF_COLUMN_ARRAY)
         bool any_qs = false, any_qg = false;
         for (int k = 0; k < nz; ++k) {
             temp[k] = t1d[k];
@@ -587,40 +658,8 @@ struct ThompsonKernel {
     CPPWRF_HD void operator()(int i, int j) const {
         if (nz > NL) return;
 
-        Real temp[NL], twet[NL], pres[NL], qv_loc[NL];
-        Real qc1d[NL], qi1d[NL], qr1d[NL], qs1d[NL], qg1d[NL], qb1d[NL];
-        Real nc1d[NL], ni1d[NL], nr1d[NL], ng1d[NL];
-        Real rc[NL], ri[NL], rr[NL], rs[NL], rg[NL], rb[NL];
-        Real ni_loc[NL], nr_loc[NL], nc[NL], ns[NL], ng[NL];
-        Real rho[NL], rhof[NL], rhof2[NL];
-        Real qvs[NL], qvsi[NL], delQvs[NL];
-        Real satw[NL], sati[NL], ssatw[NL], ssati[NL];
-        Real diffu[NL], visco[NL], vsc2[NL], tcond[NL], lvap[NL], ocp[NL], lvt2[NL];
-        Real ilamr[NL], ilamg[NL], N0_r[NL], N0_g[NL];
-        Real mvd_r[NL], mvd_c[NL], mvd_g[NL];
-        Real smo0[NL], smo1[NL], smo2[NL], smob[NL], smoc[NL], smod[NL], smoe[NL], smof[NL], smog[NL];
-        Real vts_boost[NL];
-        Real vtik[NL + 1], vtnik[NL + 1], vtrk[NL + 1], vtnrk[NL + 1];
-        Real vtsk[NL + 1], vtgk[NL + 1], vtngk[NL + 1], vtck[NL + 1], vtnck[NL + 1];
-        Real sed_r[NL], sed_s[NL], sed_g[NL], sed_i[NL], sed_n[NL], sed_c[NL], sed_b[NL];
-
-        Real tten[NL], qvten[NL], qcten[NL], qiten[NL], qrten[NL];
-        Real qsten[NL], qgten[NL], qbten[NL], niten[NL], nrten[NL], ncten[NL], ngten[NL];
-
-        Real prw_vcd[NL], pnc_wcd[NL], pnc_wau[NL], pnc_rcw[NL], pnc_scw[NL], pnc_gcw[NL];
-        Real prr_wau[NL], prr_rcw[NL], prr_rcs[NL], prr_rcg[NL], prr_sml[NL], prr_gml[NL], prr_rci[NL], prv_rev[NL];
-        Real pnr_wau[NL], pnr_rcs[NL], pnr_rcg[NL], pnr_rci[NL], pnr_sml[NL], pnr_gml[NL], pnr_rev[NL], pnr_rcr[NL], pnr_rfz[NL];
-        Real pri_inu[NL], pni_inu[NL], pri_ihm[NL], pni_ihm[NL], pri_wfz[NL], pni_wfz[NL], pri_rfz[NL], pni_rfz[NL];
-        Real pri_ide[NL], pni_ide[NL], pri_rci[NL], pni_rci[NL], pni_sci[NL], pni_iau[NL], pri_iha[NL], pni_iha[NL];
-        Real prs_iau[NL], prs_sci[NL], prs_rcs[NL], prs_scw[NL], prs_sde[NL], prs_ihm[NL], prs_ide[NL];
-        Real prg_scw[NL], prg_rfz[NL], prg_gde[NL], prg_gcw[NL], prg_rci[NL], prg_rcs[NL], prg_rcg[NL], prg_ihm[NL];
-        Real png_scw[NL], png_rcs[NL], png_rcg[NL], png_gde[NL];
-        Real pbg_scw[NL], pbg_rfz[NL], pbg_gcw[NL], pbg_rci[NL], pbg_rcs[NL], pbg_rcg[NL], pbg_sml[NL], pbg_gml[NL];
-        // aerosol aware: nwfa1d / nifa1d [#/kg], nwfa / nifa [#/m3], wet scavenging by rain, snow and graupel
-        Real nwfa1d[NL], nifa1d[NL], nwfa[NL], nifa[NL], nwfaten[NL], nifaten[NL];
-        Real pna_rca[NL], pna_sca[NL], pna_gca[NL], pnd_rcd[NL], pnd_scd[NL], pnd_gcd[NL];
-
-        bool L_qc[NL], L_qi[NL], L_qr[NL], L_qs[NL], L_qg[NL];
+        CPPWRF_COLUMN_SLOTS(work, i, j)
+        CPPWRF_THOMPSON_COLUMN(CPPWRF_COLUMN_ARRAY)
 
         Real pptrain = Real(0.0);
         Real pptsnow = Real(0.0);
@@ -997,8 +1036,8 @@ struct ThompsonKernel {
             if (aero) aero_out(i, j, nc1d, nwfa1d, nifa1d);  // mp_thompson returned with nc1d = 0 where qc <= R1
             // mp_gt_driver's calc_refl10cm of the unchanged column (t1d = th*pii; no qr, qs, qg above its
             // thresholds: the replaced qv above does not enter)
-            if (refl.p) refl10cm(i, j, temp, pres, ng1d);
-            if (has_re) effect_rad(i, j, temp, pres, nc1d);
+            if (refl.p) refl10cm(i, j, temp, pres, ng1d, cppwrf_cw_);
+            if (has_re) effect_rad(i, j, temp, pres, nc1d, cppwrf_cw_);
             return;
         }
 
@@ -2611,8 +2650,8 @@ struct ThompsonKernel {
         graupelnc(i, j) += pptgraul;
         sr(i, j) = (pptsnow + pptgraul + pptice) / (rain_step + Real(1.0e-12));
         if (aero) aero_out(i, j, nc1d, nwfa1d, nifa1d);
-        if (refl.p) refl10cm(i, j, twet, pres, ng1d);
-        if (has_re) effect_rad(i, j, twet, pres, nc1d);
+        if (refl.p) refl10cm(i, j, twet, pres, ng1d, cppwrf_cw_);
+        if (has_re) effect_rad(i, j, twet, pres, nc1d, cppwrf_cw_);
     }
 };
 
@@ -2622,6 +2661,10 @@ struct ThompsonAeroFields {
     View3<Real> nc, nwfa, nifa, nbca;
     View2<const Real> nwfa2d, nifa2d;
 };
+
+// The GPU work buffer of run_thompson over range (outside the time loop; CPU build: no-op)
+template <typename Real>
+void thompson_reserve(const Range2D& range, int nz);
 
 // Host runner function
 template <typename Real>

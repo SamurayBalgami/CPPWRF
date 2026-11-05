@@ -5,6 +5,7 @@
 // aerosols / chemistry, spp_pbl = 0. The plume-size loops of
 // NUP = 8 trips: the area loop uses glibc's libmvec pow in WRF's build (vm::pow with n = 8), the sum for cn
 // (a reduction) the scalar pow.
+#include "core/column_work.hpp"
 #include "phys/bl_mynn/mynnedmf_common.hpp"
 
 namespace cppwrf::phys::mynnedmf {
@@ -28,6 +29,16 @@ CPPWRF_HD inline void condensation_edmf(real QT, real THL, real P, real zagl, re
   THV = (THL + xlvcp / EXN * QC) * (one + QT * (rvovrd - one) - rvovrd * QC);
 }
 
+// DMP_mf's plume arrays (NUP = 8 plumes): local arrays on the CPU, the GPU's work arrays (core/column_work.hpp)
+inline constexpr int kMfPlumes = 8;
+#define CPPWRF_MYNN_MF_PLUMES(X) \
+    X(real, UPW, K + 3, kMfPlumes + 1) X(real, UPTHL, K + 3, kMfPlumes + 1) X(real, UPQT, K + 3, kMfPlumes + 1) \
+    X(real, UPQC, K + 3, kMfPlumes + 1) X(real, UPA, K + 3, kMfPlumes + 1) X(real, UPU, K + 3, kMfPlumes + 1) \
+    X(real, UPV, K + 3, kMfPlumes + 1) X(real, UPQKE, K + 3, kMfPlumes + 1) X(real, UPQSQ, K + 3, kMfPlumes + 1) \
+    X(real, ENT, K + 2, kMfPlumes + 1)
+template <int K>
+inline constexpr std::size_t kMfWorkBytes = 0 CPPWRF_MYNN_MF_PLUMES(CPPWRF_COLUMN_BYTES2);
+
 struct MfOut {
   real maxwidth, maxmf, ztop, excess_h, excess_q;
   int ktop;
@@ -45,15 +56,14 @@ CPPWRF_HD inline void dmp_mf(int kte, real dt, const real* zw1, const real* dz1,
                              real* edmf_qc1, real* s_aw1, real* s_awthl1, real* s_awqt1, real* s_awqv1, real* s_awqc1,
                              real* s_awu1, real* s_awv1, real* s_awqke1, real* s_awqsq1, real* qc_bl1,
                              real* cldfra_bl1, real Psig_shcu, MfOut& o,
-                             real* tkeprod_up, const real* el1) {
+                             real* tkeprod_up, const real* el1, [[maybe_unused]] ColumnSlots cppwrf_cw_ = {}) {
   constexpr int kts = 1;
-  constexpr int nup = 8;
+  constexpr int nup = kMfPlumes;
   constexpr real Atot = real(0.10), lmax = real(1000.), lmin = real(300.), dcut = real(1.2);
   constexpr real fluxportion = real(0.75);
   constexpr real pgfac = real(0.00);
   (void)dt; (void)ust; (void)th1;
-  real UPW[K + 3][nup + 1], UPTHL[K + 3][nup + 1], UPQT[K + 3][nup + 1], UPQC[K + 3][nup + 1], UPA[K + 3][nup + 1],
-      UPU[K + 3][nup + 1], UPV[K + 3][nup + 1], UPQKE[K + 3][nup + 1], UPQSQ[K + 3][nup + 1], ENT[K + 2][nup + 1];
+  CPPWRF_MYNN_MF_PLUMES(CPPWRF_COLUMN_ARRAY2)
   real exneri[K + 2], dzi[K + 2], rhoi[K + 2], qti[K + 2], edmf_th1[K + 2];
   int ktop_plume[nup + 1];
   int ktop = 0;

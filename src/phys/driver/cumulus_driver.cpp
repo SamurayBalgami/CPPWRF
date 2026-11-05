@@ -7,7 +7,7 @@
 #include <cstdlib>
 #include <stdexcept>
 
-#include "phys/cu_gfl/gfl_driver.hpp"
+#include "phys/cu_gfl/gfl.hpp"
 #include "phys/cu_ntiedtke/ntiedtke.hpp"
 #include "phys/cu_tiedtke/tiedtke.hpp"
 #include "phys/driver/wrf_constants.hpp"
@@ -33,11 +33,13 @@ struct KGrellFreitas {
   V2 raincv, pratec, htop, hbot;
   V3 rthcuten, rqvcuten, rqccuten, rqicuten, rucuten, rvcuten, gd_cloud, gd_cloud2;
   bool flag_qc, flag_qi;
-  CPPWRF_HD void column(int i, int j, cu_gfl::GflDrvColumn<real>& c) const {
+  // T: the level tier (cu_gfl::Tier, gfl.hpp)
+  template <class T>
+  CPPWRF_HD void column(int i, int j, typename T::Column& c) const {
     c.nz = nz; c.dt = dt; c.dx = dx; c.ht = ht(i, j); c.hfx = hfx(i, j); c.qfx = qfx(i, j); c.xland = xland(i, j);
     c.xlv = xlv; c.cp = cp; c.g = g; c.r_v = r_v;
     c.kpbl = kpbl(i, j);
-    for (int k = 0; k < cu_gfl::KM; ++k) {
+    for (int k = 0; k < T::KM; ++k) {
       c.u[k] = 0; c.v[k] = 0; c.t[k] = 0; c.q[k] = 0; c.p[k] = 0; c.pi[k] = 0; c.rho[k] = 0; c.dz8w[k] = 0;
       c.w[k] = 0; c.p8w[k] = 0; c.rthften[k] = 0; c.rthraten[k] = 0; c.rthblten[k] = 0; c.rqvften[k] = 0;
       c.rqvblten[k] = 0;
@@ -53,11 +55,13 @@ struct KGrellFreitas {
       c.p8w[k] = p8w(i, j, k);
     }
   }
-  CPPWRF_HD void operator()(int i, int j) const {
-    cu_gfl::GflDrvColumn<real> c;
-    column(i, j, c);
-    cu_gfl::GflDrvOut<real> o;
-    cu_gfl::gfl_column(c, ishallow, ichoice, o);
+  template <int L>
+  CPPWRF_HD void run(int i, int j) const {
+    using T = cu_gfl::Tier<L, real>;
+    typename T::Column c;
+    column<T>(i, j, c);
+    typename T::Out o;
+    T::run(c, ishallow, ichoice, o);
     raincv(i, j) = o.raincv;
     pratec(i, j) = o.pratec;
     htop(i, j) = o.htop;
@@ -75,6 +79,12 @@ struct KGrellFreitas {
       (void)flag_qi;
     }
   }
+};
+// the column arrays of the tier of up to L levels (gfl.hpp)
+template <int L>
+struct KGrellFreitasRunner {
+  KGrellFreitas k;
+  CPPWRF_HD void operator()(int i, int j) const { k.template run<L>(i, j); }
 };
 
 // ------------------------------------------------------------ convtrans_prep
@@ -394,7 +404,8 @@ void PhysicsSuite::cumulus_driver(const dyn::State& s, const dyn::BaseState& b) 
     k.rqicuten = pt.rqicuten.view(); k.rucuten = pt.rucuten.view(); k.rvcuten = pt.rvcuten.view();
     k.gd_cloud = gd_cloud.view(); k.gd_cloud2 = gd_cloud2.view();
     k.flag_qc = s.P_QC >= 0; k.flag_qi = s.P_QI >= 0;
-    column_for(g_.columns(), k);
+    if (g_.nz <= 48) column_for(g_.columns(), KGrellFreitasRunner<48>{k});
+    else column_for(g_.columns(), KGrellFreitasRunner<cu_gfl::kMaxLevels>{k});
     // debug: CPPWRF_GFL_DUMP=file CPPWRF_GFL_DUMP_STEP=n (or CPPWRF_GF_DUMP / CPPWRF_GF_DUMP_STEP)
     // writes cu_grell_freitas_li's inputs and outputs of step n
     // (tests/phys/cu_gfl/harness.f90 runs WRF's cu_grell_freitas_li on them)

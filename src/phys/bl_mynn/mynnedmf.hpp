@@ -345,11 +345,12 @@ struct Column {
   int kpbl;
 };
 
-// mynnedmf (initflag: first step; restart = cycling = .false.); tke_budget = 1 fills c.dqke, qwt, qshear, qbuoy, qdiss
+// mynnedmf (initflag: first step; restart = cycling = .false.); tke_budget = 1 fills c.dqke, qwt, qshear, qbuoy, qdiss;
+// cw: the GPU's work arrays of DMP_mf (core/column_work.hpp)
 template <int K>
 CPPWRF_HD inline void mynnedmf(Column<K>& c, const Options& op, int tke_budget, int initflag, real delt, real dx,
                                real xland, real ts, real ps, real ust, real hfx, real qfx, real wspd, real uoce,
-                               real voce) {
+                               real voce, ColumnSlots cw = {}) {
   constexpr int kts = 1;
   const int kte = c.kte;
   const int bl_mynn_edmf = op.edmf, bl_mynn_edmf_mom = op.edmf_mom, bl_mynn_edmf_tke = op.edmf_tke,
@@ -511,7 +512,7 @@ CPPWRF_HD inline void mynnedmf(Column<K>& c, const Options& op, int tke_budget, 
               thl1, thv1, c.tk, sqw1, c.sqv, c.sqc, c.qke, c.qsq, c.ex, vt1, vq1, ust, flt, fltv, flq, c.pblh, c.kpbl,
               dx, xland, th_sfc, c.edmf_a, c.edmf_w, c.edmf_qt, c.edmf_thl, c.edmf_ent, c.edmf_qc, s_aw1, s_awthl1,
               s_awqt1, s_awqv1, s_awqc1, s_awu1, s_awv1, s_awqke1, s_awqsq1, c.qc_bl, c.cldfra_bl, psig_shcu, mo,
-              tkeprod_up, c.el);
+              tkeprod_up, c.el, cw);
     c.maxwidth = mo.maxwidth;
     c.maxmf = mo.maxmf;
     c.ztop_plume = mo.ztop;

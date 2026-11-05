@@ -1,4 +1,3 @@
-#pragma once
 // Grell-Freitas-Li shallow convection: WRF 4.8.0 phys/GFL/module_cu_gfl_sh.F90
 // cu_gfl_sh_run for one column (ichoice = 3 from module_cu_gfl_wrf.F90,
 // make_calc_for_xk = .true.).
@@ -7,11 +6,7 @@
 // and resets sec_deriv(:) = 1.e9 inside the column loop, with ilev = max(4, kstart+1),
 // so cu_gfl_sh_run is 100% column-local with no row-carried state.
 
-#include <limits>
-
-#include "phys/cu_gfl/gfl_common.hpp"
-
-namespace cppwrf::phys::cu_gfl {
+// A part of phys/cu_gfl/gfl.hpp, which includes it inside a level tier's namespace (KM defined there).
 
 #define R(x) static_cast<real>(x)
 
@@ -527,5 +522,3 @@ CPPWRF_HOST_DEVICE inline GflShallowOut cu_gfl_sh_run(
 }
 
 #undef R
-
-}  // namespace cppwrf::phys::cu_gfl

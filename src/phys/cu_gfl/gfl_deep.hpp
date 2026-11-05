@@ -1,13 +1,9 @@
-#pragma once
-
 // Grell-Freitas-Li (GFL) deep convection kernel for one column.
 // Ported statement-by-statement from WRF v4.8.0 phys/GFL/module_cu_gfl_deep.F90
 // (cu_gfl_deep_run, get_partition_liq_ice, get_melting_profile, cup_dd_moisture,
 // cup_dd_edt, cup_forcing_ens_3d, cup_output_ens_3d, neg_check).
 
-#include "phys/cu_gfl/gfl_common.hpp"
-
-namespace cppwrf::phys::cu_gfl {
+// A part of phys/cu_gfl/gfl.hpp, which includes it inside a level tier's namespace (KM defined there).
 
 #define R(x) static_cast<real>(x)
 
@@ -1489,5 +1485,3 @@ CPPWRF_HOST_DEVICE inline GflDeepOut<real> cu_gfl_deep_run(
 }
 
 #undef R
-
-}  // namespace cppwrf::phys::cu_gfl

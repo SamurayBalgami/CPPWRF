@@ -37,8 +37,7 @@ void run_thompson(
     View3<Real> refl,
     const radar::RadarTables<Real>* radar) {
     assert(nz <= kMaxLevels);
-    // the column arrays sized to the next tier above nz: FP64 with 128 levels needs ~160 KB of local
-    // memory per thread, which the GPU reserves for every resident thread
+    // the column arrays sized to the next tier above nz (on the GPU in the shared work buffer: thompson_reserve)
     auto launch = [&](auto nl) {
         ThompsonKernel<Real, decltype(nl)::value> kernel{
             tables,
@@ -82,12 +81,23 @@ void run_thompson(
             kernel.refl = refl;
             kernel.rtab = radar;
         }
-        column_for(range, kernel);
+        column_for_work(range, kernel);
     };
     if (nz <= 48) launch(std::integral_constant<int, 48>{});
     else if (nz <= 64) launch(std::integral_constant<int, 64>{});
     else launch(std::integral_constant<int, kMaxLevels>{});
 }
+
+template <typename Real>
+void thompson_reserve(const Range2D& range, int nz) {
+    const std::size_t b = nz <= 48 ? ThompsonKernel<Real, 48>::kWorkBytes
+                          : nz <= 64 ? ThompsonKernel<Real, 64>::kWorkBytes
+                                     : ThompsonKernel<Real, kMaxLevels>::kWorkBytes;
+    column_work_reserve(range, b);
+}
+
+template void thompson_reserve<double>(const Range2D&, int);
+template void thompson_reserve<float>(const Range2D&, int);
 
 template void run_thompson<double>(
     View3<double>, View3<double>, View3<double>, View3<double>, View3<double>,

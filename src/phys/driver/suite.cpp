@@ -11,7 +11,7 @@
 #include "phys/bl_myj/myjpbl.hpp"
 #include "phys/bl_mynn/mynnedmf.hpp"
 #include "phys/bl_ysu/ysu.hpp"
-#include "phys/cu_gfl/gfl_driver.hpp"
+#include "phys/cu_gfl/gfl.hpp"
 #include "phys/cu_ntiedtke/ntiedtke.hpp"
 #include "phys/cu_tiedtke/tiedtke.hpp"
 #include "phys/driver/noah_ice.hpp"
@@ -498,6 +498,9 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       mk3(edmf_a, g, "edmf_a"); mk3(edmf_w, g, "edmf_w"); mk3(edmf_thl, g, "edmf_thl"); mk3(edmf_qt, g, "edmf_qt");
       mk3(edmf_ent, g, "edmf_ent"); mk3(edmf_qc, g, "edmf_qc");
     }
+    // DMP_mf's plume arrays in the GPU's work buffer (pbl_driver: KMynnPblRunner, 48 or kMaxLevels levels)
+    column_work_reserve(g.columns(),
+                        g.nz <= 48 ? mynnedmf::kMfWorkBytes<48> : mynnedmf::kMfWorkBytes<mynnedmf::kMaxLevels>);
     if (o.tke_budget == 1) {
       mk3(qshear, g, "qshear"); mk3(qbuoy, g, "qbuoy"); mk3(qdiss, g, "qdiss"); mk3(qwt, g, "qwt");
       mk3(dqke, g, "dqke");

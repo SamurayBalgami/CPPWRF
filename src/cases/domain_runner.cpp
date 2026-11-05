@@ -746,6 +746,7 @@ bool DomainRunner::start() {
 
   if (!do_diag(start_step)) return false;
   if (start_step == 0) do_snap(start_step);
+  device_memory_report("after the setup");
   return true;
 }
 
@@ -858,6 +859,7 @@ void DomainRunner::finish() {
     long taken = m_.nsteps - start_step;
     std::printf("cppwrf: done, %ld steps, stepping %.3f s, %.2f ns/cell/step\n", taken, step_time,
                 step_time / (cells * taken) * 1e9);
+    device_memory_report("at the end");
   } else {
     std::printf("cppwrf: initialised, no time stepping (run.run_time = 0)\n");
   }

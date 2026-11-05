@@ -1,20 +1,8 @@
-#pragma once
-
 // Grell-Freitas-Li (GFL) shared constants and helper routines.
 // Ported from WRF v4.8.0 phys/GFL/module_cu_gfl_deep.F90,
 // phys/GFL/module_cu_gfl_sh.F90, and phys/GFL/WRF/module_cu_gfl_common.F90.
 
-#include <algorithm>
-#include <cmath>
-#include <type_traits>
-
-#include "core/backend.hpp"
-
-#ifndef CPPWRF_HOST_DEVICE
-#define CPPWRF_HOST_DEVICE CPPWRF_HD
-#endif
-
-namespace cppwrf::phys::cu_gfl {
+// A part of phys/cu_gfl/gfl.hpp, which includes it inside a level tier's namespace (KM defined there).
 
 using std::abs;
 using std::exp;
@@ -26,9 +14,6 @@ using std::sin;
 using std::sqrt;
 
 #define R(x) static_cast<real>(x)
-
-inline constexpr int kMaxLevels = 100;
-inline constexpr int KM = kMaxLevels + 12;
 
 template <typename real>
 struct GflConstants {
@@ -973,5 +958,3 @@ CPPWRF_HOST_DEVICE inline void cup_up_moisture(
 }
 
 #undef R
-
-}  // namespace cppwrf::phys::cu_gfl
