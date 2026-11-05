@@ -309,6 +309,67 @@ identical before and after at tolerance 0 in both precisions. The remaining 28 d
 (apart from the fatal-flag reads) were not attributed here (HT_COARSE and d02's native history every 30 nest steps
 are candidates).
 
+### Column-physics local memory (AR1 rank 4, F06; measured, Colab G4)
+
+The CUDA driver reserves a kernel's stack frame for every thread the GPU can hold at once (SMs x threads per SM:
+188 x 1536 = 288768 on the G4, 30 x 1024 = 30720 on an RTX 2060), whatever the launch; the reserve grows at a
+launch and never shrinks. The WSM6 and Thompson set-ups raised the stack limit to 64 KB, so every case with them
+held 16-18 GB of device memory for stacks on the G4 before the first field.
+
+- The stack limit is the largest frame launched: before a kernel's first launch its frame
+  (`cudaFuncGetAttributes`) is reserved (`cudaDeviceSetLimit`, core/backend.cpp `reserve_local_memory`). When the
+  device memory is short, the error names the kernel, its frame, the resident threads and the free memory; a failed
+  allocation states its size and the free memory. `CPPWRF_MEMINFO=1` prints the device memory after the set-up and
+  at the end (with the stack limit and its reserve).
+- `core/column_work`: one device buffer shared by the column kernels (`column_for_work`), sized for the launch's
+  columns (at most 1/8 of the device memory and 1/4 of what is free, else chunks of row pairs; reserved outside the
+  time loop) and laid out as the driver lays out local memory: per warp, level k of an array of its 32 threads side
+  by side. Thompson's column arrays (64 KB per column in FP64 at 48 levels) and MYNN's mass-flux plume arrays live
+  there; the CPU keeps the local arrays.
+- Grell-Freitas is compiled for a 48- and a 100-level tier, WSM6 for 48 / 64 / 128 levels (the tier of nz).
+- Kain-Fritsch keeps its local arrays (29 KB FP64, 11 KB FP32 at 48 levels): in the work buffer its FP32 build
+  (kf.cpp contracts multiply-adds) gave different P2 / P4 values. Also measured and dropped as slower: a k-major buffer
+  (column stride) with Thompson's sedimentation arrays kept local (Thompson FP64 +2-4 %, P6 FP32 steps +7 %) and
+  the warp layout with that split (Thompson FP32 +29 %).
+
+Frames per thread (cuobjdump, 48-level tier, FP64 / FP32): Thompson 72128 / 34224 -> below YSU's 10768 / 4240 (YSU's
+frame is now the stack limit of P6 and C01), MYNN 71312 / 35656 -> 38640 / 16104, Grell-Freitas 127536 / 63776 -> 68464 /
+34240, WSM6 49216 / 24608 (128 levels) -> 18496 / 9248.
+
+Base origin/main 2afa191 / port/F06 7fa5304, one G4 session, 1 h, no history output, each twice interleaved; peak
+from nvidia-smi (200 ms), the stack limit and its reserve from `CPPWRF_MEMINFO`:
+
+| Case | base s/h | new s/h | peak MiB base -> new | stack limit (reserve) | memory after set-up |
+|---|---|---|---|---|---|
+| P2 FP64 | 1.018, 1.018 | 1.029, 1.027 | 9085 -> 9085 | 29008 B, KF (7989 MiB) | 1308 |
+| P5 FP64 | 1.446, 1.435 | 1.453, 1.446 | 19623 -> 6669 | 18496 B, WSM6 (5094) | 1542 |
+| P6 FP64 | 1.703, 1.669 | 1.713, 1.709 | 21937 -> 5789 | 10768 B (2965) | 2690 |
+| P8 FP64 | 1.247, 1.224 | 1.210, 1.208 | 36219 -> 19951 | 68464 B, GF (18854) | 1306 |
+| C01 FP64 | 1.984, 1.936 | 1.991, 1.966 | 22009 -> 5861 | 10768 B (2965) | 2762 |
+| MYNN FP64 | 2.550, 2.497 | 2.547, 2.507 | 23683 -> 15215 | 38640 B, MYNN (10641) | 4430 |
+| P4 FP64 | 5.124, 5.120 | 5.139, 5.112 | 21193 -> 11135 | 29008 B (7989) | 3114 |
+| N3 FP64 | 14.008, 13.808 | 14.025, 13.817 | 24075 -> 14017 | 29008 B (7989) | 5670 |
+| P4 FP32 | 4.181, 4.176 | 4.189, 4.188 | 20743 -> 5715 | 10960 B (3018) | 2774 |
+| P6 FP32 | 0.450, 0.444 | 0.477, 0.469 | 19449 -> 2955 | 4240 B (1168) | 1800 |
+| N3 FP32 | 9.688, 9.697 | 9.727, 9.703 | 23177 -> 8149 | 10960 B (3018) | 4988 |
+
+Kernel time per hour (`CPPWRF_KTIME=1`, base -> new): Thompson FP64 426 -> 412 ms (P6), 498 -> 509 (C01), 456 ->
+457 (MYNN case); Thompson FP32 116 -> 134 ms (P6), 134 -> 158 (C01); MYNN 502 -> 498; Grell-Freitas 419 -> 369
+(P8, the 48-level tier); KF and WSM6 unchanged within 1-2 %. The steps are 0-1 % slower in FP64 (P8 3 % faster),
+P6 FP32 6 % slower (Thompson FP32 +16-18 %: its local arrays were cached better than the global buffer); the peak
+memory falls by 9-17 GB on the G4 in every case with a Thompson, WSM6, MYNN or GF scheme.
+
+Proof: every cuda_dp case against WRF at tolerance 0 (79 PASS, v05_files_links included); the 16 FP32 suite cases
+with base and new builds (120 snapshots and 3 restart files byte-identical) and P5 / N3 FP32 with 10-minute
+snapshots (21 byte-identical); the CPU suite cases of the touched schemes at tolerance 0.
+
+Small GPUs: the reserve scales with the resident threads, so an RTX 2060 (6 GB, 30720 threads) reserves 321 MiB
+for P4 / N3 in FP32 (KF's 10960 B; 64 KB before: 1.9 GiB). N3 FP32 needs about 5.0 GB after the set-up on the G4
+(less on a smaller GPU's context) plus that reserve: it should fit 6 GB, with little margin (not run on such a GPU).
+With F05's RRTMG batch merged, a 6 GB GPU's RRTMG scratch is 1/8 of the memory (0.75 GB, shared by the domains);
+on the G4 F05 adds about 2.5 GB to the single-domain peaks above and 1.2 GB to N3. When memory is short the run
+stops at the set-up or the first step with the message above instead of a failed cudaDeviceSetLimit.
+
 ## CUDA graphs for the time step (measured, Colab)
 
 `dyn::RK3::step` runs inside a `StepScope` (core/backend.hpp): its launches and device copies are captured into
