@@ -386,7 +386,18 @@ template <class K> void column_for(const Range2D& r, const K& k) {
 // takes the blocks z0[m] <= blockIdx.z < z0[m + 1] (its k range) with parallel_for's thread mapping in x and y.
 // The parts must be independent (no part reads or writes what another part writes): on the GPU their cells run
 // in any order. The CPU build runs each part at once as its own parallel_for, in the order given.
+// CUDA FP32 (nvcc's default --fmad=true): ptxas contracts a*b + c into an fma depending on the code around it, so
+// a kernel with such arithmetic can round differently inside a batched kernel (the FP64 build compiles with
+// --fmad=false: every operation is rounded on its own). There only kernels that declare
+// `static constexpr bool kNoMulAdd = true` (copies, zeros, comparisons) are batched; the others are launched one by
+// one with parallel_for, the kernel they had before.
 #if !defined(CPPWRF_USE_CUDA) || defined(__CUDACC__)
+#if defined(CPPWRF_USE_CUDA) && !defined(CPPWRF_DOUBLE)
+inline constexpr bool kFuseMulAdd = false;
+#else
+inline constexpr bool kFuseMulAdd = true;
+#endif
+template <class K> concept Fusable = kFuseMulAdd || requires { requires K::kNoMulAdd; };
 template <class K> struct Part {
   Range3D r;
   K k;
@@ -465,6 +476,10 @@ template <class K, int N = 8> class LaunchBatch {
   static_assert(sizeof(detail::BatchArgs<K, N>) <= 32000, "kernel parameters too large: use a smaller batch");
   ~LaunchBatch() { run(); }
   void add(const Range3D& r, const K& k) {
+    if constexpr (!Fusable<K>) {
+      parallel_for(r, k);
+      return;
+    }
     if (detail::range_empty(r)) return;
     a_.k[a_.n] = k;
     a_.r[a_.n] = r;
@@ -498,6 +513,10 @@ template <class K, int N = 8> class LaunchBatch {
 
 template <class... K> void parallel_fused(const Part<K>&... parts) {
 #if defined(CPPWRF_USE_CUDA)
+  if constexpr (!(Fusable<K> && ...)) {
+    (parallel_for(parts.r, parts.k), ...);
+    return;
+  }
   using Args = detail::FusedArgs<K...>;
   static_assert(sizeof(Args) <= 32000, "kernel parameters too large");
   Args a{};

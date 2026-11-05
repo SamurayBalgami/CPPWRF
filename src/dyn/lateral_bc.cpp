@@ -55,6 +55,7 @@ Range3D ring_range(const Ring& r, int nk, int nb) {
 }
 
 struct KSpecTend {  // spec_bdytend: tend = boundary tendency in the spec zone
+  static constexpr bool kNoMulAdd = true;
   V3 t3; V2 t2; bool two; SlabSet s; Ring r;
   CPPWRF_HD void operator()(int pos, int k, int sb) const {
     const int side = sb % 4, b = r.b0 + sb / 4;
@@ -130,6 +131,7 @@ struct KUpdatePh {  // spec_bdyupdate_ph
 };
 
 struct KZeroGrad {  // zero_grad_bdy on w: copy from the first interior row / column
+  static constexpr bool kNoMulAdd = true;
   V3 w; Ring r;
   CPPWRF_HD void operator()(int pos, int k, int sb) const {
     const int side = sb % 4, b = r.b0 + sb / 4;
@@ -147,6 +149,7 @@ struct KZeroGrad {  // zero_grad_bdy on w: copy from the first interior row / co
 };
 
 struct KFlowDep {  // flow_dep_bdy
+  static constexpr bool kNoMulAdd = true;
   V3 f; C3 u, v; Ring r;
   CPPWRF_HD void operator()(int pos, int k, int sb) const {
     const int side = sb % 4, b = r.b0 + sb / 4;

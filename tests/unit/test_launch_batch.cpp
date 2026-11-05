@@ -1,6 +1,7 @@
 // LaunchBatch and parallel_fused (several independent kernels in one launch) must give exactly what parallel_for of
 // each kernel gives: parts with different ranges (staggers, k offsets, one-row and 2-D ranges), a batch that fills
-// up and launches by itself, empty parts, and kernels of two types in one launch.
+// up and launches by itself, empty parts, and kernels of two types in one launch (the CUDA FP32 build batches only
+// kernels without multiply-add: KCopy).
 #include <cstdio>
 #include <vector>
 
@@ -21,6 +22,12 @@ struct KNeg {  // a second kernel type: out = -in at (i, j, k) and its neighbour
   View3<real> out;
   View3<const real> in;
   CPPWRF_HD void operator()(int i, int j, int k) const { out(i, j, k) = -(in(i, j, k) + real(0.5) * in(i - 1, j, k)); }
+};
+struct KCopy {  // no multiply-add: batched in the CUDA FP32 build too
+  static constexpr bool kNoMulAdd = true;
+  View3<real> out;
+  View3<const real> in;
+  CPPWRF_HD void operator()(int i, int j, int k) const { out(i, j, k) = -in(i, j - 1 < 0 ? 0 : j - 1, k); }
 };
 std::vector<real> host(const Field3& f) {
   std::vector<real> h;
@@ -62,6 +69,13 @@ static void run(int nx, int ny, int nz) {
     b.run();
   }
   int bad = 0;
+  for (int f = 0; f < nf; ++f) bad += host(ref[f]) != host(bat[f]);
+  for (int f = 0; f < nf; ++f) parallel_for(range(f), KCopy{ref[f].view(), in[f].cview()});
+  {
+    LaunchBatch<KCopy, 2> b;
+    for (int f = 0; f < nf; ++f) b.add(range(f), KCopy{bat[f].view(), in[f].cview()});
+    b.run();
+  }
   for (int f = 0; f < nf; ++f) bad += host(ref[f]) != host(bat[f]);
   // two kernel types in one launch
   Field3 r1(g, Stagger::U, "r1"), r2(g, Stagger::M, "r2"), b1(g, Stagger::U, "b1"), b2(g, Stagger::M, "b2");

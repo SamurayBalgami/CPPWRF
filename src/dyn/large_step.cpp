@@ -776,6 +776,7 @@ void LargeStep::cfl_max(const State& s, const BaseState& b, double dt, real& ver
 
 namespace {
 struct KZero {
+  static constexpr bool kNoMulAdd = true;
   V3 v;
   CPPWRF_HD void operator()(int i, int j, int k) const { v(i, j, k) = 0; }
 };

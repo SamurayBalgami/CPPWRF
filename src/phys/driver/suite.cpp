@@ -814,8 +814,10 @@ void PhysicsSuite::part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies
     const real dt = real(g_.dt);
     const Range3D cols{0, g_.nx, 0, g_.ny, 0, 1};
     LaunchBatch<KAccum2, 16> acc;  // 16 independent sums, one launch
-    for (auto [ac, x] : std::initializer_list<std::pair<Field2*, const Field2*>>{{&aclwupt, &lwupt}, {&aclwuptc, &lwuptc}, {&aclwdnt, &lwdnt}, {&aclwdntc, &lwdntc}, {&aclwupb, &lwupb}, {&aclwupbc, &lwupbc}, {&aclwdnb, &lwdnb}, {&aclwdnbc, &lwdnbc}, {&acswupt, &swupt}, {&acswuptc, &swuptc}, {&acswdnt, &swdnt}, {&acswdntc, &swdntc}, {&acswupb, &swupb}, {&acswupbc, &swupbc}, {&acswdnb, &swdnb}, {&acswdnbc, &swdnbc}})
-      acc.add(cols, KAccum2{ac->view(), x->cview(), dt});
+    for (auto [ac, x] : std::initializer_list<std::pair<Field2*, const Field2*>>{{&aclwupt, &lwupt}, {&aclwuptc, &lwuptc}, {&aclwdnt, &lwdnt}, {&aclwdntc, &lwdntc}, {&aclwupb, &lwupb}, {&aclwupbc, &lwupbc}, {&aclwdnb, &lwdnb}, {&aclwdnbc, &lwdnbc}, {&acswupt, &swupt}, {&acswuptc, &swuptc}, {&acswdnt, &swdnt}, {&acswdntc, &swdntc}, {&acswupb, &swupb}, {&acswupbc, &swupbc}, {&acswdnb, &swdnb}, {&acswdnbc, &swdnbc}}) {
+      if constexpr (kFuseMulAdd) acc.add(cols, KAccum2{ac->view(), x->cview(), dt});
+      else column_for(Range2D{0, g_.nx, 0, g_.ny}, KAccum2{ac->view(), x->cview(), dt});  // CUDA FP32: as before
+    }
     acc.run();
   }
   vmdump::dump("vm_phy_prep", 1,
