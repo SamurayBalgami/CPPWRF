@@ -83,12 +83,25 @@ def metadata(a, b, ignore=("TITLE",), only=None):
     return out
 
 
-def frames(files):
-    """{Times string: (dataset, frame index)} over the files of one stream (raw datasets)."""
+def uncached(ds):
+    """The dataset `ds` without HDF5 chunk caches (netCDF-4 files): each frame of a variable is read once, and the
+    caches (64 MiB per variable by default) kept every chunk read until the file was closed, the whole decompressed
+    file per open dataset (31 GB in the comparing process of a full suite). Values read are the same."""
+    if ds.data_model.startswith("NETCDF4"):
+        for v in ds.variables.values():
+            v.set_var_chunk_cache(0, 0, 1.0)
+    return ds
+
+
+def frames(files, opened=None):
+    """{Times string: (dataset, frame index)} over the files of one stream (raw datasets without chunk caches);
+    `opened`: a list that gets the datasets, for the caller to close."""
     import netCDF4
     m = {}
     for f in sorted(files):
-        ds = raw(netCDF4.Dataset(f))
+        ds = uncached(raw(netCDF4.Dataset(f)))
+        if opened is not None:
+            opened.append(ds)
         for t in range(len(ds["Times"])):
             m[text(ds["Times"], t).decode()] = (ds, t)
     return m
@@ -101,8 +114,17 @@ def compare_stream(cfiles, wfiles, subset=False, until=None, global_atts=True):
     model wrote are differences ('(times)', '(wrf-only-vars)', '(cppwrf-only-vars)', '(metadata)').
     subset=True: WRF's files hold a part of the output (tools/colab/stage_data.py keeps some frames and variables):
     CPPWRF's other variables and frames are no difference, WRF's frames up to `until` (Times string) must all be
-    there and the metadata covers WRF's variables. global_atts=False: the global attributes are not compared."""
-    A, B = frames(cfiles), frames(wfiles)
+    there and the metadata covers WRF's variables. global_atts=False: the global attributes are not compared.
+    One frame of one variable of each model is in memory at a time; the files are closed at the end."""
+    opened = []
+    try:
+        return _compare_stream(frames(cfiles, opened), frames(wfiles, opened), subset, until, global_atts)
+    finally:
+        for ds in opened:
+            ds.close()
+
+
+def _compare_stream(A, B, subset, until, global_atts):
     bad, nframes = {}, {}
     common = sorted(set(A) & set(B))
     only_c = [] if subset else sorted(set(A) - set(B))
@@ -121,7 +143,7 @@ def compare_stream(cfiles, wfiles, subset=False, until=None, global_atts=True):
                 if v != "Times" and text(a[v], ta) != text(b[v], tb):
                     bad.setdefault(v, f"{k} text differs")
                 continue
-            x, y = np.asarray(a[v][ta]), np.asarray(b[v][tb])
+            x, y = np.asarray(a[v][ta]), np.asarray(b[v][tb])  # one frame of one variable
             if x.shape != y.shape:
                 if v not in bad:  # WRF's values per leading index (e.g. soil layers)
                     yl = y.reshape(y.shape[0], -1) if y.ndim > 1 else y.reshape(-1, 1)
