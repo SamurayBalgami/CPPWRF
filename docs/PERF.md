@@ -33,7 +33,7 @@ RTX 2060; the acoustic substeps (n_sound/2 + n_sound + 1 substeps) come on top.
 
 ## Known inefficiencies
 - KTendU/V/W/T recompute both face fluxes per cell (2x flux arithmetic, no scratch arrays).
-- Separate halo-fill launches per field (14 per stage x up to 2 launches).
+- Separate halo-fill launches per field (14 per stage x up to 2 launches); since F04 adjacent fills share one batch.
 - `copy_dev` on CPU is a single-threaded memcpy.
 
 ## Profile (measured, Colab, commit 0577fb8)
@@ -344,3 +344,43 @@ graph launch instead of 396 kernel launches, 1 event wait instead of 3 `cudaStre
 `cudaDeviceSynchronize`. The step now takes 4.25 ms for 4.13 ms of kernels (GPU busy ~97 %, before 87 %), close to
 the bound of the profile above (rank 6). With physics the GPU was already 96-99 % busy, so the gain there is ~1 %;
 the nests still wait once per parent step for the feedback.
+
+## Launch fusion (AR1 rank 5, F04; measured, Colab G4)
+
+Independent kernels of a step run as one launch (`LaunchBatch` / `parallel_fused`, core/backend.hpp): every part
+keeps its range and parallel_for's thread mapping in x and y and gets its own blocks along z; the parts must not
+touch each other's data. Batched: init_zero_tendency (all held tendencies), the lateral boundary kernels
+(relax_bdy_dry, spec_bdy_dry, spec_bdyupdate of u / v and t / mu / muts, spec_bdyupdate_ph with zero_grad_bdy or
+spec_bdyupdate(w), spec_bdy_final, the scalars' relax / spec / flow_dep_bdy), the scalar transport (each kernel of
+rk_update_scalar / rk_update_scalar_pd for up to 8 species per launch; every species keeps its operations in WRF's
+order, with its own work fields, allocated before the first step), calculate_phy_tend's couple and
+phy_prep_part2's decouple, update_phy_ten (one launch per term of a tendency: each tendency gets its terms in
+phy_ra_ten / phy_bl_ten / phy_cu_ten order), the 16 radiation accumulations, the small step's ru_m / rv_m edge sums,
+and adjacent halo fills of single fields (`fill_halos` of `HaloField`: both ranks, explicit parities).
+
+CUDA FP32 builds keep nvcc's default `--fmad=true`, and ptxas contracts `a*b + c` into an fma depending on the code
+around it: `test_launch_batch` with a multiply-add kernel gave different FP32 values batched than alone. FP32 builds
+therefore batch only kernels without multiply-add (`kNoMulAdd`: zeroing, spec_bdytend, flow_dep_bdy, zero_grad_bdy,
+halo copies); the others launch as before. FP64 builds (`--fmad=false`) and the CPU (each part its own parallel_for)
+batch everything.
+
+Stepping s/h, 1 h, no history output, base origin/main 2d49050 / port/F04 564a5d7, each twice, interleaved in one
+session; graph nodes per step = kernels + device copies (`CPPWRF_GRAPHS=stats`; N3: per parent step, 4 graph
+launches); peak device memory from nvidia-smi:
+
+| Case | base s/h | new s/h | gain | graph nodes per step | peak MiB |
+|---|---|---|---|---|---|
+| P1 FP32 | 0.251, 0.252 | 0.248, 0.247 | 1.02x | 400 -> 352 | 1981 -> 1979 |
+| P1 FP64 | 0.806, 0.802 | 0.797, 0.794 | 1.01x | 400 -> 300 | 4059 -> 4061 |
+| P4 FP64 | 5.137, 5.130 | 5.110, 5.104 | 1.005x | 652 -> 420 | 20953 -> 21193 |
+| N3 FP64 | 14.115, 14.121 | 13.956, 13.944 | 1.01x | 2539 -> 1557 | 23599 -> 24075 |
+| N3 FP32 | 9.689, 9.681 | 9.665, 9.663 | 1.00x | 2539 -> 2145 | 22857 -> 23177 |
+
+With every kernel batched in FP32 too (commit e83ebd3, same session type) P1 FP32 had 300 nodes and 0.249 s/h and
+N3 FP32 1557 nodes and 9.71 s/h (base 9.81-9.82 in that session); its FP32 outputs were byte-identical to base in
+the suite cases, but the contraction cannot be proved for every code path, so FP32 keeps the restriction. As the
+CUDA-graph measurements predicted, the step was already 97-99 % GPU-busy: fusion removes 25-40 % of the launches
+and gains 0-2 %. The memory grows by the scalar work fields of up to 8 species (P4 FP64 +240 MiB, N3 +476 MiB).
+Proof: every cuda_dp case against WRF at tolerance 0 (79 PASS), the 16 FP32 cases with base and new builds (120
+snapshots and 3 restart files byte-identical), the CPU suite cases of the touched code at tolerance 0.
+
