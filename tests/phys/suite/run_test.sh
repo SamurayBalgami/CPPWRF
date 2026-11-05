@@ -34,7 +34,7 @@ echo "== 3. C++ suite (CPU FP64, and FP32 compile check)"
 # the physics sources of cppwrf_core (CMakeLists.txt) + the core pieces the driver uses
 mapfile -t PHYS_SRC < <(find "$REPO/src/phys" -name '*.cpp' ! -name kessler.cpp \
                          ! -name wsm6.cpp | sort)
-SRC=("$SCRIPT_DIR/driver_suite.cpp" "${PHYS_SRC[@]}" "$REPO/src/core/backend.cpp" "$REPO/src/core/halo.cpp"
+SRC=("$SCRIPT_DIR/driver_suite.cpp" "${PHYS_SRC[@]}" "$REPO/src/core/backend.cpp" "$REPO/src/core/column_work.cpp" "$REPO/src/core/halo.cpp"
      "$REPO/src/dyn/state.cpp")
 $HEAVY g++ -std=c++20 -DCPPWRF_DOUBLE -O3 -march=native -ffp-contract=off -fopenmp -DCPPWRF_DATA_DIR=\"$REPO/data\" -I "$REPO/src" "${SRC[@]}" -lmvec -o driver_suite_fp64
 $HEAVY g++ -std=c++20 -O3 -march=native -ffp-contract=off -fopenmp -DCPPWRF_DATA_DIR=\"$REPO/data\" -I "$REPO/src" "${SRC[@]}" -lmvec -o driver_suite_fp32

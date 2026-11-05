@@ -38,6 +38,7 @@ add_executable(driver_thompson_cpu
   ${CPPWRF_ROOT}/src/phys/mp_thompson/thompson.cpp
   ${CPPWRF_ROOT}/src/phys/mp_thompson/thompson_tables.cpp
   ${CPPWRF_ROOT}/src/core/backend.cpp
+  ${CPPWRF_ROOT}/src/core/column_work.cpp
 )
 target_include_directories(driver_thompson_cpu PRIVATE
   ${CPPWRF_ROOT}/src
@@ -65,12 +66,14 @@ if(THOMPSON_TEST_CUDA)
   file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/thompson_cuda.cu "#include \"${CPPWRF_ROOT}/src/phys/mp_thompson/thompson.cpp\"\n")
   file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/thompson_tables_cuda.cu "#include \"${CPPWRF_ROOT}/src/phys/mp_thompson/thompson_tables.cpp\"\n")
   file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/backend_cuda.cu "#include \"${CPPWRF_ROOT}/src/core/backend.cpp\"\n")
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/column_work_cuda.cu "#include \"${CPPWRF_ROOT}/src/core/column_work.cpp\"\n")
 
   add_executable(driver_thompson_cuda_dp
     ${CMAKE_CURRENT_BINARY_DIR}/driver_thompson_cuda.cu
     ${CMAKE_CURRENT_BINARY_DIR}/thompson_cuda.cu
     ${CMAKE_CURRENT_BINARY_DIR}/thompson_tables_cuda.cu
     ${CMAKE_CURRENT_BINARY_DIR}/backend_cuda.cu
+    ${CMAKE_CURRENT_BINARY_DIR}/column_work_cuda.cu
   )
   target_include_directories(driver_thompson_cuda_dp PRIVATE
     ${CPPWRF_ROOT}/src
@@ -84,6 +87,7 @@ if(THOMPSON_TEST_CUDA)
     ${CMAKE_CURRENT_BINARY_DIR}/thompson_cuda.cu
     ${CMAKE_CURRENT_BINARY_DIR}/thompson_tables_cuda.cu
     ${CMAKE_CURRENT_BINARY_DIR}/backend_cuda.cu
+    ${CMAKE_CURRENT_BINARY_DIR}/column_work_cuda.cu
   )
   target_include_directories(driver_thompson_cuda_sp PRIVATE
     ${CPPWRF_ROOT}/src
