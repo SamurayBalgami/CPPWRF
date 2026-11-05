@@ -5,6 +5,7 @@ dycore, boundaries, diffusion or physics coupling.
 
   wrf_suite.py --cpu-dp <build>/cppwrf --cuda <build>/cppwrf [--cuda-dp <build>/cppwrf] [--out DIR] [--only NAME[,NAME]]
                [--exact] [--jobs N]   (N CPU cases at once, each with OMP_NUM_THREADS threads) [--allow-skip] [--slow]
+  wrf_suite.py --list   (every case with all its fields, then the special and restart checks)
 
 Cases with tolerance 0 (CPU FP64) run with WRF history output and their wrfout files are compared with WRF's at
 tolerance 0 (exact.py: NaN equals only NaN, -0 differs from +0): every variable of the reference file, every
@@ -990,7 +991,17 @@ def main():
     ap.add_argument("--keep", action="store_true", help="keep the outputs of passing cases (default: deleted)")
     ap.add_argument("--allow-skip", action="store_true", help="cases without their reference do not fail the suite")
     ap.add_argument("--slow", action="store_true", help="also the slow cases (suite.slow: the 24 h and 72 h runs)")
+    ap.add_argument("--list", action="store_true", help="print every case (all its fields) and the restart and special "
+                    "checks, and exit")
     a = ap.parse_args()
+    if a.list:
+        for c in CASES:
+            print(" | ".join(repr(x) for x in c))
+        for n in SPECIAL:
+            print(n)
+        for r in RESTARTS:
+            print(" | ".join(repr(x) for x in r))
+        return
     only = a.only.split(",") if a.only else None
 
     def wanted(name):
