@@ -109,3 +109,31 @@ STATUS = [
      '(water/ice transitions)',
      '7 h / 20 min'),
 ]
+
+# the data tars (tests/verify/vm_data.txt) each case reads, in that file's order (tests/verify/case_data.py
+# derives them from the tars' file lists; tools/colab/colab_suite.sh --cases fetches only these)
+DATA = {
+    'real_t6_r8_fp64_cpu': 'v05_files_data.tar,v05_files_links.tar',
+    'real_t6_r8_fp64_cpu_3h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_t6_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_g2_r8_fp64_cpu': 'v05_files_data.tar,v05_files_links.tar',
+    'real_g2_r8_fp64_cpu_3h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_g2_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_f1_r8_fp64_cpu': 'v05_files_data.tar,v05_files_links.tar',
+    'real_f1_r8_fp64_cpu_3h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_f2_r8_fp64_cpu': 'v05_files_data.tar,v05_files_links.tar',
+    'real_f2_r8_fp64_cpu_3h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_f1_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_f2_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_d0_r8_fp64_cpu': 'v05_files_data.tar,v05_files_links.tar',
+    'real_d0_r8_fp64_cpu_6h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_d0_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_d0v_r8_fp64_cpu': 'v05_files_data.tar,v05_files_links.tar',
+    'real_d0v_r8_fp64_cpu_6h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_d0v_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_su1_r8_fp64_cpu': 'v05_files_data.tar,v05_files_links.tar',
+    'real_su2_r8_fp64_cpu': 'suite_data.tar,v05_files_data.tar,v05_files_links.tar',
+    'real_su2_r8_fp64_cuda': 'suite_data.tar,v05_files_data.tar,v05_files_links.tar',
+    'real_su1_r8_fp64_cpu_7h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_su1_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+}

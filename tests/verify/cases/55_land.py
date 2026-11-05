@@ -45,3 +45,17 @@ STATUS = [
     ('SLAB1 / SLAB4', 'P1 / P4 with the 5-layer thermal diffusion land surface (sf_surface_physics 1; inputs from real.exe)', '1 h'),
     ('NMP1', 'P1 with Noah-MP', '1 h'),
 ]
+
+# the data tars (tests/verify/vm_data.txt) each case reads, in that file's order (tests/verify/case_data.py
+# derives them from the tars' file lists; tools/colab/colab_suite.sh --cases fetches only these)
+DATA = {
+    'real_slab1_r8_fp64_cpu': 'port_c22_data.tar',
+    'real_slab1_r8_fp64_cpu_1h': 'port_c22_data.tar',
+    'real_slab1_r8_fp64_cuda_1h': 'port_c22_data.tar',
+    'real_slab4_r8_fp64_cpu_1h': 'port_c22_data.tar',
+    'real_slab4_r8_fp64_cuda_1h': 'port_c22_data.tar',
+    'real_nmp1_r8_fp64_cpu': 'v05_files_data.tar,v05_files_links.tar',
+    'real_nmp1_r8_fp64_cpu_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_nmp1_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_nmp1_fp32_1h': 'suite_data.tar',
+}

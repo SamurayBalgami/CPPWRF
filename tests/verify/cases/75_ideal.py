@@ -103,3 +103,31 @@ CASES = [
      f"{WREF}/r8/run_squall2d_x_sym/wrfout_d01_0001-01-01_00:00:00", 2400,
      {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
 ]
+
+# the data tars (tests/verify/vm_data.txt) each case reads, in that file's order (tests/verify/case_data.py
+# derives them from the tars' file lists; tools/colab/colab_suite.sh --cases fetches only these)
+DATA = {
+    'ideal_hill2d_x_fp64_cpu': 'ideal_data.tar,v05_files_links.tar',
+    'ideal_grav2d_x_fp64_cpu': 'ideal_data.tar,v05_files_links.tar',
+    'ideal_quarter_ss_fp64_cpu': 'ideal_data.tar,v05_files_links.tar',
+    'ideal_quarter_ss_open_fp64_cpu': 'v05_suite_refs.tar',
+    'ideal_quarter_ss_k2_fp64_cpu': 'v05_suite_refs.tar',
+    'ideal_quarter_ss_k2_isf0_fp64_cpu': 'v05_suite_refs.tar',
+    'ideal_squall2d_x_fp64_cpu': 'v05_suite_refs.tar',
+    'ideal_squall2d_y_fp64_cpu': 'v05_suite_refs.tar',
+    'ideal_quarter_ss_sym_fp64_cpu': 'v05_suite_refs.tar',
+    'ideal_grav2d_x_sym_fp64_cpu': 'v05_suite_refs.tar',
+    'ideal_squall2d_x_sym_fp64_cpu': 'v05_suite_refs.tar',
+    'ideal_squall2d_x_fp64_cuda': 'v05_suite_refs.tar',
+    'ideal_squall2d_x_fp32': 'ideal_data.tar',
+    'ideal_quarter_ss_fp64_cuda': 'ideal_data.tar,v05_files_links.tar',
+    'ideal_hill2d_x_fp64_cuda': 'ideal_data.tar,v05_files_links.tar',
+    'ideal_grav2d_x_fp64_cuda': 'ideal_data.tar,v05_files_links.tar',
+    'ideal_quarter_ss_open_fp64_cuda': 'v05_suite_refs.tar',
+    'ideal_quarter_ss_k2_fp64_cuda': 'v05_suite_refs.tar',
+    'ideal_quarter_ss_k2_isf0_fp64_cuda': 'v05_suite_refs.tar',
+    'ideal_squall2d_y_fp64_cuda': 'v05_suite_refs.tar',
+    'ideal_quarter_ss_sym_fp64_cuda': 'v05_suite_refs.tar',
+    'ideal_grav2d_x_sym_fp64_cuda': 'v05_suite_refs.tar',
+    'ideal_squall2d_x_sym_fp64_cuda': 'v05_suite_refs.tar',
+}

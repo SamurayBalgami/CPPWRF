@@ -68,3 +68,22 @@ STATUS = [
      'ALBEDO = SNOALB)',
      '1 h'),
 ]
+
+# the data tars (tests/verify/vm_data.txt) each case reads, in that file's order (tests/verify/case_data.py
+# derives them from the tars' file lists; tools/colab/colab_suite.sh --cases fetches only these)
+DATA = {
+    'real_p1_r8_fp64_cpu': 'v05_files_data.tar,v05_files_links.tar',
+    'real_p1_r8_fp64_cpu_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_p1t2_r8_fp64_cpu_1h': 'p1t2_data.tar,v05_suite_refs.tar',
+    'real_p1t2_r8_fp64_cuda_1h': 'p1t2_data.tar,v05_suite_refs.tar',
+    'real_a01_r8_fp64_cpu': 'suite_data.tar,port_a01_data.tar,v05_files_links.tar',
+    'real_a01_r8_fp64_cpu_1h': 'suite_data.tar,port_a01_data.tar',
+    'real_a01_r8_fp64_cuda_1h': 'suite_data.tar,port_a01_data.tar',
+    'real_a01v_r8_fp64_cpu_1h': 'suite_data.tar,port_a01_data.tar,v05_files_links.tar',
+    'real_a01v_r8_fp64_cuda_1h': 'suite_data.tar,port_a01_data.tar,v05_files_links.tar',
+    'real_p2_r8_fp64_cpu_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_p7_r8_fp64_cpu_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_p8_r8_fp64_cpu_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_p1_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_p1_fp32_1h': 'suite_data.tar',
+}

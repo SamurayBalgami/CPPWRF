@@ -68,3 +68,22 @@ STATUS = [
     ('P8', 'P2 with Grell-Freitas-Li (deep and shallow)', '1 h'),
     ('P9', 'P1 with MYJ PBL and the Eta surface layer', '1 h'),
 ]
+
+# the data tars (tests/verify/vm_data.txt) each case reads, in that file's order (tests/verify/case_data.py
+# derives them from the tars' file lists; tools/colab/colab_suite.sh --cases fetches only these)
+DATA = {
+    'real_p6_r8_fp64_cpu': 'port_a06_data.tar,port_c01_data.tar,v05_files_data.tar,v05_files_links.tar',
+    'real_p6_r8_fp64_cpu_1h': 'port_a06_data.tar,port_c01_data.tar,v05_suite_refs.tar',
+    'real_p6_fp32_1h': 'suite_data.tar',
+    'real_p6_r8_fp64_cuda_1h': 'port_a06_data.tar,port_c01_data.tar,v05_suite_refs.tar',
+    'real_p7_r8_fp64_cpu': 'v05_files_data.tar,v05_files_links.tar',
+    'real_p7_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_p7_fp32_1h': 'suite_data.tar',
+    'real_p8_r8_fp64_cpu_10min': 'v05_files_data.tar,v05_files_links.tar',
+    'real_p8_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_p8_fp32_1h': 'suite_data.tar',
+    'real_p9_r8_fp64_cpu': 'v05_files_data.tar,v05_files_links.tar',
+    'real_p9_r8_fp64_cpu_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_p9_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_p9_fp32_1h': 'suite_data.tar',
+}

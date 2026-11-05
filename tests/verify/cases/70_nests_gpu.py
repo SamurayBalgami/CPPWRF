@@ -15,3 +15,11 @@ CASES = [
      {d: f"{WR}/run_N2/wrfout_{d}_2026-10-12_00:00:00" for d in ("d01", "d02")}, 3600,
      {"d01.U": 5e-4, "d01.THM": 3e-6, "d02.U": 6e-4, "d02.THM": 3e-6}),
 ]
+
+# the data tars (tests/verify/vm_data.txt) each case reads, in that file's order (tests/verify/case_data.py
+# derives them from the tars' file lists; tools/colab/colab_suite.sh --cases fetches only these)
+DATA = {
+    'real_n3_r8_fp64_cuda_1h': 'n3_data.tar,v05_suite_refs.tar',
+    'real_n2_r8_fp64_cuda_1h': 'v05_suite_refs.tar,v05_files_links.tar',
+    'real_n2_fp32_1h': 'suite_data.tar',
+}

@@ -7,6 +7,8 @@ dycore, boundaries, diffusion or physics coupling.
                [--exact] [--jobs N]   (N CPU cases at once, each with OMP_NUM_THREADS threads) [--allow-skip] [--slow]
   wrf_suite.py --list   (every case with all its fields, then the special and restart checks)
   wrf_suite.py --status-table [FILE]   (docs/STATUS.md's table of the CPU FP64 cases; FILE: replace it there)
+  wrf_suite.py --data-for NAME[,NAME]  (the data tars these cases read, comma-joined in tests/verify/vm_data.txt's
+                                        order; tools/colab/colab_suite.sh --cases without --data)
 The cases are defined in tests/verify/cases/ (one file per group, see its __init__.py).
 
 Cases with tolerance 0 (CPU FP64) run with WRF history output and their wrfout files are compared with WRF's at
@@ -36,7 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 # the cases, one file per group (tests/verify/cases/NN_<group>.py), and the restart checks (cases/restarts.py);
 # WRF reference runs under ${CPPWRF_WRF_RUNS}, ideal-case references under ${CPPWRF_WRF_REF} (cases/common.py)
-from cases import CASES, RESTARTS, STATUS  # noqa: E402
+from cases import CASES, DATA, RESTARTS, STATUS  # noqa: E402
 from cases.common import WR, WREF  # noqa: E402,F401
 
 # the checks that are not in CASES: the Straka density current against WRF and the restart checks
@@ -265,7 +267,22 @@ def main():
                     "checks, and exit")
     ap.add_argument("--status-table", nargs="?", const="", metavar="FILE",
                     help="print docs/STATUS.md's case table (FILE: replace it there) and exit")
+    ap.add_argument("--data-for", metavar="NAME[,NAME]", help="print the data tars these cases (exact names) read and exit")
     a = ap.parse_args()
+    if a.data_for is not None:
+        names = [n for n in a.data_for.split(",") if n]
+        unknown = [n for n in names if n not in [c[0] for c in CASES] + SPECIAL]
+        none = [n for n in names if n not in unknown and not DATA.get(n)]  # '': its data are in no tar
+        if unknown or none:  # a misspelt case or one without its tars: no partial data list
+            print(f"ERROR {'no case named ' + ', '.join(unknown) if unknown else ''}"
+                  f"{'; ' if unknown and none else ''}{'no data tar recorded for ' + ', '.join(none) + ' (pass --data)' if none else ''}",
+                  file=sys.stderr)
+            sys.exit(2)
+        want = {t for n in names for t in DATA[n].split(",") if t}
+        vm = [x.strip() for x in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "vm_data.txt"))
+              if x.strip() and not x.startswith("#")]
+        print(",".join([t for t in vm if t in want] + sorted(want - set(vm))))
+        return
     if a.status_table is not None:
         status_table(a.status_table)
         return

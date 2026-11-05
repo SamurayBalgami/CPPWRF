@@ -19,3 +19,10 @@ CASES = [
 STATUS = [
     ('W1', 'active w_damping (dt 450 s)', '10 steps'),
 ]
+
+# the data tars (tests/verify/vm_data.txt) each case reads, in that file's order (tests/verify/case_data.py
+# derives them from the tars' file lists; tools/colab/colab_suite.sh --cases fetches only these)
+DATA = {
+    'wdamp_w1_fp64': 'suite_data.tar,v05_suite_refs.tar',
+    'wdamp_w1_fp64_cuda': 'suite_data.tar,v05_suite_refs.tar',
+}

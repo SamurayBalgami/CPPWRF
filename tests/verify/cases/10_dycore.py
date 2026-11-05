@@ -39,3 +39,17 @@ STATUS = [
     ('T1', 'R1 with diff_opt 2 / km_opt 2 (TKE)', '5 steps'),
     ('R1D6', 'R1 with diff_opt 1 / km_opt 4, damp_opt 1, diff_6th_opt 2', '10 min'),
 ]
+
+# the data tars (tests/verify/vm_data.txt) each case reads, in that file's order (tests/verify/case_data.py
+# derives them from the tars' file lists; tools/colab/colab_suite.sh --cases fetches only these)
+DATA = {
+    'real_r1_fp64_cpu': 'dycore_data.tar,v05_suite_refs.tar',
+    'real_r1d6_fp64_cpu': 'dycore_data.tar,v05_suite_refs.tar',
+    'real_r1d6_fp64_cuda': 'dycore_data.tar,v05_suite_refs.tar',
+    'real_r1_fp64_cuda': 'dycore_data.tar,v05_suite_refs.tar',
+    'real_t1_fp64_cpu': 'suite_data.tar,v05_suite_refs.tar',
+    'real_t1_fp64_cuda': 'suite_data.tar,v05_suite_refs.tar',
+    'real_r0_fp32_1h': 'suite_data.tar',
+    'real_r2_fp32_1h': 'suite_data.tar',
+    'real_r3_fp32_1h': 'suite_data.tar',
+}

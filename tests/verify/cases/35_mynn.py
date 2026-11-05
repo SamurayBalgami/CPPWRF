@@ -89,3 +89,23 @@ STATUS = [
      '1)',
      '1 h'),
 ]
+
+# the data tars (tests/verify/vm_data.txt) each case reads, in that file's order (tests/verify/case_data.py
+# derives them from the tars' file lists; tools/colab/colab_suite.sh --cases fetches only these)
+DATA = {
+    'real_mynn_r8_fp64_cpu': 'mynn_data.tar,v05_files_data.tar,v05_files_links.tar',
+    'real_mynn_r8_fp64_cpu_1h': 'mynn_data.tar,v05_suite_refs.tar',
+    'real_mynn_r8_fp64_cuda_1h': 'mynn_data.tar,v05_suite_refs.tar',
+    'real_mynnsf1_r8_fp64_cpu': 'port_a06_data.tar,port_c01_data.tar,v05_iofields.tar,v05_files_data.tar,v05_files_links.tar',
+    'real_mynnsf1_r8_fp64_cpu_1h': 'port_a06_data.tar,port_c01_data.tar,v05_suite_refs.tar,v05_iofields.tar',
+    'real_mynnsf1_r8_fp64_cuda_1h': 'port_a06_data.tar,port_c01_data.tar,v05_suite_refs.tar,v05_iofields.tar',
+    'real_mynnsf2_r8_fp64_cpu': 'port_a06_data.tar,port_c01_data.tar,v05_iofields.tar,v05_files_data.tar,v05_files_links.tar',
+    'real_mynnsf2_r8_fp64_cpu_1h': 'port_a06_data.tar,port_c01_data.tar,v05_suite_refs.tar,v05_iofields.tar',
+    'real_mynnsf2_r8_fp64_cuda_1h': 'port_a06_data.tar,port_c01_data.tar,v05_suite_refs.tar,v05_iofields.tar',
+    'real_mynnx1_r8_fp64_cpu': 'port_a06_data.tar,port_c01_data.tar,v05_suite_refs2.tar,v05_iofields.tar',
+    'real_mynnx1_r8_fp64_cpu_1h': 'port_a06_data.tar,port_c01_data.tar,v05_suite_refs2.tar,v05_iofields.tar',
+    'real_mynnx1_r8_fp64_cuda_1h': 'port_a06_data.tar,port_c01_data.tar,v05_suite_refs2.tar,v05_iofields.tar',
+    'real_mynnx2_r8_fp64_cpu': 'port_a06_data.tar,port_c01_data.tar,v05_suite_refs2.tar,v05_iofields.tar',
+    'real_mynnx2_r8_fp64_cpu_1h': 'port_a06_data.tar,port_c01_data.tar,v05_suite_refs2.tar,v05_iofields.tar',
+    'real_mynnx2_r8_fp64_cuda_1h': 'port_a06_data.tar,port_c01_data.tar,v05_suite_refs2.tar,v05_iofields.tar',
+}

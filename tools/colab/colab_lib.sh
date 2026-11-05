@@ -91,5 +91,6 @@ cj_results() {
   tar xzf "$OUT/results.tar.gz" -C "$OUT" && rm -f "$OUT/results.tar.gz" "$OUT/src.tar.gz"
   echo "[$TAG] results in $OUT"; cat "$OUT/versions.txt" 2>/dev/null || true
   awk '$1 == "TAR" {printf "[%s] data %s: %.0f MB in %d s from %s\n", tag, $2, $3 / 1e6, $4, $5}
-       $1 == "DRIVE" {printf "[%s] to Drive: %s (%.0f MB)\n", tag, $2, $3 / 1e6}' tag="$TAG" "$OUT/data.txt" 2>/dev/null || true
+       $1 == "DRIVE" {printf "[%s] to Drive: %s (%.0f MB)\n", tag, $2, $3 / 1e6}
+       $1 == "DATA_TOTAL" {printf "[%s] data: %s\n", tag, substr($0, 12)}' tag="$TAG" "$OUT/data.txt" 2>/dev/null || true
 }

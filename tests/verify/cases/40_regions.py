@@ -40,3 +40,14 @@ STATUS = [
     ('V2', 'Arctic (Svalbard), polar stereographic, 15 km, P4 physics (sea ice, glacier land ice)', '6 h'),
     ('V3', 'Alps, Lambert, 3 km, Thompson + MYJ + Eta + Noah-MP + RRTMG (radt 5), no cumulus', '2 h'),
 ]
+
+# the data tars (tests/verify/vm_data.txt) each case reads, in that file's order (tests/verify/case_data.py
+# derives them from the tars' file lists; tools/colab/colab_suite.sh --cases fetches only these)
+DATA = {
+    'real_v1_r8_fp64_cpu_2h': 'suite_data.tar,v05_suite_refs.tar,v05_files_links.tar',
+    'real_v2_r8_fp64_cpu_2h': 'suite_data.tar,v05_suite_refs.tar,v05_files_links.tar',
+    'real_v3_r8_fp64_cpu_30min': 'suite_data.tar,v05_suite_refs.tar,v05_files_links.tar',
+    'real_v1_r8_fp64_cuda_2h': 'suite_data.tar,v05_suite_refs.tar,v05_files_links.tar',
+    'real_v2_r8_fp64_cuda_2h': 'suite_data.tar,v05_suite_refs.tar,v05_files_links.tar',
+    'real_v3_r8_fp64_cuda_30min': 'suite_data.tar,v05_suite_refs.tar,v05_files_links.tar',
+}

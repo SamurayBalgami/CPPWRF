@@ -444,7 +444,9 @@ on AMD a build with `CPPWRF_PORTABLE_LIBMVEC` gives the same CPU results, see be
   `tools/colab/drive_sync.sh` copies them from the bucket on a Colab runtime; a tar not yet on Drive is read from
   the bucket with a read-only token (`tools/colab/gcs_token.py`) and then put on Drive. Same options as
   `gcp_run.sh` (`--cases`, `--data`, `--out`, `--slow`), plus `--jobs` / `--threads`, `--rev` (another commit),
-  `--keep` / `--session` (reuse a runtime with its chroot and tars). Exit status 0 only for a complete suite
+  `--keep` / `--session` (reuse a runtime with its chroot and tars). Without `--data` the tars come from the case
+  registry: with `--cases` only the tars those cases read (`DATA` in `tests/verify/cases/*.py`,
+  `tests/verify/wrf_suite.py --data-for`), else every tar of `vm_data.txt`. Exit status 0 only for a complete suite
   without FAIL or SKIP (`tools/gcp/suite_status.sh`, as `gcp_run.sh`). The full suite takes about 2.5 h on an L4
   (data from Drive ~25 min, 4 suite jobs x 3 threads; 6 jobs ran out of the 52 GB) and gives the same PASS / FAIL /
   SKIP lists as the GCP VM.
@@ -461,10 +463,17 @@ on AMD a build with `CPPWRF_PORTABLE_LIBMVEC` gives the same CPU results, see be
 # once: the Drive remote (browser login; scope drive.file), then the tars of vm_data.txt to Drive
 rclone config create cppwrf-drive drive scope=drive.file
 CPPWRF_GCP_BUCKET=cppwrf-data-244589 tools/colab/drive_sync.sh
-# the full suite
-CPPWRF_GCP_BUCKET=cppwrf-data-244589 timeout 43200 tools/colab/colab_suite.sh \
-  --data $(grep -v '^#' tests/verify/vm_data.txt | paste -sd,)
+# the full suite (every tar of vm_data.txt)
+CPPWRF_GCP_BUCKET=cppwrf-data-244589 timeout 43200 tools/colab/colab_suite.sh
+# some cases, with only the tars they read
+CPPWRF_GCP_BUCKET=cppwrf-data-244589 timeout 10800 tools/colab/colab_suite.sh --cases real_r1_fp64_cpu,real_n3_r8_fp64_cpu
 ```
+
+The suite's cases are defined in `tests/verify/cases/` (one file per group, `NN_<group>.py`, loaded in the order of
+their names; `wrf_suite.py --list` prints them all). A group file defines `CASES`, `DATA` (the data tars each case
+reads, in `vm_data.txt`'s order) and `STATUS` (its rows of the case table in docs/STATUS.md, which
+`wrf_suite.py --status-table docs/STATUS.md` writes). `tests/verify/case_data.py LISTDIR [--write]` derives `DATA`
+from the tars' file lists (`tools/colab/colab_tarlist.sh` reads them on a Colab runtime) and checks or writes it.
 
 ---
 

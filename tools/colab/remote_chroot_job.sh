@@ -12,7 +12,8 @@
 # from the bucket, and is then put on Drive for the next runs. The tars are unpacked into /opt/job/data in DATA's order
 # (a later one replaces an earlier one's files), in/ is copied to /opt/job, and `bash /opt/job/body.sh /opt/job ARG...`
 # runs in the chroot, as the GCP VMs' jobs in /opt/job. Logs: /content/cpu/job.log, versions.txt (packages, CPU,
-# RAM, disk), mem.log (used RAM and the largest processes every minute), data.txt ("TAR name bytes seconds source"),
+# RAM, disk), mem.log (used RAM and the largest processes every minute), data.txt ("TAR name bytes seconds source",
+# "DATA_TOTAL seconds" from the first fetch to the last tar unpacked),
 # setup.out (not Intel, a missing tar, a failed setup; the job's own setup.out is appended); the job's *.log, *.out
 # and *.txt and these in /content/cpu/results.tar.gz; the job's /opt/job/fetch/ (large results) moves to
 # /content/cpu/fetch/, the files of /opt/job/drive/ go to the Drive folder (data.txt: "DRIVE name bytes").
@@ -88,6 +89,7 @@ fetch() {
   echo "TAR $t $(stat -c %s "$T/$t") $((SECONDS - t0)) $src" >> $C/data.txt
 }
 rm -f $T/*.failed
+DT0=$SECONDS
 for t in ${DATA//,/ }; do
   while [ "$(jobs -rp | wc -l)" -ge 3 ]; do sleep 5; done
   fetch "$t" &
@@ -98,6 +100,7 @@ for t in ${DATA//,/ }; do
   else echo "DATA_FAILED $t" >> $C/setup.out; fi
 done
 wait
+echo "DATA_TOTAL $((SECONDS - DT0)) s for $(echo ${DATA//,/ } | wc -w) tars (fetched and unpacked)" >> $C/data.txt
 rm -f $C/gcs.tok
 touch $C/data_done
 for f in $T/*.todrive; do  # the tars that came from the bucket, to Drive next to the job

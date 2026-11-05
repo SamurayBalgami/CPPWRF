@@ -35,3 +35,17 @@ STATUS = [
      'history every 3 h, CPPWRF restarted in the middle from its own wrfrst files',
      '24 h; 72 h (P4, P6, P9)'),
 ]
+
+# the data tars (tests/verify/vm_data.txt) each case reads, in that file's order (tests/verify/case_data.py
+# derives them from the tars' file lists; tools/colab/colab_suite.sh --cases fetches only these); the long runs' tars
+# are not in vm_data.txt (gcp_run.sh --slow) and were not listed: from the comment above, unchecked
+DATA = {
+    'real_p4_r8_fp64_cpu_24h': 'long_data.tar',
+    'real_p6_r8_fp64_cpu_24h': 'long_data.tar',
+    'real_p9_r8_fp64_cpu_24h': 'long_data.tar',
+    'real_p4_r8_fp64_cpu_72h': 'long72_data.tar',
+    'real_p6_r8_fp64_cpu_72h': 'long72_data.tar',
+    'real_p9_r8_fp64_cpu_72h': 'long72_data.tar',
+    'real_n3_r8_fp64_cpu_24h': 'long_data.tar',
+    'real_n3_r8_fp64_cpu_72h': 'long72n3_data.tar',
+}

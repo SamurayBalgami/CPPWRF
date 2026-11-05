@@ -58,3 +58,21 @@ STATUS = [
     ('P3', 'P1 + RRTMG LW/SW (radt 1 min)', '3 steps'),
     ('P4', 'P2 + WSM6 + RRTMG (cloudy, effective radii) + diff_opt 1 / km_opt 4', '1 h'),
 ]
+
+# the data tars (tests/verify/vm_data.txt) each case reads, in that file's order (tests/verify/case_data.py
+# derives them from the tars' file lists; tools/colab/colab_suite.sh --cases fetches only these)
+DATA = {
+    'real_p5_r8_fp64_cpu': 'suite_data.tar,v05_suite_refs.tar,v05_files_links.tar',
+    'real_p5_r8_fp64_cpu_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_p5_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_p2_r8_fp64_cpu': 'v05_files_data.tar,v05_files_links.tar',
+    'real_p2_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_p2_fp32_1h': 'suite_data.tar',
+    'real_p3_r8_fp64_cpu': 'v05_files_data.tar,v05_files_links.tar',
+    'real_p3_fp32_1h': 'suite_data.tar',
+    'real_p3_r8_fp64_cuda_1h': 'port_g01_data.tar',
+    'real_p4_r8_fp64_cpu': 'v05_files_data.tar,v05_files_links.tar',
+    'real_p4_r8_fp64_cpu_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_p4_r8_fp64_cuda_1h': 'suite_data.tar,v05_suite_refs.tar',
+    'real_p4_fp32_1h': '',
+}

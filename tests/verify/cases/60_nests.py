@@ -65,3 +65,21 @@ STATUS = [
     ('N2S1 / N2S2', 'N2 with smooth_option 1 / 2 (smoothing of the fed-back fields, ht included)', '1 h'),
     ('N3', 'two-way nest with the P4 physics on both domains (physics feedback, nest ozone from the parent)', '1 h'),
 ]
+
+# the data tars (tests/verify/vm_data.txt) each case reads, in that file's order (tests/verify/case_data.py
+# derives them from the tars' file lists; tools/colab/colab_suite.sh --cases fetches only these)
+DATA = {
+    'real_n1_r8_fp64_cpu': 'suite_data.tar,v05_files_data.tar',
+    'real_n1_r8_fp64_cuda': 'suite_data.tar,v05_files_data.tar',
+    'real_n1_fp32_1h': '',
+    'real_n2_r8_fp64_cpu': 'suite_data.tar,v05_files_data.tar',
+    'real_n2_r8_fp64_cpu_1h': 'v05_suite_refs.tar,v05_files_links.tar',
+    'real_n2s1_r8_fp64_cpu': 'nest_data.tar,v05_files_data.tar,v05_files_links.tar',
+    'real_n2s1_r8_fp64_cpu_1h': 'nest_data.tar,v05_suite_refs.tar',
+    'real_n2s1_r8_fp64_cuda_1h': 'nest_data.tar,v05_suite_refs.tar',
+    'real_n2s2_r8_fp64_cpu': 'nest_data.tar,v05_files_data.tar,v05_files_links.tar',
+    'real_n2s2_r8_fp64_cpu_1h': 'nest_data.tar,v05_suite_refs.tar',
+    'real_n2s2_r8_fp64_cuda_1h': 'nest_data.tar,v05_suite_refs.tar',
+    'real_n3_r8_fp64_cpu': 'n3_data.tar,v05_suite_refs.tar',
+    'real_n3_r8_fp64_cpu_1h': 'n3_data.tar,v05_suite_refs.tar',
+}
