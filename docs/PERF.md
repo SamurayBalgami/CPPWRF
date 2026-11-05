@@ -384,3 +384,57 @@ and gains 0-2 %. The memory grows by the scalar work fields of up to 8 species (
 Proof: every cuda_dp case against WRF at tolerance 0 (79 PASS), the 16 FP32 cases with base and new builds (120
 snapshots and 3 restart files byte-identical), the CPU suite cases of the touched code at tolerance 0.
 
+
+## RRTMG batch restructuring (AR1 rank 3, F05; measured, Colab G4)
+
+The device RRTMG batches (`RrtmgLwBatch`, `RrtmgSwBatch`) ran their stages in chunks of 2048 columns: 6 chunks for
+the 10 591 columns of P4, each stage launch a grid of 32 blocks of 64 threads (32 of the G4's 188 SMs). Now:
+
+- **All columns in one chunk** where the device memory allows (`rrtmg_chunk_columns`, phys/ra_rrtmg_common/
+  batch_memory.cpp: the work arrays may take an eighth of the device memory and at most a quarter of what is free,
+  at least 2048 columns; above that the fewest equal chunks). Per step 5 LW and 4 SW launches instead of 30 and 24.
+  The per-column prep, which is latency-bound (the 2048-column launch and the 10 591-column launch take the same
+  ~5 ms), runs once per step instead of 6 times.
+- **Work arrays and tables shared**: one double and one int work buffer for every LW / SW batch of every domain
+  (they run one after another on the one stream; the buffers grow to the largest request when a batch is
+  constructed, outside the time loop), and one device copy per table set (LW, SW tables and constants) for all
+  domains. The stages read the McICA cloud arrays only under the flags the same call set (as before, when a
+  domain's last, smaller chunk reused the arrays of the full chunks with another stride).
+- **LW setcoef per (column, layer)** (`KLwSetcoef`, the body of setcoef's layer loop as `rrtmg_lw_setcoef_layer`,
+  laytrop counted per layer) after the per-column prep: KLwPrep 4.3 -> (chunking) 5.4 -> 4.3 ms per step in P4.
+
+Same kernels and arithmetic per column (rrtmg_*_batch.cpp keep `--fmad=false` in both precisions); the CPU column
+driver runs the same setcoef loop in order.
+
+Stepping s/h, 1 h, no history output, base origin/main 2afa191 / port/F05 df400ae, built in the same session, each
+twice, interleaved; graph nodes per graph launch (`CPPWRF_GRAPHS=stats`; N3: per parent step's graph launches);
+peak device memory from nvidia-smi:
+
+| Case | base s/h | new s/h | gain | graph nodes | peak MiB |
+|---|---|---|---|---|---|
+| P4 FP64 (radt 1, night) | 5.055, 5.074 | 2.963, 2.953 | 1.71x | 420 -> 376 | 21193 -> 23711 |
+| D0 FP64 (radt 15) | 2.373, 2.370 | 2.256, 2.253 | 1.05x | 386.8 -> 383.9 | 23633 -> 26151 |
+| N3 FP64 (radt 1, two domains) | 13.897, 13.870 | 9.764, 9.763 | 1.42x | 389.3 -> 367.3 | 24075 -> 25261 |
+| N3 FP32 | 9.617, 9.620 | 4.956, 4.954 | 1.94x | 536.3 -> 514.3 | 23177 -> 24359 |
+| V1 FP64 (radt 1, sunrise: RRTMG SW active) | 10.485, 10.478 | 5.603, 5.603 | 1.87x | 420 -> 376 | 21193 -> 23711 |
+
+`CPPWRF_KTIME=1` (time per kernel type, 1 h = 60 steps; ms per step):
+
+| Kernel | P4 base | P4 new | V1 base | V1 new |
+|---|---|---|---|---|
+| KLwPrep | 29.2 | 4.3 | 29.0 | 4.3 |
+| KLwBand<60> | 19.9 | 10.7 | 18.9 | 10.4 |
+| KLwLayer | 6.1 | 5.1 | 6.2 | 5.2 |
+| KLwFinish | 0.86 | < 0.6 | 0.86 | < 0.6 |
+| KSwPrep | - | - | 46.9 | 8.3 |
+| KSwGpoint<48> | - | - | 42.2 | 35.0 |
+| all kernels | 87.6 | 51.9 | 177.6 | 96.1 |
+
+Memory: the shared work buffers hold all columns (P4: ~4.0 GB for the SW layout, the larger one) instead of the
+two 2048-column buffers per domain (~1.5 GB): +2.5 GB for P4 and D0, +1.2 GB for N3 (whose two domains now share
+them). What remains in the radiation is FP64 arithmetic at 1/64 rate (KLwBand, KLwLayer, KSwGpoint); the SW prep
+still runs taumol_sw per column (8.3 ms per daytime step in V1), the next candidate for a per-layer split.
+
+Proof: every cuda_dp case against WRF at tolerance 0 (SUITE PASS 79 FAIL 0 SKIP 0, v05_files_links.tar included),
+the 16 FP32 cases with base and new builds (120 snapshots and 3 restart .nc files byte-identical), the CPU suite cases
+of every radiation option and the smoke set at tolerance 0 (15 PASS).
