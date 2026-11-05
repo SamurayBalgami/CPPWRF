@@ -72,39 +72,33 @@ runs use WRF built with `-fdefault-real-8 -fdefault-double-8`, so that DOUBLE PR
 
 CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 
+<!-- generated: tests/verify/wrf_suite.py --status-table docs/STATUS.md (rows: STATUS in tests/verify/cases) -->
 | Case | Configuration | Duration |
 |---|---|---|
 | R1 | dynamics only | 5 steps |
-| W1 | active w_damping (dt 450 s) | 10 steps |
+| T1 | R1 with diff_opt 2 / km_opt 2 (TKE) | 5 steps |
+| R1D6 | R1 with diff_opt 1 / km_opt 4, damp_opt 1, diff_6th_opt 2 | 10 min |
 | P1 | sfclayrev + Noah + YSU | 1 h |
 | A01 / A01V | P1 / V2 with usemonalb and rdlai2d (wrfinput ALBBCK and LAI; V2: snow-covered points start with ALBEDO = SNOALB) | 1 h |
+| P5 | P1 + WSM6 + diff_opt 1 / km_opt 4 | 1 h |
 | P2 | P1 + Kain-Fritsch | 1 h |
 | P3 | P1 + RRTMG LW/SW (radt 1 min) | 3 steps |
 | P4 | P2 + WSM6 + RRTMG (cloudy, effective radii) + diff_opt 1 / km_opt 4 | 1 h |
 | A05 / A05C / A05G | P4 with cu_rad_feedback (Kain-Fritsch cloud fraction and water in RRTMG) / P4 with cldovrlp 0 (RRTMG without clouds) / P8 + WSM6 + RRTMG with cu_rad_feedback (Grell-Freitas QC_CU / QI_CU) | 1 h |
-| KESSKF | P4 with Kessler instead of WSM6 (Kain-Fritsch rain in Kessler's split sedimentation steps) | 1 h |
 | A08 | P4 with bucket_mm 0.05, bucket_J 1e4 and prec_acc_dt 2 min (RAINC / RAINNC and the LW accumulations tip at the first step: I_RAINC, I_ACLW*; PREC_ACC_C, PREC_ACC_NC, SNOW_ACC_NC) | 3 min, 1 h |
 | A09 | P4 with output_diagnostics = 1, auxhist3_interval 3 min (the auxhist3 files T2MIN ... RAINNCVSTD compared as wrfout) | 3 min, 1 h, 1 h restarted at 30 min |
-| DUD | V1 with the Dudhia shortwave and RRTMG longwave (00 UTC: sunrise over the Bay of Bengal, the whole domain sunlit within the hour) | 1 h |
-| RRTM | V1 with the RRTM longwave and RRTMG shortwave | 3 steps, 1 h |
-| P5 | P1 + WSM6 + diff_opt 1 / km_opt 4 | 1 h |
-| P6 | P5 with Thompson | 1 h |
 | C01 | P6 with the aerosol-aware Thompson (mp_physics 28, aer_init_opt 0: thompson_init's QNWFA / QNIFA profiles and QNWFA2D emission) | 1 h |
 | RADW / RADT | P4 (WSM6) / P6 (Thompson) with do_radar_ref 1 (REFL_10CM at the history times: radar_init's bins, Rayleigh scattering of rain, snow and graupel, melting snow and graupel as Maxwell-Garnett water-ice spheroids) | 3 min, 1 h |
+| KESSKF | P4 with Kessler instead of WSM6 (Kain-Fritsch rain in Kessler's split sedimentation steps) | 1 h |
+| DUD | V1 with the Dudhia shortwave and RRTMG longwave (00 UTC: sunrise over the Bay of Bengal, the whole domain sunlit within the hour) | 1 h |
+| RRTM | V1 with the RRTM longwave and RRTMG shortwave | 3 steps, 1 h |
+| P6 | P5 with Thompson | 1 h |
 | P7 | P2 with New Tiedtke | 1 h |
 | P8 | P2 with Grell-Freitas-Li (deep and shallow) | 1 h |
 | P9 | P1 with MYJ PBL and the Eta surface layer | 1 h |
 | MYNN | P6 with the MYNN surface layer and the MYNN-EDMF PBL (icloud_bl 1) + RRTMG (radt 10 min) | 1 h |
 | MYNNSF1 / MYNNSF2 | MYNN with the revised MM5 / Eta surface layer instead of the MYNN one | 1 h |
 | MYNNX1 / MYNNX2 | MYNN with non-default MYNN options (X1: tkeadvect, cloudpdf 1, mixlength 2, closure 3.0, edmf_tke 1, mixqt 1, output 1, tke_budget 1, sfcflux land 2 / water 3, grav_settling 2; X2: edmf 0, cloudmix 0, cloudpdf 0, mixlength 0, closure 2.5, ess 0, mixscalars 1, sfcflux land 3 / water 4, grav_settling 1) | 1 h |
-| NMP1 | P1 with Noah-MP | 1 h |
-| SLAB1 / SLAB4 | P1 / P4 with the 5-layer thermal diffusion land surface (sf_surface_physics 1; inputs from real.exe) | 1 h |
-| T1 | R1 with diff_opt 2 / km_opt 2 (TKE) | 5 steps |
-| R1D6 | R1 with diff_opt 1 / km_opt 4, damp_opt 1, diff_6th_opt 2 | 10 min |
-| N1 | one-way nest (both domains) | 3 parent steps |
-| N2 | two-way nest (both domains) | 1 h |
-| N2S1 / N2S2 | N2 with smooth_option 1 / 2 (smoothing of the fed-back fields, ht included) | 1 h |
-| N3 | two-way nest with the P4 physics on both domains (physics feedback, nest ozone from the parent) | 1 h |
 | V1 | tropics (Bay of Bengal), Mercator, 15 km, P4 physics | 6 h |
 | V2 | Arctic (Svalbard), polar stereographic, 15 km, P4 physics (sea ice, glacier land ice) | 6 h |
 | V3 | Alps, Lambert, 3 km, Thompson + MYJ + Eta + Noah-MP + RRTMG (radt 5), no cumulus | 2 h |
@@ -114,7 +108,14 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | D0 / D0V | WRF's default em_real namelist (physics_suite CONUS, fractional sea ice, gwd_opt 1, diff_opt 2 / km_opt 4, w_damping 0) on the P2 / V2 domains, configuration from tools/wrf2cppwrf.py | 6 h |
 | SU1 / SU2 | D0V with sst_update 1 (wrflowinp from real.exe, read every 6 h); SU2: changed sea ice at the start (water/ice transitions) | 7 h / 20 min |
 | HY1 | P1 with hypsometric_opt 1 (real.exe and wrf.exe) | 1 h |
+| SLAB1 / SLAB4 | P1 / P4 with the 5-layer thermal diffusion land surface (sf_surface_physics 1; inputs from real.exe) | 1 h |
+| NMP1 | P1 with Noah-MP | 1 h |
+| N1 | one-way nest (both domains) | 3 parent steps |
+| N2 | two-way nest (both domains) | 1 h |
+| N2S1 / N2S2 | N2 with smooth_option 1 / 2 (smoothing of the fed-back fields, ht included) | 1 h |
+| N3 | two-way nest with the P4 physics on both domains (physics feedback, nest ozone from the parent) | 1 h |
 | P4, P6, P9, N3 long runs | inputs from real.exe for 24 h / 72 h (wrfbdy every 6 h; 24-72 h from the GFS forecast through WPS), history every 3 h, CPPWRF restarted in the middle from its own wrfrst files | 24 h; 72 h (P4, P6, P9) |
+| W1 | active w_damping (dt 450 s) | 10 steps |
 
 V1-V3, T6, G2, F1, F2, D0, D0V, SU1 and SU2 are compared in every wrfout variable over the whole run; V1-V3 start from the
 global GFS of 2026-10-12 00 UTC through WPS, so the domains, projections and surface types differ from the P

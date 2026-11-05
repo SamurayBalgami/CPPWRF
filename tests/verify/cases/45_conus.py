@@ -1,0 +1,111 @@
+"""WRF's default namelist options (physics_suite CONUS): T6, G2, F1 / F2, D0 / D0V, SU1 / SU2.
+
+CASES: see tests/verify/cases/__init__.py."""
+from cases.common import WR  # noqa: F401
+
+CASES = [
+    # The options of WRF's default namelist (test/em_real, physics_suite CONUS): T6 = P2 with Tiedtke
+    # (cu_physics = 6), G2 = P2 with GWDO (gwd_opt = 1; ELVMAX = HGT + 3 VAR in the wrfinput, WPS 4.6 writes
+    # none), F1 / F2 = V2 with fractional sea ice (real.exe run again with fractional_seaice = 1) and
+    # sfclayrev + YSU / Eta + MYJ. Bit-identical in every wrfout variable over 3 h.
+    ("real_t6_r8_fp64_cpu", "cpu_dp", "configs/real_t6_r8.ini", [],
+     f"{WR}/run_T6_r8/steps/wrfout_d01_2026-10-12_00:00:00", 600,
+     {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
+    ("real_t6_r8_fp64_cpu_3h", "cpu_dp", "configs/real_t6_r8.ini",
+     ["run.run_time=10800", "real.dir=" + f"{WR}/run_T6_r8", "output.out_interval=30", "output.diag_interval=30"],
+     f"{WR}/run_T6_r8/wrfout_d01_2026-10-12_00:00:00", 10800, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    ("real_t6_r8_fp64_cuda_1h", "cuda_dp", "configs/real_t6_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_T6_r8", "output.out_interval=30", "output.diag_interval=30"],
+     f"{WR}/run_T6_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    ("real_g2_r8_fp64_cpu", "cpu_dp", "configs/real_g2_r8.ini", [],
+     f"{WR}/run_G2_r8/steps/wrfout_d01_2026-10-12_00:00:00", 180,
+     {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0}),
+    ("real_g2_r8_fp64_cpu_3h", "cpu_dp", "configs/real_g2_r8.ini",
+     ["run.run_time=10800", "real.dir=" + f"{WR}/run_G2_r8", "output.out_interval=30", "output.diag_interval=30"],
+     f"{WR}/run_G2_r8/wrfout_d01_2026-10-12_00:00:00", 10800, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    ("real_g2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_g2_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_G2_r8", "output.out_interval=30", "output.diag_interval=30"],
+     f"{WR}/run_G2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    ("real_f1_r8_fp64_cpu", "cpu_dp", "configs/real_f1_r8.ini", [],
+     f"{WR}/run_F1_r8/steps/wrfout_d01_2026-10-12_00:00:00", 300,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QICE": 0.0, "QSNOW": 0.0}),
+    ("real_f1_r8_fp64_cpu_3h", "cpu_dp", "configs/real_f1_r8.ini",
+     ["run.run_time=10800", "real.dir=" + f"{WR}/run_F1_r8", "output.out_interval=60", "output.diag_interval=60"],
+     f"{WR}/run_F1_r8/wrfout_d01_2026-10-12_00:00:00", 10800,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QICE": 0.0, "QSNOW": 0.0}),
+    ("real_f2_r8_fp64_cpu", "cpu_dp", "configs/real_f2_r8.ini", [],
+     f"{WR}/run_F2_r8/steps/wrfout_d01_2026-10-12_00:00:00", 300,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QICE": 0.0, "QSNOW": 0.0}),
+    ("real_f2_r8_fp64_cpu_3h", "cpu_dp", "configs/real_f2_r8.ini",
+     ["run.run_time=10800", "real.dir=" + f"{WR}/run_F2_r8", "output.out_interval=60", "output.diag_interval=60"],
+     f"{WR}/run_F2_r8/wrfout_d01_2026-10-12_00:00:00", 10800,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QICE": 0.0, "QSNOW": 0.0}),
+    ("real_f1_r8_fp64_cuda_1h", "cuda_dp", "configs/real_f1_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_F1_r8", "output.out_interval=60", "output.diag_interval=60"],
+     f"{WR}/run_F1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    ("real_f2_r8_fp64_cuda_1h", "cuda_dp", "configs/real_f2_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_F2_r8", "output.out_interval=60", "output.diag_interval=60"],
+     f"{WR}/run_F2_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    # D0 / D0V: WRF's default real-data namelist (physics_suite CONUS, fractional sea ice, gwd_opt 1, diff_opt 2 /
+    # km_opt 4) on the P2 and V2 domains; Thompson references from WRF -r8 -double-8.
+    ("real_d0_r8_fp64_cpu", "cpu_dp", "configs/real_d0_r8.ini", [],
+     f"{WR}/run_D0_r8/steps/wrfout_d01_2026-10-12_00:00:00", 1200,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0,
+      "QSNOW": 0.0, "QGRAUP": 0.0, "QNICE": 0.0, "QNRAIN": 0.0}),
+    ("real_d0_r8_fp64_cpu_6h", "cpu_dp", "configs/real_d0_r8.ini",
+     ["run.run_time=21600", "real.dir=" + f"{WR}/run_D0_r8", "output.out_interval=60", "output.diag_interval=60"],
+     f"{WR}/run_D0_r8/wrfout_d01_2026-10-12_00:00:00", 21600,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0,
+      "QSNOW": 0.0, "QGRAUP": 0.0, "QNICE": 0.0, "QNRAIN": 0.0}),
+    ("real_d0_r8_fp64_cuda_1h", "cuda_dp", "configs/real_d0_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_D0_r8", "output.out_interval=60", "output.diag_interval=60"],
+     f"{WR}/run_D0_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    ("real_d0v_r8_fp64_cpu", "cpu_dp", "configs/real_d0v_r8.ini", [],
+     f"{WR}/run_D0V_r8/steps/wrfout_d01_2026-10-12_00:00:00", 1200,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0,
+      "QSNOW": 0.0, "QGRAUP": 0.0, "QNICE": 0.0, "QNRAIN": 0.0}),
+    ("real_d0v_r8_fp64_cpu_6h", "cpu_dp", "configs/real_d0v_r8.ini",
+     ["run.run_time=21600", "real.dir=" + f"{WR}/run_D0V_r8", "output.out_interval=60", "output.diag_interval=60"],
+     f"{WR}/run_D0V_r8/wrfout_d01_2026-10-12_00:00:00", 21600,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0,
+      "QSNOW": 0.0, "QGRAUP": 0.0, "QNICE": 0.0, "QNRAIN": 0.0}),
+    ("real_d0v_r8_fp64_cuda_1h", "cuda_dp", "configs/real_d0v_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_D0V_r8", "output.out_interval=60", "output.diag_interval=60"],
+     f"{WR}/run_D0V_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    # SU1 = D0V with sst_update = 1 (wrflowinp_d01 every 6 h; the 7 h run includes the 6 h update).
+    ("real_su1_r8_fp64_cpu", "cpu_dp", "configs/real_su1_r8.ini", [],
+     f"{WR}/run_SU1_r8/steps/wrfout_d01_2026-10-12_00:00:00", 1200,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0,
+      "QSNOW": 0.0, "QGRAUP": 0.0, "QNICE": 0.0, "QNRAIN": 0.0}),
+    # SU2 = SU1's steps with a changed SEAICE in wrflowinp at the start (water to ice, ice to water, new fractions).
+    ("real_su2_r8_fp64_cpu", "cpu_dp", "configs/real_su1_r8.ini", ["real.dir=" + f"{WR}/run_SU2_r8/steps"],
+     f"{WR}/run_SU2_r8/steps/wrfout_d01_2026-10-12_00:00:00", 1200,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0,
+      "QSNOW": 0.0, "QGRAUP": 0.0, "QNICE": 0.0, "QNRAIN": 0.0}),
+    ("real_su2_r8_fp64_cuda", "cuda_dp", "configs/real_su1_r8.ini", ["real.dir=" + f"{WR}/run_SU2_r8/steps"],
+     f"{WR}/run_SU2_r8/steps/wrfout_d01_2026-10-12_00:00:00", 1200, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    ("real_su1_r8_fp64_cpu_7h", "cpu_dp", "configs/real_su1_r8.ini",
+     ["run.run_time=25200", "real.dir=" + f"{WR}/run_SU1_r8", "output.out_interval=30", "output.diag_interval=30"],
+     f"{WR}/run_SU1_r8/wrfout_d01_2026-10-12_00:00:00", 25200,
+     {"U": 0.0, "V": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QCLOUD": 0.0, "QRAIN": 0.0, "QICE": 0.0,
+      "QSNOW": 0.0, "QGRAUP": 0.0, "QNICE": 0.0, "QNRAIN": 0.0}),
+    ("real_su1_r8_fp64_cuda_1h", "cuda_dp", "configs/real_su1_r8.ini",
+     ["run.run_time=3600", "real.dir=" + f"{WR}/run_SU1_r8", "output.out_interval=30", "output.diag_interval=30"],
+     f"{WR}/run_SU1_r8/wrfout_d01_2026-10-12_00:00:00", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+]
+
+# the rows of docs/STATUS.md's table of the CPU FP64 cases (wrf_suite.py --status-table): case, configuration,
+# duration
+STATUS = [
+    ('T6', 'P2 with Tiedtke (cu_physics 6)', '3 h'),
+    ('G2', 'P2 with gravity wave drag (gwd_opt 1; ELVMAX = HGT + 3 VAR, WPS 4.6 writes none)', '3 h'),
+    ('F1 / F2', 'V2 with fractional sea ice (real.exe with fractional_seaice 1), sfclayrev + YSU / Eta + MYJ', '3 h'),
+    ('D0 / D0V',
+     "WRF's default em_real namelist (physics_suite CONUS, fractional sea ice, gwd_opt 1, diff_opt 2 / "
+     'km_opt 4, w_damping 0) on the P2 / V2 domains, configuration from tools/wrf2cppwrf.py',
+     '6 h'),
+    ('SU1 / SU2',
+     'D0V with sst_update 1 (wrflowinp from real.exe, read every 6 h); SU2: changed sea ice at the start '
+     '(water/ice transitions)',
+     '7 h / 20 min'),
+]
