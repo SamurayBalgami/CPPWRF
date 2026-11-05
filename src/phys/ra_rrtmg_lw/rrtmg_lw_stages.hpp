@@ -2,7 +2,8 @@
 // RRTMG_LWRAD (WRF module_ra_rrtmg_lw.F) for one column as independent stages, every per-column
 // array a strided view (src/phys/ra_rrtmg_common/strided.hpp):
 //   rrtmg_lw_prep     per column : RRTMG_LWRAD profiles, cloud properties, McICA subcolumns
-//                                  (mcica_subcol_lw, max-random overlap), inatm, setcoef, secdiff
+//                                  (mcica_subcol_lw, max-random overlap), inatm, secdiff, setcoef
+//   rrtmg_lw_setcoef_stage per layer: setcoef of one layer (GPU batch: prep leaves setcoef to it)
 //   rrtmg_lw_layer    per layer  : taumol, cldprmc, cloudy-layer flag
 //   rrtmg_lw_bandstage per band  : rtrnmc g-point loop of the band (rrtmg_lw_rtrnmc.hpp)
 //   rrtmg_lw_level    per level  : rtrnmc band sums
@@ -148,9 +149,10 @@ CPPWRF_HD inline void rrtmg_lw_inatm(int nlayers, const LwViews& v) {
 }
 
 // ---- stage 1: per column ------------------------------------------------------------------------
+// setcoef = false: setcoef is left to rrtmg_lw_setcoef_stage (one call per layer, the GPU batch) and laytrop to 0
 CPPWRF_FORCEINLINE void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumnIn& in, const LwViews& v,
                                       const RrtmgLwTables& CPPWRF_RESTRICT tables,
-                                      const RrtmgLwConsts& CPPWRF_RESTRICT kc) {
+                                      const RrtmgLwConsts& CPPWRF_RESTRICT kc, bool setcoef = true) {
   const int num_levels = c.num_levels, nlayers = c.nlayers;
   constexpr double deltap = 4.0;  // mb
   const double xland = in.xland;
@@ -416,6 +418,11 @@ CPPWRF_FORCEINLINE void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumn
 
   // inatm
   rrtmg_lw_inatm(nlayers, v);
+  rrtmg_lw_secdiff(v.dscal[0], v.secdiff);
+  if (!setcoef) {
+    v.iscal[0] = 0;
+    return;
+  }
   // setcoef
   int laytrop = 0;
   rrtmg_lw_setcoef(nlayers, 1, v.pavel, v.tavel, v.tz, in.tsk, v.semiss, v.coldry, v.wkl, v.wbrodl, laytrop, v.jp,
@@ -425,7 +432,26 @@ CPPWRF_FORCEINLINE void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumn
                    v.rat_n2oco2, v.rat_n2oco2_1, v.rat_o3co2, v.rat_o3co2_1, v.selffac, v.selffrac, v.indself,
                    v.forfac, v.forfrac, v.indfor, v.minorfrac, v.scaleminor, v.scaleminorn2, v.indminor, tables);
   v.iscal[0] = laytrop;
-  rrtmg_lw_secdiff(v.dscal[0], v.secdiff);
+}
+
+// ---- stage 1b (GPU batch): setcoef for layer lay after rrtmg_lw_prep(..., false); laytrop counted into iscal[0]
+CPPWRF_FORCEINLINE void rrtmg_lw_setcoef_stage(int lay, double tsk, const LwViews& v,
+                                               const RrtmgLwTables& CPPWRF_RESTRICT tables) {
+  const bool lower = rrtmg_lw_setcoef_layer(
+      lay, 1, v.pavel, v.tavel, v.tz, tsk, v.semiss, v.coldry, v.wkl, v.wbrodl, v.jp, v.jt, v.jt1, v.planklay,
+      v.planklev, v.plankbnd, v.colh2o, v.colco2, v.colo3, v.coln2o, v.colco, v.colch4, v.colo2, v.colbrd, v.fac00,
+      v.fac01, v.fac10, v.fac11, v.rat_h2oco2, v.rat_h2oco2_1, v.rat_h2oo3, v.rat_h2oo3_1, v.rat_h2on2o,
+      v.rat_h2on2o_1, v.rat_h2och4, v.rat_h2och4_1, v.rat_n2oco2, v.rat_n2oco2_1, v.rat_o3co2, v.rat_o3co2_1,
+      v.selffac, v.selffrac, v.indself, v.forfac, v.forfrac, v.indfor, v.minorfrac, v.scaleminor, v.scaleminorn2,
+      v.indminor, tables);
+  if (lower) {
+#if defined(__CUDA_ARCH__)
+    atomicAdd(&v.iscal[0], 1);
+#else
+#pragma omp atomic
+    v.iscal[0] += 1;
+#endif
+  }
 }
 
 // ---- stage 2: per layer -------------------------------------------------------------------------

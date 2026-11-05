@@ -57,7 +57,18 @@ struct KLwPrep {
     x.re_cloud = in.re_cloud ? col_view(in.re_cloud, col, nc) : SD{nullptr, 0};
     x.re_ice = in.re_ice ? col_view(in.re_ice, col, nc) : SD{nullptr, 0};
     x.re_snow = in.re_snow ? col_view(in.re_snow, col, nc) : SD{nullptr, 0};
-    rrtmg_lw_prep(c, x, ch.views(ci), *t, *k);
+    rrtmg_lw_prep(c, x, ch.views(ci), *t, *k, false);
+  }
+};
+
+// setcoef per (column, layer): the serial per-column prep is latency-bound, its layer loop runs here in parallel
+struct KLwSetcoef {
+  LwChunk ch;
+  const double* tsk;
+  const RrtmgLwTables* t;
+  CPPWRF_HD void operator()(int a, int b, int cc) const {
+    const int ci = LW_CI(a, b, cc);
+    rrtmg_lw_setcoef_stage(LW_X(a, b, cc), tsk[ch.col0 + ci], ch.views(ci), *t);
   }
 };
 
@@ -132,6 +143,7 @@ void RrtmgLwBatch::run(const RrtmgLwCallConfig& c, const LwBatchInput& in, const
     const int n = std::min(chunk_, in.ncol - col0);
     const LwChunk ch{lay_, d, ip, n, col0};
     parallel_for(lw_range(n, 1), KLwPrep{ch, c, in, d_tables_, d_consts_, out.o3});
+    parallel_for(lw_range(n, c.nlayers), KLwSetcoef{ch, in.tsk, d_tables_});
     parallel_for(lw_range(n, c.nlayers), KLwLayer{ch, c.nlayers, d_tables_});
     if (c.nlayers <= 60)
       parallel_for(lw_range(n, 16), KLwBand<60>{ch, c.nlayers, d_tables_});

@@ -1,8 +1,8 @@
 #pragma once
 // RRTMG_LWRAD for all columns of a domain on the device (CPU builds: OpenMP), the stages of
 // rrtmg_lw_stages.hpp run as kernels over (column), (column, layer), (column, band) and
-// (column, level). All columns in one chunk where the device memory allows (rrtmg_chunk_columns), the work
-// arrays shared with the other batches (batch_memory.hpp).
+// (column, level), setcoef over (column, layer). All columns in one chunk where the device memory
+// allows (rrtmg_chunk_columns), the work arrays shared with the other batches (batch_memory.hpp).
 // Inputs and outputs are device arrays with the column index fastest: x[k*ncol + col].
 #include <cstddef>
 #include <memory>
