@@ -36,7 +36,7 @@ kern::MoistCoef moist_coef(const State& s);
 
 class LargeStep {
  public:
-  LargeStep(const Grid& g, const LargeStepParams& p) : g_(g), p_(p) {}
+  LargeStep(const Grid& g, const LargeStepParams& p);
   // rk_step_prep: mut/muu/muv from mu_2; ru, rv, rw (couple_momentum); ww (calc_ww_cp);
   // alt = al + alb; php. Fills halos of the stage prognostics and of all derived fields.
   void prep(State& s, const BaseState& b) const;
@@ -53,6 +53,9 @@ class LargeStep {
   // v_2, ww, mut) with the large step dt (solve_em.F:919-934, for the adaptive time step)
   void cfl_max(const State& s, const BaseState& b, double dt, real& vert, real& horiz) const;
   void set_dt(double dt) { g_.dt = dt; }
+  // FP64 builds: the advection face fluxes of rk_tendency's U, V, W and theta kernels, each computed once per
+  // face (large_step.cpp KFace); one set of three arrays, used by one kernel after the other
+  struct FaceScratch;
 
  private:
   Grid g_;
@@ -61,6 +64,7 @@ class LargeStep {
   ColumnPhysics* cp_ = nullptr;
   const DiffusionDriver* dd_ = nullptr;
   mutable std::unique_ptr<Reducer> red_;
+  std::shared_ptr<FaceScratch> faces_;
 };
 
 }  // namespace cppwrf::dyn
