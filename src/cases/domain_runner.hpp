@@ -64,6 +64,8 @@ class DomainRunner {
   bool output_prepared_ = false;
   long pending_ = -1;  // deferred diag/snap step
   bool do_diag(long n);
+  bool nonfinite(long n, const dyn::DiagRow& r);  // reports non-finite values; true: stop the run
+  std::string first_nonfinite() const;
   void do_snap(long n);
 
 #ifdef CPPWRF_HAVE_NETCDF
@@ -118,6 +120,8 @@ class DomainRunner {
   void read_aux4(long s);
   long rst_end_ = 0;  // restart.end: last step with a restart file (0: no end)
   bool stop_on_nonfinite_ = true;
+  bool nonfinite_every_step_ = false;  // run.check_nonfinite_every_step
+  bool nonfinite_seen_ = false;
   std::string start_date_;
   std::string cname_;
   std::string out_fmt_;

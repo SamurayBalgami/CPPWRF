@@ -7,7 +7,14 @@
 
 namespace cppwrf::io_netcdf {
 
+// the format of CPPWRF's own restart file (the global attribute CPPWRF_RESTART_VERSION): raise it when the file's
+// contents change; a file of another version is refused (WRF's wrfrst files are the cross-version restart)
+inline constexpr int kRestartVersion = 1;
+
 struct RestartMeta {
+  int version = kRestartVersion;  // read: 0 when the file has none (written before the version was recorded)
+  std::string commit;             // CPPWRF_COMMIT: the commit of the sources that wrote it
+  std::string options;            // CPPWRF_OPTIONS: the run's options, "section.key = value" lines
   long step = 0;
   double time_sec = 0.0;
   int nx = 0, ny = 0, nz = 0;
@@ -26,5 +33,8 @@ void write_restart(const std::string& path, const RestartMeta& meta,
 // the file or of another size is an error.
 void read_restart(const std::string& path, RestartMeta& meta,
                   std::vector<VarView>& vars);
+
+// The global attributes alone (version, commit, options, step, time, grid), to check a file before reading it.
+RestartMeta read_restart_meta(const std::string& path);
 
 }  // namespace cppwrf::io_netcdf

@@ -1,4 +1,5 @@
 #include "phys/mp_wsm6/wsm6.hpp"
+#include "core/limits.hpp"
 
 namespace cppwrf::phys::wsm6 {
 
@@ -25,7 +26,7 @@ void run_wsm6(
     const Range2D& range,
     int nz,
     const Wsm6Params<real>& params) {
-  assert(nz <= kMaxLevels);
+  check_limit("WSM6", "nz", nz, kMaxLevels);
 #if defined(CPPWRF_DOUBLE)
   // FP64 builds: in column stages, as src/dyn/physics_coupling.cpp
   Buffer work(Wsm6Work<real>::size(range, nz));

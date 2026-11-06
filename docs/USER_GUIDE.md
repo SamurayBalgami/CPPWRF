@@ -227,12 +227,22 @@ Real-data simulations use initial conditions (`wrfinput_d01`) and lateral bounda
 ### Configuration Keys Table
 Every option supported by the CPPWRF runtime is cataloged below, along with its type, default, WRF equivalent, and code source.
 
+A key of the configuration file or of `--set` that CPPWRF does not read anywhere (a misspelled key, a key in the
+wrong section, an option that is not ported) is an error at start-up (`unknown configuration key 'phys.mp_physic'`);
+a known key the run does not read (an option of a scheme it does not use) is accepted with the warning
+`unaccessed config key`, as WRF accepts namelist entries it does not need. The list of keys
+comes from the sources at build time (`src/cases/config_keys.cmake`). `[domains]` keys are checked when the run is
+nested; a `[d0N]` key reaches that domain's configuration and is checked there.
+
 | Section | Key | Type | Default | Description | WRF Equivalent |
 |---|---|---|---|---|---|
 | `[run]` | `case` | string | *required* | Simulation case (`real`, `em_hill2d_x`, `em_quarter_ss`, `em_squall2d_x`, `em_squall2d_y`, `em_grav2d_x`, `straka`, `squall2d`, `warm_bubble`, `rest_state`, `igw`) | `ideal_case` |
 | `[run]` | `run_time` | double | `0.0` | Total simulation duration in seconds | `run_days/hours/minutes/seconds` |
 | `[run]` | `restart_file` | string | `""` | Path to NetCDF restart file (`restart_*.nc`) to resume execution | `restart` / restart filename |
 | `[run]` | `start_date` | string | `"2000-01-01_00:00:00"` | UTC start timestamp string | `start_year/month/day/hour/etc` |
+| `[run]` | `stop_on_nonfinite` | bool | `true` | Stop when a diagnostic step finds a NaN / Inf (false: go on, as WRF does) | none |
+| `[run]` | `check_nonfinite_every_step` | bool | `false` | Look for NaN / Inf after every step (default: on the `output.diag_interval` steps); the message names the first non-finite field and point | none |
+| `[run]` | `restart_any_commit` | bool | `false` | Resume from a CPPWRF `restart_*.nc` file written by another commit | none |
 | `[real]` | `dir` | string | *required (real)* | Directory containing `wrfinput_d01` and `wrfbdy_d01` | WRF run directory |
 | `[real]` | `wrfinput` | string | `"wrfinput_d01"` | Name of initial condition NetCDF file | `wrfinput_d01` |
 | `[real]` | `wrfbdy` | string | `"wrfbdy_d01"` | Name of boundary condition NetCDF file | `wrfbdy_d01` |
@@ -385,6 +395,13 @@ case = real
 run_time = 7200
 restart_file = out/real/restart_000060.nc   # or .../wrfrst_d01_2026-10-12_01:00:00
 ```
+
+CPPWRF's own `restart_<step>.nc` files record a format version (`CPPWRF_RESTART_VERSION`), the commit of the sources
+(`CPPWRF_COMMIT`) and the run's options (`CPPWRF_OPTIONS`: every configuration key except `[run]`, `[restart]`,
+`[output]`, `[real]`, `time.history_interval_s`, `phys.auxhist3_interval` and `phys.table_dir`). A resumed run
+refuses a file of another format version, of another commit (unless `run.restart_any_commit = true`) or of a run with
+other options, and names the differing options. WRF's `wrfrst` files are the restart across versions and changed
+options.
 
 When resuming, pre-restart rows in `diag.csv` are preserved automatically.
 

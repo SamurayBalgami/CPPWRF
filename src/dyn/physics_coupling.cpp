@@ -11,6 +11,7 @@
 #include "core/backend.hpp"
 #include "core/constants.hpp"
 #include "core/halo.hpp"
+#include "core/limits.hpp"
 #include "core/vm_dump.hpp"
 #include "phys/mp_kessler/kessler.hpp"
 #include "phys/mp_thompson/thompson.hpp"
@@ -100,7 +101,7 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
       p_phy(g, Stagger::M, "p_phy") {
   if (p_.mp_physics != 0 && p_.mp_physics != 1 && p_.mp_physics != 6 && p_.mp_physics != 8 && p_.mp_physics != 28)
     throw std::runtime_error("phys.mp_physics must be 0, 1, 6, 8 or 28");
-  if (p_.mp_physics == 1 && g.nz > phys::kessler::kMaxLevels) throw std::runtime_error("Kessler: nz > kMaxLevels");
+  if (p_.mp_physics == 1) check_limit("Kessler", "nz", g.nz, phys::kessler::kMaxLevels);
   if (p_.do_radar_ref != 0 && p_.do_radar_ref != 1) throw std::runtime_error("phys.do_radar_ref must be 0 or 1");
   if (p_.microp_re) {  // phy_init: background values RE_QC_BG, RE_QI_BG, RE_QS_BG
     re_cloud = Field3(g, Stagger::M, "re_cloud");
@@ -111,7 +112,7 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
     re_snow.fill_host([](int, int, int) { return real(9.99E-6); });
   }
   if (p_.mp_physics == 6) {
-    if (g.nz > phys::wsm6::kMaxLevels) throw std::runtime_error("WSM6: nz > kMaxLevels");
+    check_limit("WSM6", "nz", g.nz, phys::wsm6::kMaxLevels);
     snownc = Field2(g, Stagger::M, "snownc");
     snowncv = Field2(g, Stagger::M, "snowncv");
     graupelnc = Field2(g, Stagger::M, "graupelnc");
@@ -138,7 +139,7 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
   }
   if (p_.do_radar_ref == 1 && (p_.mp_physics == 6 || thompson())) refl_10cm = Field3(g, Stagger::M, "refl_10cm");
   if (thompson()) {
-    if (g.nz > phys::mp_thompson::kMaxLevels) throw std::runtime_error("Thompson: nz > kMaxLevels");
+    check_limit("Thompson", "nz", g.nz, phys::mp_thompson::kMaxLevels);
     snownc = Field2(g, Stagger::M, "snownc");
     snowncv = Field2(g, Stagger::M, "snowncv");
     graupelnc = Field2(g, Stagger::M, "graupelnc");

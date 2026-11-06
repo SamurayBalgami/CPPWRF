@@ -1,4 +1,5 @@
 #include "phys/mp_kessler/kessler.hpp"
+#include "core/limits.hpp"
 
 namespace cppwrf::phys::kessler {
 
@@ -24,7 +25,7 @@ void run_kessler(
     real svp3,
     real svpt0,
     real rhowater) {
-  assert(nz <= kMaxLevels);
+  check_limit("Kessler", "nz", nz, kMaxLevels);
   KesslerKernel kernel{
       t, qv, qc, qr, rho, pii, dz8w, z, rainnc, rainncv,
       dt, xlv, cp, ep2, svp1, svp2, svp3, svpt0, rhowater, nz, range.i0, range.i1 - range.i0};

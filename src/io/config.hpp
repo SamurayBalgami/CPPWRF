@@ -28,6 +28,7 @@ class Config {
   std::string to_json() const;  // {"domain":{"nx":"512",...},...}; values as JSON strings
   std::vector<std::string> unaccessed_keys() const;
   void mark_accessed(const std::string& key) const;
+  const std::map<std::string, std::string>& entries() const { return data_; }  // every key = value (not marked read)
 
  private:
   std::map<std::string, std::string> data_;

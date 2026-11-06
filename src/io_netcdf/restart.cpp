@@ -70,6 +70,11 @@ void write_restart(const std::string& path, const RestartMeta& meta,
   if (!meta.date_str.empty()) {
     NC_CHECK(nc_put_att_text(ncid, NC_GLOBAL, "CURRENT_DATE", meta.date_str.size(), meta.date_str.data()));
   }
+  NC_CHECK(nc_put_att_int(ncid, NC_GLOBAL, "CPPWRF_RESTART_VERSION", NC_INT, 1, &meta.version));
+  if (!meta.commit.empty())
+    NC_CHECK(nc_put_att_text(ncid, NC_GLOBAL, "CPPWRF_COMMIT", meta.commit.size(), meta.commit.data()));
+  if (!meta.options.empty())
+    NC_CHECK(nc_put_att_text(ncid, NC_GLOBAL, "CPPWRF_OPTIONS", meta.options.size(), meta.options.data()));
 
   // Dimensions
   int dim_time = -1, dim_bt = -1, dim_bt_stag = -1;
@@ -145,12 +150,24 @@ void write_restart(const std::string& path, const RestartMeta& meta,
   NC_CHECK(nc_close(id));
 }
 
-void read_restart(const std::string& path, RestartMeta& meta,
-                  std::vector<VarView>& vars) {
-  ScopedNcFile ncid;
-  NC_CHECK(nc_open(path.c_str(), NC_NOWRITE, ncid.ptr()));
+namespace {
 
-  // Global metadata
+std::string text_att(int ncid, const char* name) {
+  std::size_t len = 0;
+  std::string v;
+  if (nc_inq_attlen(ncid, NC_GLOBAL, name, &len) == NC_NOERR && len > 0) {
+    v.resize(len);
+    NC_CHECK(nc_get_att_text(ncid, NC_GLOBAL, name, v.data()));
+  }
+  return v;
+}
+
+void read_meta(int ncid, const std::string& path, RestartMeta& meta) {
+  int version = 0;
+  if (nc_get_att_int(ncid, NC_GLOBAL, "CPPWRF_RESTART_VERSION", &version) != NC_NOERR) version = 0;
+  meta.version = version;
+  meta.commit = text_att(ncid, "CPPWRF_COMMIT");
+  meta.options = text_att(ncid, "CPPWRF_OPTIONS");
   int step_i = 0;
   if (nc_get_att_int(ncid, NC_GLOBAL, "STEP", &step_i) == NC_NOERR) {
     meta.step = step_i;
@@ -177,6 +194,23 @@ void read_restart(const std::string& path, RestartMeta& meta,
     meta.date_str.resize(att_len);
     nc_get_att_text(ncid, NC_GLOBAL, "CURRENT_DATE", meta.date_str.data());
   }
+}
+
+}  // namespace
+
+RestartMeta read_restart_meta(const std::string& path) {
+  ScopedNcFile ncid;
+  NC_CHECK(nc_open(path.c_str(), NC_NOWRITE, ncid.ptr()));
+  RestartMeta meta;
+  read_meta(ncid, path, meta);
+  return meta;
+}
+
+void read_restart(const std::string& path, RestartMeta& meta,
+                  std::vector<VarView>& vars) {
+  ScopedNcFile ncid;
+  NC_CHECK(nc_open(path.c_str(), NC_NOWRITE, ncid.ptr()));
+  read_meta(ncid, path, meta);
 
   // Read each requested variable if present in the restart file
   for (auto& v : vars) {

@@ -28,6 +28,8 @@ static void test_precision(DType dt) {
   meta_out.ny = ny;
   meta_out.nz = nz;
   meta_out.dx = 100.0;
+  meta_out.commit = "0123abcd";
+  meta_out.options = "dyn.khdif = 0\nphys.mp_physics = 1\n";
   meta_out.dy = 100.0;
   meta_out.dt = 1.0;
   meta_out.case_name = "straka";
@@ -132,6 +134,11 @@ static void test_precision(DType dt) {
   assert(std::fabs(meta_in.dt - meta_out.dt) < 1e-12);
   assert(meta_in.case_name == meta_out.case_name);
   assert(meta_in.date_str == meta_out.date_str);
+  // the format version, commit and options (read_restart_meta reads them alone)
+  assert(meta_in.version == kRestartVersion && meta_in.commit == meta_out.commit && meta_in.options == meta_out.options);
+  const RestartMeta head = read_restart_meta(filename);
+  assert(head.version == kRestartVersion && head.commit == meta_out.commit && head.options == meta_out.options);
+  assert(head.step == meta_out.step && head.nx == nx);
 
   // Validate bitwise exact identity using memcmp
   assert(std::memcmp(u1.data(), ru1.data(), u1.size()) == 0);

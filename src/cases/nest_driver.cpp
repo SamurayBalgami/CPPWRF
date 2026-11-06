@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <iterator>
 #include <map>
 #include <sstream>
 #include <stdexcept>
@@ -217,8 +218,18 @@ std::vector<NestDomainSpec> parse_nest_specs(const io::Config& root_cfg) {
   const int max_dom = static_cast<int>(root_cfg.get_int("domains.max_dom", 1));
   if (max_dom < 1) throw std::runtime_error("domains.max_dom must be >= 1");
 
-  // Mark all [domains] and [d0N] keys accessed on root_cfg so DomainRunner::start() doesn't warn on them
+  // Mark all [domains] and [d0N] keys accessed on root_cfg (a [d0N] key reaches the domain's configuration below,
+  // whose DomainRunner::start() rejects an unknown one); a [domains] key must be one of those read here
+  static const char* const kDomainsKeys[] = {"max_dom", "feedback", "smooth_option", "spec_bdy_width", "blend_width",
+                                             "parent_id", "i_parent_start", "j_parent_start", "parent_grid_ratio",
+                                             "parent_time_step_ratio"};
   for (const std::string& k : root_cfg.keys()) {
+    if (k.rfind("domains.", 0) == 0) {
+      const std::string n = k.substr(8);
+      const bool dom = n.size() > 4 && n[0] == 'd' && std::isdigit(n[1]) && std::isdigit(n[2]) && n[3] == '_';
+      if (!dom && std::find(std::begin(kDomainsKeys), std::end(kDomainsKeys), n) == std::end(kDomainsKeys))
+        throw std::runtime_error("unknown configuration key '" + k + "'");
+    }
     if (k.rfind("domains.", 0) == 0 || (k.size() >= 4 && k[0] == 'd' && std::isdigit(k[1]) && std::isdigit(k[2]) && k[3] == '.')) {
       root_cfg.mark_accessed(k);
     }

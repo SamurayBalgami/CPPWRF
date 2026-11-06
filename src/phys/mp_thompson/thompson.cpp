@@ -1,6 +1,6 @@
 #include "thompson.hpp"
-#include <cassert>
 #include <type_traits>
+#include "core/limits.hpp"
 
 namespace cppwrf::phys::mp_thompson {
 
@@ -36,7 +36,7 @@ void run_thompson(
     const ThompsonAeroFields<Real>* aero,
     View3<Real> refl,
     const radar::RadarTables<Real>* radar) {
-    assert(nz <= kMaxLevels);
+    check_limit("Thompson", "nz", nz, kMaxLevels);
     // the column arrays sized to the next tier above nz (on the GPU in the shared work buffer: thompson_reserve)
     auto launch = [&](auto nl) {
         ThompsonKernel<Real, decltype(nl)::value> kernel{

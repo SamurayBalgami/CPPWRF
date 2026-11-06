@@ -16,6 +16,7 @@
 #include <map>
 #include <type_traits>
 
+#include "cases/config_keys.hpp"
 #include "core/constants.hpp"
 #include "core/halo.hpp"
 #include "core/precision.hpp"
@@ -168,6 +169,59 @@ void read_wrfrst(const std::string& path, io_netcdf::RestartMeta& meta, std::vec
 }
 #endif
 
+#ifdef CPPWRF_HAVE_NETCDF
+#ifndef CPPWRF_COMMIT
+#define CPPWRF_COMMIT "unknown"
+#endif
+
+// The options a CPPWRF restart file records and a resumed run must have as well: every configuration key except the
+// run, restart, output and input settings ([run], [restart], [output], [real], time.history_interval_s,
+// phys.auxhist3_interval, phys.table_dir), as sorted "section.key = value" lines
+std::string restart_options(const io::Config& cfg) {
+  static const char* const skip_sections[] = {"run.", "restart.", "output.", "real."};
+  static const char* const skip_keys[] = {"time.history_interval_s", "phys.auxhist3_interval", "phys.table_dir"};
+  std::string o;
+  for (const auto& [k, v] : cfg.entries()) {
+    bool skip = false;
+    for (const char* p : skip_sections) skip = skip || k.rfind(p, 0) == 0;
+    for (const char* p : skip_keys) skip = skip || k == p;
+    if (!skip) o += k + " = " + v + "\n";
+  }
+  return o;
+}
+
+std::map<std::string, std::string> option_lines(const std::string& o) {
+  std::map<std::string, std::string> m;
+  std::istringstream in(o);
+  for (std::string line; std::getline(in, line);) {
+    const std::size_t eq = line.find(" = ");
+    if (eq != std::string::npos) m[line.substr(0, eq)] = line.substr(eq + 3);
+  }
+  return m;
+}
+
+// A CPPWRF restart file must be of this format version, from this commit (unless run.restart_any_commit) and of a run
+// with the same options; WRF's wrfrst files are the restart across versions and option changes
+void check_native_restart(const std::string& path, const io_netcdf::RestartMeta& f, const io::Config& cfg) {
+  if (f.version != io_netcdf::kRestartVersion)
+    throw std::runtime_error(path + ": CPPWRF restart format version " + std::to_string(f.version) +
+                             (f.version == 0 ? " (none recorded)" : "") + ", this build reads version " +
+                             std::to_string(io_netcdf::kRestartVersion) + ": resume from the run's wrfrst file");
+  if (f.commit != CPPWRF_COMMIT && !cfg.get_bool("run.restart_any_commit", false))
+    throw std::runtime_error(path + ": written by commit " + f.commit + ", this build is " + CPPWRF_COMMIT +
+                             ": resume from the run's wrfrst file (or set run.restart_any_commit = true)");
+  const std::string mine = restart_options(cfg);
+  if (f.options == mine) return;
+  const auto a = option_lines(f.options), b = option_lines(mine);
+  std::string d;
+  for (const auto& [k, v] : a)
+    if (!b.count(k) || b.at(k) != v) d += "; " + k + " = " + v + " in the file, " + (b.count(k) ? b.at(k) : "unset") + " here";
+  for (const auto& [k, v] : b)
+    if (!a.count(k)) d += "; " + k + " = " + v + " here, unset in the file";
+  throw std::runtime_error(path + ": written by a run with other options (" + d.substr(2) + ")");
+}
+#endif
+
 }  // namespace
 
 DomainRunner::DomainRunner(const io::Config& cfg, cases::Model& m, const std::string& out_dir,
@@ -197,6 +251,8 @@ void DomainRunner::save_restart_file(const std::string& path, long step, double 
   meta.dx = g.dx; meta.dy = g.dy; meta.dt = g.dt;
   meta.case_name = cname_;
   meta.date_str = wrf_io::add_seconds(start_date_, std::lround(time_sec));
+  meta.commit = CPPWRF_COMMIT;
+  meta.options = restart_options(cfg_);
 
   const io_netcdf::DType dt = sizeof(real) == 8 ? io_netcdf::DType::F64 : io_netcdf::DType::F32;
   std::vector<std::vector<real>> bufs;
@@ -381,6 +437,7 @@ void DomainRunner::load_restart_file(const std::string& path) {
     read_wrfrst(path, meta, vars);
     meta.dx = g.dx; meta.dy = g.dy;
   } else {
+    check_native_restart(path, io_netcdf::read_restart_meta(path), cfg_);
     io_netcdf::read_restart(path, meta, vars);
   }
 
@@ -624,6 +681,8 @@ bool DomainRunner::start() {
     if (hist_alarm_t_) hist_iv_t_ = wrf_time::make(hs);
   }
   stop_on_nonfinite_ = cfg_.get_bool("run.stop_on_nonfinite", true);
+  // the non-finite check of every step (else on the diagnostic steps only, output.diag_interval)
+  nonfinite_every_step_ = cfg_.get_bool("run.check_nonfinite_every_step", false);
   start_date_ = cfg_.get_string("run.start_date", !m_.start_date.empty() ? m_.start_date : "2000-01-01_00:00:00");
 
 #ifndef CPPWRF_HAVE_NETCDF
@@ -636,9 +695,7 @@ bool DomainRunner::start() {
 #endif
 
   prepare_output();  // reads the output.* keys
-  for (const auto& k : cfg_.unaccessed_keys()) {
-    std::fprintf(stderr, "cppwrf: warning: unaccessed config key '%s'\n", k.c_str());
-  }
+  check_config_keys(cfg_);  // a key no code reads (misspelled, wrong section, not ported) is an error
 
   start_step = 0;
 #ifdef CPPWRF_HAVE_NETCDF
@@ -831,6 +888,13 @@ bool DomainRunner::after_step(long n) {
   step_time += std::chrono::duration<double>(std::chrono::steady_clock::now() - step_start_).count();
   if (m_.adapt) m_.advance_clock();
   bool last = (n == m_.nsteps);
+  if (nonfinite_every_step_ && !nonfinite_seen_) {  // run.check_nonfinite_every_step: the diagnostics' reductions
+    const dyn::DiagRow r = dg_->compute(*m_.st, *m_.base);
+    if (!r.finite()) {
+      nonfinite_seen_ = true;  // reported once when the run goes on (run.stop_on_nonfinite = false)
+      if (nonfinite(n, r)) return false;
+    }
+  }
   if (defer_output_ && !last && (n % diag_iv_ == 0 || n % out_iv_ == 0 || hist_due(n) || aux3_due(n))) {
     pending_ = n;
   } else if (n % diag_iv_ == 0 || last) {
@@ -865,15 +929,47 @@ void DomainRunner::finish() {
   }
 }
 
+// The first non-finite value of the prognostic state (fields in this order, then k, j, i), for the error message
+std::string DomainRunner::first_nonfinite() const {
+  const dyn::State& st = *m_.st;
+  std::vector<real> h;
+  auto scan = [&](const std::string& name, const auto& f) -> std::string {
+    f.download(h);
+    const Layout& L = f.layout();
+    for (int k = 0; k < std::max(L.nz, 1); ++k)
+      for (int j = 0; j < L.ny; ++j)
+        for (int i = 0; i < L.nx; ++i)
+          if (!std::isfinite(double(h[L.index(i, j, k)]))) {
+            char b[160];
+            std::snprintf(b, sizeof b, "%s at (i, j, k) = (%d, %d, %d) from 1: %g", name.c_str(), i + 1, j + 1, k + 1,
+                          double(h[L.index(i, j, k)]));
+            return b;
+          }
+    return "";
+  };
+  std::string w;
+  const std::pair<const char*, const Field3*> f3[] = {
+      {"u", &st.u_2}, {"v", &st.v_2}, {"w", &st.w_2}, {"t (theta perturbation)", &st.t_2},
+      {"ph (geopotential perturbation)", &st.ph_2}, {"p (pressure perturbation)", &st.p}, {"al", &st.al}};
+  for (const auto& [name, f] : f3)
+    if (!(w = scan(name, *f)).empty()) return w;
+  if (!(w = scan("mu (dry air mass perturbation)", st.mu_2)).empty()) return w;
+  for (int n = 0; n < st.n_scalars(); ++n)
+    if (!(w = scan(st.q_names[n], st.q_2[n])).empty()) return w;
+  return "none in the prognostic fields";
+}
+
+bool DomainRunner::nonfinite(long n, const dyn::DiagRow& r) {
+  std::fprintf(stderr, "ERROR: non-finite values at step %ld (t=%g s): max|u|=%g max|w|=%g th'=[%g,%g]; first: %s\n", n,
+               time_s(n), r.max_abs_u, r.max_abs_w, r.min_th_pert, r.max_th_pert, first_nonfinite().c_str());
+  // run.stop_on_nonfinite = false: go on as WRF does (its output then has the same NaN / Inf to compare)
+  return stop_on_nonfinite_;
+}
+
 bool DomainRunner::do_diag(long n) {
   dyn::DiagRow r = dg_->compute(*m_.st, *m_.base);
   double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0_).count();
-  if (!r.finite()) {
-    std::fprintf(stderr, "ERROR: non-finite values at step %ld (t=%g s): max|u|=%g max|w|=%g th'=[%g,%g]\n", n,
-                 time_s(n), r.max_abs_u, r.max_abs_w, r.min_th_pert, r.max_th_pert);
-    // run.stop_on_nonfinite = false: go on as WRF does (its output then has the same NaN / Inf to compare)
-    if (stop_on_nonfinite_) return false;
-  }
+  if (!r.finite() && nonfinite(n, r)) return false;
   diag_->row({double(n), time_s(n), r.max_abs_u, r.max_abs_v, r.max_abs_w, r.min_th_pert, r.max_th_pert,
               r.dry_mass, r.theta_mass, r.total_energy, wall});
   return true;

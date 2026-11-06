@@ -1,4 +1,5 @@
 #include "phys/bl_ysu/ysu.hpp"
+#include "core/limits.hpp"
 
 namespace cppwrf::phys::ysu {
 
@@ -63,7 +64,7 @@ void run_ysu(
     real karman,
     real xlv,
     real rv) {
-  assert(nz <= kMaxLevels);
+  check_limit("YSU", "nz", nz, kMaxLevels);
 
   YSUKernel kernel{
       ux, vx, tx, qvx, qcx, qix, p2d, p2di, pi2d, dz8w2d, rthraten,

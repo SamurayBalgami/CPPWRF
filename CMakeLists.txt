@@ -122,6 +122,42 @@ add_library(cppwrf_core STATIC ${CPPWRF_SOURCES})
 # tables shipped with the sources (data/rrtmg)
 target_compile_definitions(cppwrf_core PRIVATE CPPWRF_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
 target_include_directories(cppwrf_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
+# the configuration keys CPPWRF reads (every "section.key" literal of src/; src/cases/config_keys.cpp): a key of a
+# configuration that is not among them is an error. Regenerated when a source changes.
+file(GLOB_RECURSE CPPWRF_KEY_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.cpp ${CMAKE_SOURCE_DIR}/src/*.hpp
+     ${CMAKE_SOURCE_DIR}/src/*.cu)
+add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/generated/config_keys.inc
+  COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_SOURCE_DIR}/src -DOUT=${CMAKE_BINARY_DIR}/generated/config_keys.inc
+          -P ${CMAKE_SOURCE_DIR}/src/cases/config_keys.cmake
+  DEPENDS ${CPPWRF_KEY_SOURCES} ${CMAKE_SOURCE_DIR}/src/cases/config_keys.cmake VERBATIM)
+target_sources(cppwrf_core PRIVATE ${CMAKE_BINARY_DIR}/generated/config_keys.inc)
+target_include_directories(cppwrf_core PRIVATE ${CMAKE_BINARY_DIR}/generated)
+# the commit of the sources (CPPWRF's own restart files record it): git, or the hash that git archive writes into
+# src/cases/commit.txt (export-subst in .gitattributes) for a source tarball
+set(CPPWRF_COMMIT "unknown")
+find_package(Git QUIET)
+if(GIT_FOUND)
+  execute_process(COMMAND ${GIT_EXECUTABLE} -C ${CMAKE_SOURCE_DIR} rev-parse --show-toplevel HEAD
+                  OUTPUT_VARIABLE _git_out RESULT_VARIABLE _git_rc ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if(_git_rc EQUAL 0)
+    string(REPLACE "\n" ";" _git_out "${_git_out}")
+    list(GET _git_out 0 _git_top)
+    get_filename_component(_git_top "${_git_top}" REALPATH)
+    get_filename_component(_src_top "${CMAKE_SOURCE_DIR}" REALPATH)
+    if(_git_top STREQUAL _src_top)
+      list(GET _git_out 1 CPPWRF_COMMIT)
+    endif()
+  endif()
+endif()
+if(CPPWRF_COMMIT STREQUAL "unknown")
+  file(STRINGS ${CMAKE_SOURCE_DIR}/src/cases/commit.txt _commit LIMIT_COUNT 1)
+  if(_commit MATCHES "^[0-9a-f]+$")
+    set(CPPWRF_COMMIT ${_commit})
+  endif()
+endif()
+message(STATUS "CPPWRF commit: ${CPPWRF_COMMIT}")
+set_property(SOURCE ${CMAKE_SOURCE_DIR}/src/cases/domain_runner.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+             CPPWRF_COMMIT="${CPPWRF_COMMIT}")
 target_link_libraries(cppwrf_core PUBLIC cppwrf_io)
 # glibc libmvec: Grell-Freitas-Li uses the 2-lane vector pow where WRF's gfortran build vectorises (cu_gfl)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
@@ -222,6 +258,17 @@ endforeach()
 
 # Namelist translator (tools/wrf2cppwrf.py; python3, no WRF data needed)
 add_subdirectory(tests/tools)
+
+# every launch of a kernel that raises a WRF fatal stop is followed by fatal_check() (tools/lint_fatal_check.py)
+add_test(NAME lint_fatal_check COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/lint_fatal_check.py ${CMAKE_SOURCE_DIR}/src)
+set_tests_properties(lint_fatal_check PROPERTIES LABELS unit)
+# deliberate faults the model refuses: unknown configuration keys, nz above a column limit, a restart with other
+# options; the non-finite check of every step (tests/robustness/run_test.sh, analytic cases)
+if(TARGET cppwrf)
+  add_test(NAME robustness COMMAND bash ${CMAKE_SOURCE_DIR}/tests/robustness/run_test.sh $<TARGET_FILE:cppwrf>
+           ${CMAKE_BINARY_DIR}/robustness WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  set_tests_properties(robustness PROPERTIES LABELS unit ENVIRONMENT "OMP_NUM_THREADS=2;OMP_WAIT_POLICY=passive")
+endif()
 
 # Differential tests against WRF v4.8.0's own compiled code (gfortran; slow): physics schemes, the
 # physics driver glue, diffusion kernels, nest numerics. ctest -L diff runs them; they need WRF_DIR (a WRF v4.8.0
