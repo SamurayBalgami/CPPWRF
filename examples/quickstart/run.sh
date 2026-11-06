@@ -17,7 +17,8 @@
 #           about 500 MB: the analysis and the 3 h forecast). Other dates: change the dates of both namelists too.
 #
 # WORK gets wps/ (the met_em files), run/ (namelist.input, wrfinput_d01, wrfinput_d02, wrfbdy_d01, run.ini, the
-# tables) and out/ (wrfout_d01_*, wrfout_d02_*: one file per hour, as WRF's frames_per_outfile = 1).
+# tables) and out/d01/wrfout_d01_*, out/d02/wrfout_d02_* (a nested run writes each domain's files to output.dir/d0N;
+# one file per hour, as WRF's frames_per_outfile = 1).
 set -euo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 EX=$REPO/examples/quickstart
@@ -63,4 +64,4 @@ done
 python3 "$REPO/tools/wrf2cppwrf.py" namelist.input -o run.ini --format wrfout > translate.log 2>&1 ||
   { cat translate.log; exit 1; }
 "$B/cppwrf" run.ini --set output.dir="$WORK/out" > cppwrf.log 2>&1 || { tail -5 cppwrf.log; echo "cppwrf failed: $WORK/run/cppwrf.log"; exit 1; }
-ls "$WORK/out"/wrfout_d0*
+ls "$WORK/out"/d0*/wrfout_d0*

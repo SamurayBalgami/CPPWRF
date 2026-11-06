@@ -60,7 +60,7 @@ step example_cpu env OMP_NUM_THREADS=$NP WPS_DIR=$Q/WPS WRF_DIR=$Q/WRF GEOG_DIR=
 for f in wps/geogrid.log wps/ungrib.log wps/metgrid.log run/real.log run/translate.log run/cppwrf.log run/run.ini; do
   [ -f $Q/ex/$f ] && cp $Q/ex/$f $J/ex_$(basename $f).txt
 done
-ls -l $Q/ex/out >> $J/quickstart.log 2>&1
+ls -lR $Q/ex/out >> $J/quickstart.log 2>&1
 grep -E "cppwrf: done|stepping" $Q/ex/run/cppwrf.log >> $J/quickstart.log 2>&1
 
 # the GPU side: the same run.ini, outputs in /opt/qs/gpu/out_*
@@ -76,7 +76,7 @@ import numpy as np, netCDF4
 sys.path.insert(0, "tests/verify")
 import exact
 name, ref, run = sys.argv[1:]
-files = sorted(os.path.basename(f) for f in glob.glob(ref + "/wrfout_d0*"))
+files = sorted(os.path.relpath(f, ref) for f in glob.glob(ref + "/**/wrfout_d0*", recursive=True))
 bad, worst = [], {}
 for f in files:
     if not os.path.exists(os.path.join(run, f)):
@@ -98,7 +98,7 @@ for f in files:
 print(f"{len(files)} files")
 if name == "fp64":
     print("identical" if not bad else "DIFFER\n" + "\n".join(bad[:40]))
-    sys.exit(1 if bad else 0)
+    sys.exit(1 if bad or not files else 0)
 print("relative L2 (largest over the files): " + " ".join(f"{v} {e:.2e}" for v, e in sorted(worst.items())))
 sys.exit(1 if bad or not files else 0)
 EOF
