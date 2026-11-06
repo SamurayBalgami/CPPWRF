@@ -31,6 +31,7 @@ class StreamFile {
   std::unique_ptr<NcOut> nc_;
   std::vector<OutVar> vars_;
   std::size_t rec_ = 0;
+  std::string path_;
 };
 
 }  // namespace cppwrf::wrf_io

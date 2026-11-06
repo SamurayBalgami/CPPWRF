@@ -1,6 +1,7 @@
 #pragma once
 // Minimal NetCDF writer for WRF-format files (one Time record): dimensions, global attributes and
 // variables with WRF's per-variable attributes.
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -29,13 +30,36 @@ class NcOut {
   void put_int(const std::string& name, const std::vector<int>& v, std::size_t rec = 0);
   void sync();
   void put_text(const std::string& name, const std::string& s, std::size_t rec = 0);
+  // put / put_int in two steps: stage converts the values to the variable's type and queues the compression of its
+  // chunks (wrf_io/nc_deflate.hpp); flush writes the staged records in their order, as the same puts would
+  void stage(const std::string& name, const std::vector<double>& v, std::size_t rec = 0);
+  void stage_int(const std::string& name, const std::vector<int>& v, std::size_t rec = 0);
+  void flush();
 
  private:
+  struct VarInfo {
+    int id = -1;
+    char type = 'f';
+    std::vector<std::size_t> len, chunk;  // all dimensions (Time first, length 1); chunk empty: not deflated
+    int level = 0;
+    bool shuffle = false;
+  };
+  struct Staged {
+    const VarInfo* v = nullptr;
+    std::string name;
+    char mem = 'f';  // 'f' float, 'd' double, 'i' int
+    std::size_t rec = 0;
+    std::vector<unsigned char> bytes;
+  };
+  void stage_bytes(const std::string& name, char mem, std::size_t n, std::size_t esize, std::size_t rec,
+                   const std::function<void(unsigned char*)>& fill_in);
   int nc_ = -1;
   bool nc4_ = true;
   std::map<std::string, std::size_t> dimlen_;
-  std::map<std::string, int> dims_, vars_;
-  std::map<std::string, char> types_;
+  std::map<std::string, int> dims_;
+  std::map<std::string, VarInfo> vars_;
+  std::vector<Staged> staged_;
+  std::vector<std::vector<unsigned char>> spare_;
 };
 
 }  // namespace cppwrf::wrf_io

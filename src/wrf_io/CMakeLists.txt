@@ -1,6 +1,22 @@
 # WRF I/O layer shared by cppwrf_real and the model: namelist.input reader, the WRF I/O schema
 # (tools/wrf_schema), the NetCDF writer with WRF's conventions and output_wrf's global attributes.
-add_library(cppwrf_wrfio STATIC namelist.cpp nc_out.cpp wrf_schema.cpp global_atts.cpp stream_file.cpp)
+add_library(cppwrf_wrfio STATIC namelist.cpp nc_out.cpp nc_deflate.cpp wrf_schema.cpp global_atts.cpp stream_file.cpp)
 target_include_directories(cppwrf_wrfio PUBLIC ${CMAKE_SOURCE_DIR}/src ${NETCDF_INCLUDE_DIR})
 target_link_libraries(cppwrf_wrfio PUBLIC ${NETCDF_LIBRARY})
 target_compile_features(cppwrf_wrfio PUBLIC cxx_std_20)
+# nc_deflate.cpp: HDF5's deflate filter with chunks compressed on host threads (the HDF5 library NetCDF-4 uses) and zlib
+find_package(ZLIB QUIET)
+find_package(Threads REQUIRED)
+find_package(HDF5 QUIET COMPONENTS C)
+target_link_libraries(cppwrf_wrfio PUBLIC Threads::Threads)
+if(HDF5_FOUND AND ZLIB_FOUND)
+  target_compile_definitions(cppwrf_wrfio PRIVATE CPPWRF_HAVE_HDF5)
+  target_include_directories(cppwrf_wrfio PRIVATE ${HDF5_INCLUDE_DIRS})
+  target_link_libraries(cppwrf_wrfio PUBLIC ${HDF5_C_LIBRARIES} ZLIB::ZLIB ${CMAKE_DL_LIBS})
+  message(STATUS "NetCDF-4 output: parallel chunk compression (HDF5 ${HDF5_VERSION})")
+elseif(ZLIB_FOUND)
+  target_link_libraries(cppwrf_wrfio PUBLIC ZLIB::ZLIB)
+  message(STATUS "NetCDF-4 output: HDF5 headers not found, chunks compress in HDF5 only")
+else()
+  message(FATAL_ERROR "zlib (zlib.h) is needed for the NetCDF output")
+endif()

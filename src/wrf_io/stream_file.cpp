@@ -1,5 +1,8 @@
 #include "wrf_io/stream_file.hpp"
 
+#include "wrf_io/nc_deflate.hpp"
+
+#include <chrono>
 #include <cstdio>
 #include <map>
 #include <stdexcept>
@@ -46,26 +49,48 @@ void define_stream_vars(NcOut& nc, std::vector<OutVar>& vars, int real_bytes) {
 
 StreamFile::StreamFile(const std::string& path, std::vector<OutVar> vars, const WrfConfig& c, const DomainAtts& d,
                        Stream s, bool netcdf4)
-    : nc_(std::make_unique<NcOut>(path, netcdf4)), vars_(std::move(vars)) {
+    : nc_(std::make_unique<NcOut>(path, netcdf4)), vars_(std::move(vars)), path_(path) {
   define_stream_vars(*nc_, vars_, d.real_bytes);
   write_global_atts(*nc_, c, d, s);
   nc_->enddef();
 }
 
 void StreamFile::write(const std::string& date, const StreamValueFn& value) {
+  using clk = std::chrono::steady_clock;
+  auto secs = [](clk::time_point a, clk::time_point b) { return std::chrono::duration<double>(b - a).count(); };
+  deflate::Stats& ds = deflate::stats();
+  const deflate::Stats s0 = ds;
+  const auto t0 = clk::now();
+  double t_value = 0;
   nc_->put_text("Times", date, rec_);
+  // the values of every variable first (their chunks compress on the pool meanwhile), then the puts in the same order
   std::vector<double> data;
   for (const OutVar& v : vars_) {
     std::size_t n = 1;
     for (std::size_t l : v.dimlens) n *= l;
     data.assign(n, 0.0);
-    if (value(v, data) && data.size() != n)
+    const auto tv = clk::now();
+    const bool given = value(v, data);
+    t_value += secs(tv, clk::now());
+    if (given && data.size() != n)
       throw std::runtime_error("wrf_io: " + v.name + " has " + std::to_string(data.size()) + " values, expected " +
                                std::to_string(n));
-    if (v.type == 'i' || v.type == 'l') nc_->put_int(v.name, std::vector<int>(data.begin(), data.end()), rec_);
-    else if (v.type != 'c') nc_->put(v.name, data, rec_);
+    if (v.type == 'i' || v.type == 'l') nc_->stage_int(v.name, std::vector<int>(data.begin(), data.end()), rec_);
+    else if (v.type != 'c') nc_->stage(v.name, data, rec_);
   }
+  const auto t1 = clk::now();
+  nc_->flush();
+  const auto t2 = clk::now();
   nc_->sync();
+  const auto t3 = clk::now();
+  deflate::clear();
+  if (deflate::timing())
+    std::printf("cppwrf: io %s rec %zu: values %.3f s (device copies %.3f s), staging %.3f s, puts %.3f s (pool wait "
+                "%.3f s, filter's own compression %.3f s), sync %.3f s, total %.3f s; chunks precompressed %ld, taken "
+                "%ld, compressed by the filter %ld\n",
+                path_.c_str(), rec_, t_value, ds.download_s - s0.download_s, secs(t0, t1) - t_value, secs(t1, t2),
+                ds.wait_s - s0.wait_s, ds.miss_s - s0.miss_s, secs(t2, t3), secs(t0, t3),
+                ds.precomputed - s0.precomputed, ds.hits - s0.hits, ds.misses - s0.misses);
   ++rec_;
 }
 

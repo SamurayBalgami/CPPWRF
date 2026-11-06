@@ -4,6 +4,7 @@
 
 #include <netcdf.h>
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -15,6 +16,7 @@
 #include "dyn/rk3.hpp"
 #include "phys/driver/suite.hpp"
 #include "wrf_io/global_atts.hpp"
+#include "wrf_io/nc_deflate.hpp"
 #include "wrf_io/namelist.hpp"
 #include "wrf_io/stream_file.hpp"
 #include "wrf_io/wrf_schema.hpp"
@@ -26,6 +28,14 @@
 namespace cppwrf::cases {
 
 namespace {
+
+// a device-to-host copy of an output field, timed for CPPWRF_IO_TIMING
+template <class F, class V>
+void download_timed(const F& f, V& h) {
+  const auto t0 = std::chrono::steady_clock::now();
+  f.download(h);
+  wrf_io::deflate::stats().download_s += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+}
 
 std::string str(double v) {
   char b[64];
@@ -49,8 +59,8 @@ bool copy_field(const F& f, const std::vector<std::size_t>& dims, std::vector<do
   if (sub ? (int(ni) > L.nx || int(nj) > L.ny || int(nk) != L.nz)
           : (int(ni) != L.nx || int(nj) != L.ny || (int(nk) != std::max(1, L.nz) && !pad)))
     return false;
-  std::vector<real> h;
-  f.download(h);
+  static thread_local std::vector<real> h;  // kept between fields: no new pages for every copy
+  download_timed(f, h);
   out.assign(nk * nj * ni, 0.0);
   for (std::size_t k = 0; k < (pad ? nk - 1 : nk); ++k)
     for (std::size_t j = 0; j < nj; ++j)
@@ -87,8 +97,8 @@ bool copy_base(const F& f, const std::vector<std::size_t>& dims, int nx, int ny,
   else if (dims.size() == 2) { nj = dims[0]; ni = dims[1]; }
   else return false;
   if (int(ni) != nx || int(nj) != ny || int(nk) != nzl) return false;
-  std::vector<real> h;
-  f.download(h);
+  static thread_local std::vector<real> h;  // kept between fields: no new pages for every copy
+  download_timed(f, h);
   const bool u = f.uniform();
   out.resize(nk * nj * ni);
   for (std::size_t k = 0; k < nk; ++k)
@@ -487,9 +497,9 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     }
   }
   if (name == "T") {  // th_phy_m_t0: dry potential temperature - t0
-    std::vector<real> ht, hq;
-    s.t_2.download(ht);
-    if (s.P_QV >= 0) s.q_2[s.P_QV].download(hq);
+    static thread_local std::vector<real> ht, hq;
+    download_timed(s.t_2, ht);
+    if (s.P_QV >= 0) download_timed(s.q_2[s.P_QV], hq);
     const Layout& L = s.t_2.layout();
     return mass3([&](int i, int j, int k) {
       const double tm = double(ht[L.index(i, j, k)]) + b.t0;
@@ -512,7 +522,7 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     if (!fi) fi = m_.suite->bucket_int(to_lower(name));  // I_RAINC, I_ACSWUPT, ... (bucket_mm, bucket_J)
     if (fi) {
       std::vector<int> h;
-      fi->download(h);
+      download_timed(*fi, h);
       const Layout& L = fi->layout();
       out.resize(n);
       for (std::size_t j = 0; j < dims[0]; ++j)
@@ -603,8 +613,8 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
   if (name == "P_HYD" && !(m_.suite && step_ > 0)) {  // start_em: p_hyd = p + pb until phy_prep sets it
     if (p_hyd0_.empty()) {
       std::vector<real> hp, hpb;
-      s.p.download(hp);
-      b.pb.download(hpb);
+      download_timed(s.p, hp);
+      download_timed(b.pb, hpb);
       const Layout &L = s.p.layout(), &Lb = b.pb.layout();
       mass3([&](int i, int j, int k) { return double(hp[L.index(i, j, k)] + hpb[Lb.index(i, j, k)]); });
       p_hyd0_ = out;
@@ -688,7 +698,7 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
   }
   if (name == "AKPBL" && m_.suite && m_.suite->options().cu_physics != 0 && dims.size() == 2) {  // cumulus_driver
     std::vector<int> h;
-    m_.suite->kpbl.download(h);
+    download_timed(m_.suite->kpbl, h);
     const Layout& L = m_.suite->kpbl.layout();
     out.resize(n);
     for (std::size_t j = 0; j < dims[0]; ++j)
