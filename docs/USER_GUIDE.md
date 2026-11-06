@@ -500,6 +500,13 @@ fastest MPI layout steps in 7.8 s. CPPWRF steps in 1.7 s on the GPU in FP32 and 
 On a 359 x 269 x 44 domain the GPU's lead grows to 8.2x in FP32 and 4.7x in FP64. `tools/bench/colab_bench.sh`
 repeats the measurement. The memory-traffic budget of the large step is also in docs/PERF.md.
 
+NetCDF-4 output (wrfout, wrfrst, auxhist3) is compressed as WRF compresses it (chunks of half the horizontal
+dimensions, shuffle + deflate level 2), but the chunks of each record are compressed on a pool of host threads
+before HDF5 writes them, with the same bytes as HDF5's own filter. `CPPWRF_NC_THREADS=N` sets the pool size (default:
+the hardware threads, at most 64; 1: no pool; 0: HDF5's own filter) and `CPPWRF_IO_TIMING=1` prints the time of each
+record (values, device copies, HDF5 calls). On the 359 x 269 x 44 domain a FP64 history frame takes about 1.2 s
+instead of 11 s on the G4.
+
 GPU memory: the column physics keeps its per-column arrays in thread-local memory, which CUDA reserves for every
 thread the GPU can hold at once, so the footprint grows with the GPU's size. On an NVIDIA L4 (24 GB) the same domain
 in FP64 peaks at about 9.3 GB with Thompson + MYNN-EDMF + RRTMG and 11.3 GB for the two-way nest N3 with Thompson

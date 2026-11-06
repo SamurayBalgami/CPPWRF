@@ -67,8 +67,10 @@ start-up and history output ([docs/PERF.md](docs/PERF.md) has the wall times, ot
 
 The speed-ups in brackets are against WRF real*4 for FP32 and against WRF real*8 for FP64. The GPU's advantage grows
 with the domain size. Whole runs gain less: start-up and NetCDF output are serial in both models. Without history
-output GPU FP32 runs 1.8x to 3.5x faster than WRF real*4 in wall time. With a frame every 10 minutes, L's output
-takes as long in CPPWRF as in WRF, so output decides the wall time.
+output GPU FP32 runs 1.8x to 3.5x faster than WRF real*4 in wall time. CPPWRF compresses the NetCDF-4 chunks of
+its history and restart files on host threads, and the files keep every byte: with a frame every
+10 minutes and a restart file, L's hour takes 13 s in GPU FP32 (58 s with serial compression) and 33 s in FP64
+(123 s).
 
 In these runs, the GPU FP64 results are bit-identical to the CPU FP64 results. The CPU FP64 results are
 bit-identical to WRF real*8 run in one process, which is how the references are made: WRF's own result changes

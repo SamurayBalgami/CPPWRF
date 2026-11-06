@@ -142,8 +142,9 @@ the scratch is smaller on a 6 GB GPU. No run used a 6 GB GPU.
   of a short run.
   - With history off, GPU FP32 against WRF real*4 is 1.5x (R1) to 3.5x (N3) in wall time.
   - With history on, L's 7 frames cost CPPWRF FP32 about 32 s and FP64 about 67 s, as much as they cost WRF real*4
-    (32 s) and real*8 (68 s). Output then decides the wall time. NetCDF output is the next bottleneck for large
-    domains.
+    (32 s) and real*8 (68 s). Output then decides the wall time. NetCDF output was the next bottleneck for large
+    domains. Since IO1 the chunks are compressed on host threads, with the same bytes: L's hour with 7 frames and a
+    restart file takes 13 s instead of 58 s in FP32 (section "NetCDF output: chunks compressed on host threads").
   - CPPWRF's start-up on L, with history off, takes 7.2 s in FP32 against 6.7 s for WRF real*4. It includes the
     reading of the 4.25 M-cell real*8 inputs.
 - WRF gains little beyond one rank per core on this runtime: 48 ranks are slower than 24 in 9 of the 10 case and
@@ -775,3 +776,71 @@ differential tests.
 
 Open: MYNN PBL (472 ms per hour FP64, 124 FP32 on the MYNN case) is now the largest column kernel there; YSU and
 KF (L FP64 ~320 ms each) build with `--fmad=true` in FP32, so a split there is FP64-only like WSM6's.
+
+## NetCDF output: chunks compressed on host threads (IO1; measured, Colab G4)
+
+WRF's NetCDF-4 history and restart files (external/io_netcdf `ext_ncd_write_field`) are chunked in halves of the two
+horizontal dimensions and compressed with shuffle + deflate level 2. CPPWRF writes the same files with the same
+NetCDF calls. HDF5's deflate filter compressed them one chunk after the other in the model's thread. On the large
+domain L that was most of a run with history on (`CPPWRF_IO_TIMING=1` with HDF5's own filter, as in main d9c25e5;
+G4, FP64):
+
+| File (L, FP64) | values (device copies) | puts + sync (HDF5: shuffle, deflate, write) | total |
+|---|---|---|---|
+| wrfout, one frame | 0.33 s (0.22 s) | 7.8 s + 2.8 s | 11.1 s |
+| wrfrst at 1 h | 0.82 s (0.54 s) | 22.1 s + 7.8 s | 31.4 s |
+
+P4 FP64 takes 1.25 s per frame and 3.5 s for wrfrst; FP32 about half. The device-to-host copies, the
+unstaggering and type conversion are 3 to 5 % of it, and the file system (Colab's local disk) is not the limit.
+
+**Change** (src/wrf_io/nc_deflate.cpp, nc_out.cpp, stream_file.cpp):
+- `StreamFile::write` gathers the values of all variables of a record first. For each deflated variable, `NcOut`
+  queues every chunk on a pool of host threads. A pool thread cuts the chunk (an edge chunk is padded with the
+  variable's fill value, as HDF5 pads it), shuffles it (H5Zshuffle.c) and calls `compress2` at the variable's level,
+  the call of HDF5's filter (H5Zdeflate.c).
+- HDF5's deflate filter is replaced through the library's `H5Z_register`, the function HDF5 registers its own filters
+  with. The public `H5Zregister` refuses predefined filter ids. The new filter takes the precomputed output when the
+  chunk HDF5 hands it has the same bytes (a sampled key, then the whole buffer compared). Otherwise it compresses the
+  chunk itself, as HDF5's filter does. The class has the same id and name, so the filter pipeline messages keep their
+  bytes too.
+- The NetCDF / HDF5 calls and their order do not change, and only zlib runs on the pool threads. So every file has
+  the same bytes, whether a chunk was precompressed or not. Without the symbol (another HDF5 build), HDF5's own
+  filter stays.
+- The host buffers of the field copies and of the staged records are kept from one field and record to the next.
+  They are no longer new pages each time (L FP64: device copies 0.25 -> 0.08 s and staging 0.23 -> 0.12 s per frame).
+- `CPPWRF_NC_THREADS` sets the pool size (default: the hardware threads, at most 64). 1 turns the precomputation off
+  and 0 keeps HDF5's own filter. `CPPWRF_IO_TIMING=1` prints each record's times.
+
+After the change (L FP64): 1.15 s per wrfout frame (values 0.22, staging 0.12, puts 0.63 of which 0.14 waiting for the
+pool, sync 0.18) and 4.1 s for wrfrst. Every chunk (660 per frame, 1932 in wrfrst) came from the pool, and none was
+compressed by the filter itself. 16 or 24 pool threads give the same times as 48.
+
+Wall time of the whole process, 1 h with a history frame every 10 minutes (7 frames in one file) and wrfrst at 1 h,
+base main d9c25e5 against port/IO1 in one G4 session, each run twice (CPU FP64: once, 48 OpenMP threads). "Off" is
+history_interval = 1440: only the frame at t = 0 is written.
+
+| Case | base wall (s) | new wall (s) | gain | history off: base / new (s) | output (on - off): base -> new (s) |
+|---|---|---|---|---|---|
+| L GPU FP64 | 123.0, 123.0 | 34.6, 31.7 | 3.7x | 22.0 / 16.5 | 101 -> 16.7 |
+| L GPU FP32 | 58.1, 57.7 | 13.1, 13.6 | 4.3x | 9.8 / 7.0 | 48 -> 6.3 |
+| P4 GPU FP64 | 15.9, 15.9 | 5.2, 5.4 | 3.0x | 4.4 / 3.8 | 11.5 -> 1.5 |
+| P4 GPU FP32 | 8.7, 8.7 | 3.4, 3.4 | 2.5x | 2.9 / 2.6 | 5.8 -> 0.8 |
+| L CPU FP64 | 169.3 | 80.7 | 2.1x | | |
+| P4 CPU FP64 | 24.9 | 18.6 | 1.3x | | |
+
+The stepping times are unchanged (L FP64 7.58 s, FP32 2.52 s). On L in FP32 the hour with 7 frames and a restart
+file now takes 13 s instead of 58 s, against 10 s with history off in main. An earlier session (without the kept
+buffers) gave L FP64 31.6 and 29.9 s, against 120.3 and 119.2 s in main. In the CPU build the device copies are
+host copies with OpenMP, which run next to the pool's compression (P4: 0.5 s per frame); the CPU's stepping takes the
+rest of the time.
+
+**Proof.** Every output file is byte-identical to main's (`cmp`): wrfout, wrfrst and CPPWRF's restart_*.nc of L and
+P4 in GPU FP64, GPU FP32 and CPU FP64 (history every 10 min, 1 h). `cppwrf_real`'s wrfinput / wrfbdy of L are
+byte-identical too. `test_nc_deflate` (ctest) writes a file with float, double and int variables and odd dimensions
+(edge chunks) three times: with the pool, with `CPPWRF_NC_THREADS=1` and with HDF5's own filter. The three files must
+be byte-identical, and every chunk must come from the pool. It passes with HDF5 1.10.10 (Colab's Ubuntu) and 1.14.5
+(Debian 13).
+
+Open: the remaining output time (L FP64 1.15 s per frame) is HDF5's own work in the model's thread: the shuffle,
+the copy of the precompressed chunk and the write. It could move to a background thread while the GPU steps, but
+NetCDF is not thread-safe, and the model reads NetCDF files during the run (boundaries, wrfinput fields, sst_update).

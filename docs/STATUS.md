@@ -271,7 +271,9 @@ Agreement in these runs:
 
 WRF run with MPI ranks differs from its own one-process run, so exact comparisons use one-process WRF.
 
-Wall times, GPU memory and the details are in docs/PERF.md.
+The NetCDF-4 history and restart files are compressed on host threads (the same bytes as HDF5's own filter): with a
+frame every 10 minutes and a restart file, L's hour takes 13 s in GPU FP32 and 33 s in FP64 (58 s and 123 s with
+serial compression). Wall times, GPU memory and the details are in docs/PERF.md.
 
 ## Not yet implemented
 
