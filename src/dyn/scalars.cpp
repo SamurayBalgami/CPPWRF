@@ -27,12 +27,26 @@ using C2 = View2<const real>;
 using B2 = BView2<const real>;
 constexpr real H = real(0.5);
 
+// FP64 builds: advect_scalar's face fluxes are computed once per face (KFaceX/Y/Z into fxs, fys, fzs, the same
+// expressions) and read by both cells of the face; FP32 builds compute them per cell as before (nvcc contracts
+// a*b + c there depending on the code around it, so the FP32 code stays as it is)
+#if defined(CPPWRF_DOUBLE)
+#define CPPWRF_FACE_STORED(F) \
+  if (stored) return F(i, j, k);
+#else
+#define CPPWRF_FACE_STORED(F)
+#endif
+
 // High-order (advect_scalar) and first-order upwind (advect_scalar_pd) face fluxes.
 struct Fluxes {
   C3 q, qo, ru, rv, ww; C2 mut; VCoef c;
   real rdx, rdy, dt, hup, vup; int nz; bool do_y;
   B2 msftx, msfty; kern::Spec sp;
   bool pd = false;  // advect_scalar_pd's flux statement functions
+#if defined(CPPWRF_DOUBLE)
+  C3 fxs, fys, fzs;     // fx, fy, fz of every face (stored = true)
+  bool stored = false;
+#endif
   CPPWRF_HD real f5(real a, real b, real cc, real d, real e, real f, real v) const {
     return pd ? kern::flux5_pd(a, b, cc, d, e, f, v, hup) : kern::flux5(a, b, cc, d, e, f, v, hup);
   }
@@ -40,6 +54,7 @@ struct Fluxes {
     return pd ? kern::flux3_pd(a, b, cc, d, v, up) : kern::flux3(a, b, cc, d, v, up);
   }
   CPPWRF_HD real fx(int i, int j, int k) const {  // west face of cell i
+    CPPWRF_FACE_STORED(fxs)
     const real vel = ru(i, j, k);
     const int o = kern::ord_face(i, sp.nx, sp.x);
     if (o == 2) return H * vel * (q(i, j, k) + q(i - 1, j, k));
@@ -47,6 +62,7 @@ struct Fluxes {
     return vel * f5(q(i - 3, j, k), q(i - 2, j, k), q(i - 1, j, k), q(i, j, k), q(i + 1, j, k), q(i + 2, j, k), vel);
   }
   CPPWRF_HD real fy(int i, int j, int k) const {
+    CPPWRF_FACE_STORED(fys)
     const real vel = rv(i, j, k);
     const int o = kern::ord_face(j, sp.ny, sp.y);
     if (o == 2) return H * vel * (q(i, j, k) + q(i, j - 1, k));
@@ -54,6 +70,7 @@ struct Fluxes {
     return vel * f5(q(i, j - 3, k), q(i, j - 2, k), q(i, j - 1, k), q(i, j, k), q(i, j + 1, k), q(i, j + 2, k), vel);
   }
   CPPWRF_HD real fz(int i, int j, int k) const {  // w level k
+    CPPWRF_FACE_STORED(fzs)
     if (k == 0 || k == nz) return 0;
     const real vel = ww(i, j, k);
     if (k == 1 || k == nz - 1) return vel * (c.fnm(k) * q(i, j, k) + c.fnp(k) * q(i, j, k - 1));
@@ -135,6 +152,22 @@ struct KUpdate {
                   m_full(f.c, k, mub(i, j), mu2(i, j));
   }
 };
+
+#if defined(CPPWRF_DOUBLE)
+// advect_scalar's face fluxes, each once (FP64 builds): x faces 0..nx, y faces 0..ny, w levels 0..nz
+struct KFaceX {
+  Fluxes f; V3 out;
+  CPPWRF_HD void operator()(int i, int j, int k) const { out(i, j, k) = f.fx(i, j, k); }
+};
+struct KFaceY {
+  Fluxes f; V3 out;
+  CPPWRF_HD void operator()(int i, int j, int k) const { out(i, j, k) = f.fy(i, j, k); }
+};
+struct KFaceZ {
+  Fluxes f; V3 out;
+  CPPWRF_HD void operator()(int i, int j, int k) const { out(i, j, k) = f.fz(i, j, k); }
+};
+#endif
 
 // rk_update_scalar_pd (last stage, before advection): q_1 += dt tendf / m_old
 struct KPreUpdatePD {
@@ -297,11 +330,39 @@ void ScalarTransport::update(State& s, Tendencies& t, const BaseState& b, const 
     };
     auto ften = [&](int n) { return fsink != nullptr && n == s.P_QV ? fsink->view() : V3{}; };
     if (!pd) {
+#if defined(CPPWRF_DOUBLE)
+      {  // the face fluxes once (into the PD work fields, unused here)
+        LaunchBatch<KFaceX, kBatch> fx;
+        LaunchBatch<KFaceY, kBatch> fy;
+        LaunchBatch<KFaceZ, kBatch> fz;
+        for (int m = 0; m < nb; ++m) {
+          Work& w = *work_[m];
+          const Fluxes fl = fluxes(species(m));
+          fx.add(Range3D{0, g.nx + 1, 0, g.ny, 0, g.nz}, KFaceX{fl, w.dhx.view()});
+          if (do_y) fy.add(Range3D{0, g.nx, 0, g.ny + 1, 0, g.nz}, KFaceY{fl, w.dhy.view()});
+          fz.add(Range3D{0, g.nx, 0, g.ny, 0, g.nz + 1}, KFaceZ{fl, w.dhz.view()});
+        }
+        fx.run();
+        fy.run();
+        fz.run();
+      }
+      auto fluxes_stored = [&](int n, const Work& w) {
+        Fluxes fl = fluxes(n);
+        fl.fxs = w.dhx.cview();
+        fl.fys = w.dhy.cview();
+        fl.fzs = w.dhz.cview();
+        fl.stored = true;
+        return fl;
+      };
+#else
+      auto fluxes_stored = [&](int n, const Work&) { return fluxes(n); };
+#endif
       LaunchBatch<KUpdate, kBatch> up;
       for (int m = 0; m < nb; ++m) {
         const int n = species(m);
-        up.add(mr, KUpdate{fluxes(n), s.q_1[n].cview(), t.q_tendf[n].cview(), s.mu_1.cview(), s.mu_2.cview(),
-                           b.mub.view(), work_[m]->q_new.view(), dt_rk, true, ften(n), ften(n).p != nullptr});
+        up.add(mr, KUpdate{fluxes_stored(n, *work_[m]), s.q_1[n].cview(), t.q_tendf[n].cview(), s.mu_1.cview(),
+                           s.mu_2.cview(), b.mub.view(), work_[m]->q_new.view(), dt_rk, true, ften(n),
+                           ften(n).p != nullptr});
       }
       up.run();
     } else {
