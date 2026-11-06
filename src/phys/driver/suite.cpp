@@ -421,6 +421,7 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       *f = Field2(g, Stagger::M, "noah_scratch");
     n_vegtyp = IntField2(g, "n_vegtyp"); n_soiltyp = IntField2(g, "n_soiltyp"); n_slopetyp = IntField2(g, "n_slopetyp");
     n_ice = IntField2(g, "n_ice"); n_active = IntField2(g, "n_active");
+    n_rclast = IntField2(g, "n_rclast");
     if (!noah::read_noah_tables(o.table_dir, o.mminlu, o.mminsl, noah_tables_))
       throw std::runtime_error("PhysicsSuite: cannot read the Noah tables from " + o.table_dir);
   } else if (o.sf_surface_physics == 4) {

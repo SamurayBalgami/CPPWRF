@@ -40,9 +40,8 @@ struct ColArray2 {
 };
 
 // One launch's buffer: warp w of the launch (thread t = w * 32 + lane in column_for's numbering: blocks of
-// kColumnBlockX x kColumnBlockY threads, x fastest) owns 32 * bpc bytes at base + w * 32 * bpc; in it the arrays
-// one after another, each n * sizeof(T) * 32 bytes
-inline constexpr int kColumnBlockX = 64, kColumnBlockY = 2;  // column_for's block (core/backend.hpp)
+// column_block() threads, x fastest) owns 32 * bpc bytes at base + w * 32 * bpc; in it the arrays one after
+// another, each n * sizeof(T) * 32 bytes
 struct ColumnWork {
   char* base = nullptr;
   std::size_t bpc = 0;  // bytes per thread (a multiple of 8)
@@ -101,9 +100,9 @@ char* column_work_buffer(std::size_t bytes, std::size_t* have);
 // bytes per thread: a multiple of 8, so every array starts aligned
 constexpr std::size_t column_work_bpc(std::size_t bytes_per_col) { return (bytes_per_col + 7) / 8 * 8; }
 // the threads of column_for over ni x nj columns
-constexpr std::size_t column_for_threads(int ni, int nj) {
-  return std::size_t((ni + kColumnBlockX - 1) / kColumnBlockX * kColumnBlockX) *
-         std::size_t((nj + kColumnBlockY - 1) / kColumnBlockY * kColumnBlockY);
+inline std::size_t column_for_threads(int ni, int nj) {
+  const ColumnBlock b = column_block();
+  return std::size_t((ni + b.x - 1) / b.x * b.x) * std::size_t((nj + b.y - 1) / b.y * b.y);
 }
 }  // namespace detail
 
@@ -118,18 +117,19 @@ void column_for_work(const Range2D& r, K k) {
   const std::size_t bpc = detail::column_work_bpc(K::kWorkBytes > 0 ? K::kWorkBytes : 1);
   std::size_t have = 0;
   char* buf = detail::column_work_buffer(0, &have);
-  // the most pairs of rows that fit, then chunks of equal size (whole pairs: a block covers two rows)
-  const std::size_t pair = detail::column_for_threads(ni, kColumnBlockY) * bpc;
+  // the most block rows that fit, then chunks of equal size (whole block rows: a block covers by rows)
+  const int by = column_block().y;
+  const std::size_t pair = detail::column_for_threads(ni, by) * bpc;
   std::size_t fit = have / pair;
   if (fit < 1) {
     buf = detail::column_work_buffer(pair, &have);
     fit = 1;
   }
-  const int npairs = (nj + kColumnBlockY - 1) / kColumnBlockY;
+  const int npairs = (nj + by - 1) / by;
   int pairs = fit >= std::size_t(npairs) ? npairs : int(fit);
   const int nchunks = (npairs + pairs - 1) / pairs;
   pairs = (npairs + nchunks - 1) / nchunks;
-  const int rows = pairs * kColumnBlockY;
+  const int rows = pairs * by;
   for (int j0 = r.j0; j0 < r.j1; j0 += rows) {
     const int j1 = j0 + rows < r.j1 ? j0 + rows : r.j1;
     const ColumnWork w{buf, bpc};

@@ -311,7 +311,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
       n_fdown, n_ec, n_edir, n_ett, n_esnow, n_drip, n_dew, n_beta, n_etp, n_ssoil, n_flx1, n_flx2, n_flx3,
       n_snomlt, n_sncovr, n_runoff1, n_runoff2, n_runoff3, n_rc, n_pc, n_rsmin, n_soilw, n_soilm, n_q1;
   Field3 n_stc, n_smc, n_swc, n_et, n_smav;
-  IntField2 n_vegtyp, n_soiltyp, n_slopetyp, n_ice, n_active;
+  IntField2 n_vegtyp, n_soiltyp, n_slopetyp, n_ice, n_active, n_rclast;
   Field3 zero3_;  // qc/qi stand-ins for YSU/MYJ (flag_qc = flag_qi = false)
 
   void surface_driver(const dyn::State& s, const dyn::BaseState& b);

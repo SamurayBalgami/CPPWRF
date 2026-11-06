@@ -285,6 +285,12 @@ class StepScope {
 };
 bool step_graphs_on();  // the steps run as CUDA graphs (the caller need not wait for each step)
 
+// column_for's thread block (x along i, y along j): kColumnBlock, or CPPWRF_COLUMN_BLOCK=XxY (X a multiple of 32)
+struct ColumnBlock {
+  int x, y;
+};
+ColumnBlock column_block();
+
 #if defined(CPPWRF_USE_CUDA)
 void cuda_check_launch(const char* where);
 void* cuda_stream_raw();  // the stream of every launch and copy (created on first use; blocking w.r.t. stream 0)
@@ -361,8 +367,9 @@ template <class K> void column_for(const Range2D& r, const K& k) {
   static_assert(__nv_is_extended_host_device_lambda_closure_type(K) || std::is_trivially_copyable_v<K>,
                 "kernels are copied to the device: trivially copyable structs/lambdas only (no std::string, std::vector, ...)");
   if (r.i1 <= r.i0 || r.j1 <= r.j0) return;
-  dim3 b(64, 2, 1);
-  dim3 g((r.i1 - r.i0 + 63) / 64, (r.j1 - r.j0 + 1) / 2, 1);
+  static const ColumnBlock cb = column_block();
+  dim3 b(cb.x, cb.y, 1);
+  dim3 g((r.i1 - r.i0 + cb.x - 1) / cb.x, (r.j1 - r.j0 + cb.y - 1) / cb.y, 1);
   static const bool reserved = (detail::reserve_local_memory(reinterpret_cast<const void*>(&detail::k2d<K>), typeid(K).name()), true);
   (void)reserved;
   const bool kt = ktime::on();

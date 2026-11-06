@@ -38,8 +38,8 @@ void column_work_reserve(const Range2D& r, std::size_t bytes_per_col) {
   std::size_t budget = 0, free_b = 0, total_b = 0;
   if (cudaMemGetInfo(&free_b, &total_b) == cudaSuccess) budget = std::min(total_b / 8, free_b / 4);
   std::size_t want = detail::column_for_threads(ni, nj) * bpc;
-  if (want > budget) {  // whole pairs of rows (a block covers two), at least one pair
-    const std::size_t pair = detail::column_for_threads(ni, kColumnBlockY) * bpc;
+  if (want > budget) {  // whole block rows (a block covers column_block().y rows), at least one
+    const std::size_t pair = detail::column_for_threads(ni, column_block().y) * bpc;
     want = std::max<std::size_t>(budget / pair, 1) * pair;
   }
   std::lock_guard<std::mutex> lk(mtx);

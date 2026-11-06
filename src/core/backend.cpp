@@ -412,6 +412,19 @@ Reducer::Reducer(int max_k) : max_k_(max_k), hpart_(max_k) {}
 Reducer::~Reducer() {}
 #endif
 
+ColumnBlock column_block() {
+  static const ColumnBlock b = [] {
+    ColumnBlock r{64, 2};
+    if (const char* e = std::getenv("CPPWRF_COLUMN_BLOCK")) {
+      int x = 0, y = 0;
+      if (std::sscanf(e, "%dx%d", &x, &y) == 2 && x > 0 && x % 32 == 0 && y > 0 && x * y <= 1024) r = {x, y};
+      else throw std::runtime_error(std::string("CPPWRF_COLUMN_BLOCK=") + e + ": XxY with X a multiple of 32");
+    }
+    return r;
+  }();
+  return b;
+}
+
 int fatal_code_host = 0;
 
 const char* fatal_message(int code) {

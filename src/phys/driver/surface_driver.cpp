@@ -105,23 +105,43 @@ struct KNoahRa {
   CPPWRF_HD void operator()(int i, int j) const { ra(i, j) = wspd(i, j) / (ust(i, j) * ust(i, j)); }
 };
 // rc2 = RC (RS) after SFLX and after SFLX_GLACIAL: SFLX_GLACIAL leaves the local RC alone, so a land-ice point
-// gets the RC of the last SFLX point before it in lsm's loop order (j, then i); one thread walks the domain
+// gets the RC of the last SFLX point before it in lsm's loop order (j, then i; 0 before the first: WRF's RC is
+// uninitialised there). Only copies: KNoahRcLast finds each row's last SFLX point, KNoahRs takes per point the last
+// one before it (in its row, else the nearest row below that has one), as the sequential walk does.
+struct KNoahRcLast {  // one thread per row: lastrc(i0, j) = the last i of row j with an SFLX point, else -1
+  CI2 active;
+  I2 lastrc;
+  int i0, i1;
+  CPPWRF_HD void operator()(int, int j) const {
+    int last = -1;
+    for (int i = i0; i < i1; ++i)
+      if (active(i, j) == 1) last = i;
+    lastrc(i0, j) = last;
+  }
+};
 struct KNoahRs {
   C2 rc;
-  CI2 active, ice;
+  CI2 active, ice, lastrc;
   V2 rs;
-  int i0, i1, j0, j1;
-  CPPWRF_HD void operator()(int, int) const {
-    real last = real(0.);  // WRF: uninitialised before the first SFLX point
-    for (int j = j0; j < j1; ++j)
-      for (int i = i0; i < i1; ++i) {
-        if (active(i, j) == 1) {
-          last = rc(i, j);
-          rs(i, j) = last;
-        } else if (ice(i, j) == -1) {
-          rs(i, j) = last;
+  int i0, j0;
+  CPPWRF_HD void operator()(int i, int j) const {
+    if (active(i, j) == 1) {
+      rs(i, j) = rc(i, j);
+    } else if (ice(i, j) == -1) {
+      real last = real(0.);
+      bool found = false;
+      for (int ii = i - 1; ii >= i0 && !found; --ii)
+        if (active(ii, j) == 1) {
+          last = rc(ii, j);
+          found = true;
         }
-      }
+      for (int jj = j - 1; jj >= j0 && !found; --jj)
+        if (lastrc(i0, jj) >= 0) {
+          last = rc(lastrc(i0, jj), jj);
+          found = true;
+        }
+      rs(i, j) = last;
+    }
   }
 };
 
@@ -1264,8 +1284,9 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
         std::fclose(fp);
       }
       noah::run_noah(nk, cols);
-      column_for(Range2D{0, 1, 0, 1}, KNoahRs{n_rc.cview(), n_active.cview(), n_ice.cview(), rs.view(), cols.i0, cols.i1,
-                                             cols.j0, cols.j1});
+      column_for(Range2D{0, 1, cols.j0, cols.j1}, KNoahRcLast{n_active.cview(), n_rclast.view(), cols.i0, cols.i1});
+      column_for(cols, KNoahRs{n_rc.cview(), n_active.cview(), n_ice.cview(), n_rclast.cview(), rs.view(), cols.i0,
+                               cols.j0});
       if (do_ndump) {
         std::FILE* fp = std::fopen((std::string(ndump) + "/noah_out_c.bin").c_str(), "wb");
         const int hdr[2] = {int(ncol.size()), nsoil};
