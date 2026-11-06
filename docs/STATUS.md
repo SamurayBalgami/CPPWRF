@@ -45,7 +45,11 @@ is verified against WRF, and the current results. All numbers come from `tests/v
    -DCPPWRF_DIFF_TESTS=ON` and `ctest -L diff`, with `WRF_DIR`, `WRF_R8D8_DIR` and `CPPWRF_WRF_RUNS` set;
    without them a test is skipped (77). Every full VM suite runs them (`tools/gcp/run_diff_tests.sh`
    with `diff_data.tar`: the WRF objects and the input subsets; a skipped test fails the suite);
-   `tools/gcp/gcp_difftests.sh --faults DIR` runs them alone with deliberate faults that must be caught.
+   `tools/gcp/gcp_difftests.sh --faults DIR` and `tools/colab/colab_suite.sh --diff-only [--tests REGEX]
+   [--faults DIR]` run them alone, with deliberate faults that must be caught. WRF's side is computed on the test
+   machine, so the Fortran drivers get glibc libmvec's vector log / log10 as on Intel
+   (`tests/phys/libmvec_intel.cpp`, linked by `wrf_fortran.sh`; see below): the tests give the same bits on Intel
+   and AMD CPUs.
 2. **Model runs against WRF** (`tests/verify/wrf_suite.py`): WRF v4.8.0 and CPPWRF are run from the same
    wrfinput/wrfbdy files (119 x 89 x 44, 15 km, dt 60 s; nests 120 x 90 x 44 at 5 km). The CPU FP64 cases
    compare CPPWRF's wrfout files with WRF's at tolerance 0 (tests/verify/exact.py: NaN equals only NaN, -0
@@ -142,6 +146,13 @@ algorithms statement by statement with Intel's rcpps from a table, src/core/libm
 tools/libmvec_tables.py; CMake option `CPPWRF_PORTABLE_LIBMVEC`, default ON), so its CPU result is the Intel one
 on AMD too. The other libmvec functions it calls (exp, pow, sin, cos, atan) and glibc's scalar libm use no
 approximate instructions (the scalar ifunc variants depend only on FMA / AVX2, which both vendors have).
+The differential tests run WRF's objects on the test machine: their Fortran drivers link
+tests/phys/libmvec_intel.cpp, whose `_ZGVbN2v_log` / `_ZGVbN2v_log10` are these Intel-equivalent functions
+(on Intel identical to libmvec), so WRF's side gives Intel's bits on AMD too (with libmvec's own log / log10 it
+differed on AMD EPYC by 1 ulp in KF, Noah-MP, the MYNN surface layer and the WSM6 / Thompson reflectivity).
+The full CPU suite therefore runs on the AMD CPU of Colab's G4 runtime (`tools/colab/colab_suite.sh --gpu G4
+--any-cpu --jobs 12 --threads 4`: 121 cases, the output files, ideal files, differential and ctest tests in about
+42 min); the Intel L4 runtime (2 h 45 min) and the GCP VMs stay possible.
 The CPU result does not depend on the OpenMP thread count or on the Intel machine: P4, P6, P8, P9, MYNN,
 P1 with Noah-MP and the two-way nest N3s (1 h, both domains) and em_quarter_ss (30 min) with 1, 16 and 44
 threads are bit-identical to serial WRF on c3 (Sapphire Rapids) and n2 machines (`run.threads` in

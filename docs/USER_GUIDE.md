@@ -432,14 +432,24 @@ python3 tests/tools/test_wrf2cppwrf.py -v
 
 ### The CPU Suite on Google Cloud or Colab
 The full CPU FP64 suite (wrf_suite.py, the output files tests, the differential and ctest tests, the translator
-tests and the comparators' self-test) runs on a remote machine with an Intel CPU (the references are Intel-made;
-on AMD a build with `CPPWRF_PORTABLE_LIBMVEC` gives the same CPU results, see below).
+tests and the comparators' self-test) runs on a remote machine. The references are Intel-made; on an AMD CPU the
+model gives the same results (`CPPWRF_PORTABLE_LIBMVEC`, see below) and so does WRF's side of the differential
+tests (`tests/phys/libmvec_intel.cpp`: their Fortran drivers get glibc libmvec's vector log / log10 as on Intel).
+The default is the AMD CPU of Colab's G4 runtime, the cheapest and fastest:
+
+```bash
+CPPWRF_GCP_BUCKET=cppwrf-data-244589 timeout 14400 tools/colab/colab_suite.sh --gpu G4 --any-cpu --jobs 12 --threads 4
+```
+
+(AMD EPYC 9B45, 48 vCPUs, 176 GB: the full suite in about 42 min; the Intel L4 runtime, the script's default
+`--gpu L4`, takes 2 h 45 min and stays possible).
 
 - `tools/gcp/gcp_run.sh` runs it on a Google Compute Engine spot VM (Debian 13), with the data tars of
   `tests/verify/vm_data.txt` from the bucket.
-- `tools/colab/colab_suite.sh` runs the same steps (`tools/gcp/suite_body.sh`) on a Colab runtime with an Intel CPU
-  (default `--gpu L4`: Intel Xeon Cascade Lake, 12 vCPUs, 52 GB; the GPU is not used; G4 and the CPU-only runtime
-  `--gpu CPU` are AMD and are refused unless `--any-cpu`) inside a Debian 13 chroot, so that gcc, glibc, libmvec, NetCDF and Python are the GCP
+- `tools/colab/colab_suite.sh` runs the same steps (`tools/gcp/suite_body.sh`) on a Colab runtime
+  (`--gpu G4 --any-cpu --jobs 12 --threads 4` as above; default `--gpu L4`: Intel Xeon Cascade Lake, 12 vCPUs, 52 GB;
+  the GPU is not used; G4 and the CPU-only runtime `--gpu CPU` are AMD and are refused unless `--any-cpu`) inside a
+  Debian 13 chroot, so that gcc, glibc, libmvec, NetCDF and Python are the GCP
   VMs' packages. The data tars come from Google Drive (`cppwrf-drive:cppwrf-data`), where
   `tools/colab/drive_sync.sh` copies them from the bucket on a Colab runtime; a tar not yet on Drive is read from
   the bucket with a read-only token (`tools/colab/gcs_token.py`) and then put on Drive. Same options as
@@ -447,9 +457,12 @@ on AMD a build with `CPPWRF_PORTABLE_LIBMVEC` gives the same CPU results, see be
   `--keep` / `--session` (reuse a runtime with its chroot and tars). Without `--data` the tars come from the case
   registry: with `--cases` only the tars those cases read (`DATA` in `tests/verify/cases/*.py`,
   `tests/verify/wrf_suite.py --data-for`), else every tar of `vm_data.txt`. Exit status 0 only for a complete suite
-  without FAIL or SKIP (`tools/gcp/suite_status.sh`, as `gcp_run.sh`). The full suite takes about 2.5 h on an L4
-  (data from Drive ~25 min, 4 suite jobs x 3 threads; 6 jobs ran out of the 52 GB) and gives the same PASS / FAIL /
-  SKIP lists as the GCP VM.
+  without FAIL or SKIP (`tools/gcp/suite_status.sh`, as `gcp_run.sh`). The full suite takes about 42 min on the G4
+  (data from Drive ~12 min, 12 suite jobs x 4 threads) and about 2.5 h on an L4 (data ~25 min, 4 suite jobs x 3
+  threads; 6 jobs ran out of the 52 GB), with the same PASS / FAIL / SKIP lists as the GCP VM. `--diff-only` runs
+  only the differential and ctest tests (`tools/colab/diff_body.sh`; data diff_data.tar, port_c01_diff.tar),
+  `--tests REGEX` limits them, `--faults DIR` applies each `*.patch` of DIR alone after the clean run (a line
+  `# tests: REGEX` names the tests it must break; faults.log: DETECTED / MISSED).
 - `tools/colab/colab_wrfref.sh REFS.txt` makes WRF references on such a runtime as `tools/gcp/gcp_wrfref.sh`
   (`--check-only`, `--files`, `--cases`; `--stage OBJ:CASE,...` puts the suite's tar of the new references on Drive).
 - `tools/colab/colab_mvec.sh [--gpu L4|G4|CPU] [--n N]` proves the portable vector log / log10 on a runtime of any
@@ -463,8 +476,10 @@ on AMD a build with `CPPWRF_PORTABLE_LIBMVEC` gives the same CPU results, see be
 # once: the Drive remote (browser login; scope drive.file), then the tars of vm_data.txt to Drive
 rclone config create cppwrf-drive drive scope=drive.file
 CPPWRF_GCP_BUCKET=cppwrf-data-244589 tools/colab/drive_sync.sh
-# the full suite (every tar of vm_data.txt)
-CPPWRF_GCP_BUCKET=cppwrf-data-244589 timeout 43200 tools/colab/colab_suite.sh
+# the full suite (every tar of vm_data.txt) on the G4's AMD CPU; on the Intel L4: without --gpu ... --threads 4
+CPPWRF_GCP_BUCKET=cppwrf-data-244589 timeout 14400 tools/colab/colab_suite.sh --gpu G4 --any-cpu --jobs 12 --threads 4
+# the differential tests alone, with deliberate faults (DIR/*.patch)
+CPPWRF_GCP_BUCKET=cppwrf-data-244589 timeout 10800 tools/colab/colab_suite.sh --gpu G4 --any-cpu --diff-only --faults DIR
 # some cases, with only the tars they read
 CPPWRF_GCP_BUCKET=cppwrf-data-244589 timeout 10800 tools/colab/colab_suite.sh --cases real_r1_fp64_cpu,real_n3_r8_fp64_cpu
 ```
