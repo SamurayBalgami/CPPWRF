@@ -117,7 +117,8 @@ copyable structs (`column_for`), no host pointers, literals as `real(...)`; the 
 compiles (`-DCPPWRF_DOUBLE=OFF`).
 
 **Not ported** (the constructor rejects these options):
-seaice_thickness_opt / seaice_snowdepth_opt = 1 (need ICEDEPTH/SNOWSI), urban physics, the obs-nudging diagnostics URATX/VRATX/TRATX (not used by the physics).
+seaice_thickness_opt / seaice_snowdepth_opt = 1 (need ICEDEPTH/SNOWSI), urban physics (the full list of options without a
+port: docs/USER_GUIDE.md, "Rejected Options and Why").
 phy_init is not part of the suite: the caller fills the initial surface state (what wrfinput
 and `phy_init` provide; the test takes it from WRF after `start_domain`).
 

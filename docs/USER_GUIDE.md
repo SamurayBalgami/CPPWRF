@@ -1,93 +1,139 @@
 # CPPWRF User Guide
 
-Welcome to **CPPWRF**, a modern, high-performance C++20 reimplementation of the Weather Research and Forecasting (WRF) Advanced Research WRF (ARW) dynamical core and physics suite.
-
-This guide provides instructions for building CPPWRF on CPU and GPU architectures, running idealized and real-data cases, configuring model options via INI configuration files, translating WRF `namelist.input` files, interpreting output datasets, and executing the independent verification suite.
+CPPWRF is a C++20 / CUDA port of the WRF-ARW model v4.8.0: the dynamical core, the physics schemes listed below,
+static nests, `real.exe` (`cppwrf_real`) and `ideal.exe`. It reads WRF's inputs (`namelist.input`, `wrfinput_d0N`,
+`wrfbdy_d01`, `wrflowinp_d0N`, WRF's `run/` tables) and writes WRF's `wrfout_d0N`, `wrfrst_d0N` and `auxhist3`
+files. This guide takes you from WRF's inputs to `wrfout` files: building, the end-to-end example, the translator
+of `namelist.input`, every supported option with its WRF name, the options that are rejected and why, GPU builds,
+determinism, restarts, nests and the output streams.
 
 ---
 
 ## Table of Contents
-1. [Architecture & Design Principles](#1-architecture--design-principles)
-2. [Building CPPWRF](#2-building-cppwrf)
+1. [What CPPWRF Is](#1-what-cppwrf-is)
+2. [Quick Start](#2-quick-start)
+3. [Building CPPWRF](#3-building-cppwrf)
    - [Prerequisites](#prerequisites)
-   - [CPU Build (OpenMP, FP32 / FP64)](#cpu-build-openmp-fp32--fp64)
-   - [CUDA GPU Build](#cuda-gpu-build)
-   - [Build Flags & CMake Options](#build-flags--cmake-options)
-3. [Running Simulations](#3-running-simulations)
-   - [Command-Line Invocation](#command-line-invocation)
+   - [Builds](#builds)
+   - [CMake Options](#cmake-options)
+   - [Required Flags and Determinism](#required-flags-and-determinism)
+4. [From WRF Inputs to wrfout](#4-from-wrf-inputs-to-wrfout)
+   - [End-to-End Example (GFS, WPS, cppwrf_real, cppwrf)](#end-to-end-example-gfs-wps-cppwrf_real-cppwrf)
+   - [Running from a WRF Run Directory](#running-from-a-wrf-run-directory)
    - [Translating WRF Namelists (`wrf2cppwrf.py`)](#translating-wrf-namelists-wrf2cppwrfpy)
+   - [Command Line and Environment](#command-line-and-environment)
    - [Idealized Cases](#idealized-cases)
-   - [Real-Data Simulations (WPS + real.exe)](#real-data-simulations-wps--realexe)
-4. [Configuration Reference (INI Keys)](#4-configuration-reference-ini-keys)
-   - [Summary Table](#configuration-keys-table)
-5. [Outputs & Data Formats](#5-outputs--data-formats)
-   - [Native Format (`run.json`, `diag.csv`, `snap_*.bin`)](#native-format)
-   - [WRF NetCDF Output (`wrfout_d01_*`)](#wrf-netcdf-output)
+5. [Supported WRF Options](#5-supported-wrf-options)
+   - [Rejected Options and Why](#rejected-options-and-why)
+6. [Nested Domains](#6-nested-domains)
+7. [GPU Runs](#7-gpu-runs)
+8. [Configuration Reference (INI Keys)](#8-configuration-reference-ini-keys)
+9. [Outputs & Data Formats](#9-outputs--data-formats)
+   - [Native Format](#native-format)
+   - [WRF NetCDF Output](#wrf-netcdf-output)
+   - [Output Streams](#output-streams)
    - [Restart Files & Resuming Simulations](#restart-files--resuming-simulations)
-6. [Verification & Validation](#6-verification--validation)
-   - [Independent Verification Harness (`verify.py`)](#independent-verification-harness-verifypy)
-   - [Real-Data WRF Output Comparison (`compare_real.py`)](#real-data-wrf-output-comparison-compare_realpy)
-   - [Unit & Differential Physics Tests](#unit--differential-physics-tests)
-   - [The CPU Suite on Google Cloud or Colab](#the-cpu-suite-on-google-cloud-or-colab)
-7. [Performance](#7-performance)
+10. [Verification & Validation](#10-verification--validation)
+11. [Performance](#11-performance)
 
 ---
 
-## 1. Architecture & Design Principles
+## 1. What CPPWRF Is
 
-CPPWRF is engineered to match WRF ARW (v4.8.0) numerics and equations discretely:
+CPPWRF follows WRF v4.8.0 statement by statement: the same formulas, operation order, loop bounds, staggering, halo
+updates, branches, constants and defaults. Every result is checked against WRF itself (docs/STATUS.md):
 
-- **Equation Set:** Fully compressible, non-hydrostatic Euler equations in flux form with hybrid terrain-following vertical coordinates ($\eta$).
-- **Time Integration:** 3rd-order Runge-Kutta (RK3) with split-explicit acoustic substeps.
+- **CPU, FP64** (`-DCPPWRF_DOUBLE=ON`, OpenMP): bit-identical to WRF v4.8.0 real*8 (`configure -r8`) run in one
+  process, in every variable and output time of the wrfout and wrfrst files, for the 192 suite cases (real-data
+  domains in the mid-latitudes, the tropics, the Arctic and the Alps, the physics suites, nests, restarts, 24 h and
+  72 h forecasts, WRF's default namelist, WRF's idealized cases).
+- **GPU, FP64** (CUDA): bit-identical to WRF and to the CPU build (79 GPU runs of the suite, on NVIDIA L4, RTX PRO
+  6000 Blackwell and A100).
+- **GPU, FP32**: the fast mode; it differs from WRF's single-precision build by about as much as WRF's single and
+  double precision builds differ from each other.
 
-- **Spatial Discretization:** Arakawa C-grid staggering; 5th- or 6th-order horizontal advection; 3rd- or 4th-order vertical advection.
+Every WRF option is either ported identically or rejected with an error; nothing is silently ignored. Not ported:
+MPI runs (CPPWRF runs on one node: OpenMP threads or one GPU), moving nests, ndown.exe, I/O forms other than NetCDF,
+and the schemes listed under [Rejected Options and Why](#rejected-options-and-why).
 
-- **Thermodynamic Consistency:** Diagnostic pressure and inverse density using moist potential temperature $\theta_m = \theta(1 + (R_v/R_d)q_v)$.
-
-- **Single-Source Kernels:** Dynamics and physics kernels run identically on CPU (OpenMP parallel loops) and GPU (CUDA device kernels) without code duplication.
-
-- **Strict IEEE Floating-Point:** Built with `-ffp-contract=off` (no fused multiply-add contraction) and without fast-math, so that the CPU FP64 results are bit-identical to WRF's and do not depend on the thread count ([Required Flags and Determinism](#required-flags-and-determinism)).
+The design (one source for CPU and GPU kernels, the physics driver, the nests) is described in
+docs/PHYSICS_SUITE.md, docs/PHYSICS_DRIVER.md, docs/NESTING.md and docs/NEST_NUMERICS.md.
 
 ---
 
-## 2. Building CPPWRF
+## 2. Quick Start
+
+```bash
+git clone <repository> cppwrf && cd cppwrf
+# CPU build, FP64 (Debian / Ubuntu: apt install build-essential cmake libnetcdf-dev python3-netcdf4 python3-numpy)
+cmake -S . -B build-cpu -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_DOUBLE=ON
+cmake --build build-cpu -j "$(nproc)"
+ctest --test-dir build-cpu --output-on-failure
+
+# an analytic case that needs no input: the Straka density current (900 s); output in out/straka
+build-cpu/cppwrf configs/straka.ini
+
+# WRF's em_quarter_ss supercell, initialised as WRF's ideal.exe does from WRF's own input_sounding
+# (WRF_SRC: WRF v4.8.0's source tree; WRF does not need to be built)
+build-cpu/cppwrf configs/wrf_quarter_ss.ini --set case.sounding_file=$WRF_SRC/test/em_quarter_ss/input_sounding
+```
+
+A real-data forecast from the GFS analysis to wrfout files is the
+[end-to-end example](#end-to-end-example-gfs-wps-cppwrf_real-cppwrf):
+`examples/quickstart/run.sh` (WPS, `cppwrf_real`, the translator and the model).
+
+These commands, the GPU builds and the end-to-end example were run from a clean source tree on a Google Colab G4
+runtime (AMD EPYC 9B45, NVIDIA RTX PRO 6000 Blackwell) with `tools/colab/colab_quickstart.sh`, which also checks that
+the GPU FP64 output of the example equals the CPU FP64 output bit for bit.
+
+---
+
+## 3. Building CPPWRF
 
 ### Prerequisites
-- Modern C++20 compiler (`g++` >= 11 or `clang++` >= 14)
+- A C++20 compiler: g++ 11 to 14 are tested (the suite uses Debian 13's g++ 14)
 - CMake >= 3.24
-- OpenMP runtime library
-- NetCDF-C development headers (`libnetcdf-dev`)
-- *(Optional)* NVIDIA CUDA Toolkit >= 12.0 for GPU offload
+- OpenMP
+- NetCDF-C with its headers (`libnetcdf-dev`); NetCDF-4 / HDF5 support for compressed output
+- Python 3 with `netCDF4` and `numpy` for the tools (`tools/wrf2cppwrf.py` itself needs only the standard library)
+- *(GPU builds)* the NVIDIA CUDA Toolkit >= 12 and an NVIDIA GPU (tested: sm_80, sm_89, sm_120)
 
-### CPU Build (OpenMP, FP32 / FP64)
-To build standard single-precision (float32) for CPU:
+### Builds
+One source tree gives four builds; build directories are independent.
+
 ```bash
-cmake -B build-cpu -S . -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=OFF
-cmake --build build-cpu -j4
+# CPU, FP64: the configuration that is bit-identical to WRF real*8
+cmake -S . -B build-cpu -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_DOUBLE=ON
+cmake --build build-cpu -j "$(nproc)"
+
+# GPU, FP32: the fast mode
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=ON -DCPPWRF_DOUBLE=OFF
+cmake --build build -j "$(nproc)"
+
+# GPU, FP64: bit-identical to WRF real*8 and to the CPU FP64 build
+cmake -S . -B build-gpu-dp -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=ON -DCPPWRF_DOUBLE=ON
+cmake --build build-gpu-dp -j "$(nproc)"
+
+# CPU, FP32 (not part of the verification suite)
+cmake -S . -B build-cpu-sp -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_DOUBLE=OFF
+cmake --build build-cpu-sp -j "$(nproc)"
 ```
 
-To build double-precision (float64, `real = double`):
-```bash
-cmake -B build-cpu-dp -S . -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_DOUBLE=ON
-cmake --build build-cpu-dp -j4
-```
+Each build makes `cppwrf` (the model), `src/init_real/cppwrf_real` (real.exe) and the unit tests. The build
+directory records the path of `data/` (the RRTMG tables and the WRF I/O schema) as `CPPWRF_DATA_DIR`, so keep the
+source tree where it was built.
 
-### CUDA GPU Build
-To build the GPU-accelerated backend:
-```bash
-cmake -B build-cuda -S . -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=native
-cmake --build build-cuda -j4
-```
-
-### Build Flags & CMake Options
+### CMake Options
 | CMake Option | Default | Description |
 |---|---|---|
-| `CMAKE_BUILD_TYPE` | `Release` | Compiler optimization level (`Release`, `Debug`, `RelWithDebInfo`) |
-| `CPPWRF_DOUBLE` | `OFF` | Use double-precision floats (`real = double`) across dycore and physics |
-| `CPPWRF_ENABLE_CUDA` | Auto | Enable CUDA compilation for NVIDIA GPUs |
-| `CMAKE_CUDA_ARCHITECTURES` | `native` | Target GPU architecture (e.g. `80;90` for Ampere/Hopper) |
-| `CPPWRF_NATIVE` | `ON` | Release builds: optimize for the host CPU (`-march=native`); `OFF` for portable binaries |
-| `CPPWRF_DIFF_TESTS` | `OFF` | Register WRF Fortran differential test suites with `ctest` |
+| `CMAKE_BUILD_TYPE` | `Release` | `Release` (-O3), `RelWithDebInfo`, `Debug`; the values do not depend on it |
+| `CPPWRF_DOUBLE` | `OFF` | `ON`: `real` is `double` in the dynamics and physics (FP64); `OFF`: FP32 |
+| `CPPWRF_ENABLE_CUDA` | `ON` when a CUDA compiler is found | Build the CUDA backend (one GPU) instead of the OpenMP CPU backend |
+| `CMAKE_CUDA_ARCHITECTURES` | `native` | The GPU of the build machine; e.g. `80;89;120` for other GPUs |
+| `CPPWRF_NATIVE` | `ON` | Release builds: `-march=native`; `OFF` for portable binaries (same values either way) |
+| `CPPWRF_PORTABLE_LIBMVEC` | `ON` | glibc's vector `log` / `log10` as on Intel CPUs, on every x86-64 CPU (the WRF references are Intel-made) |
+| `CPPWRF_CUDA_GLIBC_MATH` | `ON` | CUDA FP64: glibc's math functions on the device (bit-identical to WRF); `OFF`: CUDA's math library |
+| `CPPWRF_DIFF_TESTS` | `OFF` | Register the differential tests against WRF's compiled Fortran (need a WRF build, `WRF_DIR`) |
 
 ### Required Flags and Determinism
 CPU FP64 builds give WRF v4.8.0 real*8's results bit for bit only with these flags; the CMake files set or
@@ -129,100 +175,278 @@ enforce them:
 
 ---
 
-## 3. Running Simulations
+## 4. From WRF Inputs to wrfout
 
-### Command-Line Invocation
-Simulations are launched by providing an INI configuration file to the executable:
+A CPPWRF real-data run needs what wrf.exe needs: `namelist.input`, `wrfinput_d0N` and `wrfbdy_d01` (from WRF's
+real.exe or from `cppwrf_real`), `wrflowinp_d0N` with `sst_update = 1`, and the table files of WRF's `run/`
+directory. The RRTMG tables come with CPPWRF (`data/rrtmg`); everything else is read from WRF's `run/` directory, so
+download WRF v4.8.0's source (WRF itself does not need to be built).
+
+### End-to-End Example (GFS, WPS, cppwrf_real, cppwrf)
+
+`examples/quickstart/run.sh` makes a 3-hour forecast from the GFS analysis with WRF's default domains and namelist:
+WPS 4.6's default `namelist.wps` (a 150 x 130 domain at 15 km over the south-eastern United States with a 220 x 214
+two-way nest at 5 km) and WRF v4.8.0's `test/em_real/namelist.input` (`physics_suite = 'CONUS'`: Thompson, Tiedtke,
+MYJ, the Eta surface layer, Noah, RRTMG; `diff_opt 2`, `km_opt 4`, `gwd_opt 1`, `fractional_seaice 1`), with only the
+dates, `run_hours = 3`, the low-resolution geography and the number of metgrid levels changed
+(`examples/quickstart/namelist.wps`, `namelist.input`).
+
+You need:
+- a built WPS (4.6; its `geogrid.exe`, `ungrib.exe`, `metgrid.exe` and their `GEOGRID.TBL`, `METGRID.TBL`,
+  `Vtable.GFS`);
+- WPS's low-resolution static data (`geog_low_res_mandatory.tar.gz` from the WPS download page, unpacked:
+  `WPS_GEOG_LOW_RES`);
+- WRF v4.8.0's source tree (for the tables of `run/`);
+- a CPPWRF build and Python 3 with `netCDF4`; internet access for two GFS files (about 500 MB each).
+
 ```bash
-./build-cpu/cppwrf configs/real_r0.ini
+export WPS_DIR=/path/to/WPS WRF_DIR=/path/to/WRF-4.8.0 GEOG_DIR=/path/to/WPS_GEOG_LOW_RES
+export CPPWRF_BUILD=build-cpu OMP_NUM_THREADS=$(nproc)
+examples/quickstart/run.sh ~/qs
 ```
 
-Individual configuration parameters can be overridden dynamically from the command line without modifying the `.ini` file:
-```bash
-# Override total simulation time to 2 minutes (120 s)
-./build-cpu/cppwrf configs/real_r0.ini --set run.run_time=120
+The script runs, in `~/qs`:
 
-# Multiple overrides
-./build-cpu/cppwrf configs/real_p4.ini --set output.format=both --set output.out_interval=5
+1. **WPS** (`~/qs/wps`): downloads the GFS 0.25-degree analysis and 3 h forecast of 2026-10-12 00 UTC (NOAA's open
+   data on AWS; `GFS_DATE` and `GFS_CYCLE` choose another run, then change the dates of both namelists too), and runs
+   `geogrid.exe`, `ungrib.exe` (Vtable.GFS) and `metgrid.exe`: `met_em.d01.*` and `met_em.d02.*`.
+2. **cppwrf_real** (`~/qs/run`): sets `num_metgrid_levels` and `num_land_cat` from the met_em files (real.exe stops
+   when they differ), then
+   `cppwrf_real --namelist namelist.input --met-dir ~/qs/wps --out-dir .` writes `wrfinput_d01`, `wrfinput_d02` and
+   `wrfbdy_d01`, as WRF's real.exe would (identical files, docs/REAL.md). WRF's own `real.exe` can be used instead.
+3. **cppwrf**: links the files of WRF's `run/` directory next to the inputs (as for wrf.exe), translates the
+   namelist (`tools/wrf2cppwrf.py namelist.input -o run.ini --format wrfout`) and runs
+   `cppwrf run.ini --set output.dir=~/qs/out`: `out/d01/wrfout_d01_2026-10-12_00:00:00` ... `_03:00:00` and
+   `out/d02/wrfout_d02_*` (a nested run writes each domain's files to `output.dir/d0N`; one file per hour, as
+   `frames_per_outfile = 1`).
+
+The same `run.ini` runs in every build: `CPPWRF_BUILD=build-gpu-dp` (or `build`) runs the model on the GPU. On the
+Colab G4 runtime (AMD EPYC 9B45, RTX PRO 6000 Blackwell) the 3-hour run of both domains took 222 s of stepping on 48
+CPU threads in FP64, 42 s on the GPU in FP64 and 15 s in FP32 (the whole script about 5 minutes, most of it the CPU run
+and the GFS download), and the GPU FP64 output was bit-identical to the CPU FP64 output in every variable of every
+wrfout file.
+
+### Running from a WRF Run Directory
+
+In a directory prepared for wrf.exe (`namelist.input`, `wrfinput_d0N`, `wrfbdy_d01` and the `run/` tables):
+
+```bash
+python3 $CPPWRF/tools/wrf2cppwrf.py namelist.input -o run.ini --format wrfout
+OMP_NUM_THREADS=$(nproc) $CPPWRF/build-cpu/cppwrf run.ini --set output.dir=out
 ```
+
+The translator takes the inputs (`[real] dir`) and the tables (`[phys] table_dir`) from the namelist's directory
+(`--real-dir`, `--table-dir` choose others). The model reads the history and restart options it needs for the
+wrfout / wrfrst files (iofields, file names, frames per file, NetCDF classic) from the `namelist.input` next to the
+wrfinput file (or `output.wrf_namelist`). For results identical to WRF real*8 use inputs of real.exe's `-r8` build
+or `cppwrf_real --precision double` (the default); inputs in single precision (WRF's default build) are read too.
 
 ### Translating WRF Namelists (`wrf2cppwrf.py`)
-CPPWRF includes a standalone translator that converts WRF `namelist.input` files into valid CPPWRF `.ini` configurations:
-```bash
-# Basic conversion
-python3 tools/wrf2cppwrf.py /path/to/wrf/namelist.input -o run.ini
 
-# Real-data conversion with specified directory and NetCDF wrfout format
-python3 tools/wrf2cppwrf.py /path/to/wrf/run/namelist.input -o run.ini --format wrfout
+`tools/wrf2cppwrf.py` (Python 3, standard library only) turns a WRF `namelist.input` into a CPPWRF configuration
+(`.ini`, section 8):
+
+```bash
+python3 tools/wrf2cppwrf.py /path/to/namelist.input -o run.ini --format wrfout
 ```
 
-Key translator features:
-- **f90nml-Free Parser:** Pure Python tokenizer supporting standard Fortran namelist syntax, repetition counts (`3*0`), exponents (`1.0d-4`), and inline comments.
-- **Complete Option Coverage:**
-  - **Time & I/O:** Translates `run_days/hours/minutes/seconds` (or `start_*`/`end_*` timestamps), `time_step` + `time_step_fract_num/den`, `time_step_sound`, `use_adaptive_time_step` with its &domains options, `history_interval_s` / `history_interval`, and `restart` / `restart_interval`.
-  - **Dynamics (`[dyn]`):** Translates `diff_opt` (`0..2`), `km_opt` (`1..4`), `c_s`, `c_k`, `mix_isotropic`, `mix_upper_bound`, `mix_full_fields`, `tke_drag_coefficient`, `tke_heat_flux`, `tke_upper_bound`, `moist_mix2_off`, `scalar_mix2_off`, `tke_mix2_off`, `moist_mix6_off`, `scalar_mix6_off`, `tke_mix6_off`, `diff_6th_opt` (`0..2`), `diff_6th_factor`, `w_damping` (`0, 1`), `w_crit_cfl`, `damp_opt` (`0..3`), `zdamp`, `dampcoef`, `khdif`, `kvdif`, `moist_adv_opt` (`0, 1`), `scalar_adv_opt` (`0, 1`), `tke_adv_opt` (`0, 1`), `prandtl` ($\to$ `pr_inv`), `top_lid`, `h_mom_adv_order` ($\to$ `h_adv_order`), `v_mom_adv_order` ($\to$ `v_adv_order`), `epssm`, `smdiv`, `emdiv`, `etac`, `hybrid_opt` (`0..2`), and `hypsometric_opt` (`1, 2`).
-  - **Physics (`[phys]` & `[moist]`):** Translates `mp_physics` (`0, 1, 6, 8, 28`; 28 = aerosol-aware Thompson for single-domain real-data runs with `aer_init_opt = 0`: `wif_input_opt` `0, 1`, `grav_settling` reset to 0 as check_a_mundo does; `wif_input_opt = 2`, `use_aero_icbc`, `use_rap_aero_icbc`, `qna_update`, `dust_emis`, MYNN and nests are errors), `mp_tend_lim`, `hail_opt` (`0, 1`), `use_mp_re` (`0, 1`), `do_radar_ref` (`0, 1`; REFL_10CM of WSM6 and Thompson, -35 dBZ minimum, computed at the history times; REFD_MAX stays 0 as without nwp_diagnostics), `sf_sfclay_physics` (`0, 1, 2, 5`), `sf_surface_physics` (`0, 1, 2, 4`), `num_soil_layers` (`4`; `5` with the slab), `ifsnow` (`0, 1`; slab), `opt_thcnd` (`1, 2`; Noah), `bl_pbl_physics` (`0, 1, 2, 5`), `cu_physics` (`0, 1, 3, 16`), `ishallow` (`0, 1`), `clos_choice` (`0..16`), `kfeta_trigger` (`1, 3`), `convtrans_avglen_m`, `ra_lw_physics` (`0, 1, 4`; RRTM `1` with Dudhia or RRTMG SW), `ra_sw_physics` (`0, 1, 4`; Dudhia `1` with RRTM or RRTMG LW), `swrad_scat` (Dudhia), `radt`, `bldt`, `cudt`, `isfflx` (`0, 1`), `ysu_topdown_pblmix` (`0, 1`), `kim_tofd`, `tofd_factor`, `rdmaxalb`, `usemonalb` (every LSM: landuse_init keeps the wrfinput `ALBBCK`), `rdlai2d` (Noah; an urban point with `VEGFRA = 0` and `LAI <= 0` stops the run: WRF's result there is undefined), `icloud` (`0, 1`), `cldovrlp` (`0..5`; 0: RRTMG without clouds), `cu_rad_feedback` (per domain: Kain-Fritsch's and Grell-Freitas' clouds into RRTMG, no effect with Tiedtke / New Tiedtke, as WRF's icloud_cu; `shallowcu_forced_ra` acts only with KF-CuP and is accepted), `idcor` (`0, 1`), `o3input` (`0, 2`), `ghg_input` (`0, 1`), `aer_opt` (`0`), `bucket_mm`, `bucket_J`, `prec_acc_dt` (every domain's entry; with the column physics), `output_diagnostics` (`0, 1`; with the column physics and `auxhist3_interval` in minutes, per domain, a multiple of `time_step`; `io_form_auxhist3` `0, 2`; not with the adaptive time step), and all 27 `&noah_mp` options when `sf_surface_physics = 4`.
-  - **Nested Domains (`max_dom > 1`):** Translates multi-domain real-data namelists into `[domains]` (`max_dom`, `feedback`, `smooth_option`, `save_topo_from_real`, `blend_width`, `spec_bdy_width`, and `d02` placement keys) and per-child `[d02]`..`[d0N]` sections (`wrfinput`, `dt`, `out_interval`, `diag_interval`, `parent_id`, `i_parent_start`, `j_parent_start`, `parent_grid_ratio`, `parent_time_step_ratio`, and per-domain dynamics overrides).
-- **Strict Validation & Rejection of Unsupported Options:**
-  - **Rejected with Error (exit code 1):** Hydrostatic mode (`non_hydrostatic = .false.`), non-RK3 integration (`rk_ord != 3`), mismatched scalar vs. momentum advection orders (`h_sca_adv_order != h_mom_adv_order` or `v_sca_adv_order != v_mom_adv_order`), unsupported advection/diffusion/coordinate options (`moist_adv_opt`/`scalar_adv_opt`/`tke_adv_opt` outside `0..1`, `diff_6th_opt` outside `0..2`, `hybrid_opt` outside `0..2`, `hypsometric_opt` outside `1..2`), a longwave scheme without a shortwave scheme or the reverse (wrf.exe stops), `ishallow = 1` without `cu_physics = 3`, `clos_choice` outside `0..16`, `kfeta_trigger` outside `{1, 3}`, `num_soil_layers != 4` with Noah / Noah-MP and `!= 5` with the slab, the slab with `fractional_seaice = 1` (WRF stops too), `cldovrlp` outside `0..5`, `idcor` outside `{0, 1}`, `o3input` outside `{0, 2}`, `ghg_input` outside `{0, 1}`, `aer_opt != 0`, unsupported `&noah_mp` option values, unimplemented physics switches (`iau`, `dyn_lightning_option`, `sf_urban_physics`, `shcu_physics`, `sf_lake_physics`, `topo_wind`, `slope_rad`, `topo_shading`, `swint_opt`, `seaice_thickness_opt`, `seaice_snowdepth_opt`, `ra_call_offset`, `shalwater_z0`, `scm_force_flux`), and invalid or unsupported nesting configurations (nested ideal cases, moving nests, vertical refinement, `feedback` outside `{0, 1}`, `smooth_option` outside `{0, 1, 2}`, invalid `parent_id` / `i_parent_start` / `j_parent_start` / `parent_grid_ratio` / `parent_time_step_ratio`, child dimensions not divisible by `parent_grid_ratio` or exceeding parent bounds, mismatched `e_vert` or `dx`/`dy`, `input_from_file = .false.`, or per-domain `[phys]` overrides in inline nested configs).
-  - **Warnings & Notices:** Reports warnings on unimplemented scheme IDs (`--strict` promotes warnings to errors) and informational notices for ignored WPS/quilt metadata.
+| Option | Meaning |
+|---|---|
+| `-o FILE` | the configuration (default: standard output) |
+| `--format native\|wrfout\|both` | CPPWRF's native snapshots, WRF's NetCDF files, or both |
+| `--real-dir DIR` | the directory of `wrfinput_d01` / `wrfbdy_d01` (default: the namelist's) |
+| `--table-dir DIR` | WRF's tables (default: the namelist's directory when it has `LANDUSE.TBL`) |
+| `--case NAME` | the case for ideal runs (`em_quarter_ss`, ...; default: real, or WRF's `ideal_case`) |
+| `--explicit-files` | write `wrfinput` / `wrfbdy` names in `[real]` |
+| `--strict` | warnings are errors |
+
+The translator reads Fortran namelist syntax (repeat counts `3*0`, `1.0d-4`, comments) and applies WRF's own
+processing: `physics_suite` and its `-1` options (CONUS, tropical), check_a_mundo's resets (for example
+`grav_settling` with `mp_physics = 28`, the soil layers of each land surface model), the per-domain defaults of
+the Registry. It exits with status 1 and an `[ERROR]` line for every problem:
+
+- a key that is not a WRF 4.8.0 namelist option (wrf.exe stops reading the namelist too);
+- an option value that CPPWRF does not port (section 5);
+- a combination that wrf.exe rejects or that would make it fail (for example a longwave scheme without a shortwave
+  scheme, `ishallow = 1` without Grell-Freitas, the slab land surface with `fractional_seaice = 1`).
+
+Options that change nothing in a CPPWRF run (WPS and real.exe options such as `num_metgrid_levels`, `dzbot`, I/O
+quilting) are listed as `[INFO]` in the configuration's header. `restart = .true.` is not translated: a restart is
+`--set run.restart_file=<wrfrst file>` (section 9).
+
+### Command Line and Environment
+
+```bash
+cppwrf CONFIG.ini [--set section.key=value ...]
+cppwrf_real --namelist namelist.input --met-dir DIR [--out-dir DIR] [--precision double|float] [--schema FILE]
+```
+
+`--set` overrides a key of the configuration (`--set run.run_time=7200 --set output.dir=out2`). A key that CPPWRF
+does not know is an error at start-up (`unknown configuration key ...`), so a typing error cannot be ignored.
+
+| Variable | Meaning |
+|---|---|
+| `OMP_NUM_THREADS` | CPU threads (CPU builds; GPU builds use host threads for RRTM LW and the NetCDF compression). The result does not depend on it |
+| `CUDA_VISIBLE_DEVICES` | the GPU of a GPU build (one GPU per run) |
+| `CPPWRF_NC_THREADS` | threads that compress the NetCDF-4 chunks (default: the hardware threads, at most 64; 1: no pool; 0: HDF5's own filter); the bytes are the same |
+| `CPPWRF_IO_TIMING=1` | the time of each output record |
+| `CPPWRF_MEMINFO=1` | GPU builds: the device memory in use at start-up and at the end |
+| `CPPWRF_KTIME=1` | GPU builds: time every kernel (slower; a table at the end) |
+| `CPPWRF_GRAPHS=0` | GPU builds: no CUDA graphs |
+| `CPPWRF_WRF_RUNS`, `CPPWRF_WRF_REF` | the WRF run and reference directories that `configs/real_*.ini` and the tests name |
 
 ### Idealized Cases
 WRF's own idealized cases are initialized by a port of WRF v4.8.0's `ideal.exe`
 (`dyn_em/module_initialize_ideal.F`, then what `start_em` does with its output), from the case's
-WRF `input_sounding`. In CPU FP64 they give WRF's (real*8) results bit for bit:
+WRF `input_sounding` (in WRF's `test/em_*` directories). In CPU FP64 they give WRF's (real*8) results bit for bit:
 - **`em_hill2d_x`:** flow over a 2-D bell-shaped hill (WRF `ideal_case = 1`; `configs/wrf_hill2d_x.ini`).
-- **`em_quarter_ss`:** 3-D supercell with Kessler microphysics (`ideal_case = 2`; `configs/wrf_quarter_ss.ini`).
-- **`em_squall2d_x`, `em_squall2d_y`:** 2-D squall line with open lateral boundaries (`ideal_case = 4, 5`; `configs/wrf_squall2d_x.ini`).
+- **`em_quarter_ss`:** 3-D supercell with Kessler microphysics (`ideal_case = 2`; `configs/wrf_quarter_ss.ini`;
+  `configs/wrf_quarter_ss_sym.ini`: symmetric walls).
+- **`em_squall2d_x`, `em_squall2d_y`:** 2-D squall line with open lateral boundaries (`ideal_case = 4, 5`;
+  `configs/wrf_squall2d_x.ini`, `configs/wrf_squall2d_y.ini`).
 - **`em_grav2d_x`:** Straka density current (`ideal_case = 6`; `configs/wrf_grav2d_x.ini`).
 
-The namelist maps to `[domain] nx = e_we - 1`, `ny = e_sn - 1` (`ny = 1` for the x-z cases,
-WRF `e_sn = 3`), `nz = e_vert - 1`, `dx`, `dy`, `ztop`, `bc_x`/`bc_y` (`&bdy_control`),
-`[dyn] hybrid_opt`, `etac` and `[case] sounding_file`. As in WRF, ideal runs always use
-`hypsometric_opt = 1`.
+The configurations name the sounding as `${CPPWRF_WRF_REF}/run_*/input_sounding`; set `case.sounding_file` to the
+file of WRF's test directory instead (section 2). `wrf2cppwrf.py` also translates the `namelist.input` of an ideal
+case: the namelist maps to `[domain] nx = e_we - 1`, `ny = e_sn - 1` (`ny = 1` for the x-z cases, WRF `e_sn = 3`),
+`nz = e_vert - 1`, `dx`, `dy`, `ztop`, `bc_x`/`bc_y` (`&bdy_control`), `[dyn] hybrid_opt`, `etac` and
+`[case] sounding_file`. As in WRF, ideal runs always use `hypsometric_opt = 1`.
 
-CPPWRF also has analytic test cases of its own (not WRF initializations):
-- **`rest_state`:** Stably stratified atmosphere at rest testing hydrostatic balance.
-- **`warm_bubble`:** Bryan & Fritsch (2002) dry rising thermal bubble in neutral atmosphere.
-- **`straka`:** Straka et al. (1993) cold density current benchmark.
+CPPWRF also has analytic test cases of its own (not WRF initializations), checked by `tests/verify/verify.py`:
+- **`rest_state`:** stably stratified atmosphere at rest (hydrostatic balance).
+- **`warm_bubble`:** Bryan & Fritsch (2002) dry rising thermal in a neutral atmosphere.
+- **`straka`:** Straka et al. (1993) cold density current.
 - **`igw`:** Skamarock & Klemp (1994) inertia-gravity wave.
 - **`squall2d`:** Weisman & Klemp (1982) squall line with Kessler or WSM6 microphysics.
 
-Run an idealized case:
-```bash
-./build-cpu/cppwrf configs/wrf_grav2d_x.ini
-```
+---
 
-### Real-Data Simulations (WPS + real.exe)
-Real-data simulations use initial conditions (`wrfinput_d01`) and lateral boundary updates (`wrfbdy_d01`) generated by the standard WRF Preprocessing System (WPS) and `real.exe`:
+## 5. Supported WRF Options
 
-1. Run `geogrid.exe`, `ungrib.exe`, and `metgrid.exe` in WPS.
-2. Run `real.exe` in WRF, or CPPWRF's `build/src/init_real/cppwrf_real` (identical output, see
-   [REAL.md](REAL.md)), to generate `wrfinput_d01` and `wrfbdy_d01`.
-3. In your `.ini` file:
-   ```ini
-   [run]
-   case = real
-   run_time = 3600
+Every option below is ported from WRF v4.8.0 and verified against WRF (docs/STATUS.md lists the cases); the INI
+key of each is in section 8. Options of `namelist.input` that this table does not name keep WRF's default, and a
+non-default value is an error unless it only concerns WPS / real.exe or I/O quilting.
 
-   [real]
-   dir = /path/to/wrf_real/run_dir
-   wrfinput = wrfinput_d01
-   wrfbdy = wrfbdy_d01
+| WRF namelist option | Supported values |
+|---|---|
+| **&time_control** | |
+| `run_days/hours/minutes/seconds`, `start_*`, `end_*` | any (real-data runs from the start of wrfinput) |
+| `interval_seconds` | taken from wrfbdy_d01 |
+| `history_interval` (`_d`, `_h`, `_m`, `_s`), `frames_per_outfile`, `history_outname` | per domain |
+| `restart_interval` (minutes, a multiple of `time_step`), `rst_outname` | NetCDF wrfrst files of every domain |
+| `io_form_history`, `io_form_restart`, `io_form_input`, `io_form_boundary` | 2 (NetCDF) |
+| `use_netcdf_classic` | `.false.`, `.true.` |
+| `iofields_filename` | the output streams as in WRF; lines that change an input stream (wrfinput, wrflowinp) are errors |
+| `output_diagnostics`, `auxhist3_interval`, `io_form_auxhist3`, `frames_per_auxhist3`, `auxhist3_outname` | 0, 1 (with column physics, not with the adaptive time step) |
+| `auxinput4_interval`, `io_form_auxinput4`, `auxinput4_inname` | with `sst_update = 1` (wrflowinp) |
+| **&domains** | |
+| `time_step`, `time_step_fract_num/den` | any stable step |
+| `max_dom`, `e_we`, `e_sn`, `e_vert`, `dx`, `dy`, `parent_id`, `i_parent_start`, `j_parent_start`, `parent_grid_ratio`, `parent_time_step_ratio` | static nests (section 6) |
+| `feedback`, `smooth_option` | 0, 1; 0, 1, 2 |
+| `use_adaptive_time_step`, `target_cfl`, `target_hcfl`, `max_step_increase_pct`, `starting_time_step`, `max_time_step`, `min_time_step` (and `_den`), `step_to_output_time` | single-domain real-data runs without `sst_update` |
+| `p_top_requested`, `eta_levels`, `auto_levels_opt`, `dzbot`, `dzstretch_*`, `num_metgrid_*` | real.exe / cppwrf_real |
+| **&dynamics** | |
+| `rk_ord` | 3 |
+| `non_hydrostatic`, `use_theta_m` | `.true.`, 1 |
+| `diff_opt`, `km_opt` | 0, 1, 2; 1 (constant K), 2 (1.5-order TKE), 3 (3-D Smagorinsky), 4 (2-D Smagorinsky) |
+| `khdif`, `kvdif`, `c_s`, `c_k`, `mix_isotropic`, `mix_upper_bound`, `mix_full_fields`, `tke_drag_coefficient`, `tke_heat_flux`, `tke_upper_bound`, `*_mix2_off`, `*_mix6_off` | any |
+| `diff_6th_opt`, `diff_6th_factor` | 0, 1, 2 |
+| `damp_opt`, `zdamp`, `dampcoef`, `w_damping`, `w_crit_cfl` | 0-3; any; 0, 1 |
+| `h_mom_adv_order` = `h_sca_adv_order`, `v_mom_adv_order` = `v_sca_adv_order` | 5, 6; 3, 4 |
+| `moist_adv_opt`, `scalar_adv_opt`, `tke_adv_opt` | 0, 1 |
+| `hybrid_opt`, `etac` | 0, 2 (real.exe makes the coordinate) |
+| `hypsometric_opt` | 1, 2 |
+| `epssm`, `smdiv`, `emdiv`, `time_step_sound`, `top_lid`, `base_temp`, `iso_temp` | any |
+| `gwd_opt` | 0, 1 (GWDO; the same on every domain where it is on) |
+| **&bdy_control** | |
+| `specified`, `spec_bdy_width`, `spec_zone`, `relax_zone` | real-data domain 1 (`spec_zone` 1, `relax_zone` = `spec_bdy_width` - 1) |
+| `periodic_x/y`, `open_xs/xe/ys/ye`, `symmetric_xs/xe/ys/ye` | ideal cases (symmetric: no wind across the walls) |
+| **&physics** | |
+| `physics_suite` | `'CONUS'`, `'tropical'` and their `-1` entries |
+| `mp_physics` | 0, 1 (Kessler), 6 (WSM6; `hail_opt` 0, 1), 8 (Thompson), 28 (aerosol-aware Thompson: one domain, `aer_init_opt` 0, `wif_input_opt` 0 / 1, not with MYNN) |
+| `use_mp_re`, `mp_tend_lim`, `do_radar_ref`, `force_read_thompson` | 0, 1; any; 0, 1; `.false.`, `.true.` |
+| `cu_physics`, `cudt` | 0, 1 (Kain-Fritsch; `kfeta_trigger` 1, 3), 3 (Grell-Freitas-Li; `ishallow` 0, 1, `clos_choice` 0-16), 6 (Tiedtke), 16 (New Tiedtke); per domain |
+| `cu_rad_feedback`, `shallowcu_forced_ra`, `convtrans_avglen_m` | per domain (KF and GF clouds in RRTMG) |
+| `bl_pbl_physics`, `bldt` | 0, 1 (YSU; `ysu_topdown_pblmix` 0, 1), 2 (MYJ), 5 (MYNN-EDMF, below) |
+| `bl_mynn_*`, `tke_budget`, `icloud_bl` | `tkeadvect`, `cloudpdf` -2..2, `mixlength` 0..2, `closure` 2.5 / 2.6 / 3.0, `edmf` 0 / 1, `edmf_mom`, `edmf_tke`, `cloudmix`, `mixqt`, `ess`, `mixscalars`, `output` 0 / 1, `tke_budget` 0 / 1, `icloud_bl` 0 / 1 |
+| `sf_sfclay_physics` | 0, 1 (revised MM5; `isfflx` 0, 1, `isftcflx` 0-2, `iz0tlnd` 0-2, `kim_tofd`, `tofd_factor`), 2 (Eta), 5 (MYNN; `sf_mynn_sfcflux_land` 0-3, `sf_mynn_sfcflux_water` 0-4) |
+| `grav_settling` | 0, 1, 2 |
+| `sf_surface_physics`, `num_soil_layers` | 0, 1 (5-layer thermal diffusion, 5 layers; `ifsnow`), 2 (Noah, 4 layers; `opt_thcnd` 1, 2), 4 (Noah-MP v5.1.2, default `&noah_mp` options, one domain) |
+| `rdmaxalb`, `usemonalb`, `rdlai2d`, `fractional_seaice`, `sst_update` | any; any; Noah; 0, 1; 0, 1 |
+| `ra_lw_physics`, `ra_sw_physics`, `radt` | 0, 1 (RRTM LW / Dudhia SW, paired with each other or with RRTMG), 4 (RRTMG) |
+| `icloud`, `cldovrlp`, `idcor`, `o3input`, `ghg_input`, `aer_opt`, `swrad_scat` | 0, 1; 0-5; 0, 1; 0, 2; 0, 1; 0; any |
+| `bucket_mm`, `bucket_J`, `prec_acc_dt` | any (with column physics; `prec_acc_dt` per domain) |
 
-   [time]
-   dt = 60
+### Rejected Options and Why
 
-   [output]
-   format = wrfout
-   out_interval = 10
-   ```
+CPPWRF has no MPI: a run is one process on one node, with OpenMP threads or one GPU (WRF's own result changes with
+its MPI layout; the references are one-process WRF runs). The options below stop the translator and the model with
+an error, never silently:
 
-4. Run `./build-cpu/cppwrf my_real_run.ini`.
+| WRF option | Why |
+|---|---|
+| moving nests, vertical nest refinement, nests with their own start or end time, ndown.exe | not ported |
+| nests in ideal cases; Noah-MP with nests | not ported; wrf.exe 4.8.0 itself aborts with Noah-MP on nests (heap corruption in the nest's first history output) |
+| `io_form_*` other than 2, `nocolons`, auxiliary history / input streams other than auxhist3 and wrflowinp | CPPWRF reads and writes NetCDF; WRF writes no other stream by default |
+| `restart = .true.` in the namelist | resume with `run.restart_file` (section 9) |
+| `non_hydrostatic = .false.`, `rk_ord` 2, `use_theta_m = 0`, `h_sca_adv_order` different from `h_mom_adv_order`, `spec_exp` != 0 | not ported |
+| `km_opt` 5 (SMS-3DTKE) | not ported |
+| `mp_physics` other than 0, 1, 6, 8, 28 | not ported |
+| `cu_physics` other than 0, 1, 3, 6, 16 | not ported |
+| `bl_pbl_physics` other than 0, 1, 2, 5; `shcu_physics` | not ported |
+| `sf_sfclay_physics` 91 and other values; `sf_urban_physics`, `sf_lake_physics` | not ported |
+| `sf_surface_physics` 3, 5, 7, 8 (RUC, CLM, PX, SSiB) | not ported |
+| Noah-MP options other than the defaults (crop, irrigation, tile drainage, ...) | not ported |
+| MYNN with `fractional_seaice = 1`; `bl_mynn_edmf` 2, `bl_mynn_edmf_dd`, `bl_mynn_mixnumcon`, `bl_mynn_mixaerosols` 0, `bl_mynn_output` 2, other `bl_mynn_closure` values, `sf_mynn_sfcflux_land` 4 / `_water` 5 | not ported |
+| `mp_physics = 28` with `wif_input_opt = 2`, `use_aero_icbc`, `qna_update`, `dust_emis`, nests or MYNN | not ported |
+| the Dudhia shortwave with Grell-Freitas and `cu_rad_feedback` | wrf.exe writes NaN cloud fractions there |
+| `ra_lw_physics` / `ra_sw_physics` other than 0, 1, 4; a longwave scheme without a shortwave scheme or the reverse; `aer_opt` != 0 | not ported; wrf.exe stops |
+| `nwp_diagnostics`, `do_avgflx_em`, `do_avgflx_cugd` and the other diagnostic packages | not ported (diagnostic_output_nwp, cal_helicity, the averaged fluxes) |
+| `iau`, `dyn_lightning_option`, `topo_wind`, `slope_rad`, `topo_shading`, `swint_opt`, `seaice_thickness_opt`, `seaice_snowdepth_opt`, `ra_call_offset`, `shalwater_z0`, `scm_force_flux`, FDDA (`grid_fdda`, `obs_nudge_opt`), stochastic physics, chemistry | not ported |
+| the adaptive time step with nests, `sst_update`, ideal cases or `output_diagnostics` | not ported |
+| a wind across a symmetric wall (ideal cases) | WRF's solution breaks down within a minute there (the wall keeps the normal velocity while the sign of `muu` flips) |
+| real-data runs with `periodic_*`, `open_*` or `symmetric_*` sides | WRF's channel set-up is not ported; WRF stops with the others |
+
+The translator prints the reason with each error. docs/STATUS.md ("Not yet implemented") keeps the list current.
 
 ---
 
-## 4. Configuration Reference (INI Keys)
+## 6. Nested Domains
+
+CPPWRF runs WRF's static nests: one-way (`feedback = 0`) and two-way (`feedback = 1`, `smooth_option` 0, 1, 2),
+several children of one parent and nests inside nests, odd `parent_grid_ratio` and any `parent_time_step_ratio`, each
+nest reading its own `wrfinput_d0N` (`input_from_file = .true.`, as real.exe or cppwrf_real makes them). The parent
+forces the nest boundary as WRF's `med_nest_force` does (`bdy_interp1`, SINT), and two-way nests feed back with
+`copy_fcn` and the sm121 / smdsm smoothers, `blend_terrain` and `adjust_tempqv`. `cu_physics`, `cudt`, `radt`, `bldt`,
+`cu_rad_feedback` and `prec_acc_dt` may differ between domains; the other physics options are the same on every
+domain, as the translator checks. Each domain's files go to `output.dir/d0N`. A nested configuration from the translator has a `[domains]` section and one
+`[d0N]` section per nest (section 8). Every domain writes its own `wrfout_d0N` and `wrfrst_d0N` files, identical to
+WRF's (cases N1, N2, N3, N3sib, N3gc of docs/STATUS.md). docs/NESTING.md and docs/NEST_NUMERICS.md describe the port.
+
+---
+
+## 7. GPU Runs
+
+A CUDA build (`-DCPPWRF_ENABLE_CUDA=ON`) runs the whole model on one NVIDIA GPU: the dynamics, the column physics,
+RRTMG and the nests share their kernels with the CPU build (`parallel_for` / `column_for` with `CPPWRF_HD` functors).
+The RRTM longwave runs on host threads. The input, the configuration and the output files are the same as for the
+CPU build.
+
+- **FP64** (`-DCPPWRF_DOUBLE=ON`): bit-identical to WRF real*8 and to the CPU FP64 build. The CMake files compile
+  every FP64 kernel with `--fmad=false` (no fused multiply-add, as gfortran on x86-64 without `-march`) and run
+  glibc's libm / libmvec algorithms on the device (`CPPWRF_CUDA_GLIBC_MATH`); this costs 0 to 7 % of the stepping
+  time. Verified on L4 (sm_89), RTX PRO 6000 Blackwell (sm_120) and A100 (sm_80).
+- **FP32** (`-DCPPWRF_DOUBLE=OFF`): the fast mode, with CUDA's math library and FMA contraction (except in RRTMG's
+  batch kernels, Thompson and the physics drivers). Its difference from WRF's single-precision build is of the same
+  size as WRF's own single / double precision difference (docs/STATUS.md).
+- **Memory:** the column physics keeps per-column arrays in thread-local memory, which CUDA reserves for every thread
+  the GPU can hold, so the footprint grows with the GPU. `CPPWRF_MEMINFO=1` prints it. On an NVIDIA L4 (24 GB) a
+  359 x 269 x 44 domain in FP64 needs about 9.3 GB with Thompson + MYNN-EDMF + RRTMG.
+- **Determinism:** the GPU build has no atomics in floating-point sums and gives the same bits in every run.
+
+---
+
+## 8. Configuration Reference (INI Keys)
 
 ### Configuration Keys Table
 Every option supported by the CPPWRF runtime is cataloged below, along with its type, default, WRF equivalent, and code source.
@@ -330,7 +554,7 @@ nested; a `[d0N]` key reaches that domain's configuration and is checked there.
 
 ---
 
-## 5. Outputs & Data Formats
+## 9. Outputs & Data Formats
 
 ### Native Format
 When `output.format = native` (or `both`), CPPWRF writes raw binary dumps:
@@ -368,6 +592,21 @@ WRF. CPPWRF writes NetCDF (`io_form_history = 2` and `io_form_restart = 2`); oth
 another auxhist stream with an interval and an io_form is an error. Other stream options (auxinput streams other than sst_update's wrflowinp, auxinput4) are
 errors when they change what wrf.exe reads or writes. ndown.exe (one-way
 nesting from a parent run's wrfout) is not part of CPPWRF.
+
+### Output Streams
+
+| WRF stream | CPPWRF | Files |
+|---|---|---|
+| input (`wrfinput_d0N`, stream i:0) | read at the start of every domain | from real.exe or cppwrf_real |
+| boundary (`wrfbdy_d01`) | read for domain 1 every `interval_seconds` | from real.exe or cppwrf_real |
+| auxinput4 (`wrflowinp_d0N`) | read with `sst_update = 1` every `auxinput4_interval` | from real.exe or cppwrf_real |
+| history (h:0) | written every `history_interval` per domain | `wrfout_d0N_<date>` (`history_outname`, `frames_per_outfile`, `iofields_filename`) |
+| restart (r) | written every `restart_interval` for every domain | `wrfrst_d0N_<date>` (`rst_outname`) and CPPWRF's `restart_<step>.nc` |
+| auxhist3 (h:3) | written with `output_diagnostics = 1` every `auxhist3_interval` | `auxhist3_d0N_<date>` (`auxhist3_outname`, `frames_per_auxhist3`) |
+| CPPWRF native | `output.format = native` or `both` | `run.json`, `diag.csv`, `snap_<step>.bin` / `.json` |
+
+In a nested run the files of domain N are in `output.dir/d0N`. Any other auxiliary stream with an interval and an
+io_form is an error (WRF writes none by default).
 
 ### Restart Files & Resuming Simulations
 `restart.interval` (seconds) writes restart files. With `output.format = wrfout`, CPPWRF writes WRF's
@@ -407,7 +646,7 @@ When resuming, pre-restart rows in `diag.csv` are preserved automatically.
 
 ---
 
-## 6. Verification & Validation
+## 10. Verification & Validation
 
 CPPWRF includes an independent, black-box verification suite located in `tests/verify/`.
 
@@ -444,10 +683,12 @@ Run the automated CTest unit and regression suites:
 ctest --test-dir build-cpu --output-on-failure
 
 # Python translation tool tests
-python3 tests/tools/test_wrf2cppwrf.py -v
+python3 -m unittest tests.tools.test_wrf2cppwrf
 ```
 
 ### The CPU Suite on Google Cloud or Colab
+The model runs against WRF need the WRF reference runs (WRF's inputs, its wrfout / wrfrst files and its builds),
+which are kept in the project's data bucket and are not public; the tools below need access to it.
 The full CPU FP64 suite (wrf_suite.py, the output files tests, the differential and ctest tests, the translator
 tests and the comparators' self-test) runs on a remote machine. The references are Intel-made; on an AMD CPU the
 model gives the same results (`CPPWRF_PORTABLE_LIBMVEC`, see below) and so does WRF's side of the differential
@@ -509,7 +750,7 @@ from the tars' file lists (`tools/colab/colab_tarlist.sh` reads them on a Colab 
 
 ---
 
-## 7. Performance
+## 11. Performance
 
 docs/PERF.md compares CPPWRF with WRF v4.8.0 on one Colab G4 runtime (AMD EPYC 9B45 with 48 hardware threads and an
 RTX PRO 6000 Blackwell). For the real-data domain 119 x 89 x 44 with full physics (P4, 1 h), WRF real*4 at its

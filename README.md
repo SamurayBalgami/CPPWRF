@@ -1,5 +1,7 @@
 # CPPWRF
 
+Version 1.0.0 ([release notes](docs/RELEASE_NOTES.md)).
+
 CPPWRF is a C++20 / CUDA port of the WRF-ARW v4.8.0 model: the dynamical core, the physics, static nesting,
 `real.exe` and `ideal.exe`. One source tree builds for the CPU (OpenMP) and for NVIDIA GPUs (CUDA), in FP64
 or FP32. It reads WRF's `wrfinput` / `wrfbdy` files and writes WRF's `wrfout` and `wrfrst` files.
@@ -79,39 +81,54 @@ with its MPI layout. GPU FP32 differs from WRF real*4 by about as much as WRF re
 ## Build
 
 ```bash
-# GPU build, FP32
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=ON -DCPPWRF_DOUBLE=OFF
-cmake --build build -j
-
 # CPU build, FP64 (the configuration that is bit-identical to WRF real*8)
 cmake -S . -B build-cpu -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_DOUBLE=ON
-cmake --build build-cpu -j
+cmake --build build-cpu -j "$(nproc)"
+
+# GPU build, FP32 (the fast mode)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=ON -DCPPWRF_DOUBLE=OFF
+cmake --build build -j "$(nproc)"
+
+# GPU build, FP64 (bit-identical to WRF real*8 and to the CPU build)
+cmake -S . -B build-gpu-dp -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=ON -DCPPWRF_DOUBLE=ON
+cmake --build build-gpu-dp -j "$(nproc)"
 ```
 
-You need a C++20 compiler, CMake >= 3.24, OpenMP and NetCDF-C. The CUDA toolkit >= 12 is optional.
+You need a C++20 compiler, CMake >= 3.24, OpenMP and NetCDF-C; the CUDA toolkit >= 12 for the GPU builds; Python 3
+with `netCDF4` and `numpy` for the tools. `ctest --test-dir build-cpu` runs the unit tests.
 
 ## Run
 
-From a WRF run directory:
+From a directory prepared for WRF's wrf.exe (`namelist.input`, `wrfinput_d0N`, `wrfbdy_d01` and the tables of
+WRF's `run/` directory), with `CPPWRF` the source tree:
 
 ```bash
-python3 tools/wrf2cppwrf.py namelist.input -o run.ini --format wrfout
-build/cppwrf run.ini
+python3 $CPPWRF/tools/wrf2cppwrf.py namelist.input -o run.ini --format wrfout
+$CPPWRF/build-cpu/cppwrf run.ini --set output.dir=out
 ```
 
-To make `wrfinput` and `wrfbdy` from WPS met_em files instead of with real.exe
-([docs/REAL.md](docs/REAL.md)):
+The wrfout and wrfrst files go to `out` (a nested run: `out/d01`, `out/d02`, ...). `cppwrf_real` makes `wrfinput` and
+`wrfbdy` from WPS met_em files instead of real.exe ([docs/REAL.md](docs/REAL.md)):
 
 ```bash
-build/src/init_real/cppwrf_real --namelist namelist.input --met-dir /path/to/met_em --precision double
+$CPPWRF/build-cpu/src/init_real/cppwrf_real --namelist namelist.input --met-dir /path/to/met_em
 ```
 
-The example configurations in `configs/` include idealized cases (`build/cppwrf configs/straka.ini`) and the
-suite's real-data cases. The real-data cases read the WRF run directories from `$CPPWRF_WRF_RUNS`.
+`examples/quickstart/run.sh` goes the whole way from the GFS analysis through WPS, `cppwrf_real` and the model to
+wrfout files, with WRF's default domains and namelist ([docs/USER_GUIDE.md](docs/USER_GUIDE.md#4-from-wrf-inputs-to-wrfout)).
+The builds above and this example were run from a clean source tree on a Google Colab G4 runtime
+(`tools/colab/colab_quickstart.sh`); the GPU FP64 output equals the CPU FP64 output bit for bit.
+
+The configurations in `configs/` include idealized cases (`build-cpu/cppwrf configs/straka.ini`; WRF's em_* cases
+with WRF's `input_sounding`) and the suite's real-data cases, which read the WRF run directories from
+`$CPPWRF_WRF_RUNS`.
 
 ## Documentation
 
-- [docs/USER_GUIDE.md](docs/USER_GUIDE.md): building, running, configuration keys, output formats
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md): building, the way from WPS to wrfout, the translator, every supported
+  and rejected option, nests, GPU runs, restarts, output streams, configuration keys
+- [CHANGELOG.md](CHANGELOG.md), [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md): versions and the verified scope of
+  v1.0.0
 - [docs/STATUS.md](docs/STATUS.md): what is ported, how it is verified, every case and result
 - [docs/PERF.md](docs/PERF.md): the benchmark against WRF, the GPU profile and the performance roadmap
 - [docs/PHYSICS_SUITE.md](docs/PHYSICS_SUITE.md), [docs/PHYSICS_DRIVER.md](docs/PHYSICS_DRIVER.md),

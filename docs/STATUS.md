@@ -1,5 +1,7 @@
 # CPPWRF: status and verification
 
+Version 1.0.0 (docs/RELEASE_NOTES.md: the verified scope of the release).
+
 CPPWRF reproduces WRF-ARW v4.8.0 statement by statement. This page lists what is implemented, how it
 is verified against WRF, and the current results. All numbers come from `tests/verify/wrf_suite.py`
 (192 cases, 8 of them the slow 24 h and 72 h runs of `--slow`, and 33 restart / Straka checks, all passing) and
@@ -17,7 +19,7 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 | Radiation | RRTMG LW and SW (4), RRTM LW (1, with RRTMG or Dudhia SW), Dudhia SW (1, with RRTMG or RRTM LW; swrad_scat), CAM ozone and greenhouse gases, cal_cldfra1, McICA (cldovrlp 1-5) and clear sky only (cldovrlp 0), cumulus clouds in the radiation (cu_rad_feedback: Kain-Fritsch, Grell-Freitas; no effect with Tiedtke / New Tiedtke as in WRF) |
 | Nesting | static one-way and two-way nests (interp_fcn_sint, bdy_interp1, copy_fcn feedback, sm121/smdsm smoothers, blend_terrain, adjust_tempqv) |
 | Namelist | physics_suite CONUS and tropical (the -1 options), in tools/wrf2cppwrf.py and in the WRF I/O schema |
-| Diagnostics | accumulation buckets bucket_mm and bucket_J (I_RAINC, I_RAINNC, I_ACSWUPT ... I_ACLWDNBC) and the precipitation windows prec_acc_dt (PREC_ACC_C, PREC_ACC_NC, SNOW_ACC_NC, per domain), output_diagnostics = 1 (T2MIN ... RAINNCVSTD over auxhist3_interval, the auxhist3 files), with the column physics; nwp_diagnostics is not ported (needs do_radar_ref) |
+| Diagnostics | accumulation buckets bucket_mm and bucket_J (I_RAINC, I_RAINNC, I_ACSWUPT ... I_ACLWDNBC) and the precipitation windows prec_acc_dt (PREC_ACC_C, PREC_ACC_NC, SNOW_ACC_NC, per domain), output_diagnostics = 1 (T2MIN ... RAINNCVSTD over auxhist3_interval, the auxhist3 files), with the column physics; radar reflectivity (do_radar_ref); nwp_diagnostics is not ported |
 | I/O | reads wrfinput_d0N / wrfbdy_d01; writes WRF v4.8.0 wrfout_d0N and wrfrst_d0N files (WRF I/O schema, iofields_filename, history_outname / rst_outname, frames_per_outfile, use_netcdf_classic) and its own restart files; native binary output; cppwrf_real (real.exe) |
 | Ideal cases | WRF's ideal.exe for em_hill2d_x, em_quarter_ss, em_squall2d_x/y, em_grav2d_x; CPPWRF's own analytic tests (rest state, warm bubble, Straka, inertia-gravity wave, 2-D squall line) |
 
@@ -64,6 +66,10 @@ is verified against WRF, and the current results. All numbers come from `tests/v
    `namelist.input` by `tools/wrf2cppwrf.py`.
 4. **Checkpoint dumps** (`tests/verify/wrf_dycore_dumps`): a WRF build that writes intermediate arrays
    inside solve_em and the physics drivers, used to locate the first differing operation.
+5. **Quick start** (`tools/colab/colab_quickstart.sh`): the builds and runs of README.md and docs/USER_GUIDE.md from
+   a clean source tree on a Colab G4 runtime (CPU FP64, GPU FP32 and FP64 builds, ctest, the translator's tests, the
+   Straka and em_quarter_ss cases, `examples/quickstart/run.sh` from GFS through WPS and cppwrf_real to wrfout), with
+   the example's GPU FP64 wrfout files compared with the CPU FP64 ones at tolerance 0.
 
 Bit identity on the CPU requires reproducing WRF's arithmetic exactly: the order of every sum and
 product, constant folding done by the Fortran compiler, the halo refresh schedule, and the vector math
@@ -178,7 +184,7 @@ every variable, value, dimension, attribute and global attribute
 (`tests/verify/run_wrf_files_test.sh`). Runs of these cases resumed from WRF's
 `wrfrst` files, give the same files as WRF's resumed runs. The exceptions are values WRF leaves uninitialised:
 RQCBLTEN / RQIBLTEN in runs without qc / qi, and QZ0 / USTM at fractional sea-ice points with the revised MM5
-surface layer (restart fields). `cppwrf_real` output is identical to real.exe for 41 cases
+surface layer (restart fields). `cppwrf_real` output is identical to real.exe for 43 cases
 ([REAL.md](REAL.md)).
 
 CUDA FP64 is bit-identical to WRF and to the CPU build: every `cuda_dp` case of the suite (79 runs with the GPU
