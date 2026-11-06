@@ -494,16 +494,11 @@ from the tars' file lists (`tools/colab/colab_tarlist.sh` reads them on a Colab 
 
 ## 7. Performance
 
-Measured on a workstation with an NVIDIA RTX 2060 (6 GB) and a 12-core x86-64 CPU, for the real-data
-domain 119 x 89 x 44 (15 km, dt = 60 s, 1 h):
-
-| Configuration | Time per cell and step |
-|---|---|
-| Dry dynamics, CUDA FP32 | ~32 ns |
-| Dynamics + WSM6, CUDA FP32 | ~52 ns |
-
-The 1 h dry run takes 1.26 s on the GPU in FP32 (WRF v4.6.1 with 4 OpenMP threads: 13.2 s) and 4.3 s
-in FP64 (serial WRF real*8: 37.9 s). The memory-traffic budget of the large step is in docs/PERF.md.
+docs/PERF.md compares CPPWRF with WRF v4.8.0 on one Colab G4 runtime (AMD EPYC 9B45 with 48 hardware threads and an
+RTX PRO 6000 Blackwell). For the real-data domain 119 x 89 x 44 with full physics (P4, 1 h), WRF real*4 at its
+fastest MPI layout steps in 7.8 s. CPPWRF steps in 1.7 s on the GPU in FP32 and 2.8 s in FP64 (WRF real*8: 9.7 s).
+On a 359 x 269 x 44 domain the GPU's lead grows to 8.2x in FP32 and 4.7x in FP64. `tools/bench/colab_bench.sh`
+repeats the measurement. The memory-traffic budget of the large step is also in docs/PERF.md.
 
 GPU memory: the column physics keeps its per-column arrays in thread-local memory, which CUDA reserves for every
 thread the GPU can hold at once, so the footprint grows with the GPU's size. On an NVIDIA L4 (24 GB) the same domain

@@ -52,19 +52,27 @@ the same on Intel and AMD processors (`CPPWRF_PORTABLE_LIBMVEC`).
 
 ## Performance
 
-The model steps entirely on the GPU with almost no host round trips, and each time step runs as
-a CUDA graph. The table gives seconds of computation per simulated hour on a real-data domain
-(119 x 89 x 44 cells, 15 km, dt 60 s), from [docs/PERF.md](docs/PERF.md):
+WRF v4.8.0 and CPPWRF ran on one Google Colab G4 runtime: an AMD EPYC 9B45 (24 cores, 48 hardware threads) and an
+NVIDIA RTX PRO 6000 Blackwell (96 GB). WRF was built there from the release source with its own GNU `configure`
+(MPI, and MPI + OpenMP), in real*4 and real*8; its fastest of five process layouts counts. Each run is 1 simulated
+hour with the same namelist and inputs. The table gives the stepping time in seconds per simulated hour, without
+start-up and history output ([docs/PERF.md](docs/PERF.md) has the wall times, other layouts and memory):
 
-| Case | RTX PRO 6000 Blackwell | A100 | L4 |
-|---|---|---|---|
-| P1 (YSU, Noah, sfclay), FP32 | 0.25 s | 0.52 s | 0.61 s |
-| P1, FP64 | 0.81 s | 0.65 s | 2.12 s |
-| P4 (adds KF, WSM6, RRTMG), FP64 | 5.5 s | 4.1 s | 9.8 s |
+| Case | WRF real*4, best layout | WRF real*8, best layout | CPPWRF GPU FP32 | CPPWRF GPU FP64 |
+|---|---|---|---|---|
+| P4: 119 x 89 x 44, 15 km, full physics, radt 1 min | 7.84 | 9.72 | 1.66 (4.7x) | 2.78 (3.5x) |
+| P4 with radt 15 min | 2.38 | 4.34 | 0.55 (4.3x) | 1.68 (2.6x) |
+| N3: P4 with a two-way 5 km nest | 23.8 | 34.0 | 5.25 (4.5x) | 10.4 (3.3x) |
+| L: 359 x 269 x 44 (9x P4), radt 15 min | 24.8 | 45.1 | 3.01 (8.2x) | 9.59 (4.7x) |
 
-Most consumer and workstation GPUs run FP64 at 1/64 of the FP32 rate, so FP32 is the fast mode on them.
-The profile ranks the next speed-ups: the RRTMG longwave takes 69 % of P4, and the column physics use the
-GPU at low occupancy. Every speed-up must leave the FP64 results bit-identical.
+The speed-ups in brackets are against WRF real*4 for FP32 and against WRF real*8 for FP64. The GPU's advantage grows
+with the domain size. Whole runs gain less: start-up and NetCDF output are serial in both models. Without history
+output GPU FP32 runs 1.8x to 3.5x faster than WRF real*4 in wall time. With a frame every 10 minutes, L's output
+takes as long in CPPWRF as in WRF, so output decides the wall time.
+
+In these runs, the GPU FP64 results are bit-identical to the CPU FP64 results. The CPU FP64 results are
+bit-identical to WRF real*8 run in one process, which is how the references are made: WRF's own result changes
+with its MPI layout. GPU FP32 differs from WRF real*4 by about as much as WRF real*4 differs from WRF real*8.
 
 ## Build
 
@@ -103,7 +111,7 @@ suite's real-data cases. The real-data cases read the WRF run directories from `
 
 - [docs/USER_GUIDE.md](docs/USER_GUIDE.md): building, running, configuration keys, output formats
 - [docs/STATUS.md](docs/STATUS.md): what is ported, how it is verified, every case and result
-- [docs/PERF.md](docs/PERF.md): GPU profile and the performance roadmap
+- [docs/PERF.md](docs/PERF.md): the benchmark against WRF, the GPU profile and the performance roadmap
 - [docs/PHYSICS_SUITE.md](docs/PHYSICS_SUITE.md), [docs/PHYSICS_DRIVER.md](docs/PHYSICS_DRIVER.md),
   [docs/PHYSICS_INTERFACE.md](docs/PHYSICS_INTERFACE.md): the physics port
 - [docs/NESTING.md](docs/NESTING.md), [docs/NEST_NUMERICS.md](docs/NEST_NUMERICS.md): nesting

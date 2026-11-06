@@ -247,15 +247,31 @@ and LH with isfflx 0 uninitialised; they are not compared.)
 
 ## Performance
 
-NVIDIA RTX 2060 (6 GB), real-data domain 119 x 89 x 44, 1 h:
+WRF v4.8.0 and CPPWRF were measured on one Google Colab G4 runtime: an AMD EPYC 9B45 with 48 hardware threads and an
+NVIDIA RTX PRO 6000 Blackwell. WRF was built there from the release source with its GNU `configure`, MPI and
+MPI + OpenMP, real*4 and real*8; its fastest of five process layouts counts. Each case ran for 1 h with history off
+and on: R1, P4 (radt 1 and 15 min), the nest N3 and a 9.1 times larger domain made on the runtime with WPS and
+real.exe. `tools/bench/colab_bench.sh` reproduces it in one session.
 
-| Run | CPPWRF | WRF v4.6.1 |
-|---|---|---|
-| Dry dynamics, FP32 | 1.26 s (GPU) | 13.2 s (4 OpenMP threads) |
-| Dry dynamics, FP64 | 4.3 s (GPU, 1/32-rate FP64) | 37.9 s (serial, real*8) |
+Stepping time in seconds per simulated hour, history off:
 
-Dry dynamics run at about 32 ns per cell and step in FP32 on the GPU, about 52 ns with WSM6.
-RRTMG runs on the GPU as a batched pipeline (docs/PHYSICS_SUITE.md section 10).
+| Case | WRF real*4 | WRF real*8 | CPPWRF GPU FP32 | CPPWRF GPU FP64 | CPPWRF CPU FP64 (48 threads) |
+|---|---|---|---|---|---|
+| R1 | 0.86 | 2.15 | 0.12 | 0.51 | 3.77 |
+| P4 | 7.84 | 9.72 | 1.66 | 2.78 | 10.86 |
+| P4, radt 15 min | 2.38 | 4.34 | 0.55 | 1.68 | 7.44 |
+| N3 | 23.8 | 34.0 | 5.25 | 10.4 | 38.8 |
+| L (359 x 269 x 44) | 24.8 | 45.1 | 3.01 | 9.59 | 51.0 |
+
+Agreement in these runs:
+- The CPU FP64 output is bit-identical to the suite's WRF real*8 references for P4 and N3 (both domains).
+- The GPU FP64 output is bit-identical to the CPU FP64 output in all five cases.
+- With this CPU's own libmvec log (`CPPWRF_PORTABLE_LIBMVEC=OFF`), the CPU FP64 output is bit-identical over the
+  hour to WRF real*8 built and run on the runtime in one process, for R1, P4 and L.
+
+WRF run with MPI ranks differs from its own one-process run, so exact comparisons use one-process WRF.
+
+Wall times, GPU memory and the details are in docs/PERF.md.
 
 ## Not yet implemented
 

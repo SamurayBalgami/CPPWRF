@@ -1,9 +1,169 @@
-# CPPWRF memory-traffic budget
+# CPPWRF performance
+
+## WRF v4.8.0 and CPPWRF on one Colab G4 runtime (measured)
+
+Both models ran on the same Google Colab G4 runtime: an AMD EPYC 9B45 (24 cores, 48 hardware threads, 176 GB) and
+an NVIDIA RTX PRO 6000 Blackwell Server Edition (96 GB, sm_120, driver 580.82, CUDA 13.0). `tools/bench/colab_bench.sh`
+does the whole benchmark in one session (about 75 minutes, 12 compute units at 10.05 units per hour). The numbers
+below are from that run, with CPPWRF at main b30ec5b.
+
+**Builds.**
+- WRF v4.8.0 is built on the runtime from the official release source (`v4.8.0.tar.gz` of github.com/wrf-model/WRF,
+  md5 dbd299cf76f4c0b8d6523fd41cd77674). It uses WRF's own `configure` for GNU in the Debian 13 chroot of the suite
+  (gfortran 14.2, MPICH 4.2.1, `FCOPTIM = -O2 -ftree-vectorize -funroll-loops`, no `-march`).
+- WRF has four builds: dmpar (option 34) and dm+sm (option 35), each in real*4 (the usual production build) and
+  real*8 (`configure -r8`, the suite's reference build).
+- CPPWRF has three builds: CUDA FP32 and CUDA FP64 (the release builds of README.md), and the CPU FP64 build with
+  OpenMP (gcc 14.2, `-O3 -march=native`). The CPU build runs with 48 threads.
+
+**Cases.** Every run is 1 simulated hour. The same namelist goes to `wrf.exe` and to `tools/wrf2cppwrf.py`.
+- R1: dynamics only.
+- P4: KF, WSM6, YSU, Noah and RRTMG with radt 1 min.
+- P4R15: P4 with radt 15 min, as production runs use.
+- N3: a two-way nest with the P4 physics on both domains. d02 has 120 x 90 cells at 5 km with dt 20 s.
+- L: a large domain, P4 physics with radt 15 min.
+
+R1, P4 and N3 have 119 x 89 x 44 cells, 15 km, dt 60 s. L has 359 x 269 x 44 cells (9.1 times P4) at 15 km. It is
+a Lambert domain centred at 39 N 35 E, made on the runtime:
+- WPS 4.6.0's geogrid, ungrib and metgrid (the executables that made the suite's met_em files);
+- WPS's low-resolution mandatory geography and the GFS 0.25 degree analysis and 6 h forecast of 2026-10-12 00 UTC
+  (downloaded on the runtime);
+- real.exe of the real*8 build.
+
+The WPS steps took about 3 minutes with the downloads and real.exe 9 s, so a real-data domain was cheaper than a
+grown idealized case.
+
+All models read the same real*8 `wrfinput` / `wrfbdy` files. The real*4 builds of WRF and CPPWRF convert them on
+reading, as WRF's NetCDF reader allows. The real*4 WRF runs read WRF's single-precision RRTMG tables.
+
+**How the times are measured.**
+- WRF's *stepping* time is the sum of its "Timing for main" lines for domain 1, minus the "Timing for Writing" lines
+  inside them. A nest's steps are part of its parent's time.
+- CPPWRF's stepping time is its first "cppwrf: done" line. That line is the parent domain's, so it contains the
+  nests' steps. Its output is excluded, except for N3, where the parent's step contains d02's history output.
+- *Wall* is the whole process (`mpiexec` or `cppwrf`). It includes start-up, reading the inputs, initialisation
+  and output.
+- *History off* means `history_interval = 1440`: only the frame at t = 0 is written. *History on* means a frame
+  every 10 minutes (7 frames per domain).
+- WRF ran with five process layouts, all with history off: 12, 24 and 48 MPI ranks, and the dm+sm build with
+  24 x 2 and 12 x 4 ranks x threads. Ranks are bound to cores, or to hardware threads beyond 24 ranks. The fastest
+  layout for each case and precision is "WRF best" below; it then ran again with history on.
+- The GPU's history-off runs ran twice and the faster run counts (the first loads the module). Every other run ran
+  once.
+- An earlier session measured the same cases. Against it:
+  - the GPU stepping times agree within 3.5 %;
+  - WRF's times at the fastest layout agree within 3 % (P4 real*4: 9 %); single runs at other layouts vary up to
+    15 %, and up to 90 % for the short 48-rank runs;
+  - the CPU FP64 times agree within 8 % (R1: 23 %).
+
+Stepping time, in seconds per simulated hour (history off):
+
+| Case | WRF real*4 best | WRF real*8 best | CPPWRF GPU FP32 | CPPWRF GPU FP64 | CPPWRF CPU FP64 | GPU FP32 vs WRF r4 | GPU FP64 vs WRF r8 |
+|---|---|---|---|---|---|---|---|
+| R1 | 0.86 (12 x 4) | 2.15 (24) | 0.12 | 0.51 | 3.77 | 7.3x | 4.2x |
+| P4 | 7.84 (24 x 2) | 9.72 (24 x 2) | 1.66 | 2.78 | 10.86 | 4.7x | 3.5x |
+| P4R15 | 2.38 (12 x 4) | 4.34 (12 x 4) | 0.55 | 1.68 | 7.44 | 4.3x | 2.6x |
+| N3 | 23.79 (24 x 2) | 34.02 (24) | 5.25 | 10.39 | 38.80 | 4.5x | 3.3x |
+| L | 24.78 (24 x 2) | 45.06 (24) | 3.01 | 9.59 | 51.02 | 8.2x | 4.7x |
+
+Time per step and per cell, in ns per cell per step (stepping time over the sum of cells x steps of all domains),
+history off:
+
+| Case | WRF r4 | WRF r8 | GPU FP32 | GPU FP64 | CPU FP64 |
+|---|---|---|---|---|---|
+| R1 | 30.6 | 76.8 | 4.2 | 18.2 | 134.7 |
+| P4 | 280 | 348 | 59.3 | 99.4 | 389 |
+| P4R15 | 85.1 | 155 | 19.7 | 60.2 | 266 |
+| N3 | 210 | 300 | 46.3 | 91.5 | 342 |
+| L | 97.2 | 177 | 11.8 | 37.6 | 200 |
+
+Wall time of the whole run in seconds, history off / history on, and Colab compute units per simulated hour
+(history off; the runtime costs the same whichever processor a run uses):
+
+| Case | WRF real*4 best | WRF real*8 best | GPU FP32 | GPU FP64 | CPU FP64 | CU / h: WRF r4, GPU FP32 |
+|---|---|---|---|---|---|---|
+| R1 | 1.6 / 3.6 | 3.3 / 7.1 | 1.1 / 3.0 | 1.9 / 5.7 | 5.4 / 9.9 | 0.005, 0.003 |
+| P4 | 9.0 / 12.8 | 11.4 / 21.0 | 3.1 / 6.7 | 4.8 / 12.3 | 12.5 / 21.5 | 0.025, 0.009 |
+| P4R15 | 3.4 / 8.3 | 5.8 / 14.4 | 1.9 / 5.5 | 3.6 / 11.2 | 9.1 / 16.6 | 0.010, 0.005 |
+| N3 | 25.1 / 30.6 | 36.0 / 46.3 | 7.1 / 11.4 | 12.8 / 21.4 | 41.0 / 47.6 | 0.070, 0.020 |
+| L | 31.5 / 63.2 | 55.3 / 123.6 | 10.2 / 41.8 | 22.7 / 89.6 | 63.6 / 131.7 | 0.088, 0.029 |
+
+Time outside the stepping (wall - stepping, in s), history off / on. It is start-up, reading the inputs,
+initialisation and output. With history on, most of it is the 7 frames' output. For N3, CPPWRF's d02 output falls
+inside the parent's stepping time.
+
+| Case | WRF real*4 | WRF real*8 | GPU FP32 | GPU FP64 | CPU FP64 |
+|---|---|---|---|---|---|
+| R1 | 0.8 / 2.7 | 1.1 / 4.9 | 1.0 / 2.9 | 1.4 / 5.2 | 1.7 / 5.2 |
+| P4 | 1.1 / 5.2 | 1.6 / 9.9 | 1.4 / 5.1 | 2.0 / 9.5 | 1.6 / 9.5 |
+| P4R15 | 1.0 / 5.0 | 1.5 / 9.4 | 1.4 / 5.0 | 1.9 / 9.5 | 1.7 / 9.3 |
+| N3 | 1.3 / 5.7 | 2.0 / 10.6 | 1.8 / 4.0 | 2.4 / 6.7 | 2.2 / 6.9 |
+| L | 6.7 / 38.8 | 10.2 / 78.5 | 7.2 / 38.8 | 13.1 / 80.1 | 12.6 / 80.0 |
+
+GPU memory: nvidia-smi's peak during the history-off run, in MiB. The *stack reserve* (CPPWRF_MEMINFO: stack limit
+x 288768 resident threads on the G4) is the column physics' local memory, which CUDA reserves for every thread the
+GPU can hold. An RTX 2060 (6 GB, 30 x 1024 resident threads) reserves 9.4 times less. The last column replaces the
+G4's reserve by the RTX 2060's. It is an upper bound: CPPWRF sizes the RRTMG batch scratch to the GPU's memory, so
+the scratch is smaller on a 6 GB GPU. No run used a 6 GB GPU.
+
+| Case | FP32 peak (stack reserve) | FP32 on an RTX 2060, at most | FP64 peak (stack reserve) | FP64 on an RTX 2060, at most |
+|---|---|---|---|---|
+| R1 | 803 (282) | 551: fits | 987 (282) | 735: fits |
+| P4, P4R15 | 8297 (3018) | 5600: fits | 13749 (7989) | 6610 |
+| N3 | 9461 (3018) | 6764 | 15395 (7989) | 8256 |
+| L | 20791 (3018) | 18094: does not fit | 29957 (7989) | 22818: does not fit |
+
+**Agreement** (`tests/verify/exact.py`, every variable of every frame, history on):
+- CPPWRF CPU FP64 against the suite's WRF real*8 references, which were made on Intel. P4 (7 frames) and N3 (d01 and
+  d02, 7 frames each) are bit-identical. R1's reference covers 5 minutes only; the suite case `real_r1_fp64_cpu`
+  checks it.
+- CPPWRF GPU FP64 against CPPWRF CPU FP64 is bit-identical in all five cases, including N3's nest and the large
+  domain L.
+- The default CPU build computes glibc libmvec's vector log as libmvec does on Intel (`CPPWRF_PORTABLE_LIBMVEC`),
+  so on this AMD CPU it does not match a WRF built here. The CPU FP64 build with this CPU's own libmvec log
+  (`-DCPPWRF_PORTABLE_LIBMVEC=OFF`) is bit-identical over the hour to WRF real*8 built and run here in one process,
+  for R1, P4 and L. L is a domain that the suite has never seen.
+- WRF's own result depends on its process layout. The same real*8 executable run with 24 MPI ranks differs from
+  its one-process run. Already in R1 (dynamics only) U differs by up to 1e-11 m/s after 10 minutes, and with the
+  physics the difference grows to the size of the FP32 differences below. The most likely cause is the patch
+  bounds of the vectorized loops. They decide which points take libmvec's vector functions and which take the
+  scalar libm, and the two differ in the last bit. Exact comparisons are therefore made with one-process WRF,
+  as the suite's references are.
+- FP32: the relative L2 difference at 1 h (||a - b|| / ||b||) of GPU FP32 against WRF real*4 is U 2.0e-4 to
+  7.8e-4, W 4.6e-3 to 2.0e-2, T 4.7e-6 to 5.4e-5 and QVAPOR 2.0e-5 to 6.8e-4 over the five cases. WRF real*4
+  against WRF real*8 is of the same size (U 1.9e-4 to 7.7e-4, W 3.8e-3 to 1.9e-2). GPU FP32 is about as far from
+  WRF real*8 as WRF real*4 is: closer in R1, P4, P4R15 and N3, and within 5 % of it on L.
+
+**What the numbers show.**
+- The GPU's advantage grows with the domain. GPU FP32 is 4.3x to 4.7x faster than WRF real*4 at its best layout on
+  the 119 x 89 domain with physics, and 8.2x on L. GPU FP64 is 2.6x to 3.5x faster than WRF real*8 there, and 4.7x on
+  L. Even FP64 on the GPU steps faster than WRF real*4 on all 48 hardware threads, in every case.
+- The whole-run gain is smaller than the stepping gain. Start-up and output are serial in both models and take most
+  of a short run.
+  - With history off, GPU FP32 against WRF real*4 is 1.5x (R1) to 3.5x (N3) in wall time.
+  - With history on, L's 7 frames cost CPPWRF FP32 about 32 s and FP64 about 67 s, as much as they cost WRF real*4
+    (32 s) and real*8 (68 s). Output then decides the wall time. NetCDF output is the next bottleneck for large
+    domains.
+  - CPPWRF's start-up on L, with history off, takes 7.2 s in FP32 against 6.7 s for WRF real*4. It includes the
+    reading of the 4.25 M-cell real*8 inputs.
+- WRF gains little beyond one rank per core on this runtime: 48 ranks are slower than 24 in 9 of the 10 case and
+  precision pairs (P4 real*4 aside). The dm+sm build was fastest in 7 of the 10, by up to 13 % over the best dmpar
+  layout.
+- WRF real*4 is only 1.2x to 2.5x faster than real*8, about 1.8x on L.
+- CPPWRF's CPU FP64 build (OpenMP, 48 threads) runs at 0.6x to 0.9x the speed of WRF real*8 at its best MPI
+  layout: 0.9x on P4, N3 and L, and 0.6x on R1 and P4R15, where the dynamics take a larger share.
+- Per Colab compute unit the GPU runs are 1.5x to 3.5x cheaper than WRF on the same runtime, which costs the same
+  whatever processor a run uses. WRF alone would cost less on a CPU-only runtime; that runtime was not measured.
+
+The run's report (`report.md`: every layout, both history settings, the time outside the stepping, and every
+comparison) and the logs are in the output directory of `colab_bench.sh`.
+
+## Memory-traffic budget
 
 Model: each 3D field touched by a kernel is read (or written) once from DRAM per kernel,
 i.e. stencil neighbours are assumed to hit cache; 1D base-state arrays and 2D fields are
 negligible (O(1/nz)). Bytes per cell for FP32 (x2 for FP64). These are **counts from the
-code, not measurements**; measured times are in docs/STATUS.md.
+code, not measurements**; the measured times are in the section above and the profile below.
 
 ## Large step, per RK stage
 | Kernel | reads (3D) | writes (3D) | B/cell FP32 |
