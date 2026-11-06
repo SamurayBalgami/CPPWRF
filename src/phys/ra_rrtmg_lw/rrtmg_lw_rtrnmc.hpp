@@ -46,31 +46,27 @@ CPPWRF_FORCEINLINE void rrtmg_lw_icldlyr(CSD2 cldfmc, SI icldlyr, int lay0, int 
   }
 }
 
-template <int MAX_LAY, bool CLEAR_COL>
-CPPWRF_FORCEINLINE void rrtmg_lw_band_impl(int nlayers, int iband, CSD secdiff, CSD semiss, CSD2 cldfmc, CSD2 taucmc,
-                                           CSD2 planklay, CSD2 planklev, CSD plankbnd, CSD2 fracs, CSD2 taut,
-                                           CSI icldlyr, SD2 bu, SD2 bd, SD2 bcu, SD2 bcd,
-                                           const RrtmgLwTables& CPPWRF_RESTRICT tables) {
+// One g-point igc (of band iband) of rtrnmc: its down and up sweeps. The radiances the sweeps add to the band sums
+// go to `out` per level, in the order of the sweeps:
+//   out.down(l, radld, radclrd, iclddn)  the bottom of layer l (rtrnmc's lev - 1), iclddn after layer l
+//   out.up(lev, radlu, radclru, iclddn)  level lev = 0..nlayers, iclddn at the end of the down sweep
+// CLEAR_COL: a column without cloudy layers (rtrnmc's iclddn stays 0; radclrd = radld, radclru = radlu).
+// A2 (CSD2 or SD2): the g-point's arrays; each element of fracs, taut is read once, at its layer of the down sweep,
+// cldfmc's at its layer of each sweep, so `out` may overwrite them after (the GPU batch's in-place store).
+template <int MAX_LAY, bool CLEAR_COL, class A2, class Out>
+CPPWRF_FORCEINLINE void rrtmg_lw_gpoint(int nlayers, int iband, int igc, CSD secdiff, double reflect, double pbnd,
+                                        A2 cldfmc, A2 taucmc, CSD2 planklay, CSD2 planklev, A2 fracs, A2 taut,
+                                        CSI icldlyr, const RrtmgLwTables& CPPWRF_RESTRICT tables, Out& out) {
   constexpr double rec_6 = 0.166667;
   constexpr double bpade = 1.0 / 0.278;
   constexpr double tblint = 10000.0;
-  const SD urad = bu[iband], drad = bd[iband], clrurad = bcu[iband], clrdrad = bcd[iband];
-  for (int lev = 0; lev <= nlayers; ++lev) {
-    urad[lev] = 0.0; drad[lev] = 0.0;
-    if constexpr (!CLEAR_COL) {
-      clrurad[lev] = 0.0; clrdrad[lev] = 0.0;
-    }
-  }
   const double sd = secdiff[iband];
-  const double reflect = 1.0 - semiss[iband];
-  const double pbnd = plankbnd[iband];
-  const int igc0 = iband == 0 ? 0 : tables.ngs[iband - 1];
-  const int igc1 = tables.ngs[iband];
 
   if constexpr (CLEAR_COL) {
     double atrans[MAX_LAY], bbugas[MAX_LAY];
-    for (int igc = igc0; igc < igc1; ++igc) {
+    {
       double radld = 0.0;
+      double plfrac0 = 0.0;
       for (int lev = nlayers; lev >= 1; --lev) {
         int lay = lev - 1;
         double plfrac = fracs[lay][igc];
@@ -95,28 +91,26 @@ CPPWRF_FORCEINLINE void rrtmg_lw_band_impl(int nlayers, int iband, CSD secdiff, 
           bbugas[lay] = plfrac * (blay + tausfac * dplankup);
         }
         radld = radld + (bbd - radld) * atrans[lay];
-        drad[lev - 1] += radld;
+        if (lay == 0) plfrac0 = plfrac;
+        out.down(lev - 1, radld, radld, 0);
       }
 
-      double rad0 = fracs[0][igc] * pbnd;
+      double rad0 = plfrac0 * pbnd;  // fracs[0][igc] * pbnd
       double radlu = rad0 + reflect * radld;
-      urad[0] += radlu;
+      out.up(0, radlu, radlu, 0);
 
       for (int lev = 1; lev <= nlayers; ++lev) {
         int lay = lev - 1;
         radlu = radlu + (bbugas[lay] - radlu) * atrans[lay];
-        urad[lev] += radlu;
+        out.up(lev, radlu, radlu, 0);
       }
-    }
-    for (int lev = 0; lev <= nlayers; ++lev) {
-      clrdrad[lev] = drad[lev];
-      clrurad[lev] = urad[lev];
     }
   } else {
     double atrans[MAX_LAY], bbugas[MAX_LAY], bbutot_atot[MAX_LAY], efcl[MAX_LAY];
-    for (int igc = igc0; igc < igc1; ++igc) {
+    {
       double radld = 0.0;
       double radclrd = 0.0;
+      double plfrac0 = 0.0;
       int iclddn = 0;
 
       for (int lev = nlayers; lev >= 1; --lev) {
@@ -216,23 +210,17 @@ CPPWRF_FORCEINLINE void rrtmg_lw_band_impl(int nlayers, int iband, CSD secdiff, 
           }
           radld = radld + (bbd - radld) * atrans[lay];
         }
-        drad[lev - 1] += radld;
 
-        if (iclddn == 1) {
-          radclrd = radclrd + (bbd - radclrd) * atrans[lay];
-          clrdrad[lev - 1] += radclrd;
-        } else {
-          radclrd = radld;
-          clrdrad[lev - 1] = drad[lev - 1];
-        }
+        if (iclddn == 1) radclrd = radclrd + (bbd - radclrd) * atrans[lay];
+        else radclrd = radld;
+        if (lay == 0) plfrac0 = plfrac;
+        out.down(lev - 1, radld, radclrd, iclddn);
       }
 
-      double rad0 = fracs[0][igc] * pbnd;
+      double rad0 = plfrac0 * pbnd;  // fracs[0][igc] * pbnd
       double radlu = rad0 + reflect * radld;
       double radclru = rad0 + reflect * radclrd;
-
-      urad[0] += radlu;
-      clrurad[0] += radclru;
+      out.up(0, radlu, radclru, iclddn);
 
       for (int lev = 1; lev <= nlayers; ++lev) {
         int lay = lev - 1;
@@ -240,21 +228,71 @@ CPPWRF_FORCEINLINE void rrtmg_lw_band_impl(int nlayers, int iband, CSD secdiff, 
           double gassrc = bbugas[lay] * atrans[lay];
           radlu = radlu - radlu * (atrans[lay] + efcl[lay] * (1.0 - atrans[lay])) +
                   gassrc + cldfmc[igc][lay] * (bbutot_atot[lay] - gassrc);
-          urad[lev] += radlu;
         } else {
           radlu = radlu + (bbugas[lay] - radlu) * atrans[lay];
-          urad[lev] += radlu;
         }
 
-        if (iclddn == 1) {
-          radclru = radclru + (bbugas[lay] - radclru) * atrans[lay];
-          clrurad[lev] += radclru;
-        } else {
-          radclru = radlu;
-          clrurad[lev] = urad[lev];
-        }
+        if (iclddn == 1) radclru = radclru + (bbugas[lay] - radclru) * atrans[lay];
+        else radclru = radlu;
+        out.up(lev, radlu, radclru, iclddn);
       }
     }
+  }
+}
+
+// rtrnmc's band sums of one column (urad, drad, clrurad, clrdrad of one band): what each g-point's sweeps add,
+// and below the first cloud (iclddn = 0) clrdrad = drad, clrurad = urad (level 0: clrurad adds radclru)
+struct LwBandAcc {
+  SD urad, drad, clrurad, clrdrad;
+  CPPWRF_FORCEINLINE void down(int l, double radld, double radclrd, int iclddn) const {
+    drad[l] += radld;
+    if (iclddn == 1) clrdrad[l] += radclrd;
+    else clrdrad[l] = drad[l];
+  }
+  CPPWRF_FORCEINLINE void up(int lev, double radlu, double radclru, int iclddn) const {
+    urad[lev] += radlu;
+    if (lev == 0 || iclddn == 1) clrurad[lev] += radclru;
+    else clrurad[lev] = urad[lev];
+  }
+};
+// the clear column's sums: the clear-sky sums are copied at the end (rtrnmc's clrdrad = drad, clrurad = urad)
+struct LwBandAccClear {
+  SD urad, drad;
+  CPPWRF_FORCEINLINE void down(int l, double radld, double, int) const { drad[l] += radld; }
+  CPPWRF_FORCEINLINE void up(int lev, double radlu, double, int) const { urad[lev] += radlu; }
+};
+
+template <int MAX_LAY, bool CLEAR_COL>
+CPPWRF_FORCEINLINE void rrtmg_lw_band_impl(int nlayers, int iband, CSD secdiff, CSD semiss, CSD2 cldfmc, CSD2 taucmc,
+                                           CSD2 planklay, CSD2 planklev, CSD plankbnd, CSD2 fracs, CSD2 taut,
+                                           CSI icldlyr, SD2 bu, SD2 bd, SD2 bcu, SD2 bcd,
+                                           const RrtmgLwTables& CPPWRF_RESTRICT tables) {
+  const SD urad = bu[iband], drad = bd[iband], clrurad = bcu[iband], clrdrad = bcd[iband];
+  for (int lev = 0; lev <= nlayers; ++lev) {
+    urad[lev] = 0.0; drad[lev] = 0.0;
+    if constexpr (!CLEAR_COL) {
+      clrurad[lev] = 0.0; clrdrad[lev] = 0.0;
+    }
+  }
+  const double reflect = 1.0 - semiss[iband];
+  const double pbnd = plankbnd[iband];
+  const int igc0 = iband == 0 ? 0 : tables.ngs[iband - 1];
+  const int igc1 = tables.ngs[iband];
+
+  if constexpr (CLEAR_COL) {
+    LwBandAccClear acc{urad, drad};
+    for (int igc = igc0; igc < igc1; ++igc)
+      rrtmg_lw_gpoint<MAX_LAY, true, CSD2>(nlayers, iband, igc, secdiff, reflect, pbnd, cldfmc, taucmc, planklay, planklev,
+                                     fracs, taut, icldlyr, tables, acc);
+    for (int lev = 0; lev <= nlayers; ++lev) {
+      clrdrad[lev] = drad[lev];
+      clrurad[lev] = urad[lev];
+    }
+  } else {
+    LwBandAcc acc{urad, drad, clrurad, clrdrad};
+    for (int igc = igc0; igc < igc1; ++igc)
+      rrtmg_lw_gpoint<MAX_LAY, false, CSD2>(nlayers, iband, igc, secdiff, reflect, pbnd, cldfmc, taucmc, planklay,
+                                      planklev, fracs, taut, icldlyr, tables, acc);
   }
 }
 

@@ -9,8 +9,9 @@
 //   rrtmg_lw_level    per level  : rtrnmc band sums
 //   rrtmg_lw_finish   per column : heating rates and the RRTMG_LWRAD outputs
 // The CPU column driver (rrtmg_lw_column) runs them in this order on stride-1 arrays; the GPU
-// batch driver runs each stage for all columns (layers, bands, levels) at once. The arithmetic
-// of every value is WRF's (checked bit for bit against WRF dumps on the CPU path).
+// batch driver runs each stage for all columns (layers, g-points, levels) at once, with the band
+// stage as rrtmg_lw_gpointstage per g-point and rrtmg_lw_bandsum per level. The arithmetic of
+// every value is WRF's (checked bit for bit against WRF dumps on the CPU path).
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -59,6 +60,7 @@ struct LwViews {
   SD2 cldfmc, taucmc;                          // [140][nl]
   SD2 fracs, taug;                             // [nl][140]
   SD2 bu, bd, bcu, bcd;                        // [16][nl + 1] band sums of rtrnmc
+  SD gu0, gcu0;                                // [140] the g-points' level-0 radiances (GPU batch)
   SD totuflux, totdflux, totuclfl, totdclfl, fnet, fnetc, htr, htrc;  // [nl + 1]
   SI iscal;  // [0] laytrop, [1] inflag, [2] iceflag, [3] liqflag, [4] any_cloud
   SD dscal;  // [0] pwvcm
@@ -103,6 +105,7 @@ struct LwLayout {
     v.cldfmc = v2(140, L); v.taucmc = v2(140, L);
     v.fracs = v2(L, 140); v.taug = v2(L, 140);
     v.bu = v2(16, L1); v.bd = v2(16, L1); v.bcu = v2(16, L1); v.bcd = v2(16, L1);
+    v.gu0 = v1(140); v.gcu0 = v1(140);
     v.totuflux = v1(L1); v.totdflux = v1(L1); v.totuclfl = v1(L1); v.totdclfl = v1(L1);
     v.fnet = v1(L1); v.fnetc = v1(L1); v.htr = v1(L1); v.htrc = v1(L1);
     v.dscal = v1(1);
@@ -476,6 +479,87 @@ CPPWRF_FORCEINLINE void rrtmg_lw_bandstage(int nlayers, int iband, const LwViews
                                            const RrtmgLwTables& CPPWRF_RESTRICT tables) {
   rrtmg_lw_band<MAX_LAY>(nlayers, iband, v.secdiff, v.semiss, v.cldfmc, v.taucmc, v.planklay, v.planklev, v.plankbnd,
                          v.fracs, v.taug, v.icldlyr, v.bu, v.bd, v.bcu, v.bcd, tables, CSI(v.iscal)[4] == 0);
+}
+
+// ---- stage 3 (GPU batch): per g-point igc (0..139) ------------------------------------------------
+// rtrnmc's sweeps of one g-point (rrtmg_lw_gpoint) store the radiances of each level in place of the g-point's
+// inputs: the down sweep's radld / radclrd of level l in taug[l][igc] / fracs[l][igc] (read at layer l just before),
+// the up sweep's radlu / radclru of level lev >= 1 in cldfmc[igc][lev - 1] / taucmc[igc][lev - 1] (cldfmc read at
+// layer lev - 1 just before), level 0 in gu0 / gcu0. rrtmg_lw_bandsum_level adds them per band in g-point order.
+struct LwGpointStore {
+  SD2 taug, fracs, cldfmc, taucmc;
+  SD gu0, gcu0;
+  int igc;
+  CPPWRF_FORCEINLINE void down(int l, double radld, double radclrd, int) const {
+    taug[l][igc] = radld;
+    fracs[l][igc] = radclrd;
+  }
+  CPPWRF_FORCEINLINE void up(int lev, double radlu, double radclru, int) const {
+    if (lev == 0) {
+      gu0[igc] = radlu;
+      gcu0[igc] = radclru;
+    } else {
+      cldfmc[igc][lev - 1] = radlu;
+      taucmc[igc][lev - 1] = radclru;
+    }
+  }
+};
+template <int MAX_LAY = RRTMG_LW_SWEEP_MAX>
+CPPWRF_FORCEINLINE void rrtmg_lw_gpointstage(int nlayers, int igc, const LwViews& v,
+                                             const RrtmgLwTables& CPPWRF_RESTRICT tables) {
+  const int iband = tables.ngb[igc] - 1;
+  const double reflect = 1.0 - CSD(v.semiss)[iband];
+  const double pbnd = CSD(v.plankbnd)[iband];
+  LwGpointStore st{v.taug, v.fracs, v.cldfmc, v.taucmc, v.gu0, v.gcu0, igc};
+#if defined(__CUDA_ARCH__)
+  const bool fast_clear = __all_sync(__activemask(), CSI(v.iscal)[4] == 0);
+#else
+  const bool fast_clear = CSI(v.iscal)[4] == 0;
+#endif
+  if (fast_clear)
+    rrtmg_lw_gpoint<MAX_LAY, true, SD2>(nlayers, iband, igc, v.secdiff, reflect, pbnd, v.cldfmc, v.taucmc,
+                                        v.planklay, v.planklev, v.fracs, v.taug, v.icldlyr, tables, st);
+  else
+    rrtmg_lw_gpoint<MAX_LAY, false, SD2>(nlayers, iband, igc, v.secdiff, reflect, pbnd, v.cldfmc, v.taucmc,
+                                         v.planklay, v.planklev, v.fracs, v.taug, v.icldlyr, tables, st);
+}
+
+// ---- stage 3b (GPU batch): per level, after rrtmg_lw_gpointstage of every g-point ---------------------------
+// The band sums of level lev as rtrnmc forms them (LwBandAcc: each band's g-points in order; below the first cloud
+// clrdrad = drad and clrurad = urad, at level 0 clrurad adds radclru), into bu / bd / bcu / bcd.
+CPPWRF_FORCEINLINE void rrtmg_lw_bandsum(int nlayers, int lev, const LwViews& v,
+                                         const RrtmgLwTables& CPPWRF_RESTRICT tables) {
+  // rtrnmc's iclddn after the down sweep's layer lev (a cloudy layer at or above it) and at the end of it
+  int cld_dn = 0, cld_col = 0;
+  for (int l = 0; l < nlayers; ++l)
+    if (CSI(v.icldlyr)[l] == 1) {
+      cld_col = 1;
+      if (l >= lev) cld_dn = 1;
+    }
+  for (int iband = 0; iband < 16; ++iband) {
+    const int igc0 = iband == 0 ? 0 : tables.ngs[iband - 1];
+    const int igc1 = tables.ngs[iband];
+    double u = 0.0, d = 0.0, cu = 0.0, cd = 0.0;
+    for (int igc = igc0; igc < igc1; ++igc) {
+      if (lev < nlayers) {
+        d += CSD(v.taug[lev])[igc];
+        if (cld_dn == 1) cd += CSD(v.fracs[lev])[igc];
+        else cd = d;
+      }
+      if (lev == 0) {
+        u += CSD(v.gu0)[igc];
+        cu += CSD(v.gcu0)[igc];
+      } else {
+        u += CSD(v.cldfmc[igc])[lev - 1];
+        if (cld_col == 1) cu += CSD(v.taucmc[igc])[lev - 1];
+        else cu = u;
+      }
+    }
+    v.bu[iband][lev] = u;
+    v.bd[iband][lev] = d;
+    v.bcu[iband][lev] = cu;
+    v.bcd[iband][lev] = cd;
+  }
 }
 
 // ---- stage 4: per level -------------------------------------------------------------------------

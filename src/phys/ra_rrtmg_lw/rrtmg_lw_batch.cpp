@@ -81,21 +81,27 @@ struct KLwLayer {
   }
 };
 
+// rtrnmc per g-point: the sweeps of 140 g-points run in parallel (the band loop's g-points one after another
+// were a chain of 2..16 sweeps per thread); KLwLevel adds them per band in g-point order
 template <int MAX_LAY>
-struct KLwBand {
+struct KLwGpoint {
   LwChunk ch;
   int nlayers;
   const RrtmgLwTables* t;
   CPPWRF_HD void operator()(int a, int b, int cc) const {
-    rrtmg_lw_bandstage<MAX_LAY>(nlayers, LW_X(a, b, cc), ch.views(LW_CI(a, b, cc)), *t);
+    rrtmg_lw_gpointstage<MAX_LAY>(nlayers, LW_X(a, b, cc), ch.views(LW_CI(a, b, cc)), *t);
   }
 };
 
 struct KLwLevel {
   LwChunk ch;
+  int nlayers;
   const RrtmgLwTables* t;
   CPPWRF_HD void operator()(int a, int b, int cc) const {
-    rrtmg_lw_level(LW_X(a, b, cc), ch.views(LW_CI(a, b, cc)), *t);
+    const LwViews v = ch.views(LW_CI(a, b, cc));
+    const int lev = LW_X(a, b, cc);
+    rrtmg_lw_bandsum(nlayers, lev, v, *t);
+    rrtmg_lw_level(lev, v, *t);
   }
 };
 
@@ -146,10 +152,10 @@ void RrtmgLwBatch::run(const RrtmgLwCallConfig& c, const LwBatchInput& in, const
     parallel_for(lw_range(n, c.nlayers), KLwSetcoef{ch, in.tsk, d_tables_});
     parallel_for(lw_range(n, c.nlayers), KLwLayer{ch, c.nlayers, d_tables_});
     if (c.nlayers <= 60)
-      parallel_for(lw_range(n, 16), KLwBand<60>{ch, c.nlayers, d_tables_});
+      parallel_for(lw_range(n, 140), KLwGpoint<60>{ch, c.nlayers, d_tables_});
     else
-      parallel_for(lw_range(n, 16), KLwBand<RRTMG_LW_SWEEP_MAX>{ch, c.nlayers, d_tables_});
-    parallel_for(lw_range(n, c.nlayers + 1), KLwLevel{ch, d_tables_});
+      parallel_for(lw_range(n, 140), KLwGpoint<RRTMG_LW_SWEEP_MAX>{ch, c.nlayers, d_tables_});
+    parallel_for(lw_range(n, c.nlayers + 1), KLwLevel{ch, c.nlayers, d_tables_});
     parallel_for(lw_range(n, 1), KLwFinish{ch, c, in, out});
   }
 }
