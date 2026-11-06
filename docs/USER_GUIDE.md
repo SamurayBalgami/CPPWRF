@@ -221,10 +221,12 @@ The script runs, in `~/qs`:
    `frames_per_outfile = 1`).
 
 The same `run.ini` runs in every build: `CPPWRF_BUILD=build-gpu-dp` (or `build`) runs the model on the GPU. On the
-Colab G4 runtime (AMD EPYC 9B45, RTX PRO 6000 Blackwell) the 3-hour run of both domains took 222 s of stepping on 48
-CPU threads in FP64, 42 s on the GPU in FP64 and 15 s in FP32 (the whole script about 5 minutes, most of it the CPU run
-and the GFS download), and the GPU FP64 output was bit-identical to the CPU FP64 output in every variable of every
-wrfout file.
+Colab G4 runtime (AMD EPYC 9B45, RTX PRO 6000 Blackwell) the 3-hour run of both domains took 222 to 273 s of stepping
+on 48 CPU threads in FP64, 42 s on the GPU in FP64 and 15 s in FP32 (the whole script 5 to 7 minutes, most of it the
+CPU run and the GFS download), and the GPU FP64 output was bit-identical to the CPU FP64 output in every variable of
+every wrfout file. WRF's default namelist sets `restart_interval = 7200` (minutes): no wrfrst file is due within the
+run, but CPPWRF writes its own `restart_<step>.nc` at the last step of every domain (0.5 and 1.3 GB here;
+`--set restart.interval=0` turns restart files off).
 
 ### Running from a WRF Run Directory
 
@@ -612,7 +614,8 @@ io_form is an error (WRF writes none by default).
 `restart.interval` (seconds) writes restart files. With `output.format = wrfout`, CPPWRF writes WRF's
 `wrfrst_d0N_<date>` files, including the restart stream, the alarm global attributes and every
 nest domain. In CPU FP64 builds these files are identical to WRF's. CPPWRF also writes its own
-`restart_<step>.nc` files, which hold the complete model state at bitwise precision.
+`restart_<step>.nc` files, which hold the complete model state at bitwise precision: at every restart time and, with
+`restart.interval > 0`, at the last step of the run.
 `restart.end` (seconds, default 0 = none) stops writing restart files after that time.
 
 `run.restart_file` resumes a run from either kind of file. A WRF `wrfrst_d01_<date>` file can come

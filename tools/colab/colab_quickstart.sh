@@ -49,8 +49,15 @@ cj_start G4
 cj_send "$OUT/wps.tar.gz" in/wps.tar.gz
 cj_send "$REPO/tools/colab/quickstart_gpu.sh" qs_gpu.sh
 cj_launch "$REPO/tools/colab/quickstart_body.sh" "" "$STAMP"
-echo "import subprocess; subprocess.Popen('nohup bash /content/cpu/qs_gpu.sh $STAMP > /dev/null 2>&1 &', shell=True); print('started')" |
-  rx 60 | grep started > /dev/null || echo "[colab_quickstart] the GPU side did not start"
+gpu_up() { echo 'import subprocess; print("GPU-UP" if subprocess.run(["pgrep", "-f", "qs_gpu.sh"]).returncode == 0 else "GPU-DOWN")' |
+  rx 60 | grep -q GPU-UP; }
+for i in 1 2 3; do  # colab exec can time out although the command ran: start only when it is not running
+  gpu_up && break
+  echo "import subprocess; subprocess.Popen('nohup bash /content/cpu/qs_gpu.sh $STAMP > /dev/null 2>&1 &', shell=True); print('started')" |
+    rx 60 > /dev/null || true
+  sleep 10
+done
+gpu_up || echo "[colab_quickstart] the GPU side did not start"
 bad=0
 cj_wait "$HOURS" quickstart.log || bad=1
 timeout 120 colab usage 2>&1 | grep -v '^\[colab\]' > "$OUT/usage.txt" || true
