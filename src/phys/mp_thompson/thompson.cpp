@@ -81,7 +81,21 @@ void run_thompson(
             kernel.refl = refl;
             kernel.rtab = radar;
         }
+#if defined(CPPWRF_USE_CUDA)
+        // the GPU: level0 (per (i, j, k)), stage1, level (per (i, j, k)), stage3 of each chunk of columns (ThompsonKernel::operator())
+        using K = ThompsonKernel<Real, decltype(nl)::value>;
+        constexpr int NL = decltype(nl)::value;
+        column_work_chunks(range, K::kWorkBytes, [&](const Range2D& c, const ColumnWork& wk) {
+            kernel.work = wk;
+            const ColumnBlock cb = column_block();
+            parallel_for(Range3D{c.i0, c.i1, c.j0, c.j1, 0, nz}, ThompsonLevel0<Real, NL>{kernel, c, cb.x, cb.y});
+            column_for(c, ThompsonStage1<Real, NL>{kernel});
+            parallel_for(Range3D{c.i0, c.i1, c.j0, c.j1, 0, nz}, ThompsonLevel<Real, NL>{kernel, c, cb.x, cb.y});
+            column_for(c, ThompsonStage3<Real, NL>{kernel});
+        });
+#else
         column_for_work(range, kernel);
+#endif
     };
     if (nz <= 48) launch(std::integral_constant<int, 48>{});
     else if (nz <= 64) launch(std::integral_constant<int, 64>{});

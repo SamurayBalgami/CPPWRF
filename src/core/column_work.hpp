@@ -57,6 +57,16 @@ class ColumnSlots {
     lane_ = int(t % 32);
 #endif
   }
+  // column (i, j)'s slots in column_for(r, ...) with blocks of bx x by threads (from any kernel)
+  CPPWRF_HD ColumnSlots(const ColumnWork& w, int i, int j, const Range2D& r, int bx, int by)
+      : base_(w.base), lane_(0) {
+    const int ti = i - r.i0, tj = j - r.j0;
+    const unsigned gx = unsigned((r.i1 - r.i0 + bx - 1) / bx);
+    const unsigned t = ((unsigned(tj / by) * gx + unsigned(ti / bx)) * unsigned(by) + unsigned(tj % by)) * unsigned(bx) +
+                       unsigned(ti % bx);
+    base_ = w.base + std::size_t(t / 32) * 32 * w.bpc;
+    lane_ = int(t % 32);
+  }
   template <class T>
   CPPWRF_FORCEINLINE ColArray<T> take(int n) {
     T* p = reinterpret_cast<T*>(base_ + off_ * 32) + lane_;
@@ -106,15 +116,14 @@ inline std::size_t column_for_threads(int ni, int nj) {
 }
 }  // namespace detail
 
-// column_for(r, k) with k.work set (or k.set_work): on the GPU in chunks of rows that fit the buffer (one launch when
-// it holds every column; every column is computed by itself, so the chunks do not change any value). K::kWorkBytes
-// is the bytes per column.
-template <class K>
-void column_for_work(const Range2D& r, K k) {
 #if defined(CPPWRF_USE_CUDA)
+// f(chunk, work) for chunks of rows of r whose columns' work arrays (bytes_per_col) fit the buffer (one chunk when
+// it holds every column); work is the buffer of column_for(chunk, ...)'s threads
+template <class F>
+void column_work_chunks(const Range2D& r, std::size_t bytes_per_col, F f) {
   if (r.i1 <= r.i0 || r.j1 <= r.j0) return;
   const int ni = r.i1 - r.i0, nj = r.j1 - r.j0;
-  const std::size_t bpc = detail::column_work_bpc(K::kWorkBytes > 0 ? K::kWorkBytes : 1);
+  const std::size_t bpc = detail::column_work_bpc(bytes_per_col > 0 ? bytes_per_col : 1);
   std::size_t have = 0;
   char* buf = detail::column_work_buffer(0, &have);
   // the most block rows that fit, then chunks of equal size (whole block rows: a block covers by rows)
@@ -132,11 +141,22 @@ void column_for_work(const Range2D& r, K k) {
   const int rows = pairs * by;
   for (int j0 = r.j0; j0 < r.j1; j0 += rows) {
     const int j1 = j0 + rows < r.j1 ? j0 + rows : r.j1;
-    const ColumnWork w{buf, bpc};
+    f(Range2D{r.i0, r.i1, j0, j1}, ColumnWork{buf, bpc});
+  }
+}
+#endif
+
+// column_for(r, k) with k.work set (or k.set_work): on the GPU in chunks of rows that fit the buffer (one launch when
+// it holds every column; every column is computed by itself, so the chunks do not change any value). K::kWorkBytes
+// is the bytes per column.
+template <class K>
+void column_for_work(const Range2D& r, K k) {
+#if defined(CPPWRF_USE_CUDA)
+  column_work_chunks(r, K::kWorkBytes, [&](const Range2D& c, const ColumnWork& w) {
     if constexpr (requires { k.set_work(w); }) k.set_work(w);
     else k.work = w;
-    column_for(Range2D{r.i0, r.i1, j0, j1}, k);
-  }
+    column_for(c, k);
+  });
 #else
   column_for(r, k);
 #endif

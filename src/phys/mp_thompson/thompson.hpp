@@ -362,7 +362,9 @@ CPPWRF_HD inline Real ice_koop(Real temp, Real qv, Real qvs, Real naero, Real dt
     X(Real, nwfa, NL) X(Real, nifa, NL) X(Real, nwfaten, NL) X(Real, nifaten, NL) \
     X(Real, pna_rca, NL) X(Real, pna_sca, NL) X(Real, pna_gca, NL) X(Real, pnd_rcd, NL) \
     X(Real, pnd_scd, NL) X(Real, pnd_gcd, NL) X(bool, L_qc, NL) X(bool, L_qi, NL) \
-    X(bool, L_qr, NL) X(bool, L_qs, NL) X(bool, L_qg, NL)
+    X(bool, L_qr, NL) X(bool, L_qs, NL) X(bool, L_qg, NL) \
+    /* stage1 returned true (ThompsonStage1 -> ThompsonLevel, ThompsonStage3); level0's level flags of no_micro and k_melting */ \
+    X(bool, mp_active, 1) X(bool, lv_micro, NL) X(bool, lv_melt, NL)
 // calc_refl10cm's column arrays
 #define CPPWRF_THOMPSON_REFL(X) \
     X(Real, temp, NL) X(Real, rr, NL) X(Real, rs, NL) X(Real, rg, NL) \
@@ -429,6 +431,22 @@ struct ThompsonKernel {
     static constexpr std::size_t kEffRad = 0 CPPWRF_THOMPSON_EFFRAD(CPPWRF_COLUMN_BYTES);
     static constexpr std::size_t kWorkBytes =
         0 CPPWRF_THOMPSON_COLUMN(CPPWRF_COLUMN_BYTES) + (kRefl > kEffRad ? kRefl : kEffRad);
+
+    // the column arrays of operator()'s parts (stage1, level, stage3): local arrays on the CPU, on the GPU in the
+    // work buffer in the order of the list (take_cols: the same places in every kernel of a launch's column)
+#if defined(__CUDA_ARCH__)
+#define CPPWRF_THOMPSON_MEMBER(T, name, n) ::cppwrf::ColArray<T> name;
+#define CPPWRF_THOMPSON_TAKE(T, name, n) cw.take<T>(n),
+#else
+#define CPPWRF_THOMPSON_MEMBER(T, name, n) T name[n];
+#endif
+#define CPPWRF_THOMPSON_BIND(T, name, n) [[maybe_unused]] auto& name = cols.name;
+    struct Cols {
+        CPPWRF_THOMPSON_COLUMN(CPPWRF_THOMPSON_MEMBER)
+    };
+#if defined(__CUDA_ARCH__)
+    static CPPWRF_FORCEINLINE Cols take_cols(ColumnSlots& cw) { return Cols{CPPWRF_THOMPSON_COLUMN(CPPWRF_THOMPSON_TAKE)}; }
+#endif
 
     // module_mp_thompson.F calc_effectRad and the driver's limits; t1d, p1d and the moist arrays are the column
     // after mp_thompson, nc1d its droplet number (not aerosol aware: nc = Nt_c)
@@ -655,12 +673,31 @@ struct ThompsonKernel {
         }
     }
 
+    // operator() in four parts (the GPU launches each part as its own kernel, the level parts per (i, j, k):
+    // ThompsonLevel0 / ThompsonStage1 / ThompsonLevel / ThompsonStage3; the CPU calls them in order for each column):
+    // level0 the first two level loops (the column's no_micro and k_melting as level flags), stage1 up to
+    // the early return of a column without microphysics (false), level the level loops from the snow moments to
+    // the rain evaporation (each body for one level k: none of them reads another level), stage3 the
+    // sedimentation, the updates and the totals. The statements are those of mp_thompson in the same order.
     CPPWRF_HD void operator()(int i, int j) const {
         if (nz > NL) return;
 
         CPPWRF_COLUMN_SLOTS(work, i, j)
-        CPPWRF_THOMPSON_COLUMN(CPPWRF_COLUMN_ARRAY)
+#if defined(__CUDA_ARCH__)
+        Cols cols = take_cols(cppwrf_cw_);
+#else
+        Cols cols;
+#endif
+        for (int k = 0; k < nz; ++k) level0(i, j, k, cols);
+        if (!stage1(i, j, cols, cppwrf_cw_)) return;
+        for (int k = 0; k < nz; ++k) level(i, j, k, cols);
+        stage3(i, j, cols, cppwrf_cw_);
+    }
 
+    // stage1's two level loops for level k; whether this level clears no_micro and is above freezing (the column's
+    // no_micro and k_melting: stage1)
+    CPPWRF_HD void level0(int i, int j, int k, Cols& cols) const {
+        CPPWRF_THOMPSON_COLUMN(CPPWRF_THOMPSON_BIND)
         Real pptrain = Real(0.0);
         Real pptsnow = Real(0.0);
         Real pptgraul = Real(0.0);
@@ -671,10 +708,11 @@ struct ThompsonKernel {
         Real odts = Real(1.0) / dtsave;
         Real obmr = Real(1.0) / Real(bm_r);
         Real obmi = Real(1.0) / Real(bm_i);
-
+        (void)pptrain; (void)pptsnow; (void)pptgraul; (void)pptice; (void)dtsave; (void)odt; (void)odts;
+        (void)obmr; (void)obmi;
         bool no_micro = true;
-
-        for (int k = 0; k < nz; ++k) {
+        int k_melting = -1;
+        do {  // for (int k = 0; k < nz; ++k)
             tten[k] = Real(0.0);
             qvten[k] = Real(0.0);
             qcten[k] = Real(0.0);
@@ -960,10 +998,8 @@ struct ThompsonKernel {
                 rb[k] = Real(R1) / rho[k] / Real(800.0);
                 L_qg[k] = false;
             }
-        }
-
-        int k_melting = -1;
-        for (int k = 0; k < nz; ++k) {
+        } while (false);
+        do {  // for (int k = 0; k < nz; ++k)
             Real tempc = temp[k] - Real(273.15);
             rhof[k] = std::sqrt(Real(RHO_NOT) / rho[k]);
             rhof2[k] = std::sqrt(rhof[k]);
@@ -995,7 +1031,31 @@ struct ThompsonKernel {
             lvap[k] = Real(lvap0) + (Real(2106.0) - Real(4218.0)) * tempc;
             tcond[k] = (Real(5.69) + Real(0.0168) * tempc) * Real(1.0e-5) * Real(418.936);  // WRF: (..)*1.0E-5 * 418.936
             twet[k] = temp[k];
-        }
+        } while (false);
+        lv_micro[k] = !no_micro;
+        lv_melt[k] = k_melting == k;
+    }
+
+    CPPWRF_HD bool stage1(int i, int j, Cols& cols, [[maybe_unused]] ColumnSlots& cppwrf_cw_) const {
+        CPPWRF_THOMPSON_COLUMN(CPPWRF_THOMPSON_BIND)
+
+        Real pptrain = Real(0.0);
+        Real pptsnow = Real(0.0);
+        Real pptgraul = Real(0.0);
+        Real pptice = Real(0.0);
+
+        Real dtsave = dt;
+        Real odt = Real(1.0) / dt;
+        Real odts = Real(1.0) / dtsave;
+        Real obmr = Real(1.0) / Real(bm_r);
+        Real obmi = Real(1.0) / Real(bm_i);
+
+        bool no_micro = true;
+        for (int k = 0; k < nz; ++k)
+            if (lv_micro[k]) no_micro = false;
+        int k_melting = -1;
+        for (int k = 0; k < nz; ++k)
+            if (lv_melt[k]) k_melting = k;
 
         if (k_melting >= 0) {
             for (int k = 0; k <= k_melting; ++k) {
@@ -1038,11 +1098,29 @@ struct ThompsonKernel {
             // thresholds: the replaced qv above does not enter)
             if (refl.p) refl10cm(i, j, temp, pres, ng1d, cppwrf_cw_);
             if (has_re) effect_rad(i, j, temp, pres, nc1d, cppwrf_cw_);
-            return;
+            return false;
         }
 
-        // Snow moments
-        for (int k = 0; k < nz; ++k) {
+        (void)pptrain; (void)pptsnow; (void)pptgraul; (void)pptice; (void)dtsave; (void)odt; (void)odts;
+        (void)obmr; (void)obmi;
+        return true;
+    }
+
+    CPPWRF_HD void level(int i, int j, int k, Cols& cols) const {
+        CPPWRF_THOMPSON_COLUMN(CPPWRF_THOMPSON_BIND)
+        Real pptrain = Real(0.0);
+        Real pptsnow = Real(0.0);
+        Real pptgraul = Real(0.0);
+        Real pptice = Real(0.0);
+
+        Real dtsave = dt;
+        Real odt = Real(1.0) / dt;
+        Real odts = Real(1.0) / dtsave;
+        Real obmr = Real(1.0) / Real(bm_r);
+        Real obmi = Real(1.0) / Real(bm_i);
+        (void)pptrain; (void)pptsnow; (void)pptgraul; (void)pptice; (void)dtsave; (void)odt; (void)odts;
+        (void)obmr; (void)obmi;
+        do {  // for (int k = 0; k < nz; ++k)
             if (!L_qs[k]) continue;
             Real tc0 = (temp[k] - Real(273.15) < Real(-0.1)) ? temp[k] - Real(273.15) : Real(-0.1);
             smob[k] = rs[k] * tables.oams;
@@ -1122,24 +1200,24 @@ struct ThompsonKernel {
                     + tables.sb[6]*tc0*tc0*cse17 + tables.sb[7]*tc0*cse17*cse17
                     + tables.sb[8]*tc0*tc0*tc0 + tables.sb[9]*cse17*cse17*cse17;
             smog[k] = ag * libm::pow(smo2[k], bg);
-        }
+        } while (false);
 
-        for (int k = nz - 1; k >= 0; --k) {
+        do {  // for (int k = nz - 1; k >= 0; --k)
             Real lamg = libm::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * ng[k] / rg[k], tables.obmg);
             ilamg[k] = Real(1.0) / lamg;
             N0_g[k] = ng[k] * tables.ogg2 * libm::pow(lamg, tables.cge[1]);
-        }
+        } while (false);
 
         // gfortran vectorises this k loop (kte down to kts): libmvec's 2-lane pow (cppwrf::vm)
-        for (int k = nz - 1; k >= 0; --k) {
+        do {  // for (int k = nz - 1; k >= 0; --k)
             Real lamr = vm::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_loc[k] / rr[k], obmr, nz - 1 - k, nz);
             ilamr[k] = Real(1.0) / lamr;
             mvd_r[k] = (Real(3.0) + Real(mu_r) + Real(0.672)) / lamr;
             N0_r[k] = nr_loc[k] * tables.org2 * vm::pow(lamr, tables.cre[1], nz - 1 - k, nz);
-        }
+        } while (false);
 
         // Warm-rain processes
-        for (int k = 0; k < nz; ++k) {
+        do {  // for (int k = 0; k < nz; ++k)
             if (L_qr[k] && mvd_r[k] > Real(D0r)) {
                 Real Ef_rr = Real(1.0) - libm::exp(Real(2300.0) * (mvd_r[k] - Real(1950.0e-6)));
                 pnr_rcr[k] = Ef_rr * Real(2.0) * nr_loc[k] * rr[k];
@@ -1209,10 +1287,10 @@ struct ThompsonKernel {
                 pnd_rcd[k] = rhof[k] * tables.t1_qr_qc * Ef_ra * nifa[k] * N0_r[k] * libm::pow(lamr + Real(fv_r), -tables.cre[8]);
                 pnd_rcd[k] = c_min(nifa[k] * odts, pnd_rcd[k]);
             }
-        }
+        } while (false);
 
         // Frozen processes
-        for (int k = 0; k < nz; ++k) {
+        do {  // for (int k = 0; k < nz; ++k)
             vts_boost[k] = Real(1.0);
             Real orho = Real(1.0) / rho[k];
 
@@ -1652,10 +1730,10 @@ struct ThompsonKernel {
                     prg_gcw[k] = Real(0.0);
                 }
             }
-        }
+        } while (false);
 
         // Conservation
-        for (int k = 0; k < nz; ++k) {
+        do {  // for (int k = 0; k < nz; ++k)
             Real sump = pri_inu[k] + pri_ide[k] + prs_ide[k] + prs_sde[k] + prg_gde[k] + pri_iha[k];
             Real rate_max = (qv_loc[k] - qvsi[k]) * rho[k] * odts * Real(0.999);
             if ((sump > Real(eps_val) && sump > rate_max) || (sump < -Real(eps_val) && sump < rate_max)) {
@@ -1731,10 +1809,10 @@ struct ThompsonKernel {
                 prr_rcs[k] = ratio_s * ((prr_rcs[k] >= Real(0.0)) ? Real(1.0) : Real(-1.0));
                 prs_rcs[k] = -prr_rcs[k];
             }
-        }
+        } while (false);
 
         // Tendencies
-        for (int k = 0; k < nz; ++k) {
+        do {  // for (int k = 0; k < nz; ++k)
             Real orho = Real(1.0) / rho[k];
             Real lfus2 = Real(lsub) - lvap[k];
 
@@ -1871,10 +1949,10 @@ struct ThompsonKernel {
                 tten[k] += (Real(lfus) * ocp[k] * (-prr_sml[k] - prr_gml[k] - prr_rcg[k] - prr_rcs[k])
                           + Real(lsub) * ocp[k] * (prs_sde[k] + prg_gde[k])) * orho;
             }
-        }
+        } while (false);
 
         // TAU+1 updates
-        for (int k = 0; k < nz; ++k) {
+        do {  // for (int k = 0; k < nz; ++k)
             temp[k] = (th(i, j, k) * pii(i, j, k)) + dt * tten[k];
             Real otemp = Real(1.0) / temp[k];
             Real tempc = temp[k] - Real(273.15);
@@ -1972,10 +2050,10 @@ struct ThompsonKernel {
                 rb[k] = Real(R1) / rho[k] / Real(800.0);
                 L_qg[k] = false;
             }
-        }
+        } while (false);
 
         // Snow moments recalculation
-        for (int k = 0; k < nz; ++k) {
+        do {  // for (int k = 0; k < nz; ++k)
             smo2[k] = Real(0.0);
             smob[k] = Real(0.0);
             smoc[k] = Real(0.0);
@@ -2011,24 +2089,24 @@ struct ThompsonKernel {
                     + tables.sb[6]*tc0*tc0*cse14 + tables.sb[7]*tc0*cse14*cse14
                     + tables.sb[8]*tc0*tc0*tc0 + tables.sb[9]*cse14*cse14*cse14;
             smod[k] = ad * libm::pow(smo2[k], bd);
-        }
+        } while (false);
 
-        for (int k = nz - 1; k >= 0; --k) {
+        do {  // for (int k = nz - 1; k >= 0; --k)
             Real lamg = libm::pow(Real(am_g5) * tables.cgg[2] * tables.ogg2 * ng[k] / rg[k], tables.obmg);
             ilamg[k] = Real(1.0) / lamg;
             N0_g[k] = ng[k] * tables.ogg2 * libm::pow(lamg, tables.cge[1]);
-        }
+        } while (false);
 
         // gfortran vectorises this k loop (kte down to kts): libmvec's 2-lane pow (cppwrf::vm)
-        for (int k = nz - 1; k >= 0; --k) {
+        do {  // for (int k = nz - 1; k >= 0; --k)
             Real lamr = vm::pow(Real(am_r) * tables.crg[2] * tables.org2 * nr_loc[k] / rr[k], obmr, nz - 1 - k, nz);
             ilamr[k] = Real(1.0) / lamr;
             mvd_r[k] = (Real(3.0) + Real(mu_r) + Real(0.672)) / lamr;
             N0_r[k] = nr_loc[k] * tables.org2 * vm::pow(lamr, tables.cre[1], nz - 1 - k, nz);
-        }
+        } while (false);
 
         // Condensation & evaporation of cloud water
-        for (int k = 0; k < nz; ++k) {
+        do {  // for (int k = 0; k < nz; ++k)
             Real orho = Real(1.0) / rho[k];
             if (ssatw[k] > Real(eps_val) || (ssatw[k] < -Real(eps_val) && L_qc[k])) {
                 Real clap = (qv_loc[k] - qvs[k]) / (Real(1.0) + lvt2[k] * qvs[k]);
@@ -2098,10 +2176,10 @@ struct ThompsonKernel {
                 qvs[k] = rslf(pres[k], temp[k]);
                 ssatw[k] = qv_loc[k] / qvs[k] - Real(1.0);
             }
-        }
+        } while (false);
 
         // Rain evaporation
-        for (int k = 0; k < nz; ++k) {
+        do {  // for (int k = 0; k < nz; ++k)
             if (ssatw[k] < -Real(eps_val) && L_qr[k] && !(prw_vcd[k] > Real(0.0))) {
                 Real tempc = temp[k] - Real(273.15);
                 Real otemp = Real(1.0) / temp[k];
@@ -2172,7 +2250,23 @@ struct ThompsonKernel {
                 temp[k] = (th(i, j, k) * pii(i, j, k)) + dt * tten[k];
                 rho[k] = Real(0.622) * pres[k] / (Real(R_d) * temp[k] * (qv_loc[k] + Real(0.622)));
             }
-        }
+        } while (false);
+    }
+
+    CPPWRF_HD void stage3(int i, int j, Cols& cols, [[maybe_unused]] ColumnSlots& cppwrf_cw_) const {
+        CPPWRF_THOMPSON_COLUMN(CPPWRF_THOMPSON_BIND)
+        Real pptrain = Real(0.0);
+        Real pptsnow = Real(0.0);
+        Real pptgraul = Real(0.0);
+        Real pptice = Real(0.0);
+
+        Real dtsave = dt;
+        Real odt = Real(1.0) / dt;
+        Real odts = Real(1.0) / dtsave;
+        Real obmr = Real(1.0) / Real(bm_r);
+        Real obmi = Real(1.0) / Real(bm_i);
+        (void)pptrain; (void)pptsnow; (void)pptgraul; (void)pptice; (void)dtsave; (void)odt; (void)odts;
+        (void)obmr; (void)obmi;
 
         // Sedimentation velocities
         int nstep_r = 0, nstep_i = 0, nstep_s = 0, nstep_g = 0;
@@ -2652,6 +2746,67 @@ struct ThompsonKernel {
         if (aero) aero_out(i, j, nc1d, nwfa1d, nifa1d);
         if (refl.p) refl10cm(i, j, twet, pres, ng1d, cppwrf_cw_);
         if (has_re) effect_rad(i, j, twet, pres, nc1d, cppwrf_cw_);
+    }
+};
+
+// The GPU's kernels of ThompsonKernel's parts, on the columns of one column_work_chunks chunk (the work buffer
+// holds the column arrays from one kernel to the next): ThompsonStage1 and ThompsonStage3 one thread per column
+// (column_for), ThompsonLevel one thread per (i, j, k) of the columns stage1 left active.
+template <typename Real, int NL>
+struct ThompsonLevel0 {
+    ThompsonKernel<Real, NL> m;
+    Range2D chunk;
+    int bx, by;
+    CPPWRF_HD void operator()([[maybe_unused]] int i, [[maybe_unused]] int j, [[maybe_unused]] int k) const {
+#if defined(__CUDA_ARCH__)
+        if (m.nz > NL) return;
+        ColumnSlots cw(m.work, i, j, chunk, bx, by);
+        auto cols = m.take_cols(cw);
+        m.level0(i, j, k, cols);
+#endif
+    }
+};
+
+template <typename Real, int NL>
+struct ThompsonStage1 {
+    ThompsonKernel<Real, NL> m;
+    CPPWRF_HD void operator()([[maybe_unused]] int i, [[maybe_unused]] int j) const {
+#if defined(__CUDA_ARCH__)
+        if (m.nz > NL) return;
+        CPPWRF_COLUMN_SLOTS(m.work, i, j)
+        auto cols = m.take_cols(cppwrf_cw_);
+        cols.mp_active[0] = m.stage1(i, j, cols, cppwrf_cw_);
+#endif
+    }
+};
+
+template <typename Real, int NL>
+struct ThompsonLevel {
+    ThompsonKernel<Real, NL> m;
+    Range2D chunk;  // column_for's columns of the chunk and its thread blocks (the work buffer's places)
+    int bx, by;
+    CPPWRF_HD void operator()([[maybe_unused]] int i, [[maybe_unused]] int j, [[maybe_unused]] int k) const {
+#if defined(__CUDA_ARCH__)
+        if (m.nz > NL) return;
+        ColumnSlots cw(m.work, i, j, chunk, bx, by);
+        auto cols = m.take_cols(cw);
+        if (!cols.mp_active[0]) return;
+        m.level(i, j, k, cols);
+#endif
+    }
+};
+
+template <typename Real, int NL>
+struct ThompsonStage3 {
+    ThompsonKernel<Real, NL> m;
+    CPPWRF_HD void operator()([[maybe_unused]] int i, [[maybe_unused]] int j) const {
+#if defined(__CUDA_ARCH__)
+        if (m.nz > NL) return;
+        CPPWRF_COLUMN_SLOTS(m.work, i, j)
+        auto cols = m.take_cols(cppwrf_cw_);
+        if (!cols.mp_active[0]) return;
+        m.stage3(i, j, cols, cppwrf_cw_);
+#endif
     }
 };
 
