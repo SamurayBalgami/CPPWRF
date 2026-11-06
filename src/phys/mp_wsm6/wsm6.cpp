@@ -26,6 +26,17 @@ void run_wsm6(
     int nz,
     const Wsm6Params<real>& params) {
   assert(nz <= kMaxLevels);
+#if defined(CPPWRF_DOUBLE)
+  // FP64 builds: in column stages, as src/dyn/physics_coupling.cpp
+  Buffer work(Wsm6Work<real>::size(range, nz));
+  if (nz <= 48)
+    wsm6_stages<real, 48>(params, dt, nz, range, work.get(), th, q, qc, qr, qi, qs, qg, den, pii, p, delz, rain,
+                          rainncv, snow, snowncv, graupel, graupelncv, sr);
+  else
+    wsm6_stages<real, kMaxLevels>(params, dt, nz, range, work.get(), th, q, qc, qr, qi, qs, qg, den, pii, p, delz,
+                                  rain, rainncv, snow, snowncv, graupel, graupelncv, sr);
+  dev_sync();  // the work buffer is freed on return
+#else
   if (nz <= 48) {
     Wsm6Kernel<real, 48> kernel{
         params, dt, nz,
@@ -41,6 +52,7 @@ void run_wsm6(
         rain, rainncv, snow, snowncv, graupel, graupelncv, sr};
     column_for(range, kernel);
   }
+#endif
 }
 
 }  // namespace cppwrf::phys::wsm6

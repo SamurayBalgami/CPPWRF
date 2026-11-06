@@ -55,6 +55,9 @@ class PhysicsCoupling {
   // moist_physics_prep_em outputs (WRF names)
   Field3 th_phy, rho, pii, z, dz8w, qv_diabatic, qc_diabatic, p_phy;
   phys::wsm6::Wsm6Params<real> wp_{};  // WSM6 constants (wsm6init), computed once
+#if defined(CPPWRF_DOUBLE)
+  Buffer wsm6_work_;  // FP64 builds: the values WSM6's column stages carry between them (Wsm6Work)
+#endif
   // Thompson lookup tables (thompson_init), device-resident: one set shared by all domains, as WRF's
   std::shared_ptr<const phys::mp_thompson::ThompsonDeviceTables<real>> tp_;
   std::shared_ptr<const phys::radar::RadarDeviceTables<real>> radar_;  // radar_init of WSM6 / Thompson

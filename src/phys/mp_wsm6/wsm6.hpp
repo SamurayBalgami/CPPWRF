@@ -1396,6 +1396,667 @@ struct Wsm6Params {
             th[k] = t[k] / pii[k];
         }
     }
+
+#if defined(CPPWRF_DOUBLE)
+    // ---- WSM6 in column stages (FP64 builds, CPU and CUDA; Wsm6Stages below) ----
+    // Each function is the body of one of operator()'s level loops for one level k: the same statements with the
+    // column arrays as scalars (x[k] -> x), so every value is the same arithmetic in the same order.
+
+    // the body of slope_wsm6's level loop
+    CPPWRF_HD inline void slope_level(Real qr, Real qs, Real qg, Real den, Real denfac, Real t,
+                                      Real rslope[3], Real rslopeb[3], Real rslope2[3], Real rslope3[3],
+                                      Real vt[3]) const {
+        Real supcol = t0c - t;
+        Real n0sfac = std::max(std::min(libm::exp(alpha * supcol), n0smax / n0s), static_cast<Real>(1.0));
+
+        // Rain
+        if (qr <= qcrmin) {
+            rslope[0] = rslopermax;
+            rslopeb[0] = rsloperbmax;
+            rslope2[0] = rsloper2max;
+            rslope3[0] = rsloper3max;
+        } else {
+            Real lamdar = std::sqrt(std::sqrt(pidn0r / (qr * den)));
+            rslope[0] = 1.0 / lamdar;
+            rslopeb[0] = libm::pow(rslope[0], bvtr);
+            rslope2[0] = rslope[0] * rslope[0];
+            rslope3[0] = rslope2[0] * rslope[0];
+        }
+
+        // Snow
+        if (qs <= qcrmin) {
+            rslope[1] = rslopesmax;
+            rslopeb[1] = rslopesbmax;
+            rslope2[1] = rslopes2max;
+            rslope3[1] = rslopes3max;
+        } else {
+            Real lamdas = std::sqrt(std::sqrt(pidn0s * n0sfac / (qs * den)));
+            rslope[1] = 1.0 / lamdas;
+            rslopeb[1] = libm::pow(rslope[1], bvts);
+            rslope2[1] = rslope[1] * rslope[1];
+            rslope3[1] = rslope2[1] * rslope[1];
+        }
+
+        // Graupel
+        if (qg <= qcrmin) {
+            rslope[2] = rslopegmax;
+            rslopeb[2] = rslopegbmax;
+            rslope2[2] = rslopeg2max;
+            rslope3[2] = rslopeg3max;
+        } else {
+            Real lamdag = std::sqrt(std::sqrt(pidn0g / (qg * den)));
+            rslope[2] = 1.0 / lamdag;
+            rslopeb[2] = libm::pow(rslope[2], bvtg);
+            rslope2[2] = rslope[2] * rslope[2];
+            rslope3[2] = rslope2[2] * rslope[2];
+        }
+
+        vt[0] = pvtr * rslopeb[0] * denfac;
+        vt[1] = pvts * rslopeb[1] * denfac;
+        vt[2] = pvtg * rslopeb[2] * denfac;
+
+        if (qr <= 0.0) vt[0] = 0.0;
+        if (qs <= 0.0) vt[1] = 0.0;
+        if (qg <= 0.0) vt[2] = 0.0;
+    }
+
+    // before the loops: the clamps of qc ... qg, t, cpm, xl
+    CPPWRF_HD inline void level_init(Real th, Real pii, Real q, Real& qc, Real& qr, Real& qi, Real& qs, Real& qg,
+                                     Real& t, Real& cpm, Real& xl) const {
+        qc = std::max(qc, static_cast<Real>(0.0));
+        qr = std::max(qr, static_cast<Real>(0.0));
+        qi = std::max(qi, static_cast<Real>(0.0));
+        qs = std::max(qs, static_cast<Real>(0.0));
+        qg = std::max(qg, static_cast<Real>(0.0));
+        t = th * pii;
+        cpm = cpmcal(q);
+        xl = xlcal(t);
+    }
+
+    // start of a loop: qsat, rh; the fall speeds and densities of the rain and snow + graupel sedimentation
+    CPPWRF_HD inline void level_a(Real t, Real q, Real qr, Real qs, Real qg, Real den, Real p, Real qsat[2],
+                                  Real rh[2], Real& workr, Real& worka, Real& denqrs1, Real& denqrs2,
+                                  Real& denqrs3) const {
+        Real denfac;
+        denfac = std::sqrt((static_cast<Real>(1.0) / den) * den0);
+        Real hsub = xls;
+        Real hvap = xlv0;
+        Real cvap = cpv;
+        Real ttp = t0c + 0.01;
+        Real dldt = cvap - cliq;
+        Real xa = -dldt / rv;
+        Real xb = xa + hvap / (rv * ttp);
+        Real dldti = cvap - cice;
+        Real xai = -dldti / rv;
+        Real xbi = xai + hsub / (rv * ttp);
+        {
+            Real tr = ttp / t;
+            Real qs1 = psat * libm::exp(libm::log(tr) * xa) * libm::exp(xb * (1.0 - tr));
+            qs1 = std::min(qs1, static_cast<Real>(0.99) * p);
+            qs1 = ep2 * qs1 / (p - qs1);
+            qsat[0] = std::max(qs1, qmin);
+            rh[0] = std::max(q / qsat[0], qmin);
+
+            Real qs2;
+            if (t < ttp) {
+                qs2 = psat * libm::exp(libm::log(tr) * xai) * libm::exp(xbi * (1.0 - tr));
+            } else {
+                qs2 = psat * libm::exp(libm::log(tr) * xa) * libm::exp(xb * (1.0 - tr));
+            }
+            qs2 = std::min(qs2, static_cast<Real>(0.99) * p);
+            qs2 = ep2 * qs2 / (p - qs2);
+            qsat[1] = std::max(qs2, qmin);
+            rh[1] = std::max(q / qsat[1], qmin);
+        }
+        Real rslope[3], rslopeb[3], rslope2[3], rslope3[3], vt[3];
+        slope_level(qr, qs, qg, den, denfac, t, rslope, rslopeb, rslope2, rslope3, vt);
+        {
+            workr = vt[0];
+            Real qsum_val = std::max(qs + qg, static_cast<Real>(1.0e-15));
+            if (qsum_val > static_cast<Real>(1.0e-15)) {
+                worka = (vt[1] * qs + vt[2] * qg) / qsum_val;
+            } else {
+                worka = 0.0;
+            }
+            denqrs1 = den * qr;
+            denqrs2 = den * qs;
+            denqrs3 = den * qg;
+            if (qr <= 0.0) workr = 0.0;
+        }
+    }
+
+    // after the rain / snow + graupel sedimentation: qr, qs, qg, the melting, the ice fall speed (xni of the
+    // loop's start: qi is unchanged since); rs0 / rs30: rslope / rslope3 of rain for the freezing in level_c
+    CPPWRF_HD inline void level_b(Real& t, Real cpm, Real& qr, Real& qs, Real& qg, Real qi, Real den, Real p,
+                                  Real denqrs1, Real denqrs2, Real denqrs3, Real dtcld, Real& work1c,
+                                  Real& denqci, Real& rs0, Real& rs30) const {
+        Real denfac;
+        denfac = std::sqrt((static_cast<Real>(1.0) / den) * den0);
+        qr = std::max(denqrs1 / den, static_cast<Real>(0.0));
+        qs = std::max(denqrs2 / den, static_cast<Real>(0.0));
+        qg = std::max(denqrs3 / den, static_cast<Real>(0.0));
+        Real rslope[3], rslopeb[3], rslope2[3], rslope3[3], vt[3];
+        slope_level(qr, qs, qg, den, denfac, t, rslope, rslopeb, rslope2, rslope3, vt);
+        {
+            Real supcol = t0c - t;
+            Real n0sfac_val = std::max(std::min(libm::exp(alpha * supcol), n0smax / n0s), static_cast<Real>(1.0));
+            if (t > t0c) {
+                Real xlf = xlf0;
+                Real work2_val = venfac(p, t, den);
+                if (qs > 0.0) {
+                    Real coeres = rslope2[1] * std::sqrt(rslope[1] * rslopeb[1]);
+                    Real psmlt_val = xka(t, den) / xlf * (t0c - t) * (pi / 2.0)
+                        * n0sfac_val * (precs1 * rslope2[1] + precs2 * work2_val * coeres) / den;
+                    psmlt_val = std::min(std::max(psmlt_val * dtcld, -qs), static_cast<Real>(0.0));
+                    qs += psmlt_val;
+                    qr -= psmlt_val;
+                    t += (xlf / cpm) * psmlt_val;
+                }
+                if (qg > 0.0) {
+                    Real coeres = rslope2[2] * std::sqrt(rslope[2] * rslopeb[2]);
+                    Real pgmlt_val = xka(t, den) / xlf * (t0c - t)
+                        * (precg1 * rslope2[2] + precg2 * work2_val * coeres) / den;
+                    pgmlt_val = std::min(std::max(pgmlt_val * dtcld, -qg), static_cast<Real>(0.0));
+                    qg += pgmlt_val;
+                    qr -= pgmlt_val;
+                    t += (xlf / cpm) * pgmlt_val;
+                }
+            }
+        }
+        Real xni;
+        {
+            Real temp = den * std::max(qi, qmin);
+            temp = std::sqrt(std::sqrt(temp * temp * temp));
+            xni = std::min(std::max(static_cast<Real>(5.38e7) * temp, static_cast<Real>(1.0e3)), static_cast<Real>(1.0e6));
+        }
+        {
+            if (qi <= 0.0) {
+                work1c = 0.0;
+            } else {
+                Real xmi = den * qi / xni;
+                Real diameter = std::max(std::min(dicon * std::sqrt(xmi), dimax), static_cast<Real>(1.0e-25));
+                work1c = 1.49e4 * libm::exp(libm::log(diameter) * 1.31);
+            }
+            denqci = den * qi;
+        }
+        rs0 = rslope[0];
+        rs30 = rslope3[0];
+    }
+
+    // after the ice sedimentation: qi, the freezing (rslope / rslope3 of rain from level_b), the warm and cold
+    // rain processes, the saturation adjustment, the small-value padding
+    CPPWRF_HD inline void level_c(Real& t, Real& q, Real& qc, Real& qr, Real& qi, Real& qs, Real& qg, Real den,
+                                  Real p, Real cpm, Real xl, const Real qsat[2], const Real rh[2], Real denqci,
+                                  Real rs0, Real rs30, Real dtcld) const {
+        Real denfac;
+        denfac = std::sqrt((static_cast<Real>(1.0) / den) * den0);
+        qi = std::max(denqci / den, static_cast<Real>(0.0));
+        Real rslope[3], rslopeb[3], rslope2[3], rslope3[3], vt[3];
+        rslope[0] = rs0;
+        rslope3[0] = rs30;
+        {
+            Real supcol = t0c - t;
+            Real xlf = (supcol < 0.0) ? xlf0 : (xls - xl);
+
+            // pimlt
+            if (supcol < 0.0 && qi > 0.0) {
+                qc += qi;
+                t -= (xlf / cpm) * qi;
+                qi = 0.0;
+            }
+            // pihmf
+            if (supcol > 40.0 && qc > 0.0) {
+                qi += qc;
+                t += (xlf / cpm) * qc;
+                qc = 0.0;
+            }
+            // pihtf
+            if (supcol > 0.0 && qc > qmin) {
+                Real supcolt = std::min(supcol, static_cast<Real>(50.0));
+                Real pfrzdtc = std::min(pfrz1 * (libm::exp(pfrz2 * supcolt) - static_cast<Real>(1.0))
+                    * den / denr / xncr * qc * qc * dtcld, qc);
+                qi += pfrzdtc;
+                t += (xlf / cpm) * pfrzdtc;
+                qc -= pfrzdtc;
+            }
+            // pgfrz
+            if (supcol > 0.0 && qr > 0.0) {
+                Real temp = rslope3[0];
+                temp = temp * temp * rslope[0];
+                Real supcolt = std::min(supcol, static_cast<Real>(50.0));
+                Real pfrzdtr = std::min(static_cast<Real>(20.0) * (pi * pi) * pfrz1 * n0r * denr / den
+                    * (libm::exp(pfrz2 * supcolt) - static_cast<Real>(1.0)) * temp * dtcld, qr);
+                qg += pfrzdtr;
+                t += (xlf / cpm) * pfrzdtr;
+                qr -= pfrzdtr;
+            }
+        }
+        slope_level(qr, qs, qg, den, denfac, t, rslope, rslopeb, rslope2, rslope3, vt);
+        Real xni;
+        {
+            const Real work1_0 = diffac(xl, p, t, den, qsat[0]);
+            const Real work1_1 = diffac(xls, p, t, den, qsat[1]);
+            const Real work2_k = venfac(p, t, den);
+            Real supsat = std::max(q, qmin) - qsat[0];
+            Real satdt = supsat / dtcld;
+
+            Real praut = 0.0;
+            Real pracw = 0.0;
+            Real prevp = 0.0;
+
+            // praut
+            if (qc > qc0) {
+                praut = qck1 * libm::pow(qc, static_cast<Real>(7.0 / 3.0));
+                praut = std::min(praut, qc / dtcld);
+            }
+            // pracw
+            if (qr > qcrmin && qc > qmin) {
+                pracw = std::min(pacrr * rslope3[0] * rslopeb[0] * qc * denfac, qc / dtcld);
+            }
+            // prevp
+            if (qr > 0.0) {
+                Real coeres = rslope2[0] * std::sqrt(rslope[0] * rslopeb[0]);
+                prevp = (rh[0] - 1.0) * (precr1 * rslope2[0] + precr2 * work2_k * coeres) / work1_0;
+                if (prevp < 0.0) {
+                    prevp = std::max(prevp, -qr / dtcld);
+                    prevp = std::max(prevp, satdt / static_cast<Real>(2.0));
+                } else {
+                    prevp = std::min(prevp, satdt / static_cast<Real>(2.0));
+                }
+            }
+
+            Real supcol = t0c - t;
+            Real n0sfac_val = std::max(std::min(libm::exp(alpha * supcol), n0smax / n0s), static_cast<Real>(1.0));
+            Real supsat_ice = std::max(q, qmin) - qsat[1];
+            Real satdt_ice = supsat_ice / dtcld;
+            int ifsat = 0;
+
+            Real temp = den * std::max(qi, qmin);
+            temp = std::sqrt(std::sqrt(temp * temp * temp));
+            xni = std::min(std::max(static_cast<Real>(5.38e7) * temp, static_cast<Real>(1.0e3)), static_cast<Real>(1.0e6));
+            Real eacrs = libm::exp(0.07 * (-supcol));
+
+            Real xmi = den * qi / xni;
+            Real diameter = std::min(dicon * std::sqrt(xmi), dimax);
+            Real vt2i = 1.49e4 * libm::pow(diameter, static_cast<Real>(1.31));
+            Real vt2r = pvtr * rslopeb[0] * denfac;
+            Real vt2s = pvts * rslopeb[1] * denfac;
+            Real vt2g = pvtg * rslopeb[2] * denfac;
+
+            Real qsum_val = std::max(qs + qg, static_cast<Real>(1.0e-15));
+            Real vt2ave = (qsum_val > static_cast<Real>(1.0e-15))
+                ? (vt2s * qs + vt2g * qg) / qsum_val : static_cast<Real>(0.0);
+
+            Real praci = 0.0;
+            Real piacr = 0.0;
+            Real psaci = 0.0;
+            Real pgaci = 0.0;
+
+            if (supcol > 0.0 && qi > qmin) {
+                if (qr > qcrmin) {
+                    Real acrfac = 2.0 * rslope3[0] + 2.0 * diameter * rslope2[0]
+                        + diameter * diameter * rslope[0];
+                    praci = pi * qi * n0r * std::abs(vt2r - vt2i) * acrfac / 4.0;
+                    Real eff = std::min(std::max(static_cast<Real>(0.0), qr / qi), static_cast<Real>(1.0));
+                    praci = praci * (eff * eff);
+                    praci = std::min(praci, qi / dtcld);
+
+                    piacr = (pi * pi) * avtr * n0r * denr * xni * denfac
+                        * g6pbr * rslope3[0] * rslope3[0]
+                        * rslopeb[0] / 24.0 / den;
+                    Real eff2 = std::min(std::max(static_cast<Real>(0.0), qi / qr), static_cast<Real>(1.0));
+                    piacr = piacr * (eff2 * eff2);
+                    piacr = std::min(piacr, qr / dtcld);
+                }
+                if (qs > qcrmin) {
+                    Real acrfac = 2.0 * rslope3[1] + 2.0 * diameter * rslope2[1]
+                        + diameter * diameter * rslope[1];
+                    psaci = pi * qi * eacrs * n0s * n0sfac_val * std::abs(vt2ave - vt2i) * acrfac / 4.0;
+                    psaci = std::min(psaci, qi / dtcld);
+                }
+                if (qg > qcrmin) {
+                    Real egi = libm::exp(0.07 * (-supcol));
+                    Real acrfac = 2.0 * rslope3[2] + 2.0 * diameter * rslope2[2]
+                        + diameter * diameter * rslope[2];
+                    pgaci = pi * egi * qi * n0g * std::abs(vt2ave - vt2i) * acrfac / 4.0;
+                    pgaci = std::min(pgaci, qi / dtcld);
+                }
+            }
+
+            Real psacw = 0.0;
+            if (qs > qcrmin && qc > qmin) {
+                Real eff = std::min(std::max(static_cast<Real>(0.0), qs / qc), static_cast<Real>(1.0));
+                psacw = std::min(pacrc * n0sfac_val * rslope3[1] * rslopeb[1]
+                    * (eff * eff) * qc * denfac, qc / dtcld);
+            }
+
+            Real pgacw = 0.0;
+            if (qg > qcrmin && qc > qmin) {
+                Real eff = std::min(std::max(static_cast<Real>(0.0), qg / qc), static_cast<Real>(1.0));
+                pgacw = std::min(pacrg * rslope3[2] * rslopeb[2]
+                    * (eff * eff) * qc * denfac, qc / dtcld);
+            }
+
+            Real paacw = 0.0;
+            if (qsum_val > static_cast<Real>(1.0e-15)) {
+                paacw = (qs * psacw + qg * pgacw) / qsum_val;
+            }
+
+            Real pracs = 0.0;
+            Real psacr = 0.0;
+            if (qs > qcrmin && qr > qcrmin) {
+                if (supcol > 0.0) {
+                    Real acrfac = 5.0 * rslope3[1] * rslope3[1] * rslope[0]
+                        + 2.0 * rslope3[1] * rslope2[1] * rslope2[0]
+                        + 0.5 * rslope2[1] * rslope2[1] * rslope3[0];
+                    pracs = (pi * pi) * n0r * n0s * n0sfac_val * std::abs(vt2r - vt2ave)
+                        * (dens / den) * acrfac;
+                    Real eff = std::min(std::max(static_cast<Real>(0.0), qr / qs), static_cast<Real>(1.0));
+                    pracs = pracs * (eff * eff);
+                    pracs = std::min(pracs, qs / dtcld);
+                }
+                Real acrfac = 5.0 * rslope3[0] * rslope3[0] * rslope[1]
+                    + 2.0 * rslope3[0] * rslope2[0] * rslope2[1]
+                    + 0.5 * rslope2[0] * rslope2[0] * rslope3[1];
+                psacr = (pi * pi) * n0r * n0s * n0sfac_val * std::abs(vt2ave - vt2r)
+                    * (denr / den) * acrfac;
+                Real eff = std::min(std::max(static_cast<Real>(0.0), qs / qr), static_cast<Real>(1.0));
+                psacr = psacr * (eff * eff);
+                psacr = std::min(psacr, qr / dtcld);
+            }
+
+            Real pgacr = 0.0;
+            if (qg > qcrmin && qr > qcrmin) {
+                Real acrfac = 5.0 * rslope3[0] * rslope3[0] * rslope[2]
+                    + 2.0 * rslope3[0] * rslope2[0] * rslope2[2]
+                    + 0.5 * rslope2[0] * rslope2[0] * rslope3[2];
+                pgacr = (pi * pi) * n0r * n0g * std::abs(vt2ave - vt2r) * (denr / den) * acrfac;
+                Real eff = std::min(std::max(static_cast<Real>(0.0), qg / qr), static_cast<Real>(1.0));
+                pgacr = pgacr * (eff * eff);
+                pgacr = std::min(pgacr, qr / dtcld);
+            }
+
+            Real pgacs = 0.0;
+            Real pseml = 0.0;
+            Real pgeml = 0.0;
+            if (supcol <= 0.0) {
+                Real xlf = xlf0;
+                if (qs > 0.0) {
+                    pseml = std::min(std::max(cliq * supcol * (paacw + psacr) / xlf, -qs / dtcld), static_cast<Real>(0.0));
+                }
+                if (qg > 0.0) {
+                    pgeml = std::min(std::max(cliq * supcol * (paacw + pgacr) / xlf, -qg / dtcld), static_cast<Real>(0.0));
+                }
+            }
+
+            Real pidep = 0.0;
+            Real psdep = 0.0;
+            Real pgdep = 0.0;
+            Real pigen = 0.0;
+            Real psaut = 0.0;
+            Real pgaut = 0.0;
+
+            if (supcol > 0.0) {
+                if (qi > 0.0 && ifsat != 1) {
+                    pidep = 4.0 * diameter * xni * (rh[1] - 1.0) / work1_1;
+                    Real supice = satdt_ice - prevp;
+                    if (pidep < 0.0) {
+                        pidep = std::max(std::max(pidep, satdt_ice / static_cast<Real>(2.0)), supice);
+                        pidep = std::max(pidep, -qi / dtcld);
+                    } else {
+                        pidep = std::min(std::min(pidep, satdt_ice / static_cast<Real>(2.0)), supice);
+                    }
+                    if (std::abs(prevp + pidep) >= std::abs(satdt_ice)) ifsat = 1;
+                }
+
+                if (qs > 0.0 && ifsat != 1) {
+                    Real coeres = rslope2[1] * std::sqrt(rslope[1] * rslopeb[1]);
+                    psdep = (rh[1] - 1.0) * n0sfac_val * (precs1 * rslope2[1]
+                        + precs2 * work2_k * coeres) / work1_1;
+                    Real supice = satdt_ice - prevp - pidep;
+                    if (psdep < 0.0) {
+                        psdep = std::max(psdep, -qs / dtcld);
+                        psdep = std::max(std::max(psdep, satdt_ice / static_cast<Real>(2.0)), supice);
+                    } else {
+                        psdep = std::min(std::min(psdep, satdt_ice / static_cast<Real>(2.0)), supice);
+                    }
+                    if (std::abs(prevp + pidep + psdep) >= std::abs(satdt_ice)) ifsat = 1;
+                }
+
+                if (qg > 0.0 && ifsat != 1) {
+                    Real coeres = rslope2[2] * std::sqrt(rslope[2] * rslopeb[2]);
+                    pgdep = (rh[1] - 1.0) * (precg1 * rslope2[2]
+                        + precg2 * work2_k * coeres) / work1_1;
+                    Real supice = satdt_ice - prevp - pidep - psdep;
+                    if (pgdep < 0.0) {
+                        pgdep = std::max(pgdep, -qg / dtcld);
+                        pgdep = std::max(std::max(pgdep, satdt_ice / static_cast<Real>(2.0)), supice);
+                    } else {
+                        pgdep = std::min(std::min(pgdep, satdt_ice / static_cast<Real>(2.0)), supice);
+                    }
+                    if (std::abs(prevp + pidep + psdep + pgdep) >= std::abs(satdt_ice)) ifsat = 1;
+                }
+
+                if (supsat_ice > 0.0 && ifsat != 1) {
+                    Real supice = satdt_ice - prevp - pidep - psdep - pgdep;
+                    Real xni0 = 1.0e3 * libm::exp(0.1 * supcol);
+                    Real roqi0 = 4.92e-11 * libm::pow(xni0, static_cast<Real>(1.33));
+                    pigen = std::max(static_cast<Real>(0.0), (roqi0 / den - std::max(qi, static_cast<Real>(0.0))) / dtcld);
+                    pigen = std::min(std::min(pigen, satdt_ice), supice);
+                }
+
+                if (qi > 0.0) {
+                    Real qimax = roqimax / den;
+                    psaut = std::max(static_cast<Real>(0.0), (qi - qimax) / dtcld);
+                }
+
+                if (qs > 0.0) {
+                    Real alpha2 = 1.0e-3 * libm::exp(0.09 * (-supcol));
+                    pgaut = std::min(std::max(static_cast<Real>(0.0), alpha2 * (qs - qs0)), qs / dtcld);
+                }
+            }
+
+            Real psevp = 0.0;
+            Real pgevp = 0.0;
+            if (supcol < 0.0) {
+                if (qs > 0.0 && rh[0] < 1.0) {
+                    Real coeres = rslope2[1] * std::sqrt(rslope[1] * rslopeb[1]);
+                    psevp = (rh[0] - 1.0) * n0sfac_val * (precs1 * rslope2[1]
+                        + precs2 * work2_k * coeres) / work1_0;
+                    psevp = std::min(std::max(psevp, -qs / dtcld), static_cast<Real>(0.0));
+                }
+                if (qg > 0.0 && rh[0] < 1.0) {
+                    Real coeres = rslope2[2] * std::sqrt(rslope[2] * rslopeb[2]);
+                    pgevp = (rh[0] - 1.0) * (precg1 * rslope2[2]
+                        + precg2 * work2_k * coeres) / work1_0;
+                    pgevp = std::min(std::max(pgevp, -qg / dtcld), static_cast<Real>(0.0));
+                }
+            }
+
+            // Mass conservation check and feedback
+            Real delta2 = (qr < 1.0e-4 && qs < 1.0e-4) ? static_cast<Real>(1.0) : static_cast<Real>(0.0);
+            Real delta3 = (qr < 1.0e-4) ? static_cast<Real>(1.0) : static_cast<Real>(0.0);
+
+            if (t <= t0c) {
+                // cloud water
+                Real value = std::max(qmin, qc);
+                Real source = (praut + pracw + paacw + paacw) * dtcld;
+                if (source > value) {
+                    Real factor = value / source;
+                    praut *= factor;
+                    pracw *= factor;
+                    paacw *= factor;
+                }
+
+                // cloud ice
+                value = std::max(qmin, qi);
+                source = (psaut - pigen - pidep + praci + psaci + pgaci) * dtcld;
+                if (source > value) {
+                    Real factor = value / source;
+                    psaut *= factor;
+                    pigen *= factor;
+                    pidep *= factor;
+                    praci *= factor;
+                    psaci *= factor;
+                    pgaci *= factor;
+                }
+
+                // rain
+                value = std::max(qmin, qr);
+                source = (-praut - prevp - pracw + piacr + psacr + pgacr) * dtcld;
+                if (source > value) {
+                    Real factor = value / source;
+                    praut *= factor;
+                    prevp *= factor;
+                    pracw *= factor;
+                    piacr *= factor;
+                    psacr *= factor;
+                    pgacr *= factor;
+                }
+
+                // snow
+                value = std::max(qmin, qs);
+                source = -(psdep + psaut - pgaut + paacw + piacr * delta3
+                    + praci * delta3 - pracs * (1.0 - delta2)
+                    + psacr * delta2 + psaci - pgacs) * dtcld;
+                if (source > value) {
+                    Real factor = value / source;
+                    psdep *= factor;
+                    psaut *= factor;
+                    pgaut *= factor;
+                    paacw *= factor;
+                    piacr *= factor;
+                    praci *= factor;
+                    psaci *= factor;
+                    pracs *= factor;
+                    psacr *= factor;
+                    pgacs *= factor;
+                }
+
+                // graupel
+                value = std::max(qmin, qg);
+                source = -(pgdep + pgaut + piacr * (1.0 - delta3) + praci * (1.0 - delta3)
+                    + psacr * (1.0 - delta2) + pracs * (1.0 - delta2)
+                    + pgaci + paacw + pgacr + pgacs) * dtcld;
+                if (source > value) {
+                    Real factor = value / source;
+                    pgdep *= factor;
+                    pgaut *= factor;
+                    piacr *= factor;
+                    praci *= factor;
+                    psacr *= factor;
+                    pracs *= factor;
+                    paacw *= factor;
+                    pgaci *= factor;
+                    pgacr *= factor;
+                    pgacs *= factor;
+                }
+
+                Real work2_val = -(prevp + psdep + pgdep + pigen + pidep);
+                q += work2_val * dtcld;
+                qc = std::max(qc - (praut + pracw + paacw + paacw) * dtcld, static_cast<Real>(0.0));
+                qr = std::max(qr + (praut + pracw + prevp - piacr - pgacr - psacr) * dtcld, static_cast<Real>(0.0));
+                qi = std::max(qi - (psaut + praci + psaci + pgaci - pigen - pidep) * dtcld, static_cast<Real>(0.0));
+                qs = std::max(qs + (psdep + psaut + paacw - pgaut + piacr * delta3
+                    + praci * delta3 + psaci - pgacs - pracs * (static_cast<Real>(1.0) - delta2) + psacr * delta2) * dtcld, static_cast<Real>(0.0));
+                qg = std::max(qg + (pgdep + pgaut + piacr * (static_cast<Real>(1.0) - delta3)
+                    + praci * (static_cast<Real>(1.0) - delta3) + psacr * (static_cast<Real>(1.0) - delta2)
+                    + pracs * (static_cast<Real>(1.0) - delta2) + pgaci + paacw + pgacr + pgacs) * dtcld, static_cast<Real>(0.0));
+
+                Real xlf = xls - xl;
+                Real xlwork2 = -xls * (psdep + pgdep + pidep + pigen)
+                    - xl * prevp - xlf * (piacr + paacw + paacw + pgacr + psacr);
+                t -= xlwork2 / cpm * dtcld;
+
+            } else {
+                // t > t0c
+                // cloud water
+                Real value = std::max(qmin, qc);
+                Real source = (praut + pracw + paacw + paacw) * dtcld;
+                if (source > value) {
+                    Real factor = value / source;
+                    praut *= factor;
+                    pracw *= factor;
+                    paacw *= factor;
+                }
+
+                // rain
+                value = std::max(qmin, qr);
+                source = (-paacw - praut + pseml + pgeml - pracw - paacw - prevp) * dtcld;
+                if (source > value) {
+                    Real factor = value / source;
+                    praut *= factor;
+                    prevp *= factor;
+                    pracw *= factor;
+                    paacw *= factor;
+                    pseml *= factor;
+                    pgeml *= factor;
+                }
+
+                // snow
+                value = std::max(qcrmin, qs);
+                source = (pgacs - pseml - psevp) * dtcld;
+                if (source > value) {
+                    Real factor = value / source;
+                    pgacs *= factor;
+                    psevp *= factor;
+                    pseml *= factor;
+                }
+
+                // graupel
+                value = std::max(qcrmin, qg);
+                source = -(pgacs + pgevp + pgeml) * dtcld;
+                if (source > value) {
+                    Real factor = value / source;
+                    pgacs *= factor;
+                    pgevp *= factor;
+                    pgeml *= factor;
+                }
+
+                Real work2_val = -(prevp + psevp + pgevp);
+                q += work2_val * dtcld;
+                qc = std::max(qc - (praut + pracw + paacw + paacw) * dtcld, static_cast<Real>(0.0));
+                qr = std::max(qr + (praut + pracw + prevp + paacw + paacw - pseml - pgeml) * dtcld, static_cast<Real>(0.0));
+                qs = std::max(qs + (psevp - pgacs + pseml) * dtcld, static_cast<Real>(0.0));
+                qg = std::max(qg + (pgacs + pgevp + pgeml) * dtcld, static_cast<Real>(0.0));
+
+                Real xlf = xls - xl;
+                Real xlwork2 = -xl * (prevp + psevp + pgevp) - xlf * (pseml + pgeml);
+                t -= xlwork2 / cpm * dtcld;
+            }
+        }
+        Real hsub = xls;
+        Real hvap = xlv0;
+        Real cvap = cpv;
+        Real ttp = t0c + 0.01;
+        Real dldt = cvap - cliq;
+        Real xa = -dldt / rv;
+        Real xb = xa + hvap / (rv * ttp);
+        Real dldti = cvap - cice;
+        Real xai = -dldti / rv;
+        Real xbi = xai + hsub / (rv * ttp);
+        (void)xbi;
+        {
+            Real tr = ttp / t;
+            Real qs1 = psat * libm::exp(libm::log(tr) * xa) * libm::exp(xb * (1.0 - tr));
+            qs1 = std::min(qs1, static_cast<Real>(0.99) * p);
+            qs1 = ep2 * qs1 / (p - qs1);
+            qs1 = std::max(qs1, qmin);
+
+            Real work1_cond = conden(t, q, qs1, xl, cpm);
+            Real pcond = std::min(std::max(work1_cond / dtcld, static_cast<Real>(0.0)),
+                                  std::max(q, static_cast<Real>(0.0)) / dtcld);
+            if (qc > 0.0 && work1_cond < 0.0) {
+                pcond = std::max(work1_cond, -qc) / dtcld;
+            }
+            q -= pcond * dtcld;
+            qc = std::max(qc + pcond * dtcld, static_cast<Real>(0.0));
+            t += pcond * xl / cpm * dtcld;
+        }
+        if (qc <= qmin) qc = 0.0;
+        if (qi <= qmin) qi = 0.0;
+    }
+#endif
 };
 
 template <typename Real, int MaxLevels = kMaxLevels>
@@ -1487,6 +2148,287 @@ struct Wsm6Kernel {
         sr(i, j) = sr_val;
     }
 };
+
+#if defined(CPPWRF_DOUBLE)
+// ---- WSM6 in column stages (FP64 builds, CPU and CUDA) ----
+// Wsm6Kernel runs a whole column in one thread. Most of WSM6's work is per level (the saturation, the slopes and
+// fall speeds, the melting, the freezing, the warm and cold rain processes, the saturation adjustment), and only
+// the sedimentation (nislfv_rain_plm / nislfv_rain_plm6) sweeps the column. wsm6_stages runs the level loops as
+// parallel_for over (i, j, k) and the sedimentation as column_for over (i, j), per microphysics loop:
+//   Wsm6StageInit  (once)  clamps of qc ... qg, t, cpm, xl
+//   Wsm6StageA     qsat, rh; fall speeds and densities for the rain and snow + graupel sedimentation
+//   Wsm6StageSed   the rain and snow + graupel sedimentation (column), fall0
+//   Wsm6StageB     qr, qs, qg after it, the melting, the ice fall speed
+//   Wsm6StageIce   the ice sedimentation (column), the surface precipitation
+//   Wsm6StageC     qi after it, the freezing, the rain processes, the saturation adjustment, the padding (last
+//                  loop: th)
+// Every value is computed by the statements of Wsm6Params::operator() in the same order (its level loops never
+// read another level). The values carried between the stages are kept in Wsm6Work. FP32 builds keep Wsm6Kernel:
+// there nvcc contracts multiply-adds (--fmad=true), which a split could change.
+template <typename Real>
+struct Wsm6Work {
+    enum : int { kT, kCpm, kXl, kQsat0, kQsat1, kRh0, kRh1, kWorkr, kWorka, kDenqrs1, kDenqrs2, kDenqrs3, kArrays };
+    Real* p = nullptr;
+    int i0 = 0, j0 = 0, ni = 0, nij = 0, nz = 0;
+    static std::size_t size(const Range2D& r, int nz) {
+        return (std::size_t(kArrays) * nz + 3) * std::size_t(r.i1 - r.i0) * std::size_t(r.j1 - r.j0);
+    }
+    CPPWRF_HD Real& operator()(int a, int i, int j, int k) const {
+        return p[std::size_t(a * nz + k) * nij + (i - i0) + (j - j0) * ni];
+    }
+    // fall0 of rain, snow, graupel (the column's surface fluxes of the first sedimentation)
+    CPPWRF_HD Real& fall(int m, int i, int j) const {
+        return p[std::size_t(kArrays * nz + m) * nij + (i - i0) + (j - j0) * ni];
+    }
+};
+
+template <typename Real>
+struct Wsm6StageInit {
+    Wsm6Params<Real> params;
+    Wsm6Work<Real> w;
+    View3<const Real> th, pii, q;
+    View3<Real> qc, qr, qi, qs, qg;
+    CPPWRF_HD void operator()(int i, int j, int k) const {
+        Real qck = qc(i, j, k), qrk = qr(i, j, k), qik = qi(i, j, k), qsk = qs(i, j, k), qgk = qg(i, j, k);
+        Real t, cpm, xl;
+        params.level_init(th(i, j, k), pii(i, j, k), q(i, j, k), qck, qrk, qik, qsk, qgk, t, cpm, xl);
+        qc(i, j, k) = qck;
+        qr(i, j, k) = qrk;
+        qi(i, j, k) = qik;
+        qs(i, j, k) = qsk;
+        qg(i, j, k) = qgk;
+        w(w.kT, i, j, k) = t;
+        w(w.kCpm, i, j, k) = cpm;
+        w(w.kXl, i, j, k) = xl;
+    }
+};
+
+template <typename Real>
+struct Wsm6StageA {
+    Wsm6Params<Real> params;
+    Wsm6Work<Real> w;
+    View3<const Real> q, qr, qs, qg, den, p;
+    CPPWRF_HD void operator()(int i, int j, int k) const {
+        Real qsat[2], rh[2], workr, worka, denqrs1, denqrs2, denqrs3;
+        params.level_a(w(w.kT, i, j, k), q(i, j, k), qr(i, j, k), qs(i, j, k), qg(i, j, k), den(i, j, k),
+                       p(i, j, k), qsat, rh, workr, worka, denqrs1, denqrs2, denqrs3);
+        w(w.kQsat0, i, j, k) = qsat[0];
+        w(w.kQsat1, i, j, k) = qsat[1];
+        w(w.kRh0, i, j, k) = rh[0];
+        w(w.kRh1, i, j, k) = rh[1];
+        w(w.kWorkr, i, j, k) = workr;
+        w(w.kWorka, i, j, k) = worka;
+        w(w.kDenqrs1, i, j, k) = denqrs1;
+        w(w.kDenqrs2, i, j, k) = denqrs2;
+        w(w.kDenqrs3, i, j, k) = denqrs3;
+    }
+};
+
+// operator()'s rain and snow + graupel sedimentation of one loop (first loop: rainncv ... sr = 0 before it)
+template <typename Real, int MaxLevels>
+struct Wsm6StageSed {
+    Wsm6Params<Real> params;
+    Wsm6Work<Real> w;
+    Real dtcld;
+    int nz;
+    bool first;
+    View3<const Real> den, delz;
+    View2<Real> rainncv, snowncv, graupelncv, sr;
+    CPPWRF_HD void operator()(int i, int j) const {
+        if (first) {
+            rainncv(i, j) = 0.0;
+            snowncv(i, j) = 0.0;
+            graupelncv(i, j) = 0.0;
+            sr(i, j) = 0.0;
+        }
+        Real den_c[MaxLevels], denfac[MaxLevels], t[MaxLevels], dz[MaxLevels];
+        Real workr[MaxLevels], worka[MaxLevels], denqrs1[MaxLevels], denqrs2[MaxLevels], denqrs3[MaxLevels];
+        for (int k = 0; k < nz; ++k) {
+            den_c[k] = den(i, j, k);
+            denfac[k] = std::sqrt((static_cast<Real>(1.0) / den_c[k]) * params.den0);
+            t[k] = w(w.kT, i, j, k);
+            dz[k] = delz(i, j, k);
+            workr[k] = w(w.kWorkr, i, j, k);
+            worka[k] = w(w.kWorka, i, j, k);
+            denqrs1[k] = w(w.kDenqrs1, i, j, k);
+            denqrs2[k] = w(w.kDenqrs2, i, j, k);
+            denqrs3[k] = w(w.kDenqrs3, i, j, k);
+        }
+        Real plm_zi[MaxLevels + 1];
+        Real plm_za[MaxLevels + 1];
+        Real plm_dza[MaxLevels + 1];
+        Real plm_qa[MaxLevels + 1];
+        Real plm_qa2[MaxLevels + 1];
+        Real plm_wi[MaxLevels + 1];
+        Real plm_wd[MaxLevels + 1];
+        Real plm_wa[MaxLevels];
+        Real plm_was[MaxLevels];
+        Real delqrs1 = 0.0, delqrs2 = 0.0, delqrs3 = 0.0;
+        params.nislfv_rain_plm(nz, den_c, denfac, t, dz, workr, denqrs1, delqrs1, dtcld, 1, 1,
+                               plm_zi, plm_za, plm_dza, plm_qa, plm_wi, plm_wd, plm_wa, plm_was);
+        params.nislfv_rain_plm6(nz, den_c, denfac, t, dz, worka, denqrs2, denqrs3, delqrs2, delqrs3, dtcld, 1, 1,
+                                plm_zi, plm_za, plm_dza, plm_qa, plm_qa2, plm_wi, plm_wd, plm_wa, plm_was);
+        for (int k = 0; k < nz; ++k) {
+            w(w.kDenqrs1, i, j, k) = denqrs1[k];
+            w(w.kDenqrs2, i, j, k) = denqrs2[k];
+            w(w.kDenqrs3, i, j, k) = denqrs3[k];
+        }
+        w.fall(0, i, j) = delqrs1 / dz[0] / dtcld;
+        w.fall(1, i, j) = delqrs2 / dz[0] / dtcld;
+        w.fall(2, i, j) = delqrs3 / dz[0] / dtcld;
+    }
+};
+
+// kWorkr / kDenqrs1 then hold work1c / denqci, kWorka / kDenqrs2 rslope / rslope3 of rain before the melting
+template <typename Real>
+struct Wsm6StageB {
+    Wsm6Params<Real> params;
+    Wsm6Work<Real> w;
+    Real dtcld;
+    View3<const Real> qi, den, p;
+    View3<Real> qr, qs, qg;
+    CPPWRF_HD void operator()(int i, int j, int k) const {
+        Real t = w(w.kT, i, j, k), qrk = qr(i, j, k), qsk = qs(i, j, k), qgk = qg(i, j, k);
+        Real work1c, denqci, rs0, rs30;
+        params.level_b(t, w(w.kCpm, i, j, k), qrk, qsk, qgk, qi(i, j, k), den(i, j, k), p(i, j, k),
+                       w(w.kDenqrs1, i, j, k), w(w.kDenqrs2, i, j, k), w(w.kDenqrs3, i, j, k), dtcld, work1c, denqci,
+                       rs0, rs30);
+        w(w.kT, i, j, k) = t;
+        qr(i, j, k) = qrk;
+        qs(i, j, k) = qsk;
+        qg(i, j, k) = qgk;
+        w(w.kWorkr, i, j, k) = work1c;
+        w(w.kDenqrs1, i, j, k) = denqci;
+        w(w.kWorka, i, j, k) = rs0;
+        w(w.kDenqrs2, i, j, k) = rs30;
+    }
+};
+
+// operator()'s ice sedimentation and the surface precipitation of one loop
+template <typename Real, int MaxLevels>
+struct Wsm6StageIce {
+    Wsm6Params<Real> params;
+    Wsm6Work<Real> w;
+    Real dtcld;
+    int nz;
+    View3<const Real> den, delz;
+    View2<Real> rain, rainncv, snow, snowncv, graupel, graupelncv, sr;
+    CPPWRF_HD void operator()(int i, int j) const {
+        Real den_c[MaxLevels], denfac[MaxLevels], t[MaxLevels], dz[MaxLevels], work1c[MaxLevels], denqci[MaxLevels];
+        for (int k = 0; k < nz; ++k) {
+            den_c[k] = den(i, j, k);
+            denfac[k] = std::sqrt((static_cast<Real>(1.0) / den_c[k]) * params.den0);
+            t[k] = w(w.kT, i, j, k);
+            dz[k] = delz(i, j, k);
+            work1c[k] = w(w.kWorkr, i, j, k);
+            denqci[k] = w(w.kDenqrs1, i, j, k);
+        }
+        Real plm_zi[MaxLevels + 1];
+        Real plm_za[MaxLevels + 1];
+        Real plm_dza[MaxLevels + 1];
+        Real plm_qa[MaxLevels + 1];
+        Real plm_wi[MaxLevels + 1];
+        Real plm_wd[MaxLevels + 1];
+        Real plm_wa[MaxLevels];
+        Real plm_was[MaxLevels];
+        Real delqi = 0.0;
+        params.nislfv_rain_plm(nz, den_c, denfac, t, dz, work1c, denqci, delqi, dtcld, 1, 0,
+                               plm_zi, plm_za, plm_dza, plm_qa, plm_wi, plm_wd, plm_wa, plm_was);
+        for (int k = 0; k < nz; ++k) w(w.kDenqrs1, i, j, k) = denqci[k];
+        const Real denr = params.denr;
+        const Real fall0_0 = w.fall(0, i, j), fall0_1 = w.fall(1, i, j), fall0_2 = w.fall(2, i, j);
+        Real rain_v = rain(i, j), rainncv_v = rainncv(i, j), snow_v = snow(i, j), snowncv_v = snowncv(i, j);
+        Real graupel_v = graupel(i, j), graupelncv_v = graupelncv(i, j), sr_v = sr(i, j);
+        Real fallc = delqi / dz[0] / dtcld;
+
+        Real fallsum = fall0_0 + fall0_1 + fall0_2 + fallc;
+        Real fallsum_qsi = fall0_1 + fallc;
+        Real fallsum_qg = fall0_2;
+        if (fallsum > 0.0) {
+            Real d_rain = fallsum * dz[0] / denr * dtcld * 1000.0;
+            rainncv_v += d_rain;
+            rain_v += d_rain;
+        }
+        if (fallsum_qsi > 0.0) {
+            Real d_snow = fallsum_qsi * dz[0] / denr * dtcld * 1000.0;
+            snowncv_v += d_snow;
+            snow_v += d_snow;
+        }
+        if (fallsum_qg > 0.0) {
+            Real d_graup = fallsum_qg * dz[0] / denr * dtcld * 1000.0;
+            graupelncv_v += d_graup;
+            graupel_v += d_graup;
+        }
+        if (fallsum > 0.0) {
+            sr_v = (snowncv_v + graupelncv_v) / (rainncv_v + 1.0e-12);
+        }
+        rain(i, j) = rain_v;
+        rainncv(i, j) = rainncv_v;
+        snow(i, j) = snow_v;
+        snowncv(i, j) = snowncv_v;
+        graupel(i, j) = graupel_v;
+        graupelncv(i, j) = graupelncv_v;
+        sr(i, j) = sr_v;
+    }
+};
+
+template <typename Real>
+struct Wsm6StageC {
+    Wsm6Params<Real> params;
+    Wsm6Work<Real> w;
+    Real dtcld;
+    bool last;
+    View3<const Real> den, p, pii;
+    View3<Real> th, q, qc, qr, qi, qs, qg;
+    CPPWRF_HD void operator()(int i, int j, int k) const {
+        Real t = w(w.kT, i, j, k), qk = q(i, j, k), qck = qc(i, j, k), qrk = qr(i, j, k), qik = qi(i, j, k);
+        Real qsk = qs(i, j, k), qgk = qg(i, j, k);
+        const Real qsat[2] = {w(w.kQsat0, i, j, k), w(w.kQsat1, i, j, k)};
+        const Real rh[2] = {w(w.kRh0, i, j, k), w(w.kRh1, i, j, k)};
+        params.level_c(t, qk, qck, qrk, qik, qsk, qgk, den(i, j, k), p(i, j, k), w(w.kCpm, i, j, k),
+                       w(w.kXl, i, j, k), qsat, rh, w(w.kDenqrs1, i, j, k), w(w.kWorka, i, j, k),
+                       w(w.kDenqrs2, i, j, k), dtcld);
+        q(i, j, k) = qk;
+        qc(i, j, k) = qck;
+        qr(i, j, k) = qrk;
+        qi(i, j, k) = qik;
+        qs(i, j, k) = qsk;
+        qg(i, j, k) = qgk;
+        if (last) th(i, j, k) = t / pii(i, j, k);
+        else w(w.kT, i, j, k) = t;
+    }
+};
+
+// Wsm6Kernel over the columns r in stages; work: Wsm6Work<Real>::size(r, nz) values
+template <typename Real, int MaxLevels>
+void wsm6_stages(const Wsm6Params<Real>& params, Real dt, int nz, const Range2D& r, Real* work,
+                 View3<Real> th, View3<Real> q, View3<Real> qc, View3<Real> qr, View3<Real> qi, View3<Real> qs,
+                 View3<Real> qg, View3<const Real> den, View3<const Real> pii, View3<const Real> p,
+                 View3<const Real> delz, View2<Real> rain, View2<Real> rainncv, View2<Real> snow,
+                 View2<Real> snowncv, View2<Real> graupel, View2<Real> graupelncv, View2<Real> sr) {
+    if (r.i1 <= r.i0 || r.j1 <= r.j0) return;
+    const Wsm6Work<Real> w{work, r.i0, r.j0, r.i1 - r.i0, (r.i1 - r.i0) * (r.j1 - r.j0), nz};
+    const Range3D r3{r.i0, r.i1, r.j0, r.j1, 0, nz};
+    const View3<const Real> cq{q.p, q.sj, q.sk}, cqr{qr.p, qr.sj, qr.sk}, cqi{qi.p, qi.sj, qi.sk};
+    const View3<const Real> cqs{qs.p, qs.sj, qs.sk}, cqg{qg.p, qg.sj, qg.sk}, cth{th.p, th.sj, th.sk};
+    // operator()'s loop count and time step
+    const Real delt = dt;
+    int loops = std::max(1, static_cast<int>(std::round(delt / params.dtcldcr)));
+    Real dtcld = delt / static_cast<Real>(loops);
+    if (delt <= params.dtcldcr) dtcld = delt;
+    parallel_for(r3, Wsm6StageInit<Real>{params, w, cth, pii, cq, qc, qr, qi, qs, qg});
+    for (int loop = 0; loop < loops; ++loop) {
+        parallel_for(r3, Wsm6StageA<Real>{params, w, cq, cqr, cqs, cqg, den, p});
+        column_for(r, Wsm6StageSed<Real, MaxLevels>{params, w, dtcld, nz, loop == 0, den, delz, rainncv, snowncv,
+                                                     graupelncv, sr});
+        parallel_for(r3, Wsm6StageB<Real>{params, w, dtcld, cqi, den, p, qr, qs, qg});
+        column_for(r, Wsm6StageIce<Real, MaxLevels>{params, w, dtcld, nz, den, delz, rain, rainncv, snow, snowncv,
+                                                     graupel, graupelncv, sr});
+        parallel_for(r3, Wsm6StageC<Real>{params, w, dtcld, loop == loops - 1, den, p, pii, th, q, qc, qr, qi, qs,
+                                          qg});
+    }
+}
+#endif  // CPPWRF_DOUBLE
 
 // WRF physics_mmm/mp_wsm6_effectRad.F90 mp_wsm6_effectRad_run (do_microp_re: has_reqc = has_reqi =
 // has_reqs = 1), called by module_mp_wsm6.F after each WSM6 call with t = th*pii of the updated

@@ -125,6 +125,12 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
     // wsm6init (WRF microphysics_driver arguments); once, not every step
     wp_.init(real(pc::rhoair0), real(pc::rhowater), real(pc::rhosnow), real(pc::cliq), real(4.0 * pc::r_v),
              p_.hail_opt);
+#if defined(CPPWRF_DOUBLE)
+    {  // the work arrays of wsm6_stages for step()'s mp_cols
+      const int sx = g.bc_x == BC::Specified ? 1 : 0, sy = g.bc_y == BC::Specified ? 1 : 0;
+      wsm6_work_ = Buffer(phys::wsm6::Wsm6Work<real>::size(Range2D{sx, g.nx - sx, sy, g.ny - sy}, g.nz));
+    }
+#endif
     if (p_.do_radar_ref == 1)  // mp_wsm6_init: m(D) = pi*den/6 D**3 of rain, snow and graupel (hail), mu = 0
       radar_ = std::make_shared<const phys::radar::RadarDeviceTables<real>>(phys::radar::radar_init<real>(
           wp_.pi * wp_.denr / real(6.), real(3.), real(0.), wp_.pi * wp_.dens / real(6.), real(3.), real(0.),
@@ -187,11 +193,19 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
     // the column arrays sized to the next tier above nz (CUDA reserves a kernel's stack frame for every resident
     // thread of the GPU: FP64 49 KB per thread with 128 levels, 19 KB with 48)
     auto wsm6 = [&](auto nl) {
+#if defined(CPPWRF_DOUBLE)  // FP64 builds: the level loops in parallel, the sedimentation per column (wsm6.hpp)
+      phys::wsm6::wsm6_stages<real, decltype(nl)::value>(
+          wp_, dt, g.nz, mp_cols, wsm6_work_.get(), th_phy.view(), qv.view(), s.q_2[s.P_QC].view(),
+          s.q_2[s.P_QR].view(), s.q_2[s.P_QI].view(), s.q_2[s.P_QS].view(), s.q_2[s.P_QG].view(), rho.cview(),
+          pii.cview(), p_phy.cview(), dz8w.cview(), rainnc.view(), rainncv.view(), snownc.view(), snowncv.view(),
+          graupelnc.view(), graupelncv.view(), sr.view());
+#else
       column_for(mp_cols, phys::wsm6::Wsm6Kernel<real, decltype(nl)::value>{
                               wp_, dt, g.nz, th_phy.view(), qv.view(), s.q_2[s.P_QC].view(), s.q_2[s.P_QR].view(),
                               s.q_2[s.P_QI].view(), s.q_2[s.P_QS].view(), s.q_2[s.P_QG].view(), rho.cview(),
                               pii.cview(), p_phy.cview(), dz8w.cview(), rainnc.view(), rainncv.view(), snownc.view(),
                               snowncv.view(), graupelnc.view(), graupelncv.view(), sr.view()});
+#endif
     };
     if (g.nz <= 48) wsm6(std::integral_constant<int, 48>{});
     else if (g.nz <= 64) wsm6(std::integral_constant<int, 64>{});
