@@ -3,7 +3,7 @@
 #
 #   CPPWRF_GCP_BUCKET=... tools/colab/colab_suite.sh [--gpu G4|CPU|L4|A100|T4] [--any-cpu] [--cases NAME,...]
 #       [--data OBJECT,... | --auto-data] [--out DIR] [--jobs N] [--threads N] [--slow] [--hours H] [--rev REV]
-#       [--session NAME] [--keep] [--diff-only [--tests REGEX] [--faults DIR]]
+#       [--session NAME] [--keep] [--files] [--diff-only [--tests REGEX] [--faults DIR]]
 #
 # The full suite runs on the G4 runtime's AMD CPU (AMD EPYC 9B45, 48 vCPUs, 176 GB; its GPU is not used):
 #   tools/colab/colab_suite.sh --gpu G4 --any-cpu --jobs 12 --threads 4      (about 42 min; L4: 2 h 45 min)
@@ -12,7 +12,8 @@
 # NOT_INTEL on a runtime that is not Intel unless --any-cpu. The suite gives Intel's bits on any x86-64 CPU: the
 # model computes them as on Intel (CPPWRF_PORTABLE_LIBMVEC, src/core/libmvec_x86.hpp), and so does WRF's side of the
 # differential tests (tests/phys/libmvec_intel.cpp, linked by tests/phys/wrf_fortran.sh). L4 (Intel) stays possible.
-# --cases, --data, --slow as gcp_run.sh (the tars of
+# --files: with --cases, also the output files tests of the full suite (run_wrf_files_test.sh, every case, and
+# ideal_files_test.py; --data must then hold their tars). --cases, --data, --slow as gcp_run.sh (the tars of
 # tests/verify/vm_data.txt). Without --data (or with --auto-data) the tars come from the case registry: with --cases
 # only those the cases read (DATA in tests/verify/cases/*.py: wrf_suite.py --data-for), else every tar of vm_data.txt
 # (the full suite: the output files, ideal files and differential tests too) and with --slow the slow cases' tars.
@@ -31,14 +32,14 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_GCP_BUCKET:?set CPPWRF_GCP_BUCKET}"
 BK=$CPPWRF_GCP_BUCKET
-GPU=L4 CASES= DATA= OUT= JOBS=4 THREADS= SLOW= HOURS= REV=HEAD S= KEEP=0 NPROC= ANY_CPU=0 DIFF=0 TESTS= FAULTS=
+GPU=L4 CASES= DATA= OUT= JOBS=4 THREADS= SLOW= HOURS= REV=HEAD S= KEEP=0 NPROC= ANY_CPU=0 DIFF=0 TESTS= FAULTS= FILES=0
 while [ $# -gt 0 ]; do
   case $1 in
     --gpu) GPU=$2; shift 2 ;; --cases) CASES=$2; shift 2 ;; --data) DATA=$2; shift 2 ;; --auto-data) DATA=; shift ;;
     --out) OUT=$2; shift 2 ;;
     --jobs) JOBS=$2; shift 2 ;; --threads) THREADS=$2; shift 2 ;; --slow) SLOW=1; shift ;; --hours) HOURS=$2; shift 2 ;;
     --rev) REV=$2; shift 2 ;; --session) S=$2; shift 2 ;; --keep) KEEP=1; shift ;; --any-cpu) ANY_CPU=1; shift ;;
-    --diff-only) DIFF=1; shift ;; --tests) TESTS=$2; shift 2 ;; --faults) FAULTS=$(cd "$2" && pwd); shift 2 ;;
+    --diff-only) DIFF=1; shift ;; --files) FILES=1; shift ;; --tests) TESTS=$2; shift 2 ;; --faults) FAULTS=$(cd "$2" && pwd); shift 2 ;;
     *) sed -n '2,29p' "$0"; exit 2 ;;
   esac
 done
@@ -94,7 +95,7 @@ if [ "$DIFF" = 1 ]; then
 fi
 THR=${THREADS:-$(( NPROC / JOBS > 0 ? NPROC / JOBS : 1 ))}
 echo "[colab_suite] jobs $JOBS, threads $THR"
-cj_launch "$REPO/tools/gcp/suite_body.sh" "$DATA" "$JOBS" "$THR" "$CASES" "${SLOW:-0}"
+cj_launch "$REPO/tools/gcp/suite_body.sh" "$DATA" "$JOBS" "$THR" "$CASES" "${SLOW:-0}" "$FILES"
 cj_wait "$HOURS" suite.log
 cj_results
-bash "$REPO/tools/gcp/suite_status.sh" "$OUT" "$CASES"
+bash "$REPO/tools/gcp/suite_status.sh" "$OUT" "$CASES" "$FILES"

@@ -5,12 +5,13 @@
 # translator tests, the comparators' self-test and wrf_suite.py; the full suite (no cases) also the differential and
 # unit tests (tools/gcp/run_diff_tests.sh, next to the suite) and the output files tests.
 #
-#   suite_body.sh J JOBS THREADS CASES SLOW
+#   suite_body.sh J JOBS THREADS CASES SLOW [FILES]
 #
 # J holds src/ (git archive) and data/ (the tars unpacked in the data list's order); the logs go to J: setup.out
 # (a failed build), cmake.log, unit.log, selftest.log, suite.log, files.log, idealfiles.log, diff.log, ctest.log.
+# FILES=1: the output files tests also with CASES (tools/colab/colab_suite.sh --files).
 # A shell function `put` (exported by the caller, optional) gets each finished log (the GCP VM copies it to the bucket).
-J=$1 JOBS=$2 THR=$3 CASES=$4 SLOW=$5
+J=$1 JOBS=$2 THR=$3 CASES=$4 SLOW=$5 FILES=${6:-0}
 type put > /dev/null 2>&1 || put() { :; }
 set -x
 touch $J/setup.out
@@ -44,7 +45,7 @@ kill $PROG_PID 2> /dev/null
 put $J/suite.log
 # the full suite also compares the output files with WRF's (wrfout / wrfrst / resumed runs, ideal cases), one
 # run_wrf_files_test.sh per case in parallel; each prints PASS / FAIL / SKIP and its exit status
-if [ -z "$CASES" ]; then
+if [ -z "$CASES" ] || [ "$FILES" = 1 ]; then
   sed -n '/^CASES="/,/^"/p' tests/verify/run_wrf_files_test.sh | grep '|' | cut -d'|' -f1 |
     xargs -P "$JOBS" -I{} sh -c "CPPWRF_WRF_RUNS=$J/data/wrf_runs CPPWRF_SCRATCH=$J OMP_NUM_THREADS=$THR \
       bash tests/verify/run_wrf_files_test.sh $J/build {} > $J/files_{}.log 2>&1; echo \"exit \$? {}\" >> $J/files_{}.log"
@@ -52,6 +53,8 @@ if [ -z "$CASES" ]; then
   CPPWRF_WRF_REF=$J/data/wrf_ref CPPWRF_SCRATCH=$J OMP_NUM_THREADS=$THR python3 tests/verify/ideal_files_test.py $J/build \
     > $J/idealfiles.log 2>&1; echo "exit $?" >> $J/idealfiles.log
   put $J/files.log $J/idealfiles.log
+fi
+if [ -z "$CASES" ]; then
   wait $DIFF_PID
   cat $J/diff_setup.out >> $J/setup.out; put $J/setup.out
 fi
