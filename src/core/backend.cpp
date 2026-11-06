@@ -412,9 +412,11 @@ Reducer::Reducer(int max_k) : max_k_(max_k), hpart_(max_k) {}
 Reducer::~Reducer() {}
 #endif
 
+// One warp per block: a domain of ~10^4 columns gives ~330 blocks, every SM of a large GPU gets some (128-thread
+// blocks left more than half of the RTX PRO 6000's 188 SMs idle); one thread per column either way
 ColumnBlock column_block() {
   static const ColumnBlock b = [] {
-    ColumnBlock r{64, 2};
+    ColumnBlock r{32, 1};
     if (const char* e = std::getenv("CPPWRF_COLUMN_BLOCK")) {
       int x = 0, y = 0;
       if (std::sscanf(e, "%dx%d", &x, &y) == 2 && x > 0 && x % 32 == 0 && y > 0 && x * y <= 1024) r = {x, y};

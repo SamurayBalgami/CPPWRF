@@ -285,7 +285,7 @@ class StepScope {
 };
 bool step_graphs_on();  // the steps run as CUDA graphs (the caller need not wait for each step)
 
-// column_for's thread block (x along i, y along j): kColumnBlock, or CPPWRF_COLUMN_BLOCK=XxY (X a multiple of 32)
+// column_for's thread block (x along i, y along j): 32 x 1, or CPPWRF_COLUMN_BLOCK=XxY (X a multiple of 32)
 struct ColumnBlock {
   int x, y;
 };
