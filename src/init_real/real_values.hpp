@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Values of the wrfinput variables real.exe sets (by WRF output name); every other input-stream
 // variable keeps WRF's initial value 0.

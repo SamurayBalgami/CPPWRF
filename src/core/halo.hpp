@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Lateral halo fill (periodic or symmetric) for x and, if ny>1, y. Halo width 3.
 // Symmetric (rigid wall, mirror at the boundary face, WRF symmetric_xs/xe):

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The VM side of tools/gcp/gcp_run.sh (startup script): installs the build tools, fetches the source and the data,
 # runs tools/gcp/suite_body.sh (the CPU FP64 build, translator tests, comparator self-test, wrf_suite.py; the full
 # suite (no cases) also the differential, unit and output files tests), copies the results to the bucket and powers

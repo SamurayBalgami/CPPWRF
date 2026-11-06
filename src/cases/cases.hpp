@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Idealized case framework (host side, setup only).
 // Initialization follows WRF dyn_em/module_initialize_ideal.F for dry cases:

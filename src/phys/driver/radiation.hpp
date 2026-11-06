@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // WRF phys/module_radiation_driver.F radiation_driver for ra_lw_physics = 4 (RRTMG) or 1 (RRTM, module_ra_rrtm.F)
 // with ra_sw_physics = 4 (RRTMG) or 1 (Dudhia, module_ra_sw.F) with o3input = 2 (CAM ozone), ghg_input = 1

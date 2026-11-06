@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Print a downscoped GCS access token: read-only (roles/storage.objectViewer) for one bucket, valid at most 1 h.
 
     tools/colab/gcs_token.py BUCKET > TOKEN_FILE

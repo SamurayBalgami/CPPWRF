@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "phys/ra_rrtm_lw/rrtm_lw_tables.hpp"
 
 #include <cmath>

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Physical constants, values as in WRF share/module_model_constants.F.
 namespace cppwrf::cst {

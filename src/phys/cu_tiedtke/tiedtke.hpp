@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Tiedtke cumulus scheme (cu_physics = 6): WRF 4.8.0 phys/module_cu_tiedtke.F (tiecnv, cumastr_new and the
 // level 3/4 routines) for one column (klon = 1). Arrays keep the Fortran 1-based level index (k = 1 is the

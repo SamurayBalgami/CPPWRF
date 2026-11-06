@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """compare.py WRF.bin CPP.bin --cols N --nz K [--tol T]: the YSU outputs; --tol 0 (CPU FP64): every value identical
 as tests/verify/exact.py (NaN equals only NaN, -0 differs from +0), otherwise max rel or max abs diff <= tol."""
 import argparse

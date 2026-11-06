@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Noah LSM (sf_surface_physics = 2) column test: WRF v4.8.0's SFLX with the tables of its SOIL_VEG_GEN_PARM
 # (module_sf_noahlsm.o, module_sf_noahdrv.o of the -r8 build, WRF_DIR; WRF's run/ tables) against the C++
 # NoahKernel (driver_noah_cpu of the CMake build), tolerance 0.

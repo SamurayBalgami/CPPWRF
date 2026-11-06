@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Model assembly from a config (host side): grid, case, vertical levels, base and initial
 // state, scalars, numerical parameters and the RK3 integrator. Shared by main and tests.

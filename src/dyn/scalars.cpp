@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "dyn/scalars.hpp"
 
 #include "core/vm_dump.hpp"

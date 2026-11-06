@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The column-size guards of the physics runners are errors in every build type (Release: NDEBUG): a column above
 // kMaxLevels (or more soil / snow layers than the kernels hold) throws before any kernel is launched, with the
 // scheme, the size and the limit in the message (src/core/limits.hpp).

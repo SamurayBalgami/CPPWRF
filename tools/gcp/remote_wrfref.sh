@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Startup script of the reference VM (tools/gcp/gcp_wrfref.sh): unpacks the WRF runs and wrf.exe, makes every
 # reference of the list (tools/gcp/wrf_ref_run.py: run_NAME and run_NAME/steps, in parallel) and its restart
 # references (tests/verify/make_restart_refs.sh, make_resumed_refs.sh), uploads them as refs.tar (links kept; not

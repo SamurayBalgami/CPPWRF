@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifndef CPPWRF_IO_CONFIG_HPP
 #define CPPWRF_IO_CONFIG_HPP
 

@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 program driver_wsm6
   use module_mp_wsm6, only: wsm6
   use mp_wsm6, only: mp_wsm6_init

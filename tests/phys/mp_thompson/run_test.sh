@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Thompson (mp_physics = 8 and the aerosol-aware 28) tests: WRF v4.8.0's thompson_init tables and mp_gt_driver (module_mp_thompson.o of the
 # -r8 -fdefault-double-8 build, WRF_R8D8_DIR) against the C++ tables (test_tables) and the C++ Thompson
 # (driver_thompson_cpu of the CMake build), tolerance 0.

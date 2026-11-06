@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """WRF ideal cases (the port of ideal.exe) on the CPU and the GPU.
 
 CASES: see tests/verify/cases/__init__.py."""

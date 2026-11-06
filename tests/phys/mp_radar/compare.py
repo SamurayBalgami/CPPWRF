@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compares driver_radar.f90's and driver_radar_cpu's outputs bit for bit: the radar_init tables of mp_wsm6_init
 and WSM6's REFL_10CM.   compare.py FORTRAN_OUT CPP_OUT N_COLS NZ"""
 import os

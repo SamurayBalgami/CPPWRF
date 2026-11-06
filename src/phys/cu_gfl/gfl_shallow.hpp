@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Grell-Freitas-Li shallow convection: WRF 4.8.0 phys/GFL/module_cu_gfl_sh.F90
 // cu_gfl_sh_run for one column (ichoice = 3 from module_cu_gfl_wrf.F90,
 // make_calc_for_xk = .true.).

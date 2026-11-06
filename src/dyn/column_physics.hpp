@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Interface between the dycore time step and the column physics suite of a real-data run
 // (radiation, surface layer, land surface, PBL, cumulus). The suite lives in src/phys/driver/

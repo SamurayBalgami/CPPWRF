@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // metgrid output (met_em.d0N.<date>.nc) as read by real.exe's input_auxinput1: every variable of the
 // first time, global attributes, and the dimension names. Values are kept in double (met_em is

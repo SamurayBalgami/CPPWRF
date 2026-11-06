@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // WRF dyn_em/module_big_step_utilities_em.F phy_prep: diagnostic inputs of the column physics
 // from the dynamics state (statement port, column kernel; C++ k = WRF k - 1).

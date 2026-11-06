@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Host-side guards of the compile-time column sizes (kMaxLevels, soil and snow layers): an error in every build
 // type (an assert would vanish with NDEBUG in Release builds and the kernels would overrun their column arrays).

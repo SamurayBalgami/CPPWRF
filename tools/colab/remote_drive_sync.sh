@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The Colab side of tools/colab/drive_sync.sh: copies data tars from the bucket to the Google Drive folder
 # cppwrf-drive:cppwrf-data, PAR tars at a time, each through the runtime's disk (gcloud storage cp with the
 # downscoped token /content/sync/gcs.tok, which drive_sync.sh renews; rclone copyto; the local copy is deleted

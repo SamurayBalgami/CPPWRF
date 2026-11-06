@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Large-step (RK stage) part of the ARW dynamical core (TN ch. 3.1-3.2, 4.1; WRF solve_em:
 // rk_step_prep, rk_tendency, rk_addtend_dry), dry, flat or terrain-following eta.

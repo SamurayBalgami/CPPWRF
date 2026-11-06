@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // wrfout_d0N history files as WRF v4.8.0 writes them: the history stream of the WRF I/O schema
 // (data/wrf_schema) for this configuration, with WRF's dimensions, variables, attributes and global

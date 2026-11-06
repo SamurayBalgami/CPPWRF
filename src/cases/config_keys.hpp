@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // The configuration keys CPPWRF knows: a key of a configuration file or --set that no code reads (a misspelled or
 // unsupported option) is an error, not a warning with the default (DomainRunner::start).

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Packs the data of the differential tests (ctest -L diff, which tools/gcp/remote_suite.sh runs on the full VM suite)
 # as a tar on stdout, for the bucket:
 #   tools/gcp/stage_diff_data.sh | gcloud storage cp - gs://BUCKET/diff_data.tar

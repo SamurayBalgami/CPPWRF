@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // RRTMG_LWRAD (WRF module_ra_rrtmg_lw.F) for one column as independent stages, every per-column
 // array a strided view (src/phys/ra_rrtmg_common/strided.hpp):

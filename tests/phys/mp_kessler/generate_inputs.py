@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Input generator for Kessler microphysics differential testing.
 Generates N >= 2000 realistic atmospheric columns covering:

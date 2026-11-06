@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Lateral boundary arrays of real.exe (main/real_em.F assemble_output): couple
 // (dyn_em/module_big_step_utilities_em.F, with calc_mu_staggered), stuff_bdy_new and

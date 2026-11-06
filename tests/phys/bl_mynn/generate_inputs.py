@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Random PBL columns for the MYNN-EDMF differential test (record order: driver_bl_mynn.f90).
 
   generate_inputs.py --cols N --nz NZ --nsteps S --dt DT --dx DX [--seed 1] OUT.bin

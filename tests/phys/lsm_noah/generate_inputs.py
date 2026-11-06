@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Generate diverse input regimes for Noah LSM differential testing.
 Generates >= 2000 columns covering:

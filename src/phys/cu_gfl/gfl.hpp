@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Grell-Freitas-Li (cu_physics = 3, GFLSCHEME): gfl_common.hpp, gfl_deep.hpp, gfl_shallow.hpp and gfl_driver.hpp,
 // compiled once per level tier. The scheme's column arrays have KM = levels + 12 elements (1-based levels and the

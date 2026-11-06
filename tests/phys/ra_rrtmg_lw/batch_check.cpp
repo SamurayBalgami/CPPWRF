@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Check of the batch (device) RRTMG LW: WRF's RRTMG_LWRAD inputs (debug WRF dump, big-endian
 // whole memory arrays) -> RrtmgLwBatch over all columns -> compare with WRF's RRTMG_LWRAD outputs.
 //   batch_check <rrtmg_lw_in.bin> <rrtmg_lw_out.bin> <rrtmg_lw_tables.bin> <CAMtr_volume_mixing_ratio> [chunk]

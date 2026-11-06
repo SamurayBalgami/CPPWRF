@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Port of WRF 4.8.0 phys/module_bl_myjpbl.F (myjpbl, mixlen, prodq2, difcof, vdifq, vdifh, vdifv)
 // Mellor-Yamada-Janjic (MYJ) PBL scheme (bl_pbl_physics = 2).

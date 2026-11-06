@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // WRF v4.8.0 radar reflectivity library: phys/module_mp_radar.F (Thompson) and phys/physics_mmm/mp_radar.F90
 // (WSM6), whose routines are the same: radar_init's size bins and constants, rayleigh_soak_wetgraupel (Blahak's

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "phys/mp_thompson/thompson_tables.hpp"
 #include <initializer_list>
 #include <cstdint>

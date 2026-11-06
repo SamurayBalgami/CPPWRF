@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // WRF phys/module_ra_sw.F (Dudhia shortwave, ra_sw_physics = 1): SWRAD's column set-up and SWPARA for one
 // column, with WRF's module constants (r_d = 287, cp = 7*r_d/2) and without the WRF-Chem aerosols (pm2_5 = 0)

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "wrf_io/wrf_schema.hpp"
 #include "core/strings.hpp"
 

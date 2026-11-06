@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Acoustic small step of the ARW split-explicit scheme (TN 3.2; WRF module_small_step_em.F
 // called from solve_em).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "cases/adapt_timestep.hpp"
 
 #include <algorithm>

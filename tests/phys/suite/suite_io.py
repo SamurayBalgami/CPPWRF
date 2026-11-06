@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Reader for the suite record files (suite_input.bin, suite_ref.bin, suite_cpp.bin)."""
 import struct
 

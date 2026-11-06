@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Column differential test of the MYNN-EDMF PBL scheme (bl_pbl_physics = 5, WRF's default bl_mynn_* options)
 # against WRF v4.8.0's own compiled mynnedmf_driver (the -r8 -fdefault-double-8 build that made the MYNN
 # references, WRF_R8D8_DIR; tests/phys/wrf_fortran.sh). Pass: bit-identical (tolerance 0).

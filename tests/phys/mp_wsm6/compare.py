@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Differential test comparison script for WSM6 microphysics.
 Compares Fortran vs C++ outputs on identical inputs.

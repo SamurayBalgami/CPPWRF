@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 /* Writes the Kain-Fritsch lookup tables of WRF's module_cu_kfeta.o after kf_lutab (dump_tables_f.f90) to
    tables_fortran.bin. The tables are PRIVATE module variables; gfortran still gives them global symbols
    (__module_cu_kfeta_MOD_<name>), which this file reads. REAL is real*8 in WRF's -r8 build. */

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // MYNN-EDMF PBL scheme (WRF v4.8.0 phys/MYNN-EDMF, bl_pbl_physics = 5): mynnedmf, mynn_tendencies,
 // moisture_check, retrieve_exchange_coeffs and the column part of mynnedmf_driver (pre/post run) for the options

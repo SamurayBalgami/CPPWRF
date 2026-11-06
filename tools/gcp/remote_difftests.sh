@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Startup script of tools/gcp/gcp_difftests.sh's VM: installs the build tools and gfortran, unpacks the source and
 # the data tars, runs tools/gcp/run_diff_tests.sh (with the fault patches of the `faults` tar), copies the logs to
 # the bucket and powers the VM off. Inputs that did not arrive are lines of setup.out.

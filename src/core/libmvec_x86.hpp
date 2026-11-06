@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // glibc 2.41 libmvec's 2-lane vector log and log10 (_ZGVbN2v_log, _ZGVbN2v_log10; the SSE4 variants that glibc
 // selects on every CPU with SSE4.1) re-implemented statement by statement, one lane, from

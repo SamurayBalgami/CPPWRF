@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """WRF namelist.input to CPPWRF configuration (.ini) translator.
 
 Converts WRF namelist.input into CPPWRF-compatible INI configuration files.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Device memory of the RRTMG batches (RrtmgLwBatch, RrtmgSwBatch), shared by every batch of the process: the
 // batches of all domains run one after another on the one launch stream (LW, then SW; domain after domain), so

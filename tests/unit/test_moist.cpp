@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Moist dynamics tests (M2 item 2, TN 2.2, use_theta_m = 1):
 //  (a) a moist (qv0 = 10 g/kg, unsaturated, no microphysics) atmosphere at rest stays at rest:
 //      max|w| at roundoff, of the same order as the dry rest state;

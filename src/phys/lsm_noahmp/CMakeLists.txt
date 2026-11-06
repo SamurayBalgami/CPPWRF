@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 add_library(cppwrf_phys_noahmp STATIC
   noahmp.cpp
   noahmp_tables.cpp

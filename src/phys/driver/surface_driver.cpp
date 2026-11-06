@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // PhysicsSuite::surface_driver (WRF phys/module_surface_driver.F)
 #include "phys/driver/suite.hpp"
 #include "phys/sf_mynn/mynnsfc.hpp"

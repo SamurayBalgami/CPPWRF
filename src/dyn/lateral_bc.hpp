@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Specified lateral boundary conditions of a real-data run (WRF specified = .true.,
 // spec_bdy_width = 5, spec_zone = 1, relax_zone = 4), device-resident and single source.

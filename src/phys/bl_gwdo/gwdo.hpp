@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // KIM orographic gravity wave drag (gwd_opt = 1): WRF 4.8.0 phys/physics_mmm/bl_gwdo.F90 bl_gwdo_run for one
 // column (module_bl_gwdo.F gwdo passes the columns of a row; they are independent). Level arrays use the

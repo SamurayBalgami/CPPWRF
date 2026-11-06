@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # C++ port of WRF's real.exe (met_em -> wrfinput_d01, wrfbdy_d01); host code, both precisions.
 add_library(cppwrf_init_real STATIC met_em.cpp real_domain.cpp)
 target_include_directories(cppwrf_init_real PUBLIC ${CMAKE_SOURCE_DIR}/src ${NETCDF_INCLUDE_DIR})

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Differential validator for MYJ PBL scheme (bl_myj).
 Compares unmodified Fortran WRF 4.8.0 outputs vs C++ outputs.

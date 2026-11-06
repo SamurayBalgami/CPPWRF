@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Scalar checks on a CPPWRF output dir: tools/check_scalars.py <out_dir> [name ...]
 For each scalar in the snapshots prints min, max, max|q-1| and the column-mass integral
 sum(mu_full * q * |dnw|) relative to the initial snapshot (dry-mass weighted tracer mass)."""

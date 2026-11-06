@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The file lists of data tars on Google Drive (cppwrf-drive:cppwrf-data, tools/colab/drive_sync.sh), read on a Colab
 # runtime (the tars stream from Drive there; nothing is downloaded to this machine but the lists):
 #
@@ -13,7 +14,7 @@ OUT= S= KEEP=0 TARS=
 while [ $# -gt 0 ]; do
   case $1 in
     --out) OUT=$2; shift 2 ;; --session) S=$2; shift 2 ;; --keep) KEEP=1; shift ;;
-    -*) sed -n '2,10p' "$0"; exit 2 ;; *) TARS=$1; shift ;;
+    -*) sed -n '3,11p' "$0"; exit 2 ;; *) TARS=$1; shift ;;
   esac
 done
 TARS=${TARS:-$(grep -v '^#' "$REPO/tests/verify/vm_data.txt" | grep . | paste -sd,)}

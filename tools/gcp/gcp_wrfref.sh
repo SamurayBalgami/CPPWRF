@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # WRF reference runs for the suite on a Google Compute Engine spot VM (Intel; see gcp_run.sh).
 #
 #   CPPWRF_GCP_PROJECT=... CPPWRF_GCP_BUCKET=... tools/gcp/gcp_wrfref.sh REFS.txt [--machine TYPE] [--zones Z,...] [--data OBJ,...]
@@ -35,7 +36,7 @@ while [ $# -gt 0 ]; do
     --machine) MACHINE=$2; shift 2 ;; --zones) ZONES=$2; shift 2 ;; --data) DATA=$2; shift 2 ;; --out) OUT=$2; shift 2 ;;
     --files) FILES=$2; shift 2 ;; --cases) CASES=$2; shift 2 ;; --runs) RUNS=$2; shift 2 ;;
     --check-only) FETCH=0; shift ;; --stage) STAGE=$2; FETCH=0; shift 2 ;; --hours) HOURS=$2; shift 2 ;;
-    --cache) CACHE=1; shift ;; *) sed -n '2,24p' "$0"; exit 2 ;;
+    --cache) CACHE=1; shift ;; *) sed -n '3,25p' "$0"; exit 2 ;;
   esac
 done
 names=$(grep -v '^\s*#' "$REFS" | awk 'NF {print $1}')

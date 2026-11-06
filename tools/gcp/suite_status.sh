@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The result of a CPU suite run (tools/gcp/gcp_run.sh, tools/colab/colab_suite.sh): prints the PASS / FAIL / SKIP counts
 # and lines of OUT's logs and exits with 0 only for a complete suite without FAIL or SKIP (wrf_suite.py's SUITE line and
 # exit 0), passing translator tests and comparator self-test, an empty setup.out and, for the full suite (CASES empty),

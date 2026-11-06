@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Global attributes of WRF's share/output_wrf.F for the input, boundary, history and restart streams,
 // in WRF's order.

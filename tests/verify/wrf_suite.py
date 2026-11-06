@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """WRF-identity regression suite: every CPPWRF configuration that has a WRF
 reference run, with the tolerance that the current code meets. Run after every change to the
 dycore, boundaries, diffusion or physics coupling.

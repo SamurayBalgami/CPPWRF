@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Builds the reference for tests/phys/suite: UNMODIFIED WRF v4.8.0, em_real, serial gfortran,
 # real*8 (configure -r8 = -fdefault-real-8) with configure.wrf's own flags (FCOPTIM -O2 -ftree-vectorize
 # -funroll-loops, as wrf.exe): the C++ follows the loops gfortran vectorises with glibc's libmvec

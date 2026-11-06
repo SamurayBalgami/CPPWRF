@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # P1 physics-suite differential test: ORIGINAL WRF v4.8.0 (real*8) vs the C++ PhysicsSuite.
 #
 #   WRF_DIR=<WRF built by build_wrf_r8.sh> tests/phys/suite/run_test.sh

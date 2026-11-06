@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Grell-Freitas-Li WRF driver: WRF 4.8.0 phys/GFL/WRF/module_cu_gfl_wrf.F90
 // cu_grell_freitas_li for one column (imid = 0, sub3d = 0, dicycle = 0,
 // nranflag = 0, do_capsuppress = 0, ccnclean = 250., ccn = 1500., tcrit = 258.).

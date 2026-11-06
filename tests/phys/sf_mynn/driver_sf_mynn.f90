@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 ! WRF side of the MYNN surface-layer differential test: WRF v4.8.0's compiled mynnsfc_init / mynnsfc_driver
 ! (main/libwrflib.a of a -r8 build) on ni columns (j = 1), with the arguments module_surface_driver.F passes.
 ! usage: driver_sf_mynn_fortran IN.bin OUT.bin    (record order: fields.txt)

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // The WRF I/O layer (src/wrf_io) under the names real.exe's code uses.
 #include "wrf_io/namelist.hpp"

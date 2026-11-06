@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // WSM6's radar reflectivity (do_radar_ref = 1) in C++: radar_init with mp_wsm6_init's m(D) of rain, snow and
 // graupel (hail) and Wsm6ReflKernel per column; reads the WSM6 test's input, writes what driver_radar.f90 writes.
 //   driver_radar_cpu INPUT OUTPUT

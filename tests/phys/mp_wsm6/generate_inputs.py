@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Input generator for WSM6 6-class microphysics differential testing.
 Generates N >= 2000 atmospheric columns covering:

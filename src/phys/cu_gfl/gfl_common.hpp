@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Grell-Freitas-Li (GFL) shared constants and helper routines.
 // Ported from WRF v4.8.0 phys/GFL/module_cu_gfl_deep.F90,
 // phys/GFL/module_cu_gfl_sh.F90, and phys/GFL/WRF/module_cu_gfl_common.F90.

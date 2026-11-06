@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Check: WRF's RRTMG_SWRAD inputs (debug WRF dump, big-endian whole memory arrays) ->
 // C++ rrtmg_sw_column per daytime column -> compare with WRF's RRTMG_SWRAD outputs.
 //   real_wrapper_check <rrtmg_sw_in.bin> <rrtmg_sw_out.bin> <rrtmg_sw_tables.bin> <CAMtr_volume_mixing_ratio>

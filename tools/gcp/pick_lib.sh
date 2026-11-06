@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Sourced by gcp_run.sh, gcp_matrix.sh and gcp_wrfref.sh (P, BK and REPO set): the VMs to try, cheapest first.
 # vm_candidates MACHINE NEED HOURS DATA ZONES prints "MACHINE ZONE DISK_TYPE" lines: tools/gcp/gcp_pick.py's ranking
 # of spot price plus data transfer (MACHINE empty: each Intel family's size with NEED vCPUs; ZONES empty: all its

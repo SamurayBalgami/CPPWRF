@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Self-test for verify.py: writes synthetic outputs in the I/O-contract format and
 checks that good data PASSes and broken data FAILs. Run: python3 tests/verify/selftest.py"""
 import json

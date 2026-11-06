@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
 // Master header for WRF v4.8.0 Diffusion and Damping kernels in CPPWRF.

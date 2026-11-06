@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "phys/lsm_noah/noah.hpp"
 #include "core/limits.hpp"
 

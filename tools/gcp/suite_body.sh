@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The full CPU FP64 suite on a machine that holds the source and the unpacked data tars: tools/gcp/remote_suite.sh
 # (GCP VM) and tools/colab/remote_cpu_suite.sh (Colab runtime, in a Debian 13 chroot) run it. Builds the CPU FP64
 # binary with the instruction set of the reference workstation (-march=skylake, as -march=native there), runs the

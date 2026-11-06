@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Options on the P4 / V1 physics: A05 / A05C / A05G (cu_rad_feedback, cldovrlp 0), B01 (adaptive time
 step), A08 (buckets, prec_acc_dt), A09 (output_diagnostics), C01 (aerosol-aware Thompson), RADW / RADT
 (do_radar_ref), KESSKF (Kessler + Kain-Fritsch), DUD (Dudhia SW), RRTM (RRTM LW).

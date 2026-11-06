@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Markdown tables of a tools/bench/colab_bench.sh run.
 
   bench_report.py RESULTS.txt [--rate CU_PER_HOUR] [--logs LOGS]

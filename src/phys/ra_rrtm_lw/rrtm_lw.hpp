@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // WRF 4.8.0 phys/module_ra_rrtm.F (RRTM longwave, ra_lw_physics = 1) for one column: RRTMLWRAD's column set-up,
 // RRTM (INIRAD / O3DATA, MM5ATM, SETCOEF, GASABS with TAUGB1..16, RTRN) and RRTMLWRAD's tendencies, statement by

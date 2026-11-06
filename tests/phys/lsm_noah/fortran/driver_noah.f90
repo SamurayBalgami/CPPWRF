@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 program driver_noah
   use module_sf_noahlsm
   use module_sf_noahdrv, only: soil_veg_gen_parm

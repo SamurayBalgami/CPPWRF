@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "phys/driver/tendency_coupling.hpp"
 
 #include "core/halo.hpp"

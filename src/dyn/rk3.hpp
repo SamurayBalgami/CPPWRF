@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Wicker-Skamarock RK3 with split-explicit acoustic substeps (TN 3.1-3.2; WRF solve_em).
 //   stage 1: dt/3, 1 acoustic step of dt/3

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #ifdef CPPWRF_HAVE_NETCDF
 #include "cases/wrf_history.hpp"
 #include "core/strings.hpp"

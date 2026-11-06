@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 ! driver_diffusion.f90
 ! Differential testing harness for WRF v4.8.0 Diffusion and Damping kernels.
 ! Calls original WRF subroutines linked from libwrflib.a.

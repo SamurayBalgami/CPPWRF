@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 compare.py
 Differential verification comparison between Fortran WRF v4.8.0 reference

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 find_package(netCDF CONFIG QUIET)
 if(NOT TARGET netCDF::netcdf)
   find_package(PkgConfig QUIET)

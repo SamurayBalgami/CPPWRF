@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 ! mp_physics = 28 (aerosol aware, aer_init_opt 0, wif_input_opt 1): the inputs of driver_thompson.f90 followed by
 ! nc, nwfa, nifa (3-D) and nwfa2d, nifa2d (2-D); thompson_init with the aerosol arguments (CCN_ACTIVATE.BIN in the
 ! working directory; nwfa > eps: no profile), mp_gt_driver as microphysics_driver calls it for THOMPSONAERO; the

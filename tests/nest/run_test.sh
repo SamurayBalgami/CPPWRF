@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # ==============================================================================
 # CPPWRF: differential (CPU) and CUDA test of the nest numerics: interpolation, boundary forcing, feedback and
 # initialisation kernels against WRF v4.8.0's own compiled routines (the -r8 build, WRF_DIR; called through

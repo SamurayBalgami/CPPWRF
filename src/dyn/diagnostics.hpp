@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Domain diagnostics (diag.csv row) and snapshot variables (host side, output steps only).
 #include <string>

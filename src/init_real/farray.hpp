@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Arrays indexed like WRF's Fortran arrays: arbitrary lower bounds, (i,k,j) order with i fastest.
 // real.exe is ported statement by statement, so the C++ keeps WRF's indices and loop bounds.

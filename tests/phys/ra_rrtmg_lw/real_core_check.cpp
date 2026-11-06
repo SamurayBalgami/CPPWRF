@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Check: WRF's rrtmg_lw core inputs (dumped by a debug WRF build at the first radiation
 // call, big-endian stream) -> C++ rrtmg_lw_core -> compare with WRF's core outputs.
 //   real_core_check <rrtmg_lw_core.bin> <rrtmg_lw_tables.bin>

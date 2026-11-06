@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The Colab VM side of tools/colab/colab_run.sh (runs detached under nohup; /content/job/done marks the end).
 
 Expects /content/src.tar.gz (git archive of the repository) and /content/data.tar (tools/colab/stage_data.py),

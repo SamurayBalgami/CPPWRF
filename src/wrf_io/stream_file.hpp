@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // A WRF-format output file of one I/O stream (wrfinput, wrfout, wrfrst): WRF's dimensions, variables,
 // variable attributes and global attributes for the stream's variable list, records written in order.

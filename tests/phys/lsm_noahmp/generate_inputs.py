@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Generate synthetic multi-regime column inputs for Noah-MP v5.1.2 differential testing.
 Covers all MODIS_IGBP_MODIS_NOAH landuse categories (vegetated, cropland, wetland,

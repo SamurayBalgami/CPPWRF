@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Grid geometry and staggering. Arakawa-C horizontally, Lorenz vertically (TN 3.1).
 // Indexing: mass point (i,j,k), 0 <= i < nx, 0 <= j < ny, 0 <= k < nz (k=0 lowest).

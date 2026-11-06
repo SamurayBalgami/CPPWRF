@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Column and level routines of WRF's real.exe (dyn_em/module_initialize_real.F,
 // dyn_em/nest_init_utils.F compute_vcoord_1d_coeffs), ported statement by statement in WRF's

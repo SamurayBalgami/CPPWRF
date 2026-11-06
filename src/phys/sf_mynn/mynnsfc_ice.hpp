@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // module_sf_mynnsfc_ice.F90 (WRF v4.8.0 phys/MYNN-SFC), subroutine mynnsfc_ice, for WRF's call from
 // mynnsfc_driver (flag_iter, spp_sfc = 0, psi_opt = 0, compute_flux, compute_diag, lsm /= ruclsm).

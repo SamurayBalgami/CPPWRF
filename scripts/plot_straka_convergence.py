@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Plot Straka convergence comparison and front position vs resolution."""
 
 import argparse

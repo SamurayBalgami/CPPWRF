@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 program driver_noahmp_fortran
   use NoahmpIOVarType, only: NoahmpIO_type
   use NoahmpWRFinitMod, only: NoahmpWRFinit

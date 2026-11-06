@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 ! Reference driver for the P1 physics-suite differential test (tests/phys/suite).
 !
 ! Links against an UNMODIFIED WRF v4.8.0 build configured with "-r8" (serial gfortran,

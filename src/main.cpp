@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // cppwrf: ./cppwrf <config.ini> [--set section.key=value ...]
 #include <cstdio>
 #include <exception>

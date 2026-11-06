@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Kain-Fritsch lookup tables: init_kf_tables (kf_tables.cpp) against WRF's kf_lutab, whose tables
 // dump_tables_f.f90 writes from module_cu_kfeta.o (tables_fortran.bin: rdpr, rdthk, plutop, the0k, alu, ttab,
 // qstab). Every value must have the same bits (tolerance 0; -0 differs from +0).

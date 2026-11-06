@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # New Tiedtke column replay: CPPWRF's cu_ntiedtke_run inputs/outputs of P7 (steps 2 and 4) through WRF
 # v4.8.0's cu_ntiedtke_run (the -r8 -fdefault-double-8 build that made the P7 references, WRF_R8D8_DIR;
 # tests/phys/wrf_fortran.sh); every output of every column identical (same bits).

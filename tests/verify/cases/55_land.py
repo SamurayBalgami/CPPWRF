@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Land surface: SLAB1 / SLAB4 (5-layer thermal diffusion), NMP1 (Noah-MP).
 
 CASES: see tests/verify/cases/__init__.py."""

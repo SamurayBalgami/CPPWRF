@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Check: WRF's RRTMG_LWRAD inputs (debug WRF dump, first radiation call, big-endian whole
 // memory arrays) -> C++ rrtmg_lw_column per column -> compare with WRF's RRTMG_LWRAD outputs.
 //   real_wrapper_check <rrtmg_lw_in.bin> <rrtmg_lw_out.bin> <rrtmg_lw_tables.bin> <CAMtr_volume_mixing_ratio>

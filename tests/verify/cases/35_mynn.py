@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """MYNN-EDMF PBL and the MYNN surface layer: MYNN, MYNNSF1 / MYNNSF2, MYNNX1 / MYNNX2.
 
 CASES: see tests/verify/cases/__init__.py."""

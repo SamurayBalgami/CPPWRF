@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Work arrays of column kernels (column_for: one thread per column) in device memory instead of the thread's stack.
 //

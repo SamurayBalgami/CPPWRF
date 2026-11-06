@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // fill_halos (several fields, one launch per direction) must give exactly the same halos as
 // fill_halo field by field: all staggers, Field2 and Field3 (also mixed in one batch, with explicit parities),
 // periodic, symmetric and specified, 2D and 3D.

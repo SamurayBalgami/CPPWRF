@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // cppwrf_real: WRF real.exe in C++. Reads namelist.input and met_em.d01.<date>.nc, writes wrfinput_d01
 // (and wrfbdy_d01 for more than one time).
 //   cppwrf_real [--namelist namelist.input] [--met-dir dir] [--out-dir dir] [--precision double|float]

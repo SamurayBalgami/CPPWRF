@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Dycore consistency checks that need no external reference.
 
   dycore_checks.py <cppwrf_binary> <work_dir>

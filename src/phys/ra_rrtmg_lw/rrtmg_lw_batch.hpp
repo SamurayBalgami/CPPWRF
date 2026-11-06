@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // RRTMG_LWRAD for all columns of a domain on the device (CPU builds: OpenMP), the stages of
 // rrtmg_lw_stages.hpp run as kernels over (column), (column, layer), (column, band) and

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Coupling of the column-physics tendencies to the dynamics (statement ports, WRF v4.8.0):
 //   calculate_phy_tend      dyn_em/module_em.F

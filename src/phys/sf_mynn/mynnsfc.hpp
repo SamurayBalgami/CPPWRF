@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // MYNN surface layer driver: WRF v4.8.0 phys/MYNN-SFC/WRF/module_sf_mynnsfc_driver.F90 (mynnsfc_driver) as
 // called by module_surface_driver.F (sf_sfclay_physics = 5, fractional_seaice = 0): per point the land

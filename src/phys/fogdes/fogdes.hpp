@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Fog (cloud) water deposition, grav_settling = 1 / 2: WRF 4.8.0 phys/module_sf_fogdes.F sf_fogdes (deposition
 // velocity VDFG and the deposit DFGDP of one surface point, called by the surface driver after the surface layer)

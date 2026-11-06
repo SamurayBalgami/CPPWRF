@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // WRF's time intervals (external/esmf_time_f90: ESMF_TimeInterval.F90, ESMF_BaseTime.F90, Meat.F90): seconds as
 // S + Sn/Sd in 8-byte integers, normalised after every operation. The adaptive time step (adapt_timestep_em.F)

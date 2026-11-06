@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """restart_<tag>_fp64: 3 steps straight vs restarted after step 1 (wrf_suite.py's restart_p1); restart_<tag>_fp64_cuda:
 the same in CUDA FP64 (the GPU run is deterministic: restarted = straight bit for bit). (tag, config, input run
 directory under ${CPPWRF_WRF_RUNS})."""

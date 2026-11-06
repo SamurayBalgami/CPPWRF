@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // cppwrf::libm: the C math library as the kernels call it (host and device), with std::'s overloads and promotions.
 // CPU and CUDA FP32 builds: the std:: functions themselves (using-declarations: glibc's libm on the host, CUDA's math

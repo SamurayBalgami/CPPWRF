@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Check: WRF's rrtmg_sw core inputs (debug WRF dump, daytime columns) -> C++ rrtmg_sw_core -> compare
 //   real_core_check <rrtmg_sw_core.bin> <rrtmg_sw_tables.bin>
 #include <algorithm>

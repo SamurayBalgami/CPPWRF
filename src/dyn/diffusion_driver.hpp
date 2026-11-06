@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // WRF diffusion in the time step (diff_opt = 1 or 2, km_opt = 1..4, damp_opt = 1 or 2, diff_6th_opt),
 // built from the kernels in src/dyn/diffusion/ (differential-tested against the WRF routines).

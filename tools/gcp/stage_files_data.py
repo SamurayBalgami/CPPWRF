@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Pack the references of tests/verify/run_wrf_files_test.sh and tests/verify/ideal_files_test.py whole (every frame
 and variable) for the VM suite (tools/gcp/remote_suite.sh runs both tests after wrf_suite.py).
 

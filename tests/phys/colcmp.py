@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tolerance-0 comparison of the differential tests' outputs (WRF's Fortran vs the C++), as tests/verify/exact.py:
 NaN equals only NaN, -0 differs from +0. Used by the compare scripts of tests/phys, tests/dyn when --tol is 0."""
 import os

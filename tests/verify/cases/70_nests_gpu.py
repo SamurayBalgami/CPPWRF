@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Nests on the GPU: N3 and N2 in CUDA FP64, N2 in FP32.
 
 CASES: see tests/verify/cases/__init__.py."""

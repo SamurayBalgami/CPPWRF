@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Debug: CPPWRF_VM_DUMP=dir writes dycore checkpoints of the first time step for comparison with a
 // WRF build that dumps the same arrays (fields in logical order: i fastest, then k, then j; each field

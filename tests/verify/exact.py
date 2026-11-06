@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Tolerance-0 comparison of model output, shared by the harness (wrf_suite.py, compare_real.py,
 tests/init_real/compare_real.py, tools/gcp/matrix_variant.py).
 

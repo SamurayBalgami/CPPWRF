@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Plot x-z cross sections of th_pert, w, and u from CPPWRF model snapshots."""
 
 import argparse

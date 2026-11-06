@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """WRF's default namelist options (physics_suite CONUS): T6, G2, F1 / F2, D0 / D0V, SU1 / SU2.
 
 CASES: see tests/verify/cases/__init__.py."""

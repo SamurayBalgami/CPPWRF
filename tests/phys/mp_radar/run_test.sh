@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # WSM6's radar reflectivity (do_radar_ref = 1) column test: WRF v4.8.0's mp_wsm6_init / radar_init and
 # refl10cm_wsm6 (mp_wsm6.o, mp_radar.o of the -r8 -fdefault-double-8 build, WRF_R8D8_DIR: in the -r8 build their
 # DOUBLE PRECISION is REAL*16) against the C++ radar_init + Wsm6ReflKernel (driver_radar_cpu of the CMake build),

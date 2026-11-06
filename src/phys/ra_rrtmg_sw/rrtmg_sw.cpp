@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "phys/ra_rrtmg_sw/rrtmg_sw.hpp"
 #include "phys/ra_rrtmg_lw/rrtmg_lw.hpp"
 

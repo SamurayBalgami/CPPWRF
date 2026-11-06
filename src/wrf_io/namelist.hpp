@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Reader for WRF's namelist.input (Fortran namelist syntax: &group, key = v1, v2, ..., /).
 #include <cstdlib>

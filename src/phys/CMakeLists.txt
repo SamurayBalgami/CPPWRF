@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 add_library(cppwrf_phys STATIC
   mp_kessler/kessler.cpp
   mp_wsm6/wsm6.cpp

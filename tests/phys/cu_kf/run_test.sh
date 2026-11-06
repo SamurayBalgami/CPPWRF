@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Kain-Fritsch (cu_physics = 1) tests: WRF v4.8.0's kf_lutab tables and KF_eta_CPS (module_cu_kfeta.o of the -r8
 # build, WRF_DIR) against the C++ tables (test_tables_kf) and the C++ KF (driver_kf_cpu of the CMake build),
 # tolerance 0.

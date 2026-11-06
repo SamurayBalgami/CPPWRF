@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The cases of tests/verify/wrf_suite.py, one file per group: NN_<group>.py (loaded in the order of their names, so
 the case order is fixed; a new group takes a free number) defines CASES, a list of
   (name, binary key, config, extra --set, WRF wrfout, time [s], {var: max rel L2 (whole domain)})

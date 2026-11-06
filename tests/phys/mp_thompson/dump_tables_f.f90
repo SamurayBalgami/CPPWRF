@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 PROGRAM dump_tables_f
   USE module_mp_thompson
   IMPLICIT NONE

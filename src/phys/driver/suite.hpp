@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // P1 physics suite: the column physics of WRF v4.8.0 first_rk_step_part1/part2 and
 // phy_prep_part2 for

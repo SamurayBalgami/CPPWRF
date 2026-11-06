@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Copy the suite's data tars from the bucket to Google Drive (folder cppwrf-data of the rclone remote
 # cppwrf-drive), on a Colab CPU runtime: the data never pass through the workstation, and tools/colab/colab_suite.sh
 # then reads them from Drive without GCS egress fees on every run.
@@ -23,7 +24,7 @@ BK=$CPPWRF_GCP_BUCKET PAR=3 OUT= TARS=()
 while [ $# -gt 0 ]; do
   case $1 in
     --par) PAR=$2; shift 2 ;; --out) OUT=$2; shift 2 ;;
-    -*) sed -n '2,18p' "$0"; exit 2 ;; *) TARS+=("$1"); shift ;;
+    -*) sed -n '3,19p' "$0"; exit 2 ;; *) TARS+=("$1"); shift ;;
   esac
 done
 [ ${#TARS[@]} -gt 0 ] || mapfile -t TARS < <(grep -v '^#' "$REPO/tests/verify/vm_data.txt" | grep .)

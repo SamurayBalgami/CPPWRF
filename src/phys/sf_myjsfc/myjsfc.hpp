@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Port of WRF 4.8.0 phys/module_sf_myjsfc.F (myjsfc, sfcdif)
 // Mellor-Yamada-Janjic (Eta) surface layer scheme (sf_sfclay_physics = 2).

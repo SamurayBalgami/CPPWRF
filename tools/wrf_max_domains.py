@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """WRF 4.8.0 Registry namelist options with one value per domain (rconfig ... max_domains) and their
 defaults (Registry.EM and the files it includes; tools/wrf_schema/gen_wrf_schema.py). WRF gives a domain
 without an entry in the namelist the default, not domain 1's value."""

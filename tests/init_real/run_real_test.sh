@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # cppwrf_real against WRF real.exe: every reference case in ${CPPWRF_WRF_RUNS}/real
 # (tools/init_real/make_real_refs.sh) must give identical wrfinput_d0N, wrfbdy_d01 and (sst_update = 1)
 # wrflowinp_d0N files.

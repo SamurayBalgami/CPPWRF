@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The job of tools/colab/colab_wrfref.sh in the Debian 13 chroot (tools/colab/remote_chroot_job.sh): the work of
 # tools/gcp/remote_wrfref.sh without the bucket. Makes every reference of refs.txt (tools/gcp/wrf_ref_run.py: run_NAME
 # and run_NAME/steps, in parallel) and its restart references (tests/verify/make_restart_refs.sh,

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "wrf_io/stream_file.hpp"
 
 #include "wrf_io/nc_deflate.hpp"

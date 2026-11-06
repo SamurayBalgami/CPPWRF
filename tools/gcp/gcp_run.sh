@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Run wrf_suite.py's CPU FP64 cases on a Google Compute Engine spot VM and fetch the results.
 #
 #   CPPWRF_GCP_PROJECT=... CPPWRF_GCP_BUCKET=... tools/gcp/gcp_run.sh [--machine TYPE] [--zones Z1,Z2,...]
@@ -33,7 +34,7 @@ while [ $# -gt 0 ]; do
   case $1 in
     --machine) MACHINE=$2; shift 2 ;; --zones) ZONES=$2; shift 2 ;; --jobs) JOBS=$2; shift 2 ;;
     --threads) THREADS=$2 THREADS_SET=1; shift 2 ;; --cases) CASES=$2; shift 2 ;; --data) DATA=$2; shift 2 ;;
-    --out) OUT=$2; shift 2 ;; --slow) SLOW=1 MAXH=16; shift ;; *) sed -n '2,19p' "$0"; exit 2 ;;
+    --out) OUT=$2; shift 2 ;; --slow) SLOW=1 MAXH=16; shift ;; *) sed -n '3,20p' "$0"; exit 2 ;;
   esac
 done
 STAMP=$(date +%Y%m%d-%H%M%S)-$(printf %04x $RANDOM) VM=cppwrf-suite-$STAMP RES=results/$STAMP

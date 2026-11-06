@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compare a cppwrf_real output file with WRF real.exe's: every variable's values (tolerance 0, as
 tests/verify/exact.py: NaN equals only NaN, -0 differs from +0, values as stored),
 the variable list and order, dimensions, types, variable attributes and global attributes.

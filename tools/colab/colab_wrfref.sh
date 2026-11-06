@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # WRF reference runs for the suite on a Google Colab runtime with an Intel CPU (tools/gcp/gcp_wrfref.sh's work, with
 # prepaid compute units), in the Debian 13 chroot of tools/colab/remote_chroot_job.sh (the GCP VMs' gcc, gfortran,
 # glibc and NetCDF, which the WRF executables of the data tars were built with).
@@ -34,7 +35,7 @@ while [ $# -gt 0 ]; do
     --files) FILES=$2; shift 2 ;; --cases) CASES=$2; shift 2 ;; --runs) RUNS=$2; shift 2 ;;
     --check-only) FETCH=0; shift ;; --stage) STAGE=$2; FETCH=0; shift 2 ;; --hours) HOURS=$2; shift 2 ;;
     --rev) REV=$2; shift 2 ;; --session) S=$2; shift 2 ;; --keep) KEEP=1; shift ;;
-    *) sed -n '2,23p' "$0"; exit 2 ;;
+    *) sed -n '3,24p' "$0"; exit 2 ;;
   esac
 done
 case $GPU in L4|A100|T4) ;; *) echo "--gpu $GPU: only the Intel runtimes L4, A100, T4"; exit 2 ;; esac

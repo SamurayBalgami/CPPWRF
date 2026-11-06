@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The CPU side of tools/bench/colab_bench.sh in the Debian 13 chroot of tools/colab/remote_chroot_job.sh (gcc /
 # gfortran 14, glibc 2.41, NetCDF of the GCP VMs that made the suite's references).
 #

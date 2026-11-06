@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "phys/lsm_noah/noah_tables.hpp"
 #include "core/strings.hpp"
 

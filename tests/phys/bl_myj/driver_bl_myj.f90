@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 program driver_bl_myj_fortran
   use module_bl_myjpbl, only: myjpbl
   implicit none

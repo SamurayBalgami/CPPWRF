@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "cases/wrf_ideal.hpp"
 #include "cases/model.hpp"
 

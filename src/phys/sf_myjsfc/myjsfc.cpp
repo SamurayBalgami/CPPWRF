@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "phys/sf_myjsfc/myjsfc.hpp"
 #include <cmath>
 #include <vector>

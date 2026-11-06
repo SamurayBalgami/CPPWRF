@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // WRF phys/module_ra_clWRF_support.F read_CAMgases (ghg_input = 1): yearly trace-gas table
 // CAMtr_volume_mixing_ratio (read once), interpolated in time (year, julian day) at every call.

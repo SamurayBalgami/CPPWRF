@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // MYNN surface layer (WRF v4.8.0 phys/MYNN-SFC, sf_sfclay_physics = 5): constants, the psi tables of
 // mynnsfc_driver (psi_init) and the helpers shared by module_sf_mynnsfc_land / _water / _ice (their copies

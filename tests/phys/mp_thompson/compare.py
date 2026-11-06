@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Differential comparison script for Thompson microphysics (mp_physics = 8).
 Compares output_fortran.bin against output_cpp.bin across all 19 variables.

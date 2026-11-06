@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 ! WRF's Kain-Fritsch lookup tables: kf_lutab of module_cu_kfeta.o with the saturation constants of
 ! module_model_constants (as kfinit gets them); dump_tables_c.c writes the module's private tables.
 PROGRAM dump_tables_f

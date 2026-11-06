@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // LaunchBatch and parallel_fused (several independent kernels in one launch) must give exactly what parallel_for of
 // each kernel gives: parts with different ranges (staggers, k offsets, one-row and 2-D ranges), a batch that fills
 // up and launches by itself, empty parts, and kernels of two types in one launch (the CUDA FP32 build batches only

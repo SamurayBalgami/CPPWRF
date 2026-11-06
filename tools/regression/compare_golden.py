@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compares a CPPWRF run output against a stored golden output.
 Checks diag.csv (excluding timing columns) and the final snapshot.
 Tolerances:

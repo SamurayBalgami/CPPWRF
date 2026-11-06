@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The workstation side of a job in the Debian 13 chroot of a Colab runtime with an Intel CPU
 # (tools/colab/remote_chroot_job.sh), sourced by tools/colab/colab_suite.sh and colab_wrfref.sh. They set REPO, BK
 # (the bucket), OUT (local results; OUT/src.tar.gz is the source to send), TAG (log prefix), S (session; empty: a new

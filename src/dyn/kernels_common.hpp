@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Flux operators and the mass-point diffusion kernel shared by the large step (theta) and
 // scalar transport (WRF module_advect_em.F statement functions, module_diffusion_em.F).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Minimal NetCDF writer for WRF-format files (one Time record): dimensions, global attributes and
 // variables with WRF's per-variable attributes.

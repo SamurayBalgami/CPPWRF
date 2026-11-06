@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # WSM6 (mp_physics = 6) column test: WRF v4.8.0's wsm6 with the effective radii for RRTMG (module_mp_wsm6.o,
 # mp_wsm6.o, mp_wsm6_effectRad.o of the -r8 build, WRF_DIR) against the C++ Wsm6Kernel + Wsm6EffRadKernel
 # (driver_wsm6_cpu of the CMake build), tolerance 0.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # WRF I/O layer shared by cppwrf_real and the model: namelist.input reader, the WRF I/O schema
 # (tools/wrf_schema), the NetCDF writer with WRF's conventions and output_wrf's global attributes.
 add_library(cppwrf_wrfio STATIC namelist.cpp nc_out.cpp nc_deflate.cpp wrf_schema.cpp global_atts.cpp stream_file.cpp)

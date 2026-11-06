@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Kessler (mp_physics = 1) column test: WRF v4.8.0's kessler (module_mp_kessler.o of the -r8 build, WRF_DIR)
 # against the C++ KesslerKernel (driver_kessler_cpu of the CMake build), tolerance 0.
 #   run_test.sh BUILD_DIR      (BUILD_DIR: the directory of driver_kessler_cpu; the work files go there)

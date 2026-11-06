@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // module_sf_mynnsfc_water.F90 (WRF v4.8.0 phys/MYNN-SFC), subroutine mynnsfc_water, for WRF's call from
 // mynnsfc_driver: flag_iter = .true., spp_sfc = 0, psi_opt = 0, sfc_z0_type = 0, compute_flux = compute_diag =

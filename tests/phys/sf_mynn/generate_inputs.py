@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Random surface-layer columns for the MYNN surface-layer differential test (record order: fields.txt).
 
   generate_inputs.py --cols N --itimestep T --nsteps S [--isfflx 1] [--seed 1] OUT.bin

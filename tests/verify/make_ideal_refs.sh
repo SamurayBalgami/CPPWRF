@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # WRF v4.8.0 real*8 references of the ideal cases: the single-precision reference runs in
 # ${CPPWRF_WRF_REF}/run_<name> (namelist.input, input_sounding, tables) rerun with real*8 ideal.exe and
 # wrf.exe (a WRF -r8 build without nesting, one per case: ${WRF_IDEAL_BIN}/<em_case>/{ideal,wrf}.exe)

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """W1: active w_damping (dt 450 s).
 
 CASES: see tests/verify/cases/__init__.py."""

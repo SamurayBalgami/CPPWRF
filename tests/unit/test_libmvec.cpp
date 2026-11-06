@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The vector log / log10 of src/core/libmvec_x86.hpp (glibc 2.41 libmvec's SSE4 variants with Intel's rcpps):
 //  (a) on any x86-64 CPU their results over a fixed input set (every rcpps input class t at 13 exponents with the
 //      float-rounding boundaries, edge values, 2^16 random bit patterns, random normals, random values in [0.5, 2))

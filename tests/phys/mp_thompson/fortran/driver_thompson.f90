@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 PROGRAM driver_thompson
   USE module_mp_thompson, ONLY: thompson_init, mp_gt_driver
   IMPLICIT NONE

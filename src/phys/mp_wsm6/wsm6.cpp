@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "phys/mp_wsm6/wsm6.hpp"
 #include "core/limits.hpp"
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // 5-layer thermal diffusion land surface, sf_surface_physics = 1: WRF 4.8.0 phys/module_sf_slab.F SLAB1D for one
 // surface point (SLAB loops over the rows; a row without land skips to label 90, which gives each point the same

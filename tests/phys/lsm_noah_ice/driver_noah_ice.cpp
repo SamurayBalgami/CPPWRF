@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Column driver for noah_ice::glacial::sflx_glacial and noah_ice::seaice::sflx_seaice; reads the
 // input of generate_inputs.py and writes the same output layout as driver_noah_ice.f90.
 #include <cstdint>

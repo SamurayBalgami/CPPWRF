@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # CPPWRF wrfout_d0N and wrfrst_d0N files against WRF v4.8.0's (CPU FP64 build, WRF real*8 runs):
 # every variable, value (tolerance 0), dimension, attribute and global attribute must be identical.
 #   usage: run_wrf_files_test.sh [BUILD_DIR] [case ...]

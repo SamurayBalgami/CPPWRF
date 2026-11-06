@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The runs of tools/bench/colab_bench.sh in the Debian 13 chroot of the Colab runtime (tools/bench/bench_body.sh).
 
   bench_run.py make-large BASE MET_DIR       the large domain's WRF run directory /opt/wrfbench/run_L: BASE's

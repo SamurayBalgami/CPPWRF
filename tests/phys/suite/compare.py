@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compare the C++ P1 suite (suite_cpp.bin) with WRF v4.8.0 (suite_ref.bin).
 
 Every record the C++ driver writes is compared with the WRF record of the same name

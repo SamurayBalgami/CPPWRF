@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // C++ side of the P1 physics-suite differential test (tests/phys/suite).
 //
 // Reads suite_ref.bin (written by fortran/suite_ref.F90 from the ORIGINAL WRF v4.8.0 code):

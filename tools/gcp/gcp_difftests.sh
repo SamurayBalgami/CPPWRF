@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The differential tests (ctest -L diff) and the other ctest tests on a Google Compute Engine spot VM, alone
 # (the full suite of gcp_run.sh runs them too), optionally with deliberate faults that the tests must catch.
 #
@@ -24,7 +25,7 @@ while [ $# -gt 0 ]; do
   case $1 in
     --machine) MACHINE=$2; shift 2 ;; --zones) ZONES=$2; shift 2 ;; --data) DATA=$2; shift 2 ;;
     --out) OUT=$2; shift 2 ;; --faults) FAULTS=$(cd "$2" && pwd); shift 2 ;; --vcpus) VCPUS=$2; shift 2 ;; --tests) TESTS=$2; shift 2 ;;
-    *) sed -n "2,15p" "$0"; exit 2 ;;
+    *) sed -n "3,16p" "$0"; exit 2 ;;
   esac
 done
 STAMP=$(date +%Y%m%d-%H%M%S)-$(printf %04x $RANDOM) VM=cppwrf-diff-$STAMP RES=results/diff-$STAMP

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # compare WRF debug dycore checkpoints (vm_*.bin, Fortran memory arrays) with CPPWRF's (logical arrays)
 import sys, numpy as np
 wdir, cdir = sys.argv[1], sys.argv[2]

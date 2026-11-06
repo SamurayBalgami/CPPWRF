@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Column differential test for MYJ PBL (bl_pbl_physics=2) and Eta Surface Layer (sf_sfclay_physics=2)
 # Calls WRF v4.8.0's own compiled objects (module_bl_myjpbl.o, module_sf_myjsfc.o of the -r8 build that made the
 # P9 references, WRF_DIR; tests/phys/wrf_fortran.sh).

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """WRF 4.8.0 namelist options: (group, option) of every NAMELIST statement wrf.exe reads (the Registry rconfig
 options and the generated stream options such as auxinput4_inname; inc/namelist_statements.inc of the EM
 build). An option outside this set stops wrf.exe ("ERROR reading namelist")."""

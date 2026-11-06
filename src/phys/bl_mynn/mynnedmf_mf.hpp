@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // MYNN-EDMF dynamic multi-plume mass flux (WRF v4.8.0 module_bl_mynnedmf.F90 DMP_mf, condensation_edmf):
 // env_subs = .false. (no subsidence/detrainment tendencies), bl_mynn_edmf_mom 0 / 1, bl_mynn_edmf_tke 0 / 1;

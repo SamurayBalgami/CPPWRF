@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Nesting: N1 (one-way), N2 / N2S1 / N2S2 (two-way, smoothers), N3 (two-way with the P4 physics).
 
 CASES: see tests/verify/cases/__init__.py."""

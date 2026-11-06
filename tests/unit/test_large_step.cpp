@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Large-step tests: (1) uniform flow U advecting a smooth theta' -> t_tend converges to
 // -mu U d(theta')/dx at ~5th order; (2) balanced initial state -> rw_tend ~ 0, ww == 0;
 // (3) tendencies are bitwise reproducible across repeated evaluations (OpenMP determinism).

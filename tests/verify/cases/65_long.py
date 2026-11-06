@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Long runs (24 h and 72 h, slow: wrf_suite.py --slow).
 
 CASES: see tests/verify/cases/__init__.py."""

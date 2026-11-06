@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # CPPWRF golden reference updater
 # Usage: tools/regression/update_golden.sh [--quick|--full] [--gpu]
 # Refreshes stored golden outputs under tools/regression/golden/ only on explicit request.

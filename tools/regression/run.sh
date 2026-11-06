@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # CPPWRF regression runner
 # Usage: tools/regression/run.sh [--quick|--full] [--gpu]
 

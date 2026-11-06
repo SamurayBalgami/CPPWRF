@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """V1-V3: other regions and map projections.
 
 CASES: see tests/verify/cases/__init__.py."""

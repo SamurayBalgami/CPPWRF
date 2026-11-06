@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // MYNN-EDMF turbulence closure (WRF v4.8.0 phys/MYNN-EDMF/module_bl_mynnedmf.F90): mym_level2 (bl_mynn_ess
 // 0 and 1), boulac_length, mym_length (bl_mynn_mixlength 0, 1, 2), mym_initialize, mym_turbulence and

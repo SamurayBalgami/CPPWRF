@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Fortran (gfortran) numeric input of the radiation tables WRF reads with formatted or list-directed READs:
 // a value the Fortran read rejects is reported (false / -1) so the caller fails as WRF does.

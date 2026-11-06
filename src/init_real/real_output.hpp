@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // wrfinput_d01 / wrfbdy_d01 writers (WRF names, dimensions and per-variable attributes).
 #include <algorithm>

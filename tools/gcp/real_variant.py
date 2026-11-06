@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """real_variant.py RUNS WORK REALEXE CPPWRF_REAL NAME BASE SECTION.key=value ...
 
 One WRF real.exe vs cppwrf_real comparison of a namelist variant (the real-data counterpart of matrix_variant.py):

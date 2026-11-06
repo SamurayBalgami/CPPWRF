@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Core dynamical-core containers. Member names follow the WRF Registry so that the TN and
 // the WRF source map 1:1 onto this code.

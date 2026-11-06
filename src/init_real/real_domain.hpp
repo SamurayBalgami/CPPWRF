@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // WRF real.exe for one domain: the met_em input (input_auxinput1 / optional_input), init_domain_rk
 // (dyn_em/module_initialize_real.F) and the boundary arrays of assemble_output (main/real_em.F,

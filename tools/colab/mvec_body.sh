@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The proof of src/core/libmvec_x86.hpp (glibc libmvec's vector log / log10 with Intel's rcpps) on one machine, run by
 # tools/colab/colab_mvec.sh in the Debian 13 chroot of a Colab runtime (glibc 2.41 as the GCP VMs and the references):
 #

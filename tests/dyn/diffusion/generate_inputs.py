@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 generate_inputs.py
 Generates physical, realistic 3D input fields for differential testing of

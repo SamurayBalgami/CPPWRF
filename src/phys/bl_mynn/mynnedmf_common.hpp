@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // MYNN-EDMF PBL (WRF v4.8.0 phys/MYNN-EDMF, bl_pbl_physics = 5): module_bl_mynnedmf_common's constants and
 // the helper functions of module_bl_mynnedmf (qsat_blend, xl_blend, tridiag2, get_pblh, scale_aware).

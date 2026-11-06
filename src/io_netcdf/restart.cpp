@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "io_netcdf/restart.hpp"
 
 #include <cstdint>

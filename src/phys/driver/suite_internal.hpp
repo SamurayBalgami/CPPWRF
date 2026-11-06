@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Shared by the PhysicsSuite translation units (suite.cpp: construction, part1 / part2 and the carried
 // state; surface_driver.cpp, pbl_driver.cpp, cumulus_driver.cpp: WRF's module_surface_driver,

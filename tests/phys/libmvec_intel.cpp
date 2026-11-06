@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // glibc libmvec's 2-lane vector log and log10 (_ZGVbN2v_log, _ZGVbN2v_log10) as they are on an Intel CPU, for the
 // Fortran drivers of the differential tests (tests/phys/wrf_fortran.sh links this object before -lmvec, so the
 // vectorised loops of WRF's objects call these instead of libmvec's). glibc's two functions take an approximate

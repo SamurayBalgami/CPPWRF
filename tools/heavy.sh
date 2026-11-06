@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Job slots for heavy work on a shared workstation (sized for 12 cores, 15 GB RAM, 1 GPU).
 #   tools/heavy.sh <command...>              run a heavy job (build, long run, WRF, tests) in one
 #                                            of 4 slots; waits while all slots are busy

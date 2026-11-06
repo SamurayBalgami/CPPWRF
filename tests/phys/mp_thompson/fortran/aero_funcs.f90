@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 ! The aerosol functions of WRF's module_mp_thompson (activ_ncloud, Eff_aero, iceDeMott, iceKoop) on the samples of
 ! aero_funcs.py: thompson_init (its table files in the working directory) for av_g / bv_g, then table_ccnAct
 ! (CCN_ACTIVATE.BIN). Built with WRF's BYTESWAPIO; the sample files are opened CONVERT='native'.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // WRF I/O schema (tools/wrf_schema/gen_wrf_schema.py): which state variables WRF writes to a stream for
 // a given namelist, with WRF's names, dimensions and attributes.

@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 program driver_sfclayrev_fortran
   use module_sf_sfclayrev, only: sfclayrev
   use sf_sfclayrev, only: sf_sfclayrev_init

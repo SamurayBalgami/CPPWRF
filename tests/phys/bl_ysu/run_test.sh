@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # YSU PBL (bl_pbl_physics = 1) column test: WRF v4.8.0's ysu (module_bl_ysu.o, bl_ysu.o of the -r8 build,
 # WRF_DIR) against the C++ YSU (driver_ysu_cpu of the CMake build), tolerance 0.
 #   run_test.sh BUILD_DIR      (BUILD_DIR: the directory of driver_ysu_cpu; the work files go there)

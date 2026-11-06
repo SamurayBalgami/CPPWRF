@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 ! tests/nest/fortran_nest_bridge.f90
 ! Fortran-to-C bridge for WRF 4.8.0 nesting routines
 MODULE wrf_nest_bridge

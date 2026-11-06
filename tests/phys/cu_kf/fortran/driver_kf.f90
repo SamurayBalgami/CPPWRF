@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 PROGRAM driver_kf
   USE module_cu_kfeta, ONLY: kf_eta_cps, kf_lutab
   IMPLICIT NONE

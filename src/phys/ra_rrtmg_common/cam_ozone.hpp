@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // WRF CAM ozone climatology for o3input = 2 (module_ra_cam_support.F oznini, module_radiation_driver.F
 // ozn_time_int, ozn_p_int): monthly zonal-mean ozone (ozone.formatted, 59 pressure levels x 64

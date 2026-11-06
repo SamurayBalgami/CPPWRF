@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Sourced by the differential tests (tests/phys, tests/dyn, tests/nest). The Fortran side of every test is WRF
 # v4.8.0's own compiled code, linked from the WRF build tree that made the model's references:
 #   WRF_DIR       configure -r8 (-fdefault-real-8): wrf_r8.exe (Kessler, WSM6, KF, sfclayrev, YSU, MYJ, Noah,

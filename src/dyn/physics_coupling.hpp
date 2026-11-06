@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Coupling of column physics to the dycore, as WRF solve_em does after the RK3 loop:
 //   moist_physics_prep_em  -> microphysics_driver -> moist_physics_finish_em -> calc_p_rho_phi

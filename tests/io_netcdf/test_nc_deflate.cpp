@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // NetCDF-4 output with the chunks compressed on the host threads (src/wrf_io/nc_deflate.hpp) must have the bytes of
 // HDF5's own deflate filter. Writes a WRF-like file through NcOut (float, double and int variables in the chunked,
 // shuffled, deflate-2 layout of external/io_netcdf, odd dimensions for edge chunks, two records), reads it back and

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The proof of src/core/libmvec_x86.hpp (glibc libmvec's vector log / log10 with Intel's rcpps) on a Google Colab
 # runtime: tools/colab/mvec_body.sh in its Debian 13 chroot (glibc 2.41 as the GCP VMs). No data tars.
 #
@@ -16,7 +17,7 @@ while [ $# -gt 0 ]; do
   case $1 in
     --gpu) GPU=$2; shift 2 ;; --n) N=$2; shift 2 ;; --out) OUT=$2; shift 2 ;; --rev) REV=$2; shift 2 ;;
     --session) S=$2; shift 2 ;; --keep) KEEP=1; shift ;;
-    *) sed -n '2,12p' "$0"; exit 2 ;;
+    *) sed -n '3,13p' "$0"; exit 2 ;;
   esac
 done
 OUT=${OUT:-${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}/colab/mvec_$(date +%Y%m%d_%H%M%S)}

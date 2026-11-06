@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Reference wrfinput/wrfbdy files from WRF's real.exe for tests/init_real/run_real_test.sh.
 # For every ${CPPWRF_WRF_RUNS}/run_<case> with a namelist.input and met_em files, runs real.exe of the
 # -r8 build (cases named *_r8*) or the default single-precision build and keeps the result in

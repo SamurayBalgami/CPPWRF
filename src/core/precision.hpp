@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Working precision. CPPWRF_DOUBLE is set by CMake option CPPWRF_DOUBLE.
 namespace cppwrf {

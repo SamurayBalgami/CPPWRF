@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 program driver_sf_myjsfc_fortran
   use module_sf_myjsfc, only: myjsfc, myjsfcinit
   implicit none

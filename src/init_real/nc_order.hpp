@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Fortran-ordered real.exe arrays (farray.hpp) to NetCDF order.
 #include <vector>

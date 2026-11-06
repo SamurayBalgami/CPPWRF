@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 add_library(cppwrf_phys_mp_thompson STATIC
   thompson.cpp
   thompson_tables.cpp

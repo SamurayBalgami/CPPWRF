@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Real-data dynamics: R1 (dynamics only), R1D6 (diff_opt 1 / km_opt 4, damp_opt 1, 6th-order
 diffusion), T1 (diff_opt 2 / km_opt 2, TKE), the FP32 runs R0, R2, R3.
 

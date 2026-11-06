@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 ! Runs WRF's cu_grell_freitas_li (module_cu_gfl) on the inputs CPPWRF dumped
 ! (CPPWRF_GFL_DUMP) and compares RTHCUTEN, RQVCUTEN, RQCCUTEN, RQICUTEN,
 ! RUCUTEN, RVCUTEN, RAINCV, PRATEC, HTOP, HBOT with CPPWRF's.

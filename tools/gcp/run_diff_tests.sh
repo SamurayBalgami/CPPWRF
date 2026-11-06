@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The differential tests on a VM (tools/gcp/remote_suite.sh for the full suite, remote_difftests.sh alone): a CPU
 # FP64 build with -DCPPWRF_DIFF_TESTS=ON, `ctest -L diff` against the WRF objects of tools/gcp/stage_diff_data.sh's
 # tar, then the other ctest tests (unit, io_netcdf) except the two that need whole WRF runs (real_vs_wrf,

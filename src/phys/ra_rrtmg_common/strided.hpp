@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Strided per-column array views for the RRTMG ports. One code path serves both layouts:
 //  - a single column in local arrays (stride 1, the CPU column driver);

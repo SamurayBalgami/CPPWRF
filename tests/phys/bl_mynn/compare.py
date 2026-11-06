@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """compare.py WRF.bin CPP.bin NI NZ: the MYNN-EDMF outputs, every value identical as tests/verify/exact.py (NaN equals
 only NaN, -0 differs from +0)."""
 import os

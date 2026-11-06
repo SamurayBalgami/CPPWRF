@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // driver_diffusion.cpp
 // C++ differential testing harness for WRF v4.8.0 Diffusion and Damping kernels in CPPWRF.
 // Supports both CPU (OpenMP) and CUDA execution with single-source semantics.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Core unit tests: layout/indexing, staggering extents, halo fill (periodic, symmetric,
 // parity), 2D y-periodicity, uniform base-state views, vertical coefficients, Reducer.
 #include <cmath>

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "phys/ra_rrtmg_common/batch_memory.hpp"
 
 #include <algorithm>

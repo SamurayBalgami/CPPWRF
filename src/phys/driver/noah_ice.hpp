@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Noah LSM ice surfaces, statement-by-statement ports of WRF v4.8.0:
 //   SFLX_GLACIAL  phys/module_sf_noahlsm_glacial_only.F  (land ice: IVGTYP == ISICE on land)

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Plot diagnostic time series from diag.csv across one or more simulation runs."""
 
 import argparse

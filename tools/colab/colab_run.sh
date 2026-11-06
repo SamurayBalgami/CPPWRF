@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Run CPPWRF's GPU suite cases (and timings) on a Google Colab GPU VM with the `colab` CLI
 # (google-colab-cli, authorised once with `colab usage`). The VM is always released at the end.
 #
@@ -49,7 +50,7 @@ while [ $# -gt 0 ]; do
     --wrf-tables) TABLES= WT=wrf-tables; shift ;;
     --keep) KEEP=1; shift ;;
     --out) OUT=$2; shift 2 ;;
-    *) sed -n '2,27p' "$0"; exit 2 ;;
+    *) sed -n '3,28p' "$0"; exit 2 ;;
   esac
 done
 case $GPU in T4|L4|G4|A100|H100) ;; *) echo "unknown --gpu $GPU (the CLI would silently take an A100)"; exit 2 ;; esac

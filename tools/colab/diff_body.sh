@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The differential tests alone (tools/colab/colab_suite.sh --diff-only) in the Debian 13 chroot of a Colab runtime:
 # tools/gcp/run_diff_tests.sh as the full suite runs it (its own CPU FP64 build, ctest -L diff, then the other ctest
 # tests), with the deliberate faults /opt/job/fault_*.patch (colab_suite.sh --faults).

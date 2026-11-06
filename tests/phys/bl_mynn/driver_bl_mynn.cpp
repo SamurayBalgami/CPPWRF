@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // CPPWRF side of the MYNN-EDMF differential test (see driver_bl_mynn.f90): mynnedmf_driver's column work
 // (flux limits, mynnedmf_pre_run, mynnedmf, mynnedmf_post_run) on ni columns for nsteps calls, the same records out.
 #include <cstdio>

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # WRF v4.8.0 restart references for tests/verify/run_wrf_files_test.sh: reruns the 3-step run
 # ${CPPWRF_WRF_RUNS}/run_<C>/steps with restart_interval = 1 (minute) in ${CPPWRF_WRF_RUNS}/rst_<C>.
 #   usage: make_restart_refs.sh P1_r8 P3_r8 ...

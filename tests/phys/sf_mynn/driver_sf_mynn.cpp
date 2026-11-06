@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // CPPWRF side of the MYNN surface-layer differential test (see driver_sf_mynn.f90 and fields.txt):
 // MynnSfcKernel on ni columns for nsteps calls, the same records out.
 #include <cstdio>

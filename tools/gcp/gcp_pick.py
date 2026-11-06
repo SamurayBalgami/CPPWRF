@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Rank spot machine/zone pairs by the expected cost of a VM job.
 
     gcp_pick.py --vcpus N [--hours H] [--data-gb G] [--machine TYPE] [--families c3,n4,...] [--zones Z,...] [--top K]

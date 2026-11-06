@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """HY1: hypsometric_opt 1.
 
 CASES: see tests/verify/cases/__init__.py."""

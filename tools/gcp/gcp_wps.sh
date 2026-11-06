@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # met_em files from the NOAA GFS 0.25 degree forecast on a Google Compute Engine spot VM (WPS ungrib + metgrid).
 #
 #   CPPWRF_GCP_PROJECT=... CPPWRF_GCP_BUCKET=... tools/gcp/gcp_wps.sh WPS_RUN_DIR --cycle YYYYMMDDHH
@@ -23,10 +24,10 @@ while [ $# -gt 0 ]; do
   case $1 in
     --cycle) CYCLE=$2; shift 2 ;; --hours) HOURS=$2; shift 2 ;; --obj) OBJ=$2; shift 2 ;;
     --machine) MACHINE=$2; shift 2 ;; --zones) ZONES=$2; shift 2 ;; --out) OUT=$2; shift 2 ;;
-    *) sed -n '2,15p' "$0"; exit 2 ;;
+    *) sed -n '3,16p' "$0"; exit 2 ;;
   esac
 done
-[ -n "$CYCLE" ] && [ -n "$HOURS" ] && [ -n "$OBJ" ] || { sed -n '2,15p' "$0"; exit 2; }
+[ -n "$CYCLE" ] && [ -n "$HOURS" ] && [ -n "$OBJ" ] || { sed -n '3,16p' "$0"; exit 2; }
 STAMP=$(date +%Y%m%d-%H%M%S)-$(printf %04x $RANDOM) VM=cppwrf-wps-$STAMP RES=results/wps-$STAMP
 OUT=${OUT:-${CPPWRF_SCRATCH:-$HOME/cppwrf_scratch}/gcp/wps-$STAMP}; mkdir -p "$OUT"
 # the WPS inputs (links followed) and the directory's met_em files of the period, to check the VM's output against

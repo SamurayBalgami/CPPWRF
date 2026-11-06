@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The Colab side of tools/colab/colab_suite.sh and colab_wrfref.sh (root, under nohup; /content/cpu/done marks the
 # end): a job in a Debian 13 chroot, so that gcc, gfortran, glibc (libmvec), NetCDF and Python are those of the GCP VMs
 # that made the references (the Debian 13 packages of tools/gcp/remote_suite.sh; the runtime's own Ubuntu is not used).

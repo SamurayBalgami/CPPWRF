@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Real-data start (WRF dyn_em/start_em.F for a single domain, no restart, use_theta_m = 1):
 // grid, base state, map factors, Coriolis, terrain, initial state and lateral boundaries from
 // real.exe's wrfinput_d01 / wrfbdy_d01 (read by the io_netcdf readers).

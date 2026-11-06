@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Generate realistic atmospheric columns from WRF run_P4_r8 / run_P1_r8 wrfout for bl_myj testing.
 Produces real columns + synthetic edge cases (including nonzero terrain height HT and nonzero CT).

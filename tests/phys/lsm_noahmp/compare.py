@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Differential validator for Noah-MP v5.1.2 (sf_surface_physics = 4).
 Compares WRF v4.8.0 Fortran outputs (linked from libwrflib.a) vs C++ outputs

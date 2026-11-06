@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Extract realistic coarse fields from WRF run_R0_r8 wrfout for the nesting tests.
 """

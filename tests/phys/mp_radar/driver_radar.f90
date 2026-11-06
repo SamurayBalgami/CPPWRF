@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 ! WSM6's radar reflectivity (do_radar_ref = 1): mp_wsm6_init's radar_init tables (physics_mmm/mp_radar.F90) and
 ! refl10cm_wsm6 per column as module_mp_wsm6.F calls it after the scheme (t1d = th*pii, refl_10cm = MAX(-35., dBZ)),
 ! WRF's objects of the -r8 -fdefault-double-8 build. Input: the WSM6 test's wsm6_input.bin (mp_wsm6/generate_inputs.py).

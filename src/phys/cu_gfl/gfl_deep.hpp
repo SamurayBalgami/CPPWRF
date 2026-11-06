@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Grell-Freitas-Li (GFL) deep convection kernel for one column.
 // Ported statement-by-statement from WRF v4.8.0 phys/GFL/module_cu_gfl_deep.F90
 // (cu_gfl_deep_run, get_partition_liq_ice, get_melting_profile, cup_dd_moisture,

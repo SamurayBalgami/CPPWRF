@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Data tar of tools/gcp/gcp_matrix.sh: the input files and tables of the given WRF run directories (links
 # followed; outputs, executables and the large lookup tables no ported scheme reads left out) under runs/, and
 # the WRF executables under wrf/.  usage: stage_matrix_data.sh OUT.tar WRF_R8_EXE WRF_R8D8_EXE RUN_DIR ...

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Extract the WRF I/O schema of a compiled WRF tree into a tab-separated table.
 
 WRF's Registry is compiled into Fortran includes (inc/allocs_*.f90: the state variables with their

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Unit tests for cppwrf_io Python reader and cross-language verification."""
 
 import argparse

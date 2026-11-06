@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // PhysicsSuite::cumulus_driver, convtrans_prep and advance_ppt (WRF phys/module_cumulus_driver.F,
 // dyn_em/module_convtrans_prep.F, phys/module_physics_addtendc.F)
 #include "phys/driver/suite.hpp"

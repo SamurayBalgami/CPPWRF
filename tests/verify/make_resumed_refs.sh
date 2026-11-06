@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # WRF v4.8.0 runs resumed from a restart file, for the wrfrst-restart test of run_wrf_files_test.sh:
 # ${CPPWRF_WRF_RUNS}/rsm_<C> = rst_<C> (make_restart_refs.sh) restarted at minute 1, history every minute.
 #   usage: make_resumed_refs.sh P1_r8 ...

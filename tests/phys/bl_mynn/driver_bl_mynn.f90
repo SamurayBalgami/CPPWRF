@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 ! WRF side of the MYNN-EDMF differential test: WRF v4.8.0's compiled mynnedmf_driver (main/libwrflib.a of a
 ! -r8 -fdefault-double-8 build) on ni columns (j = 1) with WRF's default bl_mynn_* options, for nsteps calls
 ! (initflag = 1 at the first); between calls u, v, theta, qv, qc, qi take the tendencies (x = x + dx/dt * dt).

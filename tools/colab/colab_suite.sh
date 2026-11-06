@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The CPU FP64 suite of tools/gcp/gcp_run.sh on a Google Colab runtime (prepaid compute units instead of GCP VMs).
 #
 #   CPPWRF_GCP_BUCKET=... tools/colab/colab_suite.sh [--gpu G4|CPU|L4|A100|T4] [--any-cpu] [--cases NAME,...]
@@ -40,7 +41,7 @@ while [ $# -gt 0 ]; do
     --jobs) JOBS=$2; shift 2 ;; --threads) THREADS=$2; shift 2 ;; --slow) SLOW=1; shift ;; --hours) HOURS=$2; shift 2 ;;
     --rev) REV=$2; shift 2 ;; --session) S=$2; shift 2 ;; --keep) KEEP=1; shift ;; --any-cpu) ANY_CPU=1; shift ;;
     --diff-only) DIFF=1; shift ;; --files) FILES=1; shift ;; --tests) TESTS=$2; shift 2 ;; --faults) FAULTS=$(cd "$2" && pwd); shift 2 ;;
-    *) sed -n '2,29p' "$0"; exit 2 ;;
+    *) sed -n '3,30p' "$0"; exit 2 ;;
   esac
 done
 case $GPU in L4|A100|T4) ;; G4|CPU) [ "${ANY_CPU:-0}" = 1 ] || { echo "--gpu $GPU: an AMD runtime, needs --any-cpu"; exit 2; } ;;

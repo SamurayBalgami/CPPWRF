@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Grell-Freitas-Li column replay: CPPWRF's cu_grell_freitas_li inputs/outputs of P8 (steps 1, 5, 10;
 # ishallow = 1) through WRF v4.8.0's cu_grell_freitas_li (the -r8 -fdefault-double-8 build that made the P8
 # references, WRF_R8D8_DIR; tests/phys/wrf_fortran.sh); every value of every column identical (same bits).

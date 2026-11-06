@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The P1 column physics (sfclayrev + Noah + YSU) and its variants P1T2, A01, A01V; the 1 h CPU runs of P2,
 P7, P8.
 

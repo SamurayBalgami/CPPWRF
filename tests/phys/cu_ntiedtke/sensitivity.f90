@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 program sens3
   use cu_ntiedtke, only: cu_ntiedtke_run, cu_ntiedtke_init
   implicit none

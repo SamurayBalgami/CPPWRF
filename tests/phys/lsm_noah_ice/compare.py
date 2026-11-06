@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compare driver_noah_ice outputs (WRF Fortran vs C++): every output of both routines. --tol 0: identical as
 tests/verify/exact.py (NaN equals only NaN, -0 differs from +0)."""
 import argparse

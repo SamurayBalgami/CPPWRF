@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Column physics of a real-data run (P1 suite: sfclayrev + Noah + YSU): the suite is created
 // and its initial surface state filled as WRF's start_domain does for a non-restart run:
 //   - the wrfinput fields (TSK, TMN, TSLB, SMOIS, SEAICE, LU_INDEX, ISLTYP, VEGFRA, ...),

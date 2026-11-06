@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "phys/bl_ysu/ysu.hpp"
 #include "core/limits.hpp"
 

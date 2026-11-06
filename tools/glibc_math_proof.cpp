@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // cppwrf::glibc (src/core/glibc_math.hpp) against this machine's glibc libm and libmvec, bit for bit. Run where WRF's
 // references are made (Debian 13, glibc 2.41, x86-64 with FMA and AVX2: libm's FMA variants), e.g. in the Debian 13
 // chroot of a Colab runtime (tools/colab/remote_chroot_job.sh). The inputs (edge values and four random sets per function) are

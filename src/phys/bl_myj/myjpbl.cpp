@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "phys/bl_myj/myjpbl.hpp"
 
 namespace cppwrf::phys::myjpbl {

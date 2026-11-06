@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Extract 2D slice reference fields from WRF em_hill2d_x wrfout NetCDF file.
 
 Extracts W, U, T, PH at each history time (j=0 slice), plus HGT, ZNW, MUB, PHB at t=0

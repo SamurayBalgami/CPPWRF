@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // WRF's adaptive time step (use_adaptive_time_step): dyn_em/adapt_timestep_em.F adapt_timestep and calc_dt, and
 // the adaptive block of dyn_em/start_em.F, for a single domain (the nest branches are not ported).

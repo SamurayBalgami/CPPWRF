@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 PROGRAM dump_sw_tables
   USE module_ra_rrtmg_sw, only: rrtmg_swinit
   USE rrsw_con

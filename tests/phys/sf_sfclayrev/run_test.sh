@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Revised MM5 surface layer (sf_sfclay_physics = 1) column test: WRF v4.8.0's sfclayrev (module_sf_sfclayrev.o,
 # sf_sfclayrev.o of the -r8 build, WRF_DIR) against the C++ sfclayrev (driver_sfclayrev_cpu of the CMake build),
 # tolerance 0.

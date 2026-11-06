@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """P6 (Thompson), P7 (New Tiedtke), P8 (Grell-Freitas-Li), P9 (MYJ + Eta).
 
 CASES: see tests/verify/cases/__init__.py."""

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Copy a wrf.exe namelist.input for real.exe: real.exe needs the end time at least one
 interval_seconds after the start time, so a shorter run gets end = start + interval_seconds."""
 import datetime as dt

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # WRF v4.8.0 against CPPWRF on ONE Google Colab G4 runtime (AMD EPYC 9B45, 48 vCPUs, 176 GB + NVIDIA RTX PRO 6000
 # Blackwell, 96 GB): WRF's MPI builds (real*4, real*8) on the CPU, CPPWRF's CUDA FP32 / FP64 builds on the GPU and its
 # OpenMP FP64 build on the CPU, the same namelists and inputs, 1 simulated hour each.
@@ -37,7 +38,7 @@ while [ $# -gt 0 ]; do
   case $1 in
     --cases) CASES=$2; shift 2 ;; --layouts) LAYOUTS=$2; shift 2 ;; --wps) WPS=$2; shift 2 ;; --out) OUT=$2; shift 2 ;;
     --hours) HOURS=$2; shift 2 ;; --rev) REV=$2; shift 2 ;; --session) S=$2; shift 2 ;; --keep) KEEP=1; shift ;;
-    *) sed -n '2,27p' "$0"; exit 2 ;;
+    *) sed -n '3,28p' "$0"; exit 2 ;;
   esac
 done
 STAMP=$(date +%Y%m%d_%H%M%S)

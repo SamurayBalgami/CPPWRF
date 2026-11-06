@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The C++ aerosol functions of the Thompson kernel (activ_ncloud, eff_aero, ice_demott, ice_koop) on the samples
 // of aero_funcs.py, against fortran/aero_funcs.f90 (WRF's own functions); CCN_ACTIVATE.BIN read from ".".
 #include <cmath>

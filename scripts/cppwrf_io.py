@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Python reader for CPPWRF outputs.
 
 Supported functions:

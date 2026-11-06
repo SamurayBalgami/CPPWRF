@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Synthetic but physical real-data tile for the P1 physics-suite differential test.
 
 Writes suite_input.bin: the fields a wrfinput_d01 would provide for a 24x20x44 domain with

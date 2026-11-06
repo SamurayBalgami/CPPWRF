@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The data roots the case definitions read: WRF reference runs (wrfinput/wrfbdy and wrfout of each case; the
 configurations read them as ${CPPWRF_WRF_RUNS}) and the ideal-case references (${CPPWRF_WRF_REF})."""
 import os

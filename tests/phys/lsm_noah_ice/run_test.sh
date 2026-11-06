@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Column differential test for the Noah ice surfaces: SFLX_GLACIAL (land ice) and SFLX_SEAICE
 # (sea ice), called from WRF v4.8.0's own compiled objects (module_sf_noahlsm_glacial_only.o and
 # module_sf_noah_seaice.o of the -r8 build, WRF_DIR; tests/phys/wrf_fortran.sh).

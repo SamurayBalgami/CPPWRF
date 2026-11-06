@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Lint: every launch of a kernel that can report a WRF fatal stop is followed by fatal_check().
 
 A kernel reports WRF's wrf_error_fatal with raise_fatal(code) (src/core/backend.hpp); the host stops the run only in

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "dyn/diffusion_driver.hpp"
 #include "core/vm_dump.hpp"
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Scalar transport tests (M2 item 1):
 //  (a) a tracer that is identically 1 stays 1 to roundoff (straka, warm_bubble, igw setups);
 //  (b) with positive-definite advection (scalar_adv_opt = 1) a blob stays >= 0 (to roundoff),

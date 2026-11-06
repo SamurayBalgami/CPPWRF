@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Startup script of the variant-matrix VM (tools/gcp/gcp_matrix.sh): builds CPPWRF, unpacks the WRF runs and
 # wrf.exe, runs tools/gcp/matrix_variant.py for every line of the variant list in parallel, uploads the results.
 md() { curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1"; }

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The GPU side of tools/bench/colab_bench.sh, on the Colab runtime itself (its Ubuntu with the CUDA toolkit; the
 # Debian 13 chroot of tools/colab/remote_chroot_job.sh has no CUDA). Started next to the chroot job:
 #

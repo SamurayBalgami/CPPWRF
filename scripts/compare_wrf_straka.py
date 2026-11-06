@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compare WRF reference run against CPPWRF for the Straka density current."""
 
 import argparse

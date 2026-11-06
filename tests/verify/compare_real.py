@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """CPPWRF real-data run vs a WRF wrfout with the same input.
 
   compare_real.py <wrfout> <cppwrf_out_dir> [--interior N]

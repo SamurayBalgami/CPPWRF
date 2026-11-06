@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Physical constants from WRF share/module_model_constants.F.
 // Do not modify src/core/constants.hpp; physics routines use this header.

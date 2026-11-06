@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """WRF's ideal cases as WRF output files: each CPU FP64 ideal case of wrf_suite.py runs with
 output.format = wrfout and the namelist of its WRF reference run (history interval, run length, frames),
 and every variable, dimension and attribute of the wrfout file must equal WRF's (tests/init_real/compare_real.py).

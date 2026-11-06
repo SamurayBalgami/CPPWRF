@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // WRF's fatal stops inside physics kernels (raise_fatal in the kernel, fatal_check on the host):
 //  (a) Noah land SFLX, glacial ice and sea ice with SNEQV / SNOWH > 1 stop with
 //      "Physical snow depth is less than snow water equiv.";

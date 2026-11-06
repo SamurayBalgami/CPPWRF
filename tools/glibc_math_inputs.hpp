@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // The functions and inputs of tools/glibc_math_proof.cpp (CPU: port against glibc) and tools/glibc_math_proof_cuda.cu
 // (device against host). Per function the edge values (zeros, every power of two and its neighbours, subnormals, the

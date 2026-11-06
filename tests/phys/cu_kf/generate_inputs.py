@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Generate realistic atmospheric sounding inputs for Kain-Fritsch (cu_physics = 1)
 differential testing against WRF Fortran reference.

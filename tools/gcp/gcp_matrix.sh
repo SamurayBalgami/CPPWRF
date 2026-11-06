@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # WRF-vs-CPPWRF namelist-variant matrix on a Google Compute Engine spot VM (Intel; see gcp_run.sh).
 #
 #   CPPWRF_GCP_PROJECT=... CPPWRF_GCP_BUCKET=... tools/gcp/gcp_matrix.sh VARIANTS.txt [--machine TYPE] [--zones Z,...]
@@ -20,7 +21,7 @@ VARS=$1; shift
 MACHINE= DATA=matrix_data.tar OUT=
 ZONES=
 while [ $# -gt 0 ]; do
-  case $1 in --machine) MACHINE=$2; shift 2 ;; --zones) ZONES=$2; shift 2 ;; --data) DATA=$2; shift 2 ;; --out) OUT=$2; shift 2 ;; *) sed -n '2,12p' "$0"; exit 2 ;; esac
+  case $1 in --machine) MACHINE=$2; shift 2 ;; --zones) ZONES=$2; shift 2 ;; --data) DATA=$2; shift 2 ;; --out) OUT=$2; shift 2 ;; *) sed -n '3,13p' "$0"; exit 2 ;; esac
 done
 # one vCPU per variant line (each runs WRF, then CPPWRF, single-threaded), at least 8 for the build
 N=$(grep -cvE '^[[:space:]]*(#|$)' "$VARS" || true) NEED=$(( N > 8 ? N : 8 ))

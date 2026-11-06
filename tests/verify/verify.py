@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """CPPWRF independent verification.
 
 Black box: reads only the files the model writes (the output format in docs/USER_GUIDE.md):

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Column differential test for Noah-MP v5.1.2 (sf_surface_physics=4).
 # Calls WRF v4.8.0's compiled NoahmpWRFinit and NoahmpWRFmain of the -r8 build that made the NMP1 references
 # (WRF_DIR; tests/phys/wrf_fortran.sh) with WRF's NoahmpTable.TBL.

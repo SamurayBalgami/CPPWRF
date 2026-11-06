@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """P5 (WSM6), P2 (Kain-Fritsch), P3 (RRTMG), P4 (Kain-Fritsch + WSM6 + RRTMG).
 
 CASES: see tests/verify/cases/__init__.py."""

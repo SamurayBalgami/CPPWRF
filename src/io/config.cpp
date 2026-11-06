@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "io/config.hpp"
 #include "core/strings.hpp"
 #include "io/output.hpp"

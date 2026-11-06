@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // share/module_model_constants.F evaluated in the working precision, as WRF evaluates its
 // PARAMETERs in the default REAL kind (real*8 with -r8): cp = 7.*r_d/2., rcp = r_d/cp, ...

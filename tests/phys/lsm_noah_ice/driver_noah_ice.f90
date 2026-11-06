@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 program driver_noah_ice_fortran
   ! Calls WRF's SFLX_GLACIAL (module_sf_noahlsm_glacial_only.F) and SFLX_SEAICE
   ! (module_sf_noah_seaice.F) column by column; seaice options as in WRF's defaults

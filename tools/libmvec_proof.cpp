@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // cppwrf::mvec::log / log10 (src/core/libmvec_x86.hpp) against this machine's glibc libmvec _ZGVbN2v_log /
 // _ZGVbN2v_log10, bit for bit (run on Intel: there they must agree everywhere). Three input sets per function:
 //   edges       0, -0, every power of two (subnormal to the largest), its neighbours, DBL_MIN / DBL_MAX and theirs,

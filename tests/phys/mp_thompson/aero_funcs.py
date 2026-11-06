@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Samples for the aerosol functions of the Thompson scheme (aero_funcs.f90, aero_funcs.cpp) and their comparison
 at tolerance 0.   aero_funcs.py gen FILE N  |  aero_funcs.py cmp FORTRAN_OUT CPP_OUT N"""
 import sys

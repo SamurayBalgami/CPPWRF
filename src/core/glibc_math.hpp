@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // glibc's libm and libmvec (Debian 13, glibc 2.41-12, x86-64) on host and device, bit for bit.
 //

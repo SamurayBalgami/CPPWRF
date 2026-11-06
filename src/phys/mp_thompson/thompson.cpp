@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "thompson.hpp"
 #include <type_traits>
 #include "core/limits.hpp"

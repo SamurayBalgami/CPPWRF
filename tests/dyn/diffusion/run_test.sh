@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Diffusion and damping kernels (km_opt 1-4, diff_6th, w_damp, damping layers): WRF v4.8.0's own module_diffusion_em,
 # module_big_step_utilities_em, ... (the -r8 build, WRF_DIR; tests/phys/wrf_fortran.sh) called by driver_diffusion.f90
 # against the C++ kernels (driver_diffusion.cpp), tolerance 0 in CPU FP64; with nvcc and a GPU also the CUDA FP64

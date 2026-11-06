@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # cmake -DROOT=<src dir> -DOUT=<file> -P config_keys.cmake
 # Writes the configuration keys CPPWRF reads (every "section.key" string literal in the sources under ROOT) as C++
 # string literals, one per line, for src/cases/config_keys.cpp; OUT is rewritten only when the list changes.

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Deliberate faults the model must refuse, with their messages (ctest robustness; analytic cases, seconds, no data):
 #  - a misspelled configuration key, and a key in the wrong section: "unknown configuration key";
 #  - a column above the physics' level limit (nz = 129 with Kessler): an error in Release builds too;

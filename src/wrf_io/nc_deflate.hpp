@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Parallel compression of NetCDF-4 output without changing a byte of the files.
 //

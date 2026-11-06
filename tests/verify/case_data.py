@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The data tars each suite case reads (DATA in tests/verify/cases/*.py), derived from the tars' file lists.
 
   case_data.py LISTDIR [--write]

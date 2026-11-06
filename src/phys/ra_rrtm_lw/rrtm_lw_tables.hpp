@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // WRF 4.8.0 phys/module_ra_rrtm.F (RRTM longwave, ra_lw_physics = 1): the module's SAVE data the column code reads,
 // as rrtminit / rrtm_lookuptable leave them: the Pade tables, the absorption coefficients of RRTM_DATA reduced from

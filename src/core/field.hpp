@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 // Fields: SoA, one allocation per field, i fastest, k slowest, halo 3 in x (and y if ny>1),
 // row pitch padded to a multiple of 32 elements, i=0 aligned to 8 elements.

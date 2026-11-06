@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Startup script of the WPS VM (tools/gcp/gcp_wps.sh): downloads the GFS files, runs ungrib and metgrid, checks the
 # met_em files that the WPS run directory also had, uploads the met_em files as one tar.
 md() { curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1"; }

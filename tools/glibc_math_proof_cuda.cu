@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // cppwrf::glibc (src/core/glibc_math.hpp) on the GPU against the same functions on the host, bit for bit: the device
 // computes what the host port computes (and tools/glibc_math_proof.cpp shows the host port equals glibc). Inputs: the
 // edge values and random sets of tools/glibc_math_proof.cpp (shared generator, tools/glibc_math_inputs.hpp).

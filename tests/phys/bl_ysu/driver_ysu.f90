@@ -1,3 +1,4 @@
+! SPDX-License-Identifier: GPL-3.0-or-later
 program driver_ysu_fortran
   use module_bl_ysu, only: ysu
   use bl_ysu, only: bl_ysu_init
