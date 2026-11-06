@@ -721,3 +721,57 @@ Proof (tolerance 0 throughout): history of P4, P4 radt 15, P6, MYNN, N3 and L ev
 byte-identical in FP64 and FP32; every cuda_dp case against WRF; the 16 FP32 suite cases with base and new builds
 byte-identical; the CPU suite cases of the changed code (dycore, radiation options, Noah, nests, ideal cases) against
 WRF.
+
+## Column physics in stages (P01b; measured, Colab G4)
+
+Profile of main 97d1a48 (`CPPWRF_KTIME=1`, ms per hour of 60 steps): WSM6 1044 (L FP64), 300 (P4), 1153 (N3, two
+domains); Thompson 417 FP64 / 131 FP32 (P6), 449 / 151 (MYNN case); MYNN PBL 490 / 129; YSU 326 and KF 321 (L
+FP64). ncu showed the column kernels at 3-8 % achieved occupancy (one thread per column, 200+ registers).
+
+What changed: the level loops of WSM6 and Thompson that read only their own level now run one thread per
+(i, j, k); the vertical sweeps (sedimentation, the column reductions, the early return of a column without
+microphysics) stay one thread per column, in WRF's order. Every value is the same statement on the same operands
+(the loop bodies moved unchanged, `x[k]` on scalars or on the same column arrays).
+
+- **WSM6, FP64 builds** (`wsm6_stages`, CPU and CUDA): Init (clamps, t, cpm, xl), A (qsat, rh, fall speeds), Sed
+  (rain and snow + graupel sedimentation per column), B (melting, ice fall speed), Ice (ice sedimentation and the
+  surface precipitation per column), C (freezing, warm and cold rain processes, saturation adjustment), per
+  microphysics loop; the values carried between stages in a work array of 12 levels-sized fields (`Wsm6Work`, +390
+  MiB on L, +40 MiB on P4). FP32 builds keep `Wsm6Kernel`: physics_coupling.cpp builds with `--fmad=true` there.
+- **Thompson, FP32 and FP64** (thompson.cpp builds with `--fmad=false` in both): `ThompsonLevel0` (the first two
+  level loops; no_micro and k_melting as level flags), `ThompsonStage1` (column: their reduction, twet, the early
+  return), `ThompsonLevel` (the snow moments to the rain evaporation), `ThompsonStage3` (column: sedimentation,
+  updates, totals, radar and effective radii) on the column arrays in the work buffer (`column_work_chunks`; a level
+  kernel finds its column's arrays with `ColumnSlots(work, i, j, chunk, bx, by)`). The CPU runs the four parts per
+  column.
+
+Tried and dropped: the rain and the snow + graupel sedimentation of WSM6 on two threads per column (Sed 252 -> 297
+ms per hour on L: slower).
+
+Kernel time per hour (KTIME, base -> new): WSM6 L FP64 1044 -> 817 (StageC 291 and Sed 252 the largest: StageC is
+FP64-bound at 86 % SM throughput, Sed is the sequential sweep), P4 300 -> 178; Thompson P6 FP64 417 -> 257, FP32
+131 -> 78; MYNN case FP64 449 -> 288, FP32 151 -> 94.
+
+Stepping s/h, 1 h, no history output, base origin/main 97d1a48 / port/P01b 4711d5e in one G4 session, each twice:
+
+| Case | base s/h | new s/h | gain | peak MiB base -> new |
+|---|---|---|---|---|
+| P6 FP64 (Thompson) | 1.404, 1.403 | 1.260, 1.259 | 1.11x | 5799 -> 5801 |
+| P6 FP32 | 0.394, 0.396 | 0.345, 0.344 | 1.15x | 2949 -> 2951 |
+| MYNN FP64 | 1.992, 1.992 | 1.849, 1.849 | 1.08x | 17745 -> 17745 |
+| MYNN FP32 | 0.640, 0.640 | 0.583, 0.584 | 1.10x | 10421 -> 10423 |
+| P4 FP64 (WSM6) | 2.563, 2.563 | 2.449, 2.450 | 1.05x | 13671 -> 13713 |
+| P4 FP32 | 1.547, 1.549 | 1.550, 1.547 | 1.00x | 8233 -> 8233 |
+| N3 FP64 | 8.444, 8.459 | 8.026, 8.051 | 1.05x | 15241 -> 15327 |
+| N3 FP32 | 4.388, 4.398 | 4.397, 4.399 | 1.00x | 9333 -> 9333 |
+| L FP64 | 8.099, 8.090 | 7.874, 7.876 | 1.03x | 30067 -> 30455 |
+| L FP32 | 2.640, 2.641 | 2.642, 2.640 | 1.00x | 20791 -> 20791 |
+
+Memory grows at most 1.3 % (L FP64: the WSM6 work array). Proof (tolerance 0): history every 20 min of the ten
+runs above, base against new, byte-identical; every cuda_dp case against WRF (79 PASS); the 16 FP32 suite cases
+with base and new builds (120 snapshots, 3 restart files byte-identical); the CPU suite cases of WSM6, Thompson,
+MYNN, Grell-Freitas (column_for_work) and nests against WRF and the WSM6, radar, Thompson, MYNN and suite
+differential tests.
+
+Open: MYNN PBL (472 ms per hour FP64, 124 FP32 on the MYNN case) is now the largest column kernel there; YSU and
+KF (L FP64 ~320 ms each) build with `--fmad=true` in FP32, so a split there is FP64-only like WSM6's.
