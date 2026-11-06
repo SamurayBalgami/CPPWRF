@@ -6,6 +6,8 @@
 // mixqt, ess, tkeadvect) and tke_budget; bl_mynn_edmf_dd = 0, bl_mynn_mixnumcon = 0, spp_pbl = 0, no chemistry
 // (bl_mynn_mixscalars mixes WRF's unconnected zero scalar only); a microphysics with qc, qi and qs (flag_qs: WRF
 // passes the snow content uninitialised otherwise). Column state in specific contents, 1-based (k = 1 .. kte).
+#include <memory>
+
 #include "phys/bl_mynn/mynnedmf_mf.hpp"
 #include "phys/bl_mynn/mynnedmf_turb.hpp"
 
@@ -16,9 +18,11 @@ inline constexpr real ckmod = real(1.0);
 inline constexpr real taue = real(80.);
 
 // moisture_check (1-based columns of kte levels)
-CPPWRF_HD inline void moisture_check(int kte, real delt, const real* dp, const real* exner, real* qv, real* qc,
-                                     real* qi, real* qs, real* th, real* dqv, real* dqc, real* dqi, real* dqs,
-                                     real* dth) {
+template <class A_dp, class A_exner, class A_qv, class A_qc, class A_qi, class A_qs, class A_th, class A_dqv,
+          class A_dqc, class A_dqi, class A_dqs, class A_dth>
+CPPWRF_HD inline void moisture_check(int kte, real delt, A_dp dp, A_exner exner, A_qv qv, A_qc qc,
+                                     A_qi qi, A_qs qs, A_th th, A_dqv dqv, A_dqc dqc, A_dqi dqi, A_dqs dqs,
+                                     A_dth dth) {
   constexpr real qvmin = real(1e-20), qcmin = zero, qimin = zero;
   real dqv2 = zero;
   for (int k = kte; k >= 1; --k) {
@@ -66,16 +70,20 @@ CPPWRF_HD inline void moisture_check(int kte, real delt, const real* dp, const r
 // mynn_tendencies, implicit mass-flux form (bl_mynn_edmf 0 or 1), bl_mynn_mixqt 0 / 1, bl_mynn_cloudmix 0 / 1,
 // flag_qc = flag_qi = .true., no number concentrations / aerosols / ozone; the snow arguments are zero
 // (mynnedmf passes kzero1); no downdraft fluxes (sd_* = 0)
-template <int K>
-CPPWRF_HD inline void mynn_tendencies(int kte, real delt, const real* dz, const real* rho, const real* u, const real* v,
-                                      const real* th, const real* tk, const real* qv, real psfc, const real* p,
-                                      const real* exner, real* thl, const real* sqv, const real* sqc, const real* sqi,
-                                      const real* sqw, real ust, real flt, real flq, real flqv, real flqc, real wspd,
-                                      real uoce, real voce, const real* tcd, const real* qcd, const real* dfm,
-                                      const real* dfh, real* du, real* dv, real* dth, real* dqv, real* dqc, real* dqi,
-                                      real* dqs, const real* diss_heat, const real* s_aw1, const real* s_awthl1,
-                                      const real* s_awqt1, const real* s_awqv1, const real* s_awqc1,
-                                      const real* s_awu1, const real* s_awv1, int bl_mynn_cloudmix, int bl_mynn_mixqt,
+template <int K, class A_dz, class A_rho, class A_u, class A_v, class A_th, class A_tk, class A_qv, class A_p,
+          class A_exner, class A_thl, class A_sqv, class A_sqc, class A_sqi, class A_sqw, class A_tcd, class A_qcd,
+          class A_dfm, class A_dfh, class A_du, class A_dv, class A_dth, class A_dqv, class A_dqc, class A_dqi,
+          class A_dqs, class A_diss_heat, class A_s_aw1, class A_s_awthl1, class A_s_awqt1, class A_s_awqv1,
+          class A_s_awqc1, class A_s_awu1, class A_s_awv1>
+CPPWRF_HD inline void mynn_tendencies(int kte, real delt, A_dz dz, A_rho rho, A_u u, A_v v,
+                                      A_th th, A_tk tk, A_qv qv, real psfc, A_p p,
+                                      A_exner exner, A_thl thl, A_sqv sqv, A_sqc sqc, A_sqi sqi,
+                                      A_sqw sqw, real ust, real flt, real flq, real flqv, real flqc, real wspd,
+                                      real uoce, real voce, A_tcd tcd, A_qcd qcd, A_dfm dfm,
+                                      A_dfh dfh, A_du du, A_dv dv, A_dth dth, A_dqv dqv, A_dqc dqc, A_dqi dqi,
+                                      A_dqs dqs, A_diss_heat diss_heat, A_s_aw1 s_aw1, A_s_awthl1 s_awthl1,
+                                      A_s_awqt1 s_awqt1, A_s_awqv1 s_awqv1, A_s_awqc1 s_awqc1,
+                                      A_s_awu1 s_awu1, A_s_awv1 s_awv1, int bl_mynn_cloudmix, int bl_mynn_mixqt,
                                       int bl_mynn_edmf, int bl_mynn_edmf_mom) {
   constexpr int kts = 1;
   real dtz[K + 2], delp[K + 2], rhoinv[K + 2], a[K + 2], b[K + 2], c[K + 2], d[K + 2], x[K + 2], sqv2[K + 2],
@@ -326,48 +334,151 @@ CPPWRF_HD inline void mynn_tendencies(int kte, real delt, const real* dz, const 
     dth[k] = (thl[k] + xlvcp / exner[k] * sqc[k] + xlscp / exner[k] * (sqi[k]) - th[k]) / delt;
 }
 
-// MYNN-EDMF state of one column: the interface arrays of mynnedmf_driver, 1-based, specific contents for
-// sqv/sqc/sqi/sqs (mynnedmf_pre_run), tendencies in specific contents (before mynnedmf_post_run)
+// The column arrays of mynnedmf_driver's interface (1-based, K + 2 levels; specific contents for sqv/sqc/sqi/sqs as
+// mynnedmf_pre_run leaves them, tendencies in specific contents before mynnedmf_post_run) and mynnedmf's arrays that
+// one of its parts leaves for a later one (MYNN_WORK2: K + 2 levels, MYNN_WORK3: K + 3). Local arrays on the CPU; on
+// the GPU in the work buffer (core/column_work.hpp), where the parts run as kernels of their own: the column parts
+// mynnedmf_stage_a .. d one thread per column, the level parts mynnedmf_level_* one thread per (column, level).
+#define CPPWRF_MYNN_COLUMN(X)                                                                                         \
+  X(dz) X(u) X(v) X(w) X(th) X(pres) X(ex) X(rho) X(tk) X(sqv) X(sqc) X(sqi) X(sqs) X(qke) X(qke_adv) X(el) X(sh)      \
+  X(sm) X(kh) X(km) X(tsq) X(qsq) X(cov) X(qc_bl) X(qi_bl) X(cldfra_bl) X(du) X(dv) X(dth) X(dqv) X(dqc) X(dqi)       \
+  X(edmf_a) X(edmf_w) X(edmf_qt) X(edmf_thl) X(edmf_ent) X(edmf_qc) X(dqke) X(qwt) X(qshear) X(qbuoy) X(qdiss)
+#define CPPWRF_MYNN_WORK2(X)                                                                                          \
+  X(thl1) X(thv1) X(thlv1) X(qv1) X(sqw1) X(dfm1) X(dfh1) X(dfq1) X(tcd1) X(qcd1) X(pdk1) X(pdt1) X(pdq1) X(pdc1)     \
+  X(vt1) X(vq1) X(sgm1) X(tkeprod_up) X(dqs1) X(qkw) X(qtw) X(dtl) X(dqw) X(dtv) X(gm) X(gh) X(qpe) X(qtke) X(thetaw) \
+  X(elBLmin) X(elBLavg)
+#define CPPWRF_MYNN_WORK3(X) \
+  X(s_aw1) X(s_awthl1) X(s_awqt1) X(s_awqv1) X(s_awqc1) X(s_awu1) X(s_awv1) X(s_awqke1) X(s_awqsq1) X(zw1)
+#if defined(__CUDA_ARCH__)
+#define CPPWRF_MYNN_ARR2(name) ::cppwrf::ColArray<real> name;
+#define CPPWRF_MYNN_ARR3(name) ::cppwrf::ColArray<real> name;
+#else
+#define CPPWRF_MYNN_ARR2(name) real name[K + 2];
+#define CPPWRF_MYNN_ARR3(name) real name[K + 3];
+#endif
+
+// MYNN-EDMF state of one column (mynnedmf_driver's interface)
 template <int K>
 struct Column {
   int kte;
-  // in
-  real dz[K + 2], u[K + 2], v[K + 2], w[K + 2], th[K + 2], pres[K + 2], ex[K + 2], rho[K + 2], tk[K + 2];
-  real sqv[K + 2], sqc[K + 2], sqi[K + 2], sqs[K + 2];
-  // inout
-  real qke[K + 2], qke_adv[K + 2], el[K + 2], sh[K + 2], sm[K + 2], kh[K + 2], km[K + 2], tsq[K + 2], qsq[K + 2],
-      cov[K + 2], qc_bl[K + 2], qi_bl[K + 2], cldfra_bl[K + 2];
-  // out
-  real du[K + 2], dv[K + 2], dth[K + 2], dqv[K + 2], dqc[K + 2], dqi[K + 2];
-  real edmf_a[K + 2], edmf_w[K + 2], edmf_qt[K + 2], edmf_thl[K + 2], edmf_ent[K + 2], edmf_qc[K + 2];
-  real dqke[K + 2], qwt[K + 2], qshear[K + 2], qbuoy[K + 2], qdiss[K + 2];  // tke_budget = 1
+  CPPWRF_MYNN_COLUMN(CPPWRF_MYNN_ARR2)
   real pblh, maxwidth, maxmf, ztop_plume, excess_h, excess_q, maxmf_dd, maxwidth_dd, maxtkeprod, cldtop_cooling,
       ent_eff;
   int kpbl;
 };
 
-// mynnedmf (initflag: first step; restart = cycling = .false.); tke_budget = 1 fills c.dqke, qwt, qshear, qbuoy, qdiss;
-// cw: the GPU's work arrays of DMP_mf (core/column_work.hpp)
 template <int K>
-CPPWRF_HD inline void mynnedmf(Column<K>& c, const Options& op, int tke_budget, int initflag, real delt, real dx,
-                               real xland, real ts, real ps, real ust, real hfx, real qfx, real wspd, real uoce,
-                               real voce, ColumnSlots cw = {}) {
-  constexpr int kts = 1;
-  const int kte = c.kte;
-  const int bl_mynn_edmf = op.edmf, bl_mynn_edmf_mom = op.edmf_mom, bl_mynn_edmf_tke = op.edmf_tke,
-            bl_mynn_ess = op.ess;
-  const real closure = op.closure;
-  real* qwt = tke_budget == 1 ? c.qwt : nullptr;
-  real* qdiss = tke_budget == 1 ? c.qdiss : nullptr;
-  real* qshear = tke_budget == 1 ? c.qshear : nullptr;
-  real* qbuoy = tke_budget == 1 ? c.qbuoy : nullptr;
-  real thl1[K + 2], thv1[K + 2], thlv1[K + 2], qv1[K + 2], qc1[K + 2], qi1[K + 2], sqw1[K + 2], thl_tot1[K + 2],
-      qc_tot1[K + 2], qi_tot1[K + 2], dfm1[K + 2], dfh1[K + 2], dfq1[K + 2], tcd1[K + 2], qcd1[K + 2], pdk1[K + 2],
-      pdt1[K + 2], pdq1[K + 2], pdc1[K + 2], vt1[K + 2], vq1[K + 2], sgm1[K + 2], diss_heat1[K + 2],
-      tkeprod_up[K + 2], dqs1[K + 2];
-  real s_aw1[K + 3], s_awthl1[K + 3], s_awqt1[K + 3], s_awqv1[K + 3], s_awqc1[K + 3], s_awu1[K + 3], s_awv1[K + 3],
-      s_awqke1[K + 3], s_awqsq1[K + 3], zw1[K + 3];
-  real psig_bl, psig_shcu, rmol, rmolh;
+struct Work {
+  CPPWRF_MYNN_WORK2(CPPWRF_MYNN_ARR2)
+  CPPWRF_MYNN_WORK3(CPPWRF_MYNN_ARR3)
+};
+
+// mynnedmf's scalars that one part leaves for a later one
+struct Scalars {
+  real psig_bl, psig_shcu, rmol, flt, fltv, flq, flqv, flqc, th_sfc, zet, pmz, phh, elt, vsc;
+  int k_tropo;
+};
+// the scalars kept in the GPU's work buffer from one kernel to the next (R: real, I: int)
+#define CPPWRF_MYNN_SCALARS(R, I)                                                                                     \
+  R(c, pblh) R(c, maxwidth) R(c, maxmf) R(c, ztop_plume) R(c, excess_h) R(c, excess_q) R(c, maxmf_dd)                 \
+  R(c, maxwidth_dd) R(c, maxtkeprod) R(c, cldtop_cooling) R(c, ent_eff) R(s, psig_bl) R(s, psig_shcu) R(s, rmol)      \
+  R(s, flt) R(s, fltv) R(s, flq) R(s, flqv) R(s, flqc) R(s, th_sfc) R(s, zet) R(s, pmz) R(s, phh) R(s, elt)           \
+  R(s, vsc) I(c, kpbl) I(s, k_tropo)
+#define CPPWRF_MYNN_COUNT(o, f) +1
+inline constexpr int kScalarsReal = 0 CPPWRF_MYNN_SCALARS(CPPWRF_MYNN_COUNT, CPPWRF_MYNN_COUNT) - 2;
+inline constexpr int kScalarsInt = 4;  // 2 used; 4 keeps the arrays after them 8-byte aligned
+
+// a column's bytes in the GPU's work buffer: the arrays, the scalars, then DMP_mf's plume arrays
+#define CPPWRF_MYNN_BYTES2(name) +sizeof(real) * std::size_t(K + 2)
+#define CPPWRF_MYNN_BYTES3(name) +sizeof(real) * std::size_t(K + 3)
+template <int K>
+inline constexpr std::size_t kWorkBytes = 0 CPPWRF_MYNN_COLUMN(CPPWRF_MYNN_BYTES2) CPPWRF_MYNN_WORK2(CPPWRF_MYNN_BYTES2)
+    CPPWRF_MYNN_WORK3(CPPWRF_MYNN_BYTES3) + sizeof(real) * std::size_t(kScalarsReal) +
+    sizeof(int) * std::size_t(kScalarsInt) + kMfWorkBytes<K>;
+
+#if defined(__CUDA_ARCH__)
+// one column's arrays and scalars in the work buffer, at the same places in every kernel of a launch
+template <int K>
+struct Slots {
+  Column<K> c;
+  Work<K> w;
+  ColArray<real> sr;
+  ColArray<int> si;
+};
+template <int K>
+CPPWRF_FORCEINLINE Slots<K> take_slots(ColumnSlots& cw, int kte) {
+  Slots<K> s;
+  s.c.kte = kte;
+#define CPPWRF_MYNN_TAKE_C(name) s.c.name = cw.take<real>(K + 2);
+#define CPPWRF_MYNN_TAKE_W2(name) s.w.name = cw.take<real>(K + 2);
+#define CPPWRF_MYNN_TAKE_W3(name) s.w.name = cw.take<real>(K + 3);
+  CPPWRF_MYNN_COLUMN(CPPWRF_MYNN_TAKE_C)
+  CPPWRF_MYNN_WORK2(CPPWRF_MYNN_TAKE_W2)
+  CPPWRF_MYNN_WORK3(CPPWRF_MYNN_TAKE_W3)
+  s.sr = cw.take<real>(kScalarsReal);
+  s.si = cw.take<int>(kScalarsInt);
+  return s;
+}
+template <int K>
+CPPWRF_FORCEINLINE void scalars_load(Slots<K>& sl, Scalars& s) {
+  auto& c = sl.c;
+  int n = 0, m = 0;
+#define CPPWRF_MYNN_LOAD_R(o, f) o.f = sl.sr[n++];
+#define CPPWRF_MYNN_LOAD_I(o, f) o.f = sl.si[m++];
+  CPPWRF_MYNN_SCALARS(CPPWRF_MYNN_LOAD_R, CPPWRF_MYNN_LOAD_I)
+}
+template <int K>
+CPPWRF_FORCEINLINE void scalars_store(Slots<K>& sl, const Scalars& s) {
+  auto& c = sl.c;
+  int n = 0, m = 0;
+#define CPPWRF_MYNN_STORE_R(o, f) sl.sr[n++] = o.f;
+#define CPPWRF_MYNN_STORE_I(o, f) sl.si[m++] = o.f;
+  CPPWRF_MYNN_SCALARS(CPPWRF_MYNN_STORE_R, CPPWRF_MYNN_STORE_I)
+}
+#endif
+
+// an optional output array (tke_budget = 1): the array, else null
+CPPWRF_HD inline real* opt_array(real* a, bool on) { return on ? a : nullptr; }
+CPPWRF_HD inline ColArray<real> opt_array(ColArray<real> a, bool on) { return ColArray<real>{on ? a.p : nullptr}; }
+
+#define CPPWRF_MYNN_BIND(name) [[maybe_unused]] auto& name = w.name;
+#define CPPWRF_MYNN_BIND_SCALARS                                                                                      \
+  [[maybe_unused]] real &psig_bl = sc.psig_bl, &psig_shcu = sc.psig_shcu, &rmol = sc.rmol, &flt = sc.flt,             \
+                        &fltv = sc.fltv, &flq = sc.flq, &flqv = sc.flqv, &flqc = sc.flqc, &th_sfc = sc.th_sfc,     \
+                        &zet = sc.zet, &pmz = sc.pmz, &phh = sc.phh, &elt = sc.elt, &vsc = sc.vsc;
+#define CPPWRF_MYNN_PREAMBLE                                                                                          \
+  constexpr int kts = 1;                                                                                              \
+  const int kte = c.kte;                                                                                              \
+  [[maybe_unused]] const int bl_mynn_edmf = op.edmf, bl_mynn_edmf_mom = op.edmf_mom,                                  \
+                             bl_mynn_edmf_tke = op.edmf_tke, bl_mynn_ess = op.ess;                                    \
+  [[maybe_unused]] const real closure = op.closure;                                                                   \
+  [[maybe_unused]] auto qwt = opt_array(c.qwt, tke_budget == 1);                                                      \
+  [[maybe_unused]] auto qdiss = opt_array(c.qdiss, tke_budget == 1);                                                  \
+  [[maybe_unused]] auto qshear = opt_array(c.qshear, tke_budget == 1);                                                \
+  [[maybe_unused]] auto qbuoy = opt_array(c.qbuoy, tke_budget == 1);                                                  \
+  CPPWRF_MYNN_WORK2(CPPWRF_MYNN_BIND)                                                                                 \
+  CPPWRF_MYNN_WORK3(CPPWRF_MYNN_BIND)                                                                                 \
+  CPPWRF_MYNN_BIND_SCALARS
+
+// mynnedmf (initflag: first step; restart = cycling = .false.) in parts, in this order (mynnedmf below):
+// stage_a (column): the initialisation, get_pblh, the surface fluxes and stability, the tropopause of
+//   mym_condensation; level_cond (k = 1 .. kte-1): mym_condensation's level loop;
+// stage_b (column): mym_condensation's top values, DMP_mf, the total condensate, mym_turbulence's first loops and
+//   mym_level2's surface values; level_l2 (k = 2 .. kte): mym_level2;
+// stage_c (column): mym_length (bl_mynn_mixlength 1: its first loops and the column integrals elt, vsc; else all
+//   of it); level_boulac (iz = 1 .. kte-1, bl_mynn_mixlength 1): boulac_length (level kte takes level kte-1's
+//   values, as boulac_length sets them); level_turb (k = 2 .. kte): mym_length's last loop and the LES blend
+//   (bl_mynn_mixlength 1), mym_turbulence's loop over the walls;
+// stage_d (column): the rest of mym_turbulence, mym_predict, the dissipative heating, mynn_tendencies, the
+//   exchange coefficients and the TKE budget.
+// Every part computes the values of mynnedmf's statements at its levels; no value depends on the order of the
+// levels within a level part. tke_budget = 1 fills c.dqke, qwt, qshear, qbuoy, qdiss.
+template <int K>
+CPPWRF_HD inline void mynnedmf_stage_a(Column<K>& c, Work<K>& w, Scalars& sc, const Options& op, int tke_budget,
+                                       int initflag, real dx, real xland, real ust, real hfx, real qfx, real ts) {
+  CPPWRF_MYNN_PREAMBLE
+  real qc1[K + 2], qi1[K + 2], cldfra_bl1_old[K + 2], qc_bl1_old[K + 2];
+  real rmolh;
   for (int k = kts; k <= kte; ++k) {
     c.edmf_a[k] = zero;
     c.edmf_w[k] = zero;
@@ -433,7 +544,6 @@ CPPWRF_HD inline void mynnedmf(Column<K>& c, const Options& op, int tke_budget, 
     for (int k = kts; k <= kte; ++k) c.qke[k] = c.qke_adv[k];
   if (tke_budget == 1)
     for (int k = kts; k <= kte; ++k) c.dqke[k] = c.qke[k];
-  real cldfra_bl1_old[K + 2], qc_bl1_old[K + 2];
   for (int k = kts; k <= kte; ++k) {
     cldfra_bl1_old[k] = c.cldfra_bl[k];
     qc_bl1_old[k] = c.qc_bl[k];
@@ -474,19 +584,18 @@ CPPWRF_HD inline void mynnedmf(Column<K>& c, const Options& op, int tke_budget, 
   get_pblh(kte, c.pblh, thv1, zw1, c.dz, xland, ust, c.kpbl);
   scale_aware(dx, c.pblh, psig_bl, psig_shcu);
   const real cpm = cp * (one + real(0.84) * c_max(c.sqv[kts], real(1e-8)));
-  const real flqv = qfx / c.rho[kts];
-  const real flqc = zero;
-  const real th_sfc = ts / c.ex[kts];
-  const real flq = flqv + flqc;
-  const real flt = hfx / (c.rho[kts] * cpm) - xlvcp * flqc / c.ex[kts];
-  const real fltv = flt + flqv * p608 * th_sfc;
+  flqv = qfx / c.rho[kts];
+  flqc = zero;
+  th_sfc = ts / c.ex[kts];
+  flq = flqv + flqc;
+  flt = hfx / (c.rho[kts] * cpm) - xlvcp * flqc / c.ex[kts];
+  fltv = flt + flqv * p608 * th_sfc;
   rmol = -karman * gtr * fltv / c_max(ust * ust * ust, real(1.0e-6));
   rmolh = -karman * gtr * flt / c_max(ust * ust * ust, real(1.0e-6));
   (void)rmolh;
-  real zet = p5 * c.dz[kts] * rmol;
+  zet = p5 * c.dz[kts] * rmol;
   zet = c_max(zet, real(-10.));
   zet = c_min(zet, real(10.));
-  real pmz, phh;
   if ((xland - real(1.5)) >= zero) {
     if (zet >= zero) {
       pmz = one + real(3.0) * zet;
@@ -504,8 +613,25 @@ CPPWRF_HD inline void mynnedmf(Column<K>& c, const Options& op, int tke_budget, 
       phh = one / std::sqrt(one - cphh_unst * zet);
     }
   }
-  mym_condensation<K>(kte, c.dz, zw1, xland, thl1, sqw1, c.sqc, c.sqi, c.sqs, c.pres, c.ex, c.tsq, c.qsq, c.cov,
-                      c.sh, c.el, op.cloudpdf, c.qc_bl, c.qi_bl, c.cldfra_bl, c.pblh, vt1, vq1, c.th, sgm1, closure);
+  sc.k_tropo = condensation_ktropo(kte, c.th, c.pres);
+}
+
+template <int K>
+CPPWRF_HD inline void mynnedmf_level_cond(int k, Column<K>& c, Work<K>& w, const Scalars& sc, const Options& op,
+                                          real xland) {
+  CPPWRF_MYNN_WORK2(CPPWRF_MYNN_BIND)
+  CPPWRF_MYNN_WORK3(CPPWRF_MYNN_BIND)
+  condensation_level(k, sc.k_tropo, c.dz, zw1, xland, thl1, sqw1, c.sqc, c.sqi, c.sqs, c.pres, c.ex, c.tsq, c.qsq,
+                     c.cov, c.sh, c.el, op.cloudpdf, c.qc_bl, c.qi_bl, c.cldfra_bl, c.pblh, vt1, vq1, c.th, sgm1,
+                     op.closure);
+}
+
+template <int K>
+CPPWRF_HD inline void mynnedmf_stage_b(Column<K>& c, Work<K>& w, Scalars& sc, const Options& op, int tke_budget,
+                                       real delt, real dx, real xland, real ust, ColumnSlots cw) {
+  CPPWRF_MYNN_PREAMBLE
+  real qc_tot1[K + 2], qi_tot1[K + 2], thl_tot1[K + 2];
+  condensation_post(kte, op.cloudpdf, c.qc_bl, c.qi_bl, c.cldfra_bl, vt1, vq1);
   for (int k = kts; k <= kte; ++k) tkeprod_up[k] = zero;
   MfOut mo{};
   if (bl_mynn_edmf > 0) {
@@ -525,7 +651,6 @@ CPPWRF_HD inline void mynnedmf(Column<K>& c, const Options& op, int tke_budget, 
   c.ent_eff = zero;
   c.maxmf_dd = zero;
   c.maxwidth_dd = zero;
-  const real delt2 = delt;
   for (int k = kts; k <= kte; ++k) {
     qc_tot1[k] = c_max(c.qc_bl[k], c.sqc[k]);
     qi_tot1[k] = c_max(c.qi_bl[k], c.sqi[k] + c.sqs[k]);
@@ -534,10 +659,70 @@ CPPWRF_HD inline void mynnedmf(Column<K>& c, const Options& op, int tke_budget, 
     thv1[k] = c.th[k] * (one + p608 * c.sqv[k] - (qc_tot1[k] + qi_tot1[k]));
   }
   (void)thl_tot1;
-  mym_turbulence<K>(kte, xland, closure, ckmod, taue, c.dz, dx, zw1, c.pres, c.ex, c.u, c.v, thl1, thv1, thlv1, sqw1,
-                    c.qke, c.tsq, c.qsq, c.cov, vt1, vq1, rmol, flt, fltv, flq, c.pblh, c.th, c.sh, c.sm, c.el, dfm1,
-                    dfh1, dfq1, tcd1, qcd1, pdk1, pdt1, pdq1, pdc1, qshear, qbuoy, psig_bl, c.cldfra_bl,
-                    op.mixlength, bl_mynn_ess, c.edmf_w, c.edmf_a, tkeprod_up);
+  // mym_turbulence
+  turbulence_pre(kte, closure, taue, zw1, c.tsq, c.pblh, qkw, qtw, qpe);
+  mym_level2_sfc(dtl, dqw, dtv, gm, gh, c.sm, c.sh);
+}
+
+template <int K>
+CPPWRF_HD inline void mynnedmf_level_l2(int k, Column<K>& c, Work<K>& w, const Options& op, real xland) {
+  CPPWRF_MYNN_WORK2(CPPWRF_MYNN_BIND)
+  CPPWRF_MYNN_WORK3(CPPWRF_MYNN_BIND)
+  mym_level2_k(k, ckmod, op.ess, zw1, c.dz, xland, c.pblh, c.u, c.v, thl1, thv1, thlv1, c.th, c.pres, c.ex, c.qke,
+               c.cldfra_bl, c.edmf_a, c.edmf_w, sqw1, vt1, vq1, dtl, dqw, dtv, gm, gh, c.sm, c.sh);
+}
+
+template <int K>
+CPPWRF_HD inline void mynnedmf_stage_c(Column<K>& c, Work<K>& w, Scalars& sc, const Options& op, int tke_budget,
+                                       real dx, real xland) {
+  CPPWRF_MYNN_PREAMBLE
+  if (op.mixlength == 1) {
+    length1_pre(kte, xland, c.dz, dx, zw1, fltv, c.u, c.v, c.qke, qpe, c.pblh, c.th, qkw, qtw, qtke, thetaw, elt, vsc);
+    c.el[kts] = zero;
+  } else {
+    mym_length<K>(kte, xland, c.dz, dx, zw1, rmol, flt, fltv, flq, vt1, vq1, c.u, c.v, c.qke, qpe, dtv, c.el, c.pblh,
+                  c.th, qkw, qtw, psig_bl, op.mixlength, c.edmf_w, c.edmf_a);
+  }
+}
+
+template <int K>
+CPPWRF_HD inline void mynnedmf_level_boulac(int iz, Column<K>& c, Work<K>& w) {
+  CPPWRF_MYNN_WORK2(CPPWRF_MYNN_BIND)
+  CPPWRF_MYNN_WORK3(CPPWRF_MYNN_BIND)
+  const int kte = c.kte;
+  real lb1, lb2;
+  boulac_level(iz, kte, zw1, c.dz, qtke, thetaw, lb1, lb2);
+  elBLmin[iz] = lb1;
+  elBLavg[iz] = lb2;
+  if (iz == kte - 1) {
+    elBLmin[kte] = lb1;
+    elBLavg[kte] = lb2;
+  }
+}
+
+template <int K>
+CPPWRF_HD inline void mynnedmf_level_turb(int k, Column<K>& c, Work<K>& w, const Scalars& sc, const Options& op,
+                                          int tke_budget, real dx, real xland) {
+  CPPWRF_MYNN_WORK2(CPPWRF_MYNN_BIND)
+  CPPWRF_MYNN_WORK3(CPPWRF_MYNN_BIND)
+  if (op.mixlength == 1) {
+    length1_el(k, xland, dx, zw1, sc.rmol, c.u, c.v, dtv, c.el, c.pblh, qkw, elBLavg, c.edmf_w, c.edmf_a, sc.elt,
+               sc.vsc);
+    length_les_blend(k, c.dz, c.el, sc.psig_bl);
+  }
+  turbulence_level(k, op.closure, ckmod, c.dz, zw1, c.u, c.v, c.tsq, c.qsq, c.cov, vt1, vq1, c.pblh, c.sh, c.sm, c.el,
+                   dfm1, dfh1, dfq1, tcd1, qcd1, pdk1, pdt1, pdq1, pdc1, opt_array(c.qshear, tke_budget == 1),
+                   opt_array(c.qbuoy, tke_budget == 1), c.cldfra_bl, c.edmf_w, c.edmf_a, tkeprod_up, qkw, qtw, dtl,
+                   dqw, gm, gh, qpe);
+}
+
+template <int K>
+CPPWRF_HD inline void mynnedmf_stage_d(Column<K>& c, Work<K>& w, Scalars& sc, const Options& op, int tke_budget,
+                                       real delt, real ust, real ps, real wspd, real uoce, real voce) {
+  CPPWRF_MYNN_PREAMBLE
+  real diss_heat1[K + 2];
+  turbulence_post(kte, c.dz, dfm1, dfh1, dfq1, tcd1, qcd1, pdk1, pdt1, pdq1, pdc1);
+  const real delt2 = delt;
   mym_predict<K>(kte, closure, delt2, c.dz, ust, pmz, phh, c.el, dfq1, c.rho, pdk1, pdt1, pdq1, pdc1, c.qke, c.tsq,
                  c.qsq, c.cov, s_aw1, s_awqke1, s_awqsq1, bl_mynn_edmf, bl_mynn_edmf_tke, qwt, qdiss);
   // dissipative heating: gfortran vectorises this loop (glibc libmvec pow and exp, kte-1 trips)
@@ -585,5 +770,33 @@ CPPWRF_HD inline void mynnedmf(Column<K>& c, const Options& op, int tke_budget, 
   }
   for (int k = kts; k <= kte; ++k) c.qke_adv[k] = c.qke[k];
 }
+
+// mynnedmf: the parts in order on one column (cw: the GPU's work arrays of DMP_mf, core/column_work.hpp)
+template <int K>
+CPPWRF_HD inline void mynnedmf_parts(Column<K>& c, Work<K>& w, Scalars& sc, const Options& op, int tke_budget,
+                                     int initflag, real delt, real dx, real xland, real ts, real ps, real ust,
+                                     real hfx, real qfx, real wspd, real uoce, real voce, ColumnSlots cw = {}) {
+  const int kte = c.kte;
+  mynnedmf_stage_a<K>(c, w, sc, op, tke_budget, initflag, dx, xland, ust, hfx, qfx, ts);
+  for (int k = 1; k <= kte - 1; ++k) mynnedmf_level_cond<K>(k, c, w, sc, op, xland);
+  mynnedmf_stage_b<K>(c, w, sc, op, tke_budget, delt, dx, xland, ust, cw);
+  for (int k = 2; k <= kte; ++k) mynnedmf_level_l2<K>(k, c, w, op, xland);
+  mynnedmf_stage_c<K>(c, w, sc, op, tke_budget, dx, xland);
+  if (op.mixlength == 1)
+    for (int iz = 1; iz <= kte - 1; ++iz) mynnedmf_level_boulac<K>(iz, c, w);
+  for (int k = 2; k <= kte; ++k) mynnedmf_level_turb<K>(k, c, w, sc, op, tke_budget, dx, xland);
+  mynnedmf_stage_d<K>(c, w, sc, op, tke_budget, delt, ust, ps, wspd, uoce, voce);
+}
+
+#if !defined(__CUDA_ARCH__)
+// mynnedmf on a host column (local work arrays)
+template <int K>
+inline void mynnedmf(Column<K>& c, const Options& op, int tke_budget, int initflag, real delt, real dx, real xland,
+                     real ts, real ps, real ust, real hfx, real qfx, real wspd, real uoce, real voce) {
+  auto w = std::make_unique<Work<K>>();
+  Scalars sc{};
+  mynnedmf_parts<K>(c, *w, sc, op, tke_budget, initflag, delt, dx, xland, ts, ps, ust, hfx, qfx, wspd, uoce, voce);
+}
+#endif
 
 }  // namespace cppwrf::phys::mynnedmf

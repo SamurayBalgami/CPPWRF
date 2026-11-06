@@ -172,8 +172,8 @@ CPPWRF_HD inline real phim(real zet) {
 }
 
 // tridiag2 (1-based a, b, c, d, x of kte elements; a(1) is not used)
-template <int K>
-CPPWRF_HD inline void tridiag2(int kte, const real* a, const real* b, const real* c, const real* d, real* x) {
+template <int K, class A_a, class A_b, class A_c, class A_d, class A_x>
+CPPWRF_HD inline void tridiag2(int kte, A_a a, A_b b, A_c c, A_d d, A_x x) {
   real cp1[K + 2], dp1[K + 2];
   cp1[1] = c[1] / b[1];
   dp1[1] = d[1] / b[1];
@@ -187,7 +187,8 @@ CPPWRF_HD inline void tridiag2(int kte, const real* a, const real* b, const real
 }
 
 // GET_PBLH (stable_method = 1)
-CPPWRF_HD inline void get_pblh(int kte, real& pblh, const real* thv1, const real* zw1, const real* dz1, real landsea,
+template <class A_thv1, class A_zw1, class A_dz1>
+CPPWRF_HD inline void get_pblh(int kte, real& pblh, A_thv1 thv1, A_zw1 zw1, A_dz1 dz1, real landsea,
                                real ust, int& kpbl) {
   constexpr int kts = 1;
   constexpr real sbl_lim = real(200.), sbl_damp = real(170.);

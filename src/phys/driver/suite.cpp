@@ -500,9 +500,10 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
       mk3(edmf_a, g, "edmf_a"); mk3(edmf_w, g, "edmf_w"); mk3(edmf_thl, g, "edmf_thl"); mk3(edmf_qt, g, "edmf_qt");
       mk3(edmf_ent, g, "edmf_ent"); mk3(edmf_qc, g, "edmf_qc");
     }
-    // DMP_mf's plume arrays in the GPU's work buffer (pbl_driver: KMynnPblRunner, 48 or kMaxLevels levels)
+    // mynnedmf's column arrays and DMP_mf's plume arrays in the GPU's work buffer (pbl_driver: run_mynn_gpu, 48 or
+    // kMaxLevels levels)
     column_work_reserve(g.columns(),
-                        g.nz <= 48 ? mynnedmf::kMfWorkBytes<48> : mynnedmf::kMfWorkBytes<mynnedmf::kMaxLevels>);
+                        g.nz <= 48 ? mynnedmf::kWorkBytes<48> : mynnedmf::kWorkBytes<mynnedmf::kMaxLevels>);
     if (o.tke_budget == 1) {
       mk3(qshear, g, "qshear"); mk3(qbuoy, g, "qbuoy"); mk3(qdiss, g, "qdiss"); mk3(qwt, g, "qwt");
       mk3(dqke, g, "dqke");

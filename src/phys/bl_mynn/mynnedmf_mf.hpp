@@ -46,18 +46,18 @@ struct MfOut {
 };
 
 // DMP_mf: qt1 = sqw, qv1 = sqv, qc1 = sqc (specific contents); ts = theta at the surface (th_sfc)
-template <int K>
-CPPWRF_HD inline void dmp_mf(int kte, real dt, const real* zw1, const real* dz1, const real* pres1, const real* rho1,
-                             int momentum_opt, int tke_opt, real bl_mynn_closure, const real* u1, const real* v1,
-                             const real* w1, const real* th1,
-                             const real* thl1, const real* thv1, const real* tk1, const real* qt1, const real* qv1,
-                             const real* qc1, const real* qke1, const real* qsq1, const real* ex1, real* vt1, real* vq1,
+template <int K, class A>
+CPPWRF_HD inline void dmp_mf(int kte, real dt, A zw1, A dz1, A pres1, A rho1,
+                             int momentum_opt, int tke_opt, real bl_mynn_closure, A u1, A v1,
+                             A w1, A th1,
+                             A thl1, A thv1, A tk1, A qt1, A qv1,
+                             A qc1, A qke1, A qsq1, A ex1, A vt1, A vq1,
                              real ust, real flt, real fltv, real flq, real pblh, int kpbl, real dx, real landsea,
-                             real ts, real* edmf_a1, real* edmf_w1, real* edmf_qt1, real* edmf_thl1, real* edmf_ent1,
-                             real* edmf_qc1, real* s_aw1, real* s_awthl1, real* s_awqt1, real* s_awqv1, real* s_awqc1,
-                             real* s_awu1, real* s_awv1, real* s_awqke1, real* s_awqsq1, real* qc_bl1,
-                             real* cldfra_bl1, real Psig_shcu, MfOut& o,
-                             real* tkeprod_up, const real* el1, [[maybe_unused]] ColumnSlots cppwrf_cw_ = {}) {
+                             real ts, A edmf_a1, A edmf_w1, A edmf_qt1, A edmf_thl1, A edmf_ent1,
+                             A edmf_qc1, A s_aw1, A s_awthl1, A s_awqt1, A s_awqv1, A s_awqc1,
+                             A s_awu1, A s_awv1, A s_awqke1, A s_awqsq1, A qc_bl1,
+                             A cldfra_bl1, real Psig_shcu, MfOut& o,
+                             A tkeprod_up, A el1, [[maybe_unused]] ColumnSlots cppwrf_cw_ = {}) {
   constexpr int kts = 1;
   constexpr int nup = kMfPlumes;
   constexpr real Atot = real(0.10), lmax = real(1000.), lmin = real(300.), dcut = real(1.2);

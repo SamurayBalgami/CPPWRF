@@ -101,26 +101,23 @@ struct KMynnPbl {
   View2<int> kpbl;
   V3 qke_adv_1, qke_adv_2;  // the scalar qke_adv (State q_1 / q_2), when present
   bool has_qke_adv = false;
-  ColumnWork work{};  // DMP_mf's plume arrays on the GPU (column_for_work)
-  // K: the column arrays' size (>= nz); the scheme's per-thread arrays take ~1.6 KB per level in FP64
+  ColumnWork work{};  // the GPU's work buffer of mynnedmf's parts (mynnedmf::Column, Work, Slots)
+  // mynnedmf_driver before mynnedmf: the column, the surface-flux limits (hfx1, qfx1), mynnedmf_pre_run.
+  // qv1 .. qs1 are the moist fields themselves (the PBL scheme does not change them)
   template <int K>
-  CPPWRF_HD void column(int i, int j) const {
+  CPPWRF_HD void pre(int i, int j, mynnedmf::Column<K>& c, real& hfx1, real& qfx1) const {
     using namespace mynnedmf;
-    CPPWRF_COLUMN_SLOTS(work, i, j)
-    Column<K> c;
-    real qv1[K + 2], qc1[K + 2], qi1[K + 2], qs1[K + 2];
     c.kte = nz;
     for (int k = 1; k <= nz; ++k) {
       const int kk = k - 1;
       c.dz[k] = dz8w(i, j, kk); c.u[k] = u(i, j, kk); c.v[k] = v(i, j, kk); c.w[k] = w(i, j, kk);
       c.th[k] = th(i, j, kk); c.tk[k] = t(i, j, kk); c.pres[k] = p(i, j, kk); c.ex[k] = pi(i, j, kk);
       c.rho[k] = rho(i, j, kk);
-      qv1[k] = qv(i, j, kk); qc1[k] = qc(i, j, kk); qi1[k] = qi(i, j, kk); qs1[k] = qs(i, j, kk);
     }
-    real hfx1 = hfx(i, j);
+    hfx1 = hfx(i, j);
     if (hfx1 > real(1200.)) hfx1 = real(1200.);
     if (hfx1 < real(-600.)) hfx1 = real(-600.);
-    real qfx1 = qfx(i, j);
+    qfx1 = qfx(i, j);
     if (qfx1 > real(9e-4)) qfx1 = real(9e-4);
     if (qfx1 < real(-3e-4)) qfx1 = real(-3e-4);
     c.pblh = pblh(i, j);
@@ -137,24 +134,31 @@ struct KMynnPbl {
       }
     }
     for (int k = 1; k <= nz; ++k) {  // mynnedmf_pre_run
-      c.sqv[k] = qv1[k] / (one + qv1[k]);
-      c.sqc[k] = qc1[k] / (one + qv1[k]);
-      c.sqi[k] = qi1[k] / (one + qv1[k]);
-      c.sqs[k] = qs1[k] / (one + qv1[k]);
+      const int kk = k - 1;
+      const real qv1 = qv(i, j, kk), qc1 = qc(i, j, kk), qi1 = qi(i, j, kk), qs1 = qs(i, j, kk);
+      c.sqv[k] = qv1 / (one + qv1);
+      c.sqc[k] = qc1 / (one + qv1);
+      c.sqi[k] = qi1 / (one + qv1);
+      c.sqs[k] = qs1 / (one + qv1);
     }
-    mynnedmf::mynnedmf<K>(c, op, tke_budget, initflag, delt, dx, xland(i, j), tsk(i, j), psfc(i, j), ust(i, j), hfx1,
-                          qfx1, wspd(i, j), uoce(i, j), voce(i, j), cppwrf_cw_);
+  }
+  // mynnedmf_post_run and the outputs
+  template <int K>
+  CPPWRF_HD void post(int i, int j, mynnedmf::Column<K>& c) const {
+    using namespace mynnedmf;
     for (int k = 1; k <= nz; ++k) {  // mynnedmf_post_run
-      const real sq = qv1[k] / (one + qv1[k]);
+      const int kk = k - 1;
+      const real qv1 = qv(i, j, kk), qc1 = qc(i, j, kk), qi1 = qi(i, j, kk);
+      const real sq = qv1 / (one + qv1);
       const real sqv = sq + c.dqv[k] * delt;
       const real rq = sqv / (one - sqv);
-      c.dqv[k] = (rq - qv1[k]) / delt;
-      real sqx = qc1[k] / (one + qv1[k]);
+      c.dqv[k] = (rq - qv1) / delt;
+      real sqx = qc1 / (one + qv1);
       real sqn = sqx + c.dqc[k] * delt;
-      c.dqc[k] = (sqn * (one + sqv) - qc1[k]) / delt;
-      sqx = qi1[k] / (one + qv1[k]);
+      c.dqc[k] = (sqn * (one + sqv) - qc1) / delt;
+      sqx = qi1 / (one + qv1);
       sqn = sqx + c.dqi[k] * delt;
-      c.dqi[k] = (sqn * (one + sqv) - qi1[k]) / delt;
+      c.dqi[k] = (sqn * (one + sqv) - qi1) / delt;
     }
     for (int k = 1; k <= nz; ++k) {
       const int kk = k - 1;
@@ -184,15 +188,110 @@ struct KMynnPbl {
       excess_h(i, j) = c.excess_h; excess_q(i, j) = c.excess_q;
     }
   }
+#if !defined(CPPWRF_USE_CUDA)
+  // the CPU: the column's parts in order (the GPU runs them as the kernels KMynnStage / KMynnLevel below)
+  template <int K>
+  void column(int i, int j) const {
+    using namespace mynnedmf;
+    auto c = std::make_unique<Column<K>>();
+    auto w = std::make_unique<Work<K>>();
+    Scalars sc{};
+    real hfx1, qfx1;
+    pre<K>(i, j, *c, hfx1, qfx1);
+    mynnedmf_parts<K>(*c, *w, sc, op, tke_budget, initflag, delt, dx, xland(i, j), tsk(i, j), psfc(i, j), ust(i, j),
+                      hfx1, qfx1, wspd(i, j), uoce(i, j), voce(i, j));
+    post<K>(i, j, *c);
+  }
+#endif
 };
 
+#if defined(CPPWRF_USE_CUDA)
+// mynnedmf's column parts on the GPU (one thread per column of a column_work_chunks chunk; the work buffer holds the
+// column's arrays and scalars from one kernel to the next): stage 0 = pre + stage_a, 1 = stage_b, 2 = stage_c,
+// 3 = stage_d + post
+template <int K, int S>
+struct KMynnStage {
+  KMynnPbl k;
+  CPPWRF_HD void operator()([[maybe_unused]] int i, [[maybe_unused]] int j) const {
+#if defined(__CUDA_ARCH__)
+    using namespace mynnedmf;
+    CPPWRF_COLUMN_SLOTS(k.work, i, j)
+    Slots<K> sl = take_slots<K>(cppwrf_cw_, k.nz);
+    Scalars sc{};
+    if constexpr (S == 0) {
+      real hfx1, qfx1;
+      k.template pre<K>(i, j, sl.c, hfx1, qfx1);
+      mynnedmf_stage_a<K>(sl.c, sl.w, sc, k.op, k.tke_budget, k.initflag, k.dx, k.xland(i, j), k.ust(i, j), hfx1, qfx1,
+                          k.tsk(i, j));
+    } else {
+      scalars_load<K>(sl, sc);
+      if constexpr (S == 1)
+        mynnedmf_stage_b<K>(sl.c, sl.w, sc, k.op, k.tke_budget, k.delt, k.dx, k.xland(i, j), k.ust(i, j), cppwrf_cw_);
+      if constexpr (S == 2) mynnedmf_stage_c<K>(sl.c, sl.w, sc, k.op, k.tke_budget, k.dx, k.xland(i, j));
+      if constexpr (S == 3) {
+        mynnedmf_stage_d<K>(sl.c, sl.w, sc, k.op, k.tke_budget, k.delt, k.ust(i, j), k.psfc(i, j), k.wspd(i, j),
+                            k.uoce(i, j), k.voce(i, j));
+        k.template post<K>(i, j, sl.c);
+      }
+    }
+    if constexpr (S < 3) scalars_store<K>(sl, sc);
+#endif
+  }
+};
+
+// mynnedmf's level parts on the GPU (one thread per (column, level) of a chunk; MYNN level k = kk + 1): L = 0
+// level_cond (k = 1 .. kte-1), 1 level_l2 (k = 2 .. kte), 2 level_boulac (iz = 1 .. kte-1), 3 level_turb (k = 2 .. kte)
+template <int K, int L>
+struct KMynnLevel {
+  KMynnPbl k;
+  Range2D chunk;  // column_for's columns of the chunk and its thread blocks (the work buffer's places)
+  int bx, by;
+  CPPWRF_HD void operator()([[maybe_unused]] int i, [[maybe_unused]] int j, [[maybe_unused]] int kk) const {
+#if defined(__CUDA_ARCH__)
+    using namespace mynnedmf;
+    const int lev = kk + 1;
+    if constexpr (L == 0 || L == 2) {
+      if (lev > k.nz - 1) return;
+    } else {
+      if (lev < 2) return;
+    }
+    ColumnSlots cw(k.work, i, j, chunk, bx, by);
+    Slots<K> sl = take_slots<K>(cw, k.nz);
+    Scalars sc{};
+    scalars_load<K>(sl, sc);
+    if constexpr (L == 0) mynnedmf_level_cond<K>(lev, sl.c, sl.w, sc, k.op, k.xland(i, j));
+    if constexpr (L == 1) mynnedmf_level_l2<K>(lev, sl.c, sl.w, k.op, k.xland(i, j));
+    if constexpr (L == 2) mynnedmf_level_boulac<K>(lev, sl.c, sl.w);
+    if constexpr (L == 3) mynnedmf_level_turb<K>(lev, sl.c, sl.w, sc, k.op, k.tke_budget, k.dx, k.xland(i, j));
+#endif
+  }
+};
+
+// mynnedmf_driver on the GPU: the parts of each chunk of columns that fits the work buffer
+template <int K>
+void run_mynn_gpu(const Range2D& cols, const KMynnPbl& kp) {
+  column_work_chunks(cols, mynnedmf::kWorkBytes<K>, [&](const Range2D& c, const ColumnWork& wk) {
+    KMynnPbl k = kp;
+    k.work = wk;
+    const ColumnBlock cb = column_block();
+    const Range3D lv{c.i0, c.i1, c.j0, c.j1, 0, k.nz};
+    column_for(c, KMynnStage<K, 0>{k});
+    parallel_for(lv, KMynnLevel<K, 0>{k, c, cb.x, cb.y});
+    column_for(c, KMynnStage<K, 1>{k});
+    parallel_for(lv, KMynnLevel<K, 1>{k, c, cb.x, cb.y});
+    column_for(c, KMynnStage<K, 2>{k});
+    if (k.op.mixlength == 1) parallel_for(lv, KMynnLevel<K, 2>{k, c, cb.x, cb.y});
+    parallel_for(lv, KMynnLevel<K, 3>{k, c, cb.x, cb.y});
+    column_for(c, KMynnStage<K, 3>{k});
+  });
+}
+#else
 template <int K>
 struct KMynnPblRunner {
   KMynnPbl k;
-  static constexpr std::size_t kWorkBytes = mynnedmf::kMfWorkBytes<K>;
-  CPPWRF_HD void operator()(int i, int j) const { k.template column<K>(i, j); }
-  void set_work(const ColumnWork& w) { k.work = w; }
+  void operator()(int i, int j) const { k.template column<K>(i, j); }
 };
+#endif
 
 
 // module_pbl_driver.F bl_fogdes (grav_settling >= 1) after the PBL scheme and the gravity wave drag:
@@ -293,10 +392,17 @@ void PhysicsSuite::pbl_driver(dyn::State& s, const dyn::BaseState& b) {
     if (o_.mynn.tkeadvect && !k.has_qke_adv)
       throw std::runtime_error("bl_mynn_tkeadvect: the scalar qke_adv is missing");
     if (k.has_qke_adv) { k.qke_adv_1 = s.q_1[s.P_QKE_ADV].view(); k.qke_adv_2 = s.q_2[s.P_QKE_ADV].view(); }
-    if (g_.nz <= 48)  // CUDA reserves the kernel's local memory for every resident thread: size it to the column
-      column_for_work(cols, KMynnPblRunner<48>{k});
+#if defined(CPPWRF_USE_CUDA)
+    if (g_.nz <= 48)  // the work arrays sized to the column
+      run_mynn_gpu<48>(cols, k);
     else
-      column_for_work(cols, KMynnPblRunner<mynnedmf::kMaxLevels>{k});
+      run_mynn_gpu<mynnedmf::kMaxLevels>(cols, k);
+#else
+    if (g_.nz <= 48)
+      column_for(cols, KMynnPblRunner<48>{k});
+    else
+      column_for(cols, KMynnPblRunner<mynnedmf::kMaxLevels>{k});
+#endif
   }
   if (o_.gwd_opt == 1) {
     using namespace wrfc;

@@ -9,17 +9,96 @@
 
 namespace cppwrf::phys::mynnedmf {
 
-// mym_level2: dtl, dqw, dtv, gm, gh, sm, sh at the walls (k = 2 .. kte)
-template <int K>
-CPPWRF_HD inline void mym_level2(int kte, real ckmod, int bl_mynn_ess, const real* zw, const real* dz, real xland,
-                                 real pblh, const real* u, const real* v, const real* thl, const real* thv,
-                                 const real* thlv, const real* th, const real* p, const real* exner, const real* qke,
-                                 const real* cldfra, const real* edmf_a, const real* edmf_w, const real* qw,
-                                 const real* vt, const real* vq, real* dtl, real* dqw, real* dtv, real* gm, real* gh,
-                                 real* sm, real* sh) {
+// mym_level2 at the wall k (2 .. kte): the bodies of its loops at k (ri of level k only)
+template <class A_zw, class A_dz, class A_u, class A_v, class A_thl, class A_thv, class A_thlv, class A_th,
+          class A_p, class A_exner, class A_qke, class A_cldfra, class A_edmf_a, class A_edmf_w, class A_qw,
+          class A_vt, class A_vq, class A_dtl, class A_dqw, class A_dtv, class A_gm, class A_gh, class A_sm,
+          class A_sh>
+CPPWRF_HD inline void mym_level2_k(int k, real ckmod, int bl_mynn_ess, A_zw zw, A_dz dz, real xland,
+                                   real pblh, A_u u, A_v v, A_thl thl, A_thv thv,
+                                   A_thlv thlv, A_th th, A_p p, A_exner exner, A_qke qke,
+                                   A_cldfra cldfra, A_edmf_a edmf_a, A_edmf_w edmf_w, A_qw qw,
+                                   A_vt vt, A_vq vq, A_dtl dtl, A_dqw dqw, A_dtv dtv, A_gm gm, A_gh gh,
+                                   A_sm sm, A_sh sh) {
   constexpr int kts = 1;
   constexpr real thvp = real(0.0);
-  real ri[K + 2];
+  real ri;
+  if (bl_mynn_ess == 0) {
+    const real dzk = p5 * (dz[k] + dz[k - 1]);
+    const real afk = dz[k] / (dz[k] + dz[k - 1]);
+    const real abk = one - afk;
+    real duz = (u[k] - u[k - 1]) * (u[k] - u[k - 1]) + (v[k] - v[k - 1]) * (v[k] - v[k - 1]);
+    duz = duz / (dzk * dzk);
+    const real dtz = (thl[k] - thl[k - 1]) / (dzk);
+    const real dqz = (qw[k] - qw[k - 1]) / (dzk);
+    const real vtt = one + vt[k] * abk + vt[k - 1] * afk;
+    const real vqq = tv0 + vq[k] * abk + vq[k - 1] * afk;
+    const real dtq = vtt * dtz + vqq * dqz;
+    dtl[k] = dtz;
+    dqw[k] = dqz;
+    dtv[k] = dtq;
+    gm[k] = duz;
+    gh[k] = -dtq * gtr;
+    ri = -gh[k] / c_max(duz, real(1.0e-10));
+  } else {
+    const real ugrid = std::sqrt(u[kts] * u[kts] + v[kts] * v[kts]);
+    const real uonset = real(15.);
+    const real taper = one - p95 * c_min(one, c_max(zero, ugrid - uonset) / twenty);
+    const real clam0 = ((xland - real(1.5)) >= zero) ? real(1.8) * taper : real(0.08);
+    const real dzk = p5 * (dz[k] + dz[k - 1]);
+    real duz = (u[k] - u[k - 1]) * (u[k] - u[k - 1]) + (v[k] - v[k - 1]) * (v[k] - v[k - 1]);
+    duz = duz / (dzk * dzk);
+    const real dtz = (thl[k] - thl[k - 1]) / dzk;
+    const real dqz = (qw[k] - qw[k - 1]) / dzk;
+    const real wt = c_min(one, c_max(zero, zw[k] - (pblh + hundred)) / c_max(real(400.), p3 * pblh));
+    real clam = clam0 * (one - wt) + p2 * wt;
+    clam = clam * c_min(one, c_max(zero, zw[k] - twenty) / real(200.0));
+    const real thv1 = thvp * thv[k] + (one - thvp) * thlv[k];
+    const real thv0 = thvp * thv[k - 1] + (one - thvp) * thlv[k - 1];
+    real tabs = th[k] * exner[k];
+    real xl = xl_blend(tabs);
+    real qsat = qsat_blend(tabs, p[k]);
+    const real eth1 = th[k] * rexp(xl * qsat / (cp * tabs));
+    tabs = th[k - 1] * exner[k - 1];
+    xl = xl_blend(tabs);
+    qsat = qsat_blend(tabs, p[k - 1]);
+    const real eth0 = th[k - 1] * rexp(xl * qsat / (cp * tabs));
+    const real mfi = c_max(zero, c_min(p2, (p5 * (edmf_a[k] + edmf_a[k - 1])) * (p5 * (edmf_w[k] + edmf_w[k - 1]))));
+    real qkei = c_max(qkemin, p5 * (qke[k] + qke[k - 1]));
+    qkei = c_min(p5, std::sqrt(p25 * qkei)) * p2;
+    real cldfrai = p5 * (cldfra[k] + cldfra[k - 1]);
+    const real cfac = c_max(real(0.01), c_min(real(2.7) * ((cldfrai - one) * (cldfrai - one)), one));
+    cldfrai = c_min(p1, cldfrai * cfac) * ten;
+    const real lambda = clam * c_max(mfi, qkei) * cldfrai;
+    const real dtq = (thv1 - thv0) / dzk + lambda * c_min(zero, (eth1 - eth0) / dzk);
+    dtl[k] = dtz;
+    dqw[k] = dqz;
+    dtv[k] = dtq;
+    gm[k] = duz;
+    gh[k] = -dtq * gtr;
+    ri = -gh[k] / c_max(duz, real(1.0e-10));
+  }
+  const real a2fac = one / (one + ckmod * c_max(ri, zero));
+  const real rfc = g1 / (g1 + g2);
+  const real f1 = b1 * (g1 - c1) + three * a2 * a2fac * (one - c2) * (one - c5) + two * a1 * (three - two * c2);
+  const real f2 = b1 * (g1 + g2) - three * a1 * (one - c2);
+  const real rf1 = b1 * (g1 - c1) / f1;
+  const real rf2 = b1 * g1 / f2;
+  const real smc = a1 / (a2 * a2fac) * f1 / f2;
+  const real shc = three * (a2 * a2fac) * (g1 + g2);
+  const real ri1 = p5 / smc;
+  const real ri2 = rf1 * smc;
+  const real ri3 = four * rf2 * smc - two * ri2;
+  const real ri4 = ri2 * ri2;
+  const real rf = c_min(ri1 * (ri + ri2 - std::sqrt(ri * ri - ri3 * ri + ri4)), rfc);
+  sh[k] = shc * (rfc - rf) / (one - rf);
+  sm[k] = smc * (rf1 - rf) / (rf2 - rf) * sh[k];
+}
+
+// mym_level2's values at the surface (k = 1)
+template <class A_dtl, class A_dqw, class A_dtv, class A_gm, class A_gh, class A_sm, class A_sh>
+CPPWRF_HD inline void mym_level2_sfc(A_dtl dtl, A_dqw dqw, A_dtv dtv, A_gm gm, A_gh gh, A_sm sm, A_sh sh) {
+  constexpr int kts = 1;
   dtl[kts] = zero;
   dqw[kts] = zero;
   dtv[kts] = zero;
@@ -27,198 +106,158 @@ CPPWRF_HD inline void mym_level2(int kte, real ckmod, int bl_mynn_ess, const rea
   gh[kts] = zero;
   sm[kts] = zero;
   sh[kts] = zero;
-  ri[kts] = zero;
-  if (bl_mynn_ess == 0) {
-    for (int k = kts + 1; k <= kte; ++k) {
-      const real dzk = p5 * (dz[k] + dz[k - 1]);
-      const real afk = dz[k] / (dz[k] + dz[k - 1]);
-      const real abk = one - afk;
-      real duz = (u[k] - u[k - 1]) * (u[k] - u[k - 1]) + (v[k] - v[k - 1]) * (v[k] - v[k - 1]);
-      duz = duz / (dzk * dzk);
-      const real dtz = (thl[k] - thl[k - 1]) / (dzk);
-      const real dqz = (qw[k] - qw[k - 1]) / (dzk);
-      const real vtt = one + vt[k] * abk + vt[k - 1] * afk;
-      const real vqq = tv0 + vq[k] * abk + vq[k - 1] * afk;
-      const real dtq = vtt * dtz + vqq * dqz;
-      dtl[k] = dtz;
-      dqw[k] = dqz;
-      dtv[k] = dtq;
-      gm[k] = duz;
-      gh[k] = -dtq * gtr;
-      ri[k] = -gh[k] / c_max(duz, real(1.0e-10));
-    }
-  } else {
-    const real ugrid = std::sqrt(u[kts] * u[kts] + v[kts] * v[kts]);
-    const real uonset = real(15.);
-    const real taper = one - p95 * c_min(one, c_max(zero, ugrid - uonset) / twenty);
-    const real clam0 = ((xland - real(1.5)) >= zero) ? real(1.8) * taper : real(0.08);
-    for (int k = kts + 1; k <= kte; ++k) {
-      const real dzk = p5 * (dz[k] + dz[k - 1]);
-      real duz = (u[k] - u[k - 1]) * (u[k] - u[k - 1]) + (v[k] - v[k - 1]) * (v[k] - v[k - 1]);
-      duz = duz / (dzk * dzk);
-      const real dtz = (thl[k] - thl[k - 1]) / dzk;
-      const real dqz = (qw[k] - qw[k - 1]) / dzk;
-      const real wt = c_min(one, c_max(zero, zw[k] - (pblh + hundred)) / c_max(real(400.), p3 * pblh));
-      real clam = clam0 * (one - wt) + p2 * wt;
-      clam = clam * c_min(one, c_max(zero, zw[k] - twenty) / real(200.0));
-      const real thv1 = thvp * thv[k] + (one - thvp) * thlv[k];
-      const real thv0 = thvp * thv[k - 1] + (one - thvp) * thlv[k - 1];
-      real tabs = th[k] * exner[k];
-      real xl = xl_blend(tabs);
-      real qsat = qsat_blend(tabs, p[k]);
-      const real eth1 = th[k] * rexp(xl * qsat / (cp * tabs));
-      tabs = th[k - 1] * exner[k - 1];
-      xl = xl_blend(tabs);
-      qsat = qsat_blend(tabs, p[k - 1]);
-      const real eth0 = th[k - 1] * rexp(xl * qsat / (cp * tabs));
-      const real mfi = c_max(zero, c_min(p2, (p5 * (edmf_a[k] + edmf_a[k - 1])) * (p5 * (edmf_w[k] + edmf_w[k - 1]))));
-      real qkei = c_max(qkemin, p5 * (qke[k] + qke[k - 1]));
-      qkei = c_min(p5, std::sqrt(p25 * qkei)) * p2;
-      real cldfrai = p5 * (cldfra[k] + cldfra[k - 1]);
-      const real cfac = c_max(real(0.01), c_min(real(2.7) * ((cldfrai - one) * (cldfrai - one)), one));
-      cldfrai = c_min(p1, cldfrai * cfac) * ten;
-      const real lambda = clam * c_max(mfi, qkei) * cldfrai;
-      const real dtq = (thv1 - thv0) / dzk + lambda * c_min(zero, (eth1 - eth0) / dzk);
-      dtl[k] = dtz;
-      dqw[k] = dqz;
-      dtv[k] = dtq;
-      gm[k] = duz;
-      gh[k] = -dtq * gtr;
-      ri[k] = -gh[k] / c_max(duz, real(1.0e-10));
+}
+
+// mym_level2: dtl, dqw, dtv, gm, gh, sm, sh at the walls (k = 2 .. kte)
+template <int K, class A_zw, class A_dz, class A_u, class A_v, class A_thl, class A_thv, class A_thlv, class A_th,
+          class A_p, class A_exner, class A_qke, class A_cldfra, class A_edmf_a, class A_edmf_w, class A_qw,
+          class A_vt, class A_vq, class A_dtl, class A_dqw, class A_dtv, class A_gm, class A_gh, class A_sm,
+          class A_sh>
+CPPWRF_HD inline void mym_level2(int kte, real ckmod, int bl_mynn_ess, A_zw zw, A_dz dz, real xland,
+                                 real pblh, A_u u, A_v v, A_thl thl, A_thv thv,
+                                 A_thlv thlv, A_th th, A_p p, A_exner exner, A_qke qke,
+                                 A_cldfra cldfra, A_edmf_a edmf_a, A_edmf_w edmf_w, A_qw qw,
+                                 A_vt vt, A_vq vq, A_dtl dtl, A_dqw dqw, A_dtv dtv, A_gm gm, A_gh gh,
+                                 A_sm sm, A_sh sh) {
+  constexpr int kts = 1;
+  mym_level2_sfc(dtl, dqw, dtv, gm, gh, sm, sh);
+  for (int k = kts + 1; k <= kte; ++k)
+    mym_level2_k(k, ckmod, bl_mynn_ess, zw, dz, xland, pblh, u, v, thl, thv, thlv, th, p, exner, qke, cldfra, edmf_a,
+                 edmf_w, qw, vt, vq, dtl, dqw, dtv, gm, gh, sm, sh);
+}
+
+// boulac_length at level iz: lb1, lb2 of the loop over iz (dlu, dld of level iz only)
+template <class A_zw, class A_dz, class A_qtke, class A_theta>
+CPPWRF_HD inline void boulac_level(int iz, int kte, A_zw zw, A_dz dz, A_qtke qtke, A_theta theta, real& lb1,
+                                   real& lb2) {
+  constexpr int kts = 1;
+  constexpr real Lmax = real(1500.);
+  real dlu, dld;
+  real zup = zero;
+  dlu = zw[kte + 1] - zw[iz] - dz[iz] * p5;
+  real zzz = zero;
+  real zup_inf = zero;
+  const real beta = gtr;
+  real dzt, tl, bbb;
+  if (iz < kte) {
+    int found = 0;
+    int izz = iz;
+    while (found == 0) {
+      if (izz < kte) {
+        dzt = dz[izz];
+        zup = zup - beta * theta[iz] * dzt;
+        zup = zup + beta * (theta[izz + 1] + theta[izz]) * dzt * p5;
+        zzz = zzz + dzt;
+        if (qtke[iz] < zup && qtke[iz] >= zup_inf) {
+          bbb = (theta[izz + 1] - theta[izz]) / dzt;
+          if (bbb != real(0.)) {
+            tl = (-beta * (theta[izz] - theta[iz]) +
+                  std::sqrt(c_max(zero, (beta * (theta[izz] - theta[iz])) * (beta * (theta[izz] - theta[iz])) +
+                                            two * bbb * beta * (qtke[iz] - zup_inf)))) /
+                 bbb / beta;
+          } else {
+            if (theta[izz] != theta[iz]) tl = (qtke[iz] - zup_inf) / (beta * (theta[izz] - theta[iz]));
+            else tl = zero;
+          }
+          dlu = zzz - dzt + tl;
+          found = 1;
+        }
+        zup_inf = zup;
+        izz = izz + 1;
+      } else {
+        found = 1;
+      }
     }
   }
-  for (int k = kts + 1; k <= kte; ++k) {
-    const real a2fac = one / (one + ckmod * c_max(ri[k], zero));
-    const real rfc = g1 / (g1 + g2);
-    const real f1 = b1 * (g1 - c1) + three * a2 * a2fac * (one - c2) * (one - c5) + two * a1 * (three - two * c2);
-    const real f2 = b1 * (g1 + g2) - three * a1 * (one - c2);
-    const real rf1 = b1 * (g1 - c1) / f1;
-    const real rf2 = b1 * g1 / f2;
-    const real smc = a1 / (a2 * a2fac) * f1 / f2;
-    const real shc = three * (a2 * a2fac) * (g1 + g2);
-    const real ri1 = p5 / smc;
-    const real ri2 = rf1 * smc;
-    const real ri3 = four * rf2 * smc - two * ri2;
-    const real ri4 = ri2 * ri2;
-    const real rf = c_min(ri1 * (ri[k] + ri2 - std::sqrt(ri[k] * ri[k] - ri3 * ri[k] + ri4)), rfc);
-    sh[k] = shc * (rfc - rf) / (one - rf);
-    sm[k] = smc * (rf1 - rf) / (rf2 - rf) * sh[k];
+  real zdo = zero;
+  real zdo_sup = zero;
+  dld = zw[iz];
+  zzz = zero;
+  if (iz > kts) {
+    int found = 0;
+    int izz = iz;
+    while (found == 0) {
+      if (izz > kts) {
+        dzt = dz[izz - 1];
+        zdo = zdo + beta * theta[iz] * dzt;
+        zdo = zdo - beta * (theta[izz - 1] + theta[izz]) * dzt * p5;
+        zzz = zzz + dzt;
+        if (qtke[iz] < zdo && qtke[iz] >= zdo_sup) {
+          bbb = (theta[izz] - theta[izz - 1]) / dzt;
+          if (bbb != real(0.)) {
+            tl = (beta * (theta[izz] - theta[iz]) +
+                  std::sqrt(c_max(zero, (beta * (theta[izz] - theta[iz])) * (beta * (theta[izz] - theta[iz])) +
+                                            two * bbb * beta * (qtke[iz] - zdo_sup)))) /
+                 bbb / beta;
+          } else {
+            if (theta[izz] != theta[iz]) tl = (qtke[iz] - zdo_sup) / (beta * (theta[izz] - theta[iz]));
+            else tl = zero;
+          }
+          dld = zzz - dzt + tl;
+          found = 1;
+        }
+        zdo_sup = zdo;
+        izz = izz - 1;
+      } else {
+        found = 1;
+      }
+    }
   }
+  dld = c_min(dld, zw[iz + 1]);
+  dlu = c_max(p1, dlu / (one + (dlu / Lmax)));
+  dld = c_max(p1, dld / (one + (dld / Lmax)));
+  lb1 = c_min(dlu, dld);
+  lb2 = std::sqrt(dlu * dld);
 }
 
 // boulac_length
-template <int K>
-CPPWRF_HD inline void boulac_length(int kte, const real* zw, const real* dz, const real* qtke, const real* theta,
-                                    real* lb1, real* lb2) {
+template <int K, class A_zw, class A_dz, class A_qtke, class A_theta, class A_lb1, class A_lb2>
+CPPWRF_HD inline void boulac_length(int kte, A_zw zw, A_dz dz, A_qtke qtke, A_theta theta,
+                                    A_lb1 lb1, A_lb2 lb2) {
   constexpr int kts = 1;
-  constexpr real Lmax = real(1500.);
-  real dlu[K + 2], dld[K + 2];
-  for (int iz = kts; iz <= kte; ++iz) {
-    real zup = zero;
-    dlu[iz] = zw[kte + 1] - zw[iz] - dz[iz] * p5;
-    real zzz = zero;
-    real zup_inf = zero;
-    const real beta = gtr;
-    real dzt, tl, bbb;
-    if (iz < kte) {
-      int found = 0;
-      int izz = iz;
-      while (found == 0) {
-        if (izz < kte) {
-          dzt = dz[izz];
-          zup = zup - beta * theta[iz] * dzt;
-          zup = zup + beta * (theta[izz + 1] + theta[izz]) * dzt * p5;
-          zzz = zzz + dzt;
-          if (qtke[iz] < zup && qtke[iz] >= zup_inf) {
-            bbb = (theta[izz + 1] - theta[izz]) / dzt;
-            if (bbb != real(0.)) {
-              tl = (-beta * (theta[izz] - theta[iz]) +
-                    std::sqrt(c_max(zero, (beta * (theta[izz] - theta[iz])) * (beta * (theta[izz] - theta[iz])) +
-                                              two * bbb * beta * (qtke[iz] - zup_inf)))) /
-                   bbb / beta;
-            } else {
-              if (theta[izz] != theta[iz]) tl = (qtke[iz] - zup_inf) / (beta * (theta[izz] - theta[iz]));
-              else tl = zero;
-            }
-            dlu[iz] = zzz - dzt + tl;
-            found = 1;
-          }
-          zup_inf = zup;
-          izz = izz + 1;
-        } else {
-          found = 1;
-        }
-      }
-    }
-    real zdo = zero;
-    real zdo_sup = zero;
-    dld[iz] = zw[iz];
-    zzz = zero;
-    if (iz > kts) {
-      int found = 0;
-      int izz = iz;
-      while (found == 0) {
-        if (izz > kts) {
-          dzt = dz[izz - 1];
-          zdo = zdo + beta * theta[iz] * dzt;
-          zdo = zdo - beta * (theta[izz - 1] + theta[izz]) * dzt * p5;
-          zzz = zzz + dzt;
-          if (qtke[iz] < zdo && qtke[iz] >= zdo_sup) {
-            bbb = (theta[izz] - theta[izz - 1]) / dzt;
-            if (bbb != real(0.)) {
-              tl = (beta * (theta[izz] - theta[iz]) +
-                    std::sqrt(c_max(zero, (beta * (theta[izz] - theta[iz])) * (beta * (theta[izz] - theta[iz])) +
-                                              two * bbb * beta * (qtke[iz] - zdo_sup)))) /
-                   bbb / beta;
-            } else {
-              if (theta[izz] != theta[iz]) tl = (qtke[iz] - zdo_sup) / (beta * (theta[izz] - theta[iz]));
-              else tl = zero;
-            }
-            dld[iz] = zzz - dzt + tl;
-            found = 1;
-          }
-          zdo_sup = zdo;
-          izz = izz - 1;
-        } else {
-          found = 1;
-        }
-      }
-    }
-    dld[iz] = c_min(dld[iz], zw[iz + 1]);
-    dlu[iz] = c_max(p1, dlu[iz] / (one + (dlu[iz] / Lmax)));
-    dld[iz] = c_max(p1, dld[iz] / (one + (dld[iz] / Lmax)));
-    lb1[iz] = c_min(dlu[iz], dld[iz]);
-    lb2[iz] = std::sqrt(dlu[iz] * dld[iz]);
-  }
+  for (int iz = kts; iz <= kte; ++iz) boulac_level(iz, kte, zw, dz, qtke, theta, lb1[iz], lb2[iz]);
   lb1[kte] = lb1[kte - 1];
   lb2[kte] = lb2[kte - 1];
 }
 
-// mym_length, bl_mynn_mixlength = 1 (nonlocal BouLac form)
-template <int K>
-CPPWRF_HD inline void mym_length1(int kte, real xland, const real* dz, real dx, const real* zw, real rmol, real fltv,
-                                  const real* u1, const real* v1, const real* qke, const real* qpe, const real* dtv,
-                                  real* el, real pblh, const real* theta, real* qkw, real* qtw, const real* edmf_w1,
-                                  const real* edmf_a1) {
+// mym_length, bl_mynn_mixlength = 1 (nonlocal BouLac form) in parts: length1_consts (its constants from the
+// column's inputs), length1_pre (qkw, qtw, qtke, thetaw and the column integrals elt, vsc), boulac_length, and
+// length1_el (the body of its last loop at level k)
+struct Length1Consts {
+  real ugrid, uonset, wt_u1, wt_u2, wt_dx, cns, alp1, alp2, alp3, alp4, alp5, alp6, pblh2, h1, h2;
+};
+
+template <class A_u1, class A_v1>
+CPPWRF_HD inline Length1Consts length1_consts(real xland, real dx, A_u1 u1, A_v1 v1, real pblh) {
   constexpr int kts = 1;
-  constexpr real qkw_elb_min = real(0.05);
-  real qtke[K + 2], elBLmin[K + 2], elBLavg[K + 2], thetaw[K + 2];
-  const real ugrid = std::sqrt(u1[kts] * u1[kts] + v1[kts] * v1[kts]);
-  const real uonset = real(15.);
-  const real wt_u1 = one - p2 * c_min(one, c_max(zero, ugrid - uonset) / forty);
-  const real wt_u2 = one - p5 * c_min(one, c_max(zero, ugrid - uonset) / forty);
-  const real wt_dx = one - c_min(one, (c_max(zero, dx - real(4000.)) / real(12000.)));
-  const real cns = real(3.5);
-  const real alp1 = real(0.23) * wt_dx + (one - wt_dx) * real(0.24);
-  const real alp2 = p3 * wt_dx + (one - wt_dx) * real(0.40);
-  const real alp3 = five * wt_u2;
-  const real alp4 = ((xland - real(1.5)) >= zero) ? twenty * wt_u2 : real(15.0);
-  const real alp5 = p3;
-  const real alp6 = fifty;
-  const real pblh2 = c_max(pblh, real(200.));
-  real h1 = c_max(p3 * pblh2, real(300.));
-  h1 = c_min(h1, real(600.));
-  const real h2 = h1 * p5;
+  Length1Consts L;
+  L.ugrid = std::sqrt(u1[kts] * u1[kts] + v1[kts] * v1[kts]);
+  L.uonset = real(15.);
+  L.wt_u1 = one - p2 * c_min(one, c_max(zero, L.ugrid - L.uonset) / forty);
+  L.wt_u2 = one - p5 * c_min(one, c_max(zero, L.ugrid - L.uonset) / forty);
+  L.wt_dx = one - c_min(one, (c_max(zero, dx - real(4000.)) / real(12000.)));
+  L.cns = real(3.5);
+  L.alp1 = real(0.23) * L.wt_dx + (one - L.wt_dx) * real(0.24);
+  L.alp2 = p3 * L.wt_dx + (one - L.wt_dx) * real(0.40);
+  L.alp3 = five * L.wt_u2;
+  L.alp4 = ((xland - real(1.5)) >= zero) ? twenty * L.wt_u2 : real(15.0);
+  L.alp5 = p3;
+  L.alp6 = fifty;
+  L.pblh2 = c_max(pblh, real(200.));
+  L.h1 = c_max(p3 * L.pblh2, real(300.));
+  L.h1 = c_min(L.h1, real(600.));
+  L.h2 = L.h1 * p5;
+  return L;
+}
+
+template <class A_dz, class A_zw, class A_u1, class A_v1, class A_qke, class A_qpe, class A_theta, class A_qkw,
+          class A_qtw, class A_qtke, class A_thetaw>
+CPPWRF_HD inline void length1_pre(int kte, real xland, A_dz dz, real dx, A_zw zw, real fltv, A_u1 u1, A_v1 v1,
+                                  A_qke qke, A_qpe qpe, real pblh, A_theta theta, A_qkw qkw, A_qtw qtw, A_qtke qtke,
+                                  A_thetaw thetaw, real& elt, real& vsc) {
+  constexpr int kts = 1;
+  const Length1Consts L = length1_consts(xland, dx, u1, v1, pblh);
+  const real ugrid = L.ugrid, alp1 = L.alp1, pblh2 = L.pblh2;
   qtke[kts] = c_max(p5 * qke[kts], p5 * qkemin);
   thetaw[kts] = theta[kts];
   qkw[kts] = std::sqrt(c_max(qke[kts], qkemin));
@@ -231,8 +270,8 @@ CPPWRF_HD inline void mym_length1(int kte, real xland, const real* dz, real dx, 
     qtke[k] = c_max(p5 * (qkw[k] * qkw[k]), real(0.005));
     thetaw[k] = theta[k] * abk + theta[k - 1] * afk;
   }
-  real elt = real(1.0e-5);
-  real vsc = real(1.0e-5);
+  elt = real(1.0e-5);
+  vsc = real(1.0e-5);
   int k = kts + 1;
   real zwk = zw[k];
   while (zwk <= pblh2 + c_max(real(200.), c_min(p3 * pblh2, real(600.)))) {
@@ -249,55 +288,81 @@ CPPWRF_HD inline void mym_length1(int kte, real xland, const real* dz, real dx, 
   elt = c_min(c_max(alp1 * elt / vsc, real(8.)), elt_max);
   const real vflx = fltv - real(0.005);
   vsc = rpow(gtr * elt * c_max(vflx, zero), p333);
+}
+
+template <class A_zw, class A_u1, class A_v1, class A_dtv, class A_el, class A_qkw, class A_elBLavg, class A_edmf_w1,
+          class A_edmf_a1>
+CPPWRF_HD inline void length1_el(int k, real xland, real dx, A_zw zw, real rmol, A_u1 u1, A_v1 v1, A_dtv dtv,
+                                 A_el el, real pblh, A_qkw qkw, A_elBLavg elBLavg, A_edmf_w1 edmf_w1,
+                                 A_edmf_a1 edmf_a1, real elt,
+                                 real vsc) {
+  constexpr real qkw_elb_min = real(0.05);
+  const Length1Consts L = length1_consts(xland, dx, u1, v1, pblh);
+  const real wt_u1 = L.wt_u1, cns = L.cns, alp2 = L.alp2, alp3 = L.alp3, alp4 = L.alp4, alp5 = L.alp5,
+             alp6 = L.alp6, pblh2 = L.pblh2, h1 = L.h1, h2 = L.h2;
+  const real zwk = zw[k];
+  // edmf_a_dd1 * edmf_w_dd1 = 0 (no downdrafts)
+  real qkw_mf = c_max((p5 * ((edmf_a1[k] + edmf_a1[k - 1]))) * (p5 * ((edmf_w1[k] + edmf_w1[k - 1]))),
+                      std::fabs(zero * zero));
+  const real cpblh = c_min((zwk + p25 * pblh2) / pblh2, one);
+  qkw_mf = cpblh * qkw_mf;
+  const real alp3z = cpblh * alp3;
+  real elb, elf;
+  if (dtv[k] > real(0.0)) {
+    const real bv = c_max(std::sqrt(gtr * dtv[k]), real(0.001));
+    real elb_mf = alp6 * qkw_mf / bv;
+    elb_mf = elb_mf / (one + (elb_mf / real(100.)));
+    elb = alp2 * (c_max(qkw[k], qkw_elb_min)) / bv * (one + alp3z * std::sqrt(vsc / (bv * elt)));
+    elb = c_max(elb, elb_mf);
+    elb = c_min(elb, zwk);
+    elf = one * c_max(qkw[k], qkw_elb_min) / bv;
+    elf = c_max(elf, elb_mf);
+    elBLavg[k] = c_max(alp5 * elBLavg[k], elb_mf);
+  } else {
+    elb = real(1.0e10);
+    elf = elb;
+    elBLavg[k] = p4 * elBLavg[k];
+  }
+  const real z_m = c_max(karman, zwk - four);
+  real els, els1;
+  if (rmol > real(0.0)) {
+    els = karman * zwk / (one + cns * c_min(zwk * rmol, zmax));
+    els1 = karman * z_m / (one + cns * c_min(zwk * rmol, zmax));
+  } else {
+    els = karman * zwk * rpow(one - alp4 * zwk * rmol, p2);
+    els1 = karman * z_m * rpow(one - alp4 * zwk * rmol, p2);
+  }
+  const real wt = p5 * libm::tanh((zwk - (pblh2 + h1)) / h2) + p5;
+  const real el_unstab = els / (one + (els1 / elt));
+  el[k] = c_min(el_unstab, elb);
+  el[k] = c_min(el[k], elf);
+  if ((xland - real(1.5)) >= zero) el[k] = el[k] * wt_u1;
+  el[k] = el[k] * (one - wt) + elBLavg[k] * wt;
+}
+
+// mym_length, bl_mynn_mixlength = 1 (nonlocal BouLac form)
+template <int K, class A_dz, class A_zw, class A_u1, class A_v1, class A_qke, class A_qpe, class A_dtv, class A_el,
+          class A_theta, class A_qkw, class A_qtw, class A_edmf_w1, class A_edmf_a1>
+CPPWRF_HD inline void mym_length1(int kte, real xland, A_dz dz, real dx, A_zw zw, real rmol, real fltv,
+                                  A_u1 u1, A_v1 v1, A_qke qke, A_qpe qpe, A_dtv dtv,
+                                  A_el el, real pblh, A_theta theta, A_qkw qkw, A_qtw qtw, A_edmf_w1 edmf_w1,
+                                  A_edmf_a1 edmf_a1) {
+  constexpr int kts = 1;
+  real qtke[K + 2], elBLmin[K + 2], elBLavg[K + 2], thetaw[K + 2];
+  real elt, vsc;
+  length1_pre(kte, xland, dz, dx, zw, fltv, u1, v1, qke, qpe, pblh, theta, qkw, qtw, qtke, thetaw, elt, vsc);
   el[kts] = zero;
   boulac_length<K>(kte, zw, dz, qtke, thetaw, elBLmin, elBLavg);
-  for (k = kts + 1; k <= kte; ++k) {
-    zwk = zw[k];
-    // edmf_a_dd1 * edmf_w_dd1 = 0 (no downdrafts)
-    real qkw_mf = c_max((p5 * ((edmf_a1[k] + edmf_a1[k - 1]))) * (p5 * ((edmf_w1[k] + edmf_w1[k - 1]))),
-                        std::fabs(zero * zero));
-    const real cpblh = c_min((zwk + p25 * pblh2) / pblh2, one);
-    qkw_mf = cpblh * qkw_mf;
-    const real alp3z = cpblh * alp3;
-    real elb, elf;
-    if (dtv[k] > real(0.0)) {
-      const real bv = c_max(std::sqrt(gtr * dtv[k]), real(0.001));
-      real elb_mf = alp6 * qkw_mf / bv;
-      elb_mf = elb_mf / (one + (elb_mf / real(100.)));
-      elb = alp2 * (c_max(qkw[k], qkw_elb_min)) / bv * (one + alp3z * std::sqrt(vsc / (bv * elt)));
-      elb = c_max(elb, elb_mf);
-      elb = c_min(elb, zwk);
-      elf = one * c_max(qkw[k], qkw_elb_min) / bv;
-      elf = c_max(elf, elb_mf);
-      elBLavg[k] = c_max(alp5 * elBLavg[k], elb_mf);
-    } else {
-      elb = real(1.0e10);
-      elf = elb;
-      elBLavg[k] = p4 * elBLavg[k];
-    }
-    const real z_m = c_max(karman, zwk - four);
-    real els, els1;
-    if (rmol > real(0.0)) {
-      els = karman * zwk / (one + cns * c_min(zwk * rmol, zmax));
-      els1 = karman * z_m / (one + cns * c_min(zwk * rmol, zmax));
-    } else {
-      els = karman * zwk * rpow(one - alp4 * zwk * rmol, p2);
-      els1 = karman * z_m * rpow(one - alp4 * zwk * rmol, p2);
-    }
-    const real wt = p5 * libm::tanh((zwk - (pblh2 + h1)) / h2) + p5;
-    const real el_unstab = els / (one + (els1 / elt));
-    el[k] = c_min(el_unstab, elb);
-    el[k] = c_min(el[k], elf);
-    if ((xland - real(1.5)) >= zero) el[k] = el[k] * wt_u1;
-    el[k] = el[k] * (one - wt) + elBLavg[k] * wt;
-  }
+  for (int k = kts + 1; k <= kte; ++k)
+    length1_el(k, xland, dx, zw, rmol, u1, v1, dtv, el, pblh, qkw, elBLavg, edmf_w1, edmf_a1, elt, vsc);
 }
 
 // mym_length, bl_mynn_mixlength = 0 (original MYNN mixing length)
-template <int K>
-CPPWRF_HD inline void mym_length0(int kte, const real* dz, const real* zw, real rmol, real flt, real flq,
-                                  const real* vt, const real* vq, const real* qke, const real* dtv, real* el, real pblh,
-                                  real* qkw, real* qtw) {
+template <int K, class A_dz, class A_zw, class A_vt, class A_vq, class A_qke, class A_dtv, class A_el, class A_qkw,
+          class A_qtw>
+CPPWRF_HD inline void mym_length0(int kte, A_dz dz, A_zw zw, real rmol, real flt, real flq,
+                                  A_vt vt, A_vq vq, A_qke qke, A_dtv dtv, A_el el, real pblh,
+                                  A_qkw qkw, A_qtw qtw) {
   constexpr int kts = 1;
   constexpr real mindz = real(250.), maxdz = real(750.);
   const real cns = real(2.7), alp1 = real(0.23), alp2 = one, alp3 = five, alp4 = hundred;
@@ -346,10 +411,11 @@ CPPWRF_HD inline void mym_length0(int kte, const real* dz, const real* zw, real 
 }
 
 // mym_length, bl_mynn_mixlength = 2 (local mixing length; the downdraft term edmf_a_dd1 * edmf_w_dd1 is 0)
-template <int K>
-CPPWRF_HD inline void mym_length2(int kte, const real* dz, const real* zw, real rmol, real fltv, const real* qke,
-                                  const real* qpe, const real* dtv, real* el, real pblh, real* qkw, real* qtw,
-                                  const real* edmf_w1, const real* edmf_a1) {
+template <int K, class A_dz, class A_zw, class A_qke, class A_qpe, class A_dtv, class A_el, class A_qkw, class A_qtw,
+          class A_edmf_w1, class A_edmf_a1>
+CPPWRF_HD inline void mym_length2(int kte, A_dz dz, A_zw zw, real rmol, real fltv, A_qke qke,
+                                  A_qpe qpe, A_dtv dtv, A_el el, real pblh, A_qkw qkw, A_qtw qtw,
+                                  A_edmf_w1 edmf_w1, A_edmf_a1 edmf_a1) {
   constexpr int kts = 1;
   constexpr real ctau = real(1000.);
   const real cns = real(3.5), alp1 = real(0.22), alp2 = p3, alp3 = real(2.5), alp4 = five, alp5 = alp2, alp6 = fifty;
@@ -420,14 +486,22 @@ CPPWRF_HD inline void mym_length2(int kte, const real* dz, const real* zw, real 
   }
 }
 
+// mym_length's blend with the LES length scale at the wall k
+template <class A_dz, class A_el>
+CPPWRF_HD inline void length_les_blend(int k, A_dz dz, A_el el, real Psig_bl) {
+  const real el_les = p25 * p5 * (dz[k] + dz[k - 1]);
+  el[k] = el[k] * Psig_bl + (one - Psig_bl) * c_min(el_les, el[k]);
+}
+
 // mym_length (WRF's SELECT CASE (bl_mynn_mixlength), then the blend with the LES length scale); qkw, qtw inout.
 // vt, vq, flt, flq are used by mixlength 0 only
-template <int K>
-CPPWRF_HD inline void mym_length(int kte, real xland, const real* dz, real dx, const real* zw, real rmol, real flt,
-                                 real fltv, real flq, const real* vt, const real* vq, const real* u1, const real* v1,
-                                 const real* qke, const real* qpe, const real* dtv, real* el, real pblh,
-                                 const real* theta, real* qkw, real* qtw, real Psig_bl, int mixlength,
-                                 const real* edmf_w1, const real* edmf_a1) {
+template <int K, class A_dz, class A_zw, class A_vt, class A_vq, class A_u1, class A_v1, class A_qke, class A_qpe,
+          class A_dtv, class A_el, class A_theta, class A_qkw, class A_qtw, class A_edmf_w1, class A_edmf_a1>
+CPPWRF_HD inline void mym_length(int kte, real xland, A_dz dz, real dx, A_zw zw, real rmol, real flt,
+                                 real fltv, real flq, A_vt vt, A_vq vq, A_u1 u1, A_v1 v1,
+                                 A_qke qke, A_qpe qpe, A_dtv dtv, A_el el, real pblh,
+                                 A_theta theta, A_qkw qkw, A_qtw qtw, real Psig_bl, int mixlength,
+                                 A_edmf_w1 edmf_w1, A_edmf_a1 edmf_a1) {
   constexpr int kts = 1;
   if (mixlength == 0) {
     mym_length0<K>(kte, dz, zw, rmol, flt, flq, vt, vq, qke, dtv, el, pblh, qkw, qtw);
@@ -437,20 +511,19 @@ CPPWRF_HD inline void mym_length(int kte, real xland, const real* dz, real dx, c
     mym_length1<K>(kte, xland, dz, dx, zw, rmol, fltv, u1, v1, qke, qpe, dtv, el, pblh, theta, qkw, qtw, edmf_w1,
                    edmf_a1);
   }
-  for (int k = kts + 1; k <= kte; ++k) {
-    const real el_les = p25 * p5 * (dz[k] + dz[k - 1]);
-    el[k] = el[k] * Psig_bl + (one - Psig_bl) * c_min(el_les, el[k]);
-  }
+  for (int k = kts + 1; k <= kte; ++k) length_les_blend(k, dz, el, Psig_bl);
 }
 
 // mym_initialize (pmz = phh = 1, flt = fltv = flq = 0 as its local defaults; rmol = 0)
-template <int K>
-CPPWRF_HD inline void mym_initialize(int kte, real ckmod, real taue, real xland, real pblh, const real* dz, real dx,
-                                     const real* zw, const real* p, const real* exner, const real* u, const real* v,
-                                     const real* thl, const real* qw, const real* theta, const real* thv,
-                                     const real* thlv, real* sh, real* sm, real ust, real rmol, real* el, real* qke,
-                                     real* tsq, real* qsq, real* cov, real Psig_bl, const real* cldfra_bl1,
-                                     int bl_mynn_mixlength, int bl_mynn_ess, const real* edmf_w1, const real* edmf_a1,
+template <int K, class A_dz, class A_zw, class A_p, class A_exner, class A_u, class A_v, class A_thl, class A_qw,
+          class A_theta, class A_thv, class A_thlv, class A_sh, class A_sm, class A_el, class A_qke, class A_tsq,
+          class A_qsq, class A_cov, class A_cldfra_bl1, class A_edmf_w1, class A_edmf_a1>
+CPPWRF_HD inline void mym_initialize(int kte, real ckmod, real taue, real xland, real pblh, A_dz dz, real dx,
+                                     A_zw zw, A_p p, A_exner exner, A_u u, A_v v,
+                                     A_thl thl, A_qw qw, A_theta theta, A_thv thv,
+                                     A_thlv thlv, A_sh sh, A_sm sm, real ust, real rmol, A_el el, A_qke qke,
+                                     A_tsq tsq, A_qsq qsq, A_cov cov, real Psig_bl, A_cldfra_bl1 cldfra_bl1,
+                                     int bl_mynn_mixlength, int bl_mynn_ess, A_edmf_w1 edmf_w1, A_edmf_a1 edmf_a1,
                                      bool initialize_qke) {
   constexpr int kts = 1;
   constexpr real pmz = 1., phh = 1., flt = 0., fltv = 0., flq = 0.;
@@ -525,22 +598,14 @@ CPPWRF_HD inline void mym_initialize(int kte, real ckmod, real taue, real xland,
   cov[kte] = cov[kte - 1];
 }
 
-// mym_turbulence (tkeprod_dn = 0: no downdrafts); sh, sm are overwritten with the final stability functions.
+// mym_turbulence (tkeprod_dn = 0: no downdrafts) in parts: turbulence_pre (qkw, qtw cleared, qpe), mym_level2,
+// mym_length, turbulence_level (the body of its loop over the walls at k = 2 .. kte) and turbulence_post (the
+// surface values, the divergence of tcd and qcd); sh, sm are overwritten with the final stability functions.
 // qshear / qbuoy (tke_budget = 1) may be null
-template <int K>
-CPPWRF_HD inline void mym_turbulence(int kte, real xland, real closure, real ckmod, real taue, const real* dz, real dx,
-                                     const real* zw, const real* p, const real* exner, const real* u, const real* v,
-                                     const real* thl, const real* thv, const real* thlv, const real* qw,
-                                     const real* qke, const real* tsq, const real* qsq, const real* cov,
-                                     const real* vt, const real* vq, real rmol, real flt, real fltv, real flq,
-                                     real pblh, const real* theta, real* sh, real* sm, real* el, real* dfm, real* dfh,
-                                     real* dfq, real* tcd, real* qcd, real* pdk, real* pdt, real* pdq, real* pdc,
-                                     real* qshear, real* qbuoy, real Psig_bl, const real* cldfra_bl1,
-                                     int bl_mynn_mixlength, int bl_mynn_ess, const real* edmf_w1,
-                                     const real* edmf_a1, const real* TKEprod_up) {
+template <class A_zw, class A_tsq, class A_qkw, class A_qtw, class A_qpe>
+CPPWRF_HD inline void turbulence_pre(int kte, real closure, real taue, A_zw zw, A_tsq tsq, real pblh, A_qkw qkw,
+                                     A_qtw qtw, A_qpe qpe) {
   constexpr int kts = 1;
-  constexpr real Prlimit_fre = real(6.0), Prlimit_sfc = real(4.0);
-  real qkw[K + 2], qtw[K + 2], dtl[K + 2], dqw[K + 2], dtv[K + 2], gm[K + 2], gh[K + 2], qpe[K + 2];
   for (int k = kts; k <= kte; ++k) {
     qkw[k] = zero;
     qtw[k] = zero;
@@ -554,138 +619,154 @@ CPPWRF_HD inline void mym_turbulence(int kte, real xland, real closure, real ckm
       qpe[k] = c_min(three, c_max(zero, cpblh * two * tsq[k] * (gtr * gtr) * (taue * taue)));
     }
   }
-  mym_level2<K>(kte, ckmod, bl_mynn_ess, zw, dz, xland, pblh, u, v, thl, thv, thlv, theta, p, exner, qke, cldfra_bl1,
-                edmf_a1, edmf_w1, qw, vt, vq, dtl, dqw, dtv, gm, gh, sm, sh);
-  mym_length<K>(kte, xland, dz, dx, zw, rmol, flt, fltv, flq, vt, vq, u, v, qke, qpe, dtv, el, pblh, theta, qkw, qtw,
-                Psig_bl, bl_mynn_mixlength, edmf_w1, edmf_a1);
-  for (int k = kts + 1; k <= kte; ++k) {
-    const real dzk = p5 * (dz[k] + dz[k - 1]);
-    const real afk = dz[k] / (dz[k] + dz[k - 1]);
-    const real abk = one - afk;
-    const real elsq = el[k] * el[k];
-    real q3sq = qkw[k] * qkw[k];
-    const real q2sq = b1 * elsq * (sm[k] * gm[k] + sh[k] * gh[k]);
-    sh[k] = c_max(sh[k], real(1e-5));
-    real duz = (u[k] - u[k - 1]) * (u[k] - u[k - 1]) + (v[k] - v[k - 1]) * (v[k] - v[k - 1]);
-    duz = duz / (dzk * dzk);
-    const real ri = -gh[k] / c_max(duz, real(1.0e-10));
-    const real a2fac = one / (one + ckmod * c_max(ri, zero));
-    real Prlim;
-    if (ri >= one) Prlim = c_min(seven * ri, Prlimit_fre);
-    else if (ri >= real(0.01) && ri <= one) Prlim = c_min(real(6.873) * ri + one / (real(6.873) * ri), Prlimit_fre);
-    else Prlim = Prlimit_fre;
-    const real wt = c_min(one, zw[k] / c_max(pblh, real(200.)));
-    Prlim = wt * Prlim + (one - wt) * c_min(Prlimit_sfc, Prlim);
-    const real gmel = gm[k] * elsq;
-    const real ghel = gh[k] * elsq;
-    real dlsq = elsq;
-    if (q3sq / dlsq < -gh[k]) q3sq = -dlsq * gh[k];
-    real qdiv, e1, e2, e3, e4, eden;
-    if (q3sq < q2sq) {
-      qdiv = std::sqrt(q3sq / q2sq);
-      sh[k] = sh[k] * qdiv;
-      sm[k] = sm[k] * qdiv;
-      e1 = q3sq - e1c * ghel * a2fac * (qdiv * qdiv);
-      e2 = q3sq - e2c * ghel * a2fac * (qdiv * qdiv);
-      e3 = e1 + e3c * ghel * (a2fac * a2fac) * (qdiv * qdiv);
-      e4 = e1 - e4c * ghel * a2fac * (qdiv * qdiv);
-      eden = e2 * e4 + e3 * e5c * gmel * (qdiv * qdiv);
-      eden = c_max(eden, real(1.0e-20));
-    } else {
-      e1 = q3sq - e1c * ghel * a2fac;
-      e2 = q3sq - e2c * ghel * a2fac;
-      e3 = e1 + e3c * ghel * (a2fac * a2fac);
-      e4 = e1 - e4c * ghel * a2fac;
-      eden = e2 * e4 + e3 * e5c * gmel;
-      eden = c_max(eden, real(1.0e-20));
-      qdiv = one;
-      sm[k] = q3sq * a1 * (e3 - three * c1 * e4) / eden;
-      sh[k] = q3sq * (a2 * a2fac) * (e2 + three * c1 * e5c * gmel) / eden;
-    }
-    constexpr real sh25max = four, sh25min = zero;
-    if (sh[k] > sh25max) sh[k] = sh25max;
-    if (sh[k] < sh25min) sh[k] = sh25min;
-    const real shb = c_max(sh[k], real(0.004));
-    sm[k] = c_min(sm[k], Prlim * shb);
-    real gamt, gamq, gamv;
-    if (closure >= real(3.0)) {  // level 3: the countergradient terms (Nakanishi and Niino 2009)
-      real t2sq = qdiv * b2 * elsq * sh[k] * (dtl[k] * dtl[k]);
-      real r2sq = qdiv * b2 * elsq * sh[k] * (dqw[k] * dqw[k]);
-      real c2sq = qdiv * b2 * elsq * sh[k] * dtl[k] * dqw[k];
-      real t3sq = c_max(tsq[k] * abk + tsq[k - 1] * afk, zero);
-      real r3sq = c_max(qsq[k] * abk + qsq[k - 1] * afk, zero);
-      real c3sq = cov[k] * abk + cov[k - 1] * afk;
-      c3sq = std::copysign(c_min(std::fabs(c3sq), std::sqrt(t3sq * r3sq)), c3sq);
-      const real vtt = one + vt[k] * abk + vt[k - 1] * afk;
-      const real vqq = tv0 + vq[k] * abk + vq[k - 1] * afk;
-      t2sq = vtt * t2sq + vqq * c2sq;
-      r2sq = vtt * c2sq + vqq * r2sq;
-      c2sq = c_max(vtt * t2sq + vqq * r2sq, real(0.0));
-      t3sq = vtt * t3sq + vqq * c3sq;
-      r3sq = vtt * c3sq + vqq * r3sq;
-      c3sq = c_max(vtt * t3sq + vqq * r3sq, real(0.0));
-      const real cw25 = e1 * (e2 + three * c1 * e5c * gmel * (qdiv * qdiv)) / (three * eden);
-      dlsq = elsq;
-      if (q3sq / dlsq < -gh[k]) q3sq = -dlsq * gh[k];
-      // auh, aum, adh, adm, aeh, aem, Req, Rsl: no effect (Rsl is overwritten and unused)
-      e2 = q3sq - e2c * ghel * a2fac * (qdiv * qdiv);
-      e3 = q3sq + e3c * ghel * (a2fac * a2fac) * (qdiv * qdiv);
-      e4 = q3sq - e4c * ghel * a2fac * (qdiv * qdiv);
-      eden = e2 * e4 + e3 * e5c * gmel * (qdiv * qdiv);
-      const real wden = cc3 * (gtr * gtr) * (dlsq * dlsq) / elsq * (qdiv * qdiv) *
-                        (e2 * e4c * a2fac - e3c * e5c * gmel * (a2fac * a2fac) * (qdiv * qdiv));
-      if (wden != zero) {
-        const real clow = q3sq * (real(0.12) - cw25) * eden / wden;
-        const real cupp = q3sq * (real(0.76) - cw25) * eden / wden;
-        if (wden > zero) c3sq = c_min(c_max(c3sq, c2sq + clow), c2sq + cupp);
-        else c3sq = c_max(c_min(c3sq, c2sq + clow), c2sq + cupp);
-      }
-      e1 = e2 + e5c * gmel * (qdiv * qdiv);
-      eden = c_max(eden, real(1.0e-20));
-      const real e6c = real(3.0) * (a2 * a2fac) * cc3 * gtr * dlsq / elsq;
-      real enum_;
-      if (t2sq >= zero) enum_ = c_max(qdiv * e6c * (t3sq - t2sq), real(0.0));
-      else enum_ = c_min(qdiv * e6c * (t3sq - t2sq), real(0.0));
-      gamt = -e1 * enum_ / eden;
-      if (r2sq >= zero) enum_ = c_max(qdiv * e6c * (r3sq - r2sq), real(0.0));
-      else enum_ = c_min(qdiv * e6c * (r3sq - r2sq), real(0.0));
-      gamq = -e1 * enum_ / eden;
-      enum_ = c_max(qdiv * e6c * (c3sq - c2sq), real(0.0));
-      const real smd =
-          dlsq * enum_ * gtr / eden * (qdiv * qdiv) * (e3c * (a2fac * a2fac) + e4c * a2fac) * a1 / (a2 * a2fac);
-      gamv = e1 * enum_ * gtr / eden;
-      sm[k] = sm[k] + smd;
-      qdiv = one;
-    } else {
-      gamt = zero;
-      gamq = zero;
-      gamv = zero;
-    }
-    const real cldavg = p5 * (cldfra_bl1[k - 1] + cldfra_bl1[k]);
-    const real mfmax = c_max(p5 * (edmf_a1[k - 1] + edmf_a1[k]) * p5 * (edmf_w1[k - 1] + edmf_w1[k]),
-                             std::fabs(zero * zero));
-    sm[k] = c_max(sm[k], real(0.04) * c_min(real(10.) * mfmax, one));
-    sh[k] = c_max(sh[k], real(0.04) * c_min(real(10.) * mfmax, one));
-    sm[k] = c_max(sm[k], real(0.04) * c_min(cldavg, p5));
-    sh[k] = c_max(sh[k], real(0.04) * c_min(cldavg, p5));
-    if (closure >= real(2.7) && closure < real(3.0)) sm[k] = c_max(sm[k], c_min(p2, c_max(zero, three * qpe[k])));
-    const real elq = el[k] * qkw[k];
-    const real elqt = el[k] * qtw[k];
-    const real elh = elq * qdiv;
-    pdk[k] = elq * (sm[k] * gm[k] + sh[k] * gh[k] + gamv) + p5 * zero + p5 * TKEprod_up[k];
-    pdt[k] = elh * (sh[k] * dtl[k] + gamt) * dtl[k];
-    pdq[k] = elh * (sh[k] * dqw[k] + gamq) * dqw[k];
-    pdc[k] = elh * (sh[k] * dtl[k] + gamt) * dqw[k] * p5 + elh * (sh[k] * dqw[k] + gamq) * dtl[k] * p5;
-    tcd[k] = elq * gamt;
-    qcd[k] = elq * gamq;
-    dfm[k] = elqt * sm[k] / dzk;
-    dfh[k] = elq * sh[k] / dzk;
-    dfq[k] = dfm[k];
-    if (qshear) {  // tke_budget = 1
-      qshear[k] = elq * sm[k] * gm[k];
-      qbuoy[k] = elq * (sh[k] * gh[k] + gamv) + p5 * zero + p5 * TKEprod_up[k];
-    }
+}
+
+template <class A_dz, class A_zw, class A_u, class A_v, class A_tsq, class A_qsq, class A_cov, class A_vt,
+          class A_vq, class A_sh, class A_sm, class A_el, class A_dfm, class A_dfh, class A_dfq, class A_tcd,
+          class A_qcd, class A_pdk, class A_pdt, class A_pdq, class A_pdc, class A_qshear, class A_qbuoy,
+          class A_cldfra_bl1, class A_edmf_w1, class A_edmf_a1, class A_TKEprod_up, class A_qkw, class A_qtw,
+          class A_dtl, class A_dqw, class A_gm, class A_gh, class A_qpe>
+CPPWRF_HD inline void turbulence_level(int k, real closure, real ckmod, A_dz dz, A_zw zw, A_u u, A_v v,
+                                       A_tsq tsq, A_qsq qsq, A_cov cov, A_vt vt, A_vq vq, real pblh, A_sh sh,
+                                       A_sm sm, A_el el, A_dfm dfm, A_dfh dfh, A_dfq dfq, A_tcd tcd, A_qcd qcd,
+                                       A_pdk pdk, A_pdt pdt, A_pdq pdq, A_pdc pdc, A_qshear qshear, A_qbuoy qbuoy,
+                                       A_cldfra_bl1 cldfra_bl1, A_edmf_w1 edmf_w1, A_edmf_a1 edmf_a1,
+                                       A_TKEprod_up TKEprod_up, A_qkw qkw,
+                                       A_qtw qtw, A_dtl dtl, A_dqw dqw, A_gm gm, A_gh gh, A_qpe qpe) {
+  constexpr real Prlimit_fre = real(6.0), Prlimit_sfc = real(4.0);
+  const real dzk = p5 * (dz[k] + dz[k - 1]);
+  const real afk = dz[k] / (dz[k] + dz[k - 1]);
+  const real abk = one - afk;
+  const real elsq = el[k] * el[k];
+  real q3sq = qkw[k] * qkw[k];
+  const real q2sq = b1 * elsq * (sm[k] * gm[k] + sh[k] * gh[k]);
+  sh[k] = c_max(sh[k], real(1e-5));
+  real duz = (u[k] - u[k - 1]) * (u[k] - u[k - 1]) + (v[k] - v[k - 1]) * (v[k] - v[k - 1]);
+  duz = duz / (dzk * dzk);
+  const real ri = -gh[k] / c_max(duz, real(1.0e-10));
+  const real a2fac = one / (one + ckmod * c_max(ri, zero));
+  real Prlim;
+  if (ri >= one) Prlim = c_min(seven * ri, Prlimit_fre);
+  else if (ri >= real(0.01) && ri <= one) Prlim = c_min(real(6.873) * ri + one / (real(6.873) * ri), Prlimit_fre);
+  else Prlim = Prlimit_fre;
+  const real wt = c_min(one, zw[k] / c_max(pblh, real(200.)));
+  Prlim = wt * Prlim + (one - wt) * c_min(Prlimit_sfc, Prlim);
+  const real gmel = gm[k] * elsq;
+  const real ghel = gh[k] * elsq;
+  real dlsq = elsq;
+  if (q3sq / dlsq < -gh[k]) q3sq = -dlsq * gh[k];
+  real qdiv, e1, e2, e3, e4, eden;
+  if (q3sq < q2sq) {
+    qdiv = std::sqrt(q3sq / q2sq);
+    sh[k] = sh[k] * qdiv;
+    sm[k] = sm[k] * qdiv;
+    e1 = q3sq - e1c * ghel * a2fac * (qdiv * qdiv);
+    e2 = q3sq - e2c * ghel * a2fac * (qdiv * qdiv);
+    e3 = e1 + e3c * ghel * (a2fac * a2fac) * (qdiv * qdiv);
+    e4 = e1 - e4c * ghel * a2fac * (qdiv * qdiv);
+    eden = e2 * e4 + e3 * e5c * gmel * (qdiv * qdiv);
+    eden = c_max(eden, real(1.0e-20));
+  } else {
+    e1 = q3sq - e1c * ghel * a2fac;
+    e2 = q3sq - e2c * ghel * a2fac;
+    e3 = e1 + e3c * ghel * (a2fac * a2fac);
+    e4 = e1 - e4c * ghel * a2fac;
+    eden = e2 * e4 + e3 * e5c * gmel;
+    eden = c_max(eden, real(1.0e-20));
+    qdiv = one;
+    sm[k] = q3sq * a1 * (e3 - three * c1 * e4) / eden;
+    sh[k] = q3sq * (a2 * a2fac) * (e2 + three * c1 * e5c * gmel) / eden;
   }
+  constexpr real sh25max = four, sh25min = zero;
+  if (sh[k] > sh25max) sh[k] = sh25max;
+  if (sh[k] < sh25min) sh[k] = sh25min;
+  const real shb = c_max(sh[k], real(0.004));
+  sm[k] = c_min(sm[k], Prlim * shb);
+  real gamt, gamq, gamv;
+  if (closure >= real(3.0)) {  // level 3: the countergradient terms (Nakanishi and Niino 2009)
+    real t2sq = qdiv * b2 * elsq * sh[k] * (dtl[k] * dtl[k]);
+    real r2sq = qdiv * b2 * elsq * sh[k] * (dqw[k] * dqw[k]);
+    real c2sq = qdiv * b2 * elsq * sh[k] * dtl[k] * dqw[k];
+    real t3sq = c_max(tsq[k] * abk + tsq[k - 1] * afk, zero);
+    real r3sq = c_max(qsq[k] * abk + qsq[k - 1] * afk, zero);
+    real c3sq = cov[k] * abk + cov[k - 1] * afk;
+    c3sq = std::copysign(c_min(std::fabs(c3sq), std::sqrt(t3sq * r3sq)), c3sq);
+    const real vtt = one + vt[k] * abk + vt[k - 1] * afk;
+    const real vqq = tv0 + vq[k] * abk + vq[k - 1] * afk;
+    t2sq = vtt * t2sq + vqq * c2sq;
+    r2sq = vtt * c2sq + vqq * r2sq;
+    c2sq = c_max(vtt * t2sq + vqq * r2sq, real(0.0));
+    t3sq = vtt * t3sq + vqq * c3sq;
+    r3sq = vtt * c3sq + vqq * r3sq;
+    c3sq = c_max(vtt * t3sq + vqq * r3sq, real(0.0));
+    const real cw25 = e1 * (e2 + three * c1 * e5c * gmel * (qdiv * qdiv)) / (three * eden);
+    dlsq = elsq;
+    if (q3sq / dlsq < -gh[k]) q3sq = -dlsq * gh[k];
+    // auh, aum, adh, adm, aeh, aem, Req, Rsl: no effect (Rsl is overwritten and unused)
+    e2 = q3sq - e2c * ghel * a2fac * (qdiv * qdiv);
+    e3 = q3sq + e3c * ghel * (a2fac * a2fac) * (qdiv * qdiv);
+    e4 = q3sq - e4c * ghel * a2fac * (qdiv * qdiv);
+    eden = e2 * e4 + e3 * e5c * gmel * (qdiv * qdiv);
+    const real wden = cc3 * (gtr * gtr) * (dlsq * dlsq) / elsq * (qdiv * qdiv) *
+                      (e2 * e4c * a2fac - e3c * e5c * gmel * (a2fac * a2fac) * (qdiv * qdiv));
+    if (wden != zero) {
+      const real clow = q3sq * (real(0.12) - cw25) * eden / wden;
+      const real cupp = q3sq * (real(0.76) - cw25) * eden / wden;
+      if (wden > zero) c3sq = c_min(c_max(c3sq, c2sq + clow), c2sq + cupp);
+      else c3sq = c_max(c_min(c3sq, c2sq + clow), c2sq + cupp);
+    }
+    e1 = e2 + e5c * gmel * (qdiv * qdiv);
+    eden = c_max(eden, real(1.0e-20));
+    const real e6c = real(3.0) * (a2 * a2fac) * cc3 * gtr * dlsq / elsq;
+    real enum_;
+    if (t2sq >= zero) enum_ = c_max(qdiv * e6c * (t3sq - t2sq), real(0.0));
+    else enum_ = c_min(qdiv * e6c * (t3sq - t2sq), real(0.0));
+    gamt = -e1 * enum_ / eden;
+    if (r2sq >= zero) enum_ = c_max(qdiv * e6c * (r3sq - r2sq), real(0.0));
+    else enum_ = c_min(qdiv * e6c * (r3sq - r2sq), real(0.0));
+    gamq = -e1 * enum_ / eden;
+    enum_ = c_max(qdiv * e6c * (c3sq - c2sq), real(0.0));
+    const real smd =
+        dlsq * enum_ * gtr / eden * (qdiv * qdiv) * (e3c * (a2fac * a2fac) + e4c * a2fac) * a1 / (a2 * a2fac);
+    gamv = e1 * enum_ * gtr / eden;
+    sm[k] = sm[k] + smd;
+    qdiv = one;
+  } else {
+    gamt = zero;
+    gamq = zero;
+    gamv = zero;
+  }
+  const real cldavg = p5 * (cldfra_bl1[k - 1] + cldfra_bl1[k]);
+  const real mfmax = c_max(p5 * (edmf_a1[k - 1] + edmf_a1[k]) * p5 * (edmf_w1[k - 1] + edmf_w1[k]),
+                           std::fabs(zero * zero));
+  sm[k] = c_max(sm[k], real(0.04) * c_min(real(10.) * mfmax, one));
+  sh[k] = c_max(sh[k], real(0.04) * c_min(real(10.) * mfmax, one));
+  sm[k] = c_max(sm[k], real(0.04) * c_min(cldavg, p5));
+  sh[k] = c_max(sh[k], real(0.04) * c_min(cldavg, p5));
+  if (closure >= real(2.7) && closure < real(3.0)) sm[k] = c_max(sm[k], c_min(p2, c_max(zero, three * qpe[k])));
+  const real elq = el[k] * qkw[k];
+  const real elqt = el[k] * qtw[k];
+  const real elh = elq * qdiv;
+  pdk[k] = elq * (sm[k] * gm[k] + sh[k] * gh[k] + gamv) + p5 * zero + p5 * TKEprod_up[k];
+  pdt[k] = elh * (sh[k] * dtl[k] + gamt) * dtl[k];
+  pdq[k] = elh * (sh[k] * dqw[k] + gamq) * dqw[k];
+  pdc[k] = elh * (sh[k] * dtl[k] + gamt) * dqw[k] * p5 + elh * (sh[k] * dqw[k] + gamq) * dtl[k] * p5;
+  tcd[k] = elq * gamt;
+  qcd[k] = elq * gamq;
+  dfm[k] = elqt * sm[k] / dzk;
+  dfh[k] = elq * sh[k] / dzk;
+  dfq[k] = dfm[k];
+  if (qshear) {  // tke_budget = 1
+    qshear[k] = elq * sm[k] * gm[k];
+    qbuoy[k] = elq * (sh[k] * gh[k] + gamv) + p5 * zero + p5 * TKEprod_up[k];
+  }
+}
+
+template <class A_dz, class A_dfm, class A_dfh, class A_dfq, class A_tcd, class A_qcd, class A_pdk, class A_pdt,
+          class A_pdq, class A_pdc>
+CPPWRF_HD inline void turbulence_post(int kte, A_dz dz, A_dfm dfm, A_dfh dfh, A_dfq dfq, A_tcd tcd, A_qcd qcd,
+                                      A_pdk pdk, A_pdt pdt, A_pdq pdq, A_pdc pdc) {
+  constexpr int kts = 1;
   dfm[kts] = zero;
   dfh[kts] = zero;
   dfq[kts] = zero;
@@ -705,12 +786,14 @@ CPPWRF_HD inline void mym_turbulence(int kte, real xland, real closure, real ckm
 }
 
 // mym_predict (bl_mynn_edmf <= 1: implicit form); qwt / qdiss (tke_budget = 1) may be null
-template <int K>
-CPPWRF_HD inline void mym_predict(int kte, real closure, real delt, const real* dz, real ust, real pmz, real phh,
-                                  const real* el, const real* dfq, const real* rho, real* pdk, real* pdt, real* pdq,
-                                  real* pdc, real* qke, real* tsq, real* qsq, real* cov, const real* s_aw1,
-                                  const real* s_awqke1, const real* s_awqsq1, int bl_mynn_edmf, int bl_mynn_edmf_tke,
-                                  real* qwt, real* qdiss) {
+template <int K, class A_dz, class A_el, class A_dfq, class A_rho, class A_pdk, class A_pdt, class A_pdq,
+          class A_pdc, class A_qke, class A_tsq, class A_qsq, class A_cov, class A_s_aw1, class A_s_awqke1,
+          class A_s_awqsq1, class A_qwt, class A_qdiss>
+CPPWRF_HD inline void mym_predict(int kte, real closure, real delt, A_dz dz, real ust, real pmz, real phh,
+                                  A_el el, A_dfq dfq, A_rho rho, A_pdk pdk, A_pdt pdt, A_pdq pdq,
+                                  A_pdc pdc, A_qke qke, A_tsq tsq, A_qsq qsq, A_cov cov, A_s_aw1 s_aw1,
+                                  A_s_awqke1 s_awqke1, A_s_awqsq1 s_awqsq1, int bl_mynn_edmf, int bl_mynn_edmf_tke,
+                                  A_qwt qwt, A_qdiss qdiss) {
   constexpr int kts = 1;
   real qkw[K + 2], bp[K + 2], rp[K + 2], df3q[K + 2], dtz[K + 2], a[K + 2], b[K + 2], c[K + 2], d[K + 2], x[K + 2],
       rhoinv[K + 2], rhoz[K + 3], kqdz[K + 3], kmdz[K + 3];
@@ -884,18 +967,11 @@ CPPWRF_HD inline void mym_predict(int kte, real closure, real delt, const real* 
 
 // mym_condensation, bl_mynn_cloudpdf 0 (original MYNN), 1 / -1 (Kuwano), 2 / -2 (Chaboureau and Bechtold;
 // negative values: no subgrid clouds); qs is the snow content, sh and el the previous step's (cloudpdf 1)
-template <int K>
-CPPWRF_HD inline void mym_condensation(int kte, const real* dz, const real* zw, real xland, const real* thl,
-                                       const real* qw, const real* qc, const real* qi, const real* qs, const real* p,
-                                       const real* exner, const real* tsq, const real* qsq, const real* cov,
-                                       const real* sh, const real* el, int cloudpdf, real* qc_bl1, real* qi_bl1,
-                                       real* cldfra_bl1, real pblh1, real* vt, real* vq, const real* th, real* sgm,
-                                       real closure) {
+// In parts: condensation_ktropo (the tropopause level of the column), condensation_level (the body of its loop
+// over k = 1 .. kte-1 at level k; alp, bet, a, b, q1, rh of level k only) and condensation_post
+template <class A_th, class A_p>
+CPPWRF_HD inline int condensation_ktropo(int kte, A_th th, A_p p) {
   constexpr int kts = 1;
-  constexpr real qlim_sfc = real(0.008), qlim_pbl = real(0.020), qlim_trp = real(0.025);
-  constexpr real clim_sfc = real(0.010), clim_pbl = real(0.020), clim_trp = real(0.030);
-  constexpr real rhcrit = real(0.83), rhmax = real(1.10);
-  real alp[K + 2], bet[K + 2], a[K + 2], b[K + 2], q1[K + 2], rh[K + 2];
   int k;
   for (k = kte - 3; k >= kts; --k) {
     const real theta1 = th[k];
@@ -905,64 +981,77 @@ CPPWRF_HD inline void mym_condensation(int kte, const real* dz, const real* zw, 
     if ((((theta2 - theta1) / (ht2 - ht1)) < real(10.) / real(1500.)) && (ht1 < real(19000.)) && (ht1 > real(4000.)))
       break;
   }
-  const int k_tropo = (kts + 2 > k + 2) ? kts + 2 : k + 2;
+  return (kts + 2 > k + 2) ? kts + 2 : k + 2;
+}
+
+template <class A_dz, class A_zw, class A_thl, class A_qw, class A_qc, class A_qi, class A_qs, class A_p,
+          class A_exner, class A_tsq, class A_qsq, class A_cov, class A_sh, class A_el, class A_qc_bl1,
+          class A_qi_bl1, class A_cldfra_bl1, class A_vt, class A_vq, class A_th, class A_sgm>
+CPPWRF_HD inline void condensation_level(int k, int k_tropo, A_dz dz, A_zw zw, real xland, A_thl thl,
+                                         A_qw qw, A_qc qc, A_qi qi, A_qs qs, A_p p,
+                                         A_exner exner, A_tsq tsq, A_qsq qsq, A_cov cov,
+                                         A_sh sh, A_el el, int cloudpdf, A_qc_bl1 qc_bl1, A_qi_bl1 qi_bl1,
+                                         A_cldfra_bl1 cldfra_bl1, real pblh1, A_vt vt, A_vq vq, A_th th, A_sgm sgm,
+                                         real closure) {
+  constexpr int kts = 1;
+  constexpr real qlim_sfc = real(0.008), qlim_pbl = real(0.020), qlim_trp = real(0.025);
+  constexpr real clim_sfc = real(0.010), clim_pbl = real(0.020), clim_trp = real(0.030);
+  constexpr real rhcrit = real(0.83), rhmax = real(1.10);
+  real alp, bet, a, b, q1, rh;
   if (cloudpdf == 0 || cloudpdf == 1 || cloudpdf == -1) {
-    for (k = kts; k <= kte - 1; ++k) {
-      const real t = th[k] * exner[k];
-      const real esat = esat_blend(t);
-      const real qsl = ep_2 * esat / c_max(real(1.e-4), (p[k] - ep_3 * esat));
-      const real dqsl = qsl * ep_2 * xlv / (r_d * (t * t));
-      alp[k] = one / (one + dqsl * xlvcp);
-      bet[k] = dqsl * exner[k];
-      if (cloudpdf == 0) {
-        const real t3sq = c_max(tsq[k], zero);
-        real r3sq = c_max(qsq[k], zero);
-        real c3sq = cov[k];
-        c3sq = std::copysign(c_min(std::fabs(c3sq), std::sqrt(t3sq * r3sq)), c3sq);
-        r3sq = r3sq + (bet[k] * bet[k]) * t3sq - real(2.0) * bet[k] * c3sq;
-        sgm[k] = std::sqrt(c_max(r3sq, real(1.0e-10)));
-      } else {
-        const real dzk = (k == kts) ? real(0.5) * dz[k] : dz[k];
-        const int km1 = (k - 1 > kts) ? k - 1 : kts;
-        const real dth = real(0.5) * (thl[k + 1] + thl[k]) - real(0.5) * (thl[k] + thl[km1]);
-        const real dqw = real(0.5) * (qw[k + 1] + qw[k]) - real(0.5) * (qw[k] + qw[km1]);
-        const real grad = dqw / dzk - bet[k] * (dth / dzk);
-        sgm[k] = std::sqrt(c_max((alp[k] * alp[k] * c_max(el[k] * el[k], p1) * b2 * c_max(sh[k], real(0.03))) / four *
-                                     (grad * grad),
-                                 real(1.0e-10)));
-      }
-      const real qmq = qw[k] - qsl;
-      q1[k] = qmq / sgm[k];
-      cldfra_bl1[k] = real(0.5) * (one + libm::erf(q1[k] * rr2));
-      const real q1k = q1[k];
-      const real eq1 = rrp * libm::exp(real(-0.5) * q1k * q1k);
-      const real qll = c_max(cldfra_bl1[k] * q1k + eq1, zero);
-      const real ql = alp[k] * sgm[k] * qll;
-      const real liq_frac = c_min(one, c_max(zero, (t - real(240.0)) / real(29.0)));
-      qc_bl1[k] = liq_frac * ql;
-      qi_bl1[k] = (one - liq_frac) * ql;
-      const real q2p = xlvcp / exner[k];
-      const real pt = thl[k] + q2p * ql;
-      const real qt = one + p608 * qw[k] - (real(1.) + p608) * (qc_bl1[k] + qi_bl1[k]) * cldfra_bl1[k];
-      const real rac = alp[k] * (cldfra_bl1[k] - qll * eq1) * (q2p * qt - (real(1.) + p608) * pt);
-      vt[k] = qt - one - rac * bet[k];
-      vq[k] = p608 * pt - tv0 + rac;
+    const real t = th[k] * exner[k];
+    const real esat = esat_blend(t);
+    const real qsl = ep_2 * esat / c_max(real(1.e-4), (p[k] - ep_3 * esat));
+    const real dqsl = qsl * ep_2 * xlv / (r_d * (t * t));
+    alp = one / (one + dqsl * xlvcp);
+    bet = dqsl * exner[k];
+    if (cloudpdf == 0) {
+      const real t3sq = c_max(tsq[k], zero);
+      real r3sq = c_max(qsq[k], zero);
+      real c3sq = cov[k];
+      c3sq = std::copysign(c_min(std::fabs(c3sq), std::sqrt(t3sq * r3sq)), c3sq);
+      r3sq = r3sq + (bet * bet) * t3sq - real(2.0) * bet * c3sq;
+      sgm[k] = std::sqrt(c_max(r3sq, real(1.0e-10)));
+    } else {
+      const real dzk = (k == kts) ? real(0.5) * dz[k] : dz[k];
+      const int km1 = (k - 1 > kts) ? k - 1 : kts;
+      const real dth = real(0.5) * (thl[k + 1] + thl[k]) - real(0.5) * (thl[k] + thl[km1]);
+      const real dqw = real(0.5) * (qw[k + 1] + qw[k]) - real(0.5) * (qw[k] + qw[km1]);
+      const real grad = dqw / dzk - bet * (dth / dzk);
+      sgm[k] = std::sqrt(c_max((alp * alp * c_max(el[k] * el[k], p1) * b2 * c_max(sh[k], real(0.03))) / four *
+                                   (grad * grad),
+                               real(1.0e-10)));
     }
+    const real qmq = qw[k] - qsl;
+    q1 = qmq / sgm[k];
+    cldfra_bl1[k] = real(0.5) * (one + libm::erf(q1 * rr2));
+    const real q1k = q1;
+    const real eq1 = rrp * libm::exp(real(-0.5) * q1k * q1k);
+    const real qll = c_max(cldfra_bl1[k] * q1k + eq1, zero);
+    const real ql = alp * sgm[k] * qll;
+    const real liq_frac = c_min(one, c_max(zero, (t - real(240.0)) / real(29.0)));
+    qc_bl1[k] = liq_frac * ql;
+    qi_bl1[k] = (one - liq_frac) * ql;
+    const real q2p = xlvcp / exner[k];
+    const real pt = thl[k] + q2p * ql;
+    const real qt = one + p608 * qw[k] - (real(1.) + p608) * (qc_bl1[k] + qi_bl1[k]) * cldfra_bl1[k];
+    const real rac = alp * (cldfra_bl1[k] - qll * eq1) * (q2p * qt - (real(1.) + p608) * pt);
+    vt[k] = qt - one - rac * bet;
+    vq[k] = p608 * pt - tv0 + rac;
   } else if (cloudpdf == 2 || cloudpdf == -2) {
-  const real pblh2 = c_max(ten, pblh1);
-  for (k = kts; k <= kte - 1; ++k) {
+    const real pblh2 = c_max(ten, pblh1);
     const real zagl = zw[k] + p5 * dz[k];
     const real t = th[k] * exner[k];
     const real xl = xl_blend(t);
     const real qsat_tk = qsat_blend(t, p[k]);
-    rh[k] = c_max(c_min(rhmax, qw[k] / c_max(real(1E-10), qsat_tk)), real(0.001));
+    rh = c_max(c_min(rhmax, qw[k] / c_max(real(1E-10), qsat_tk)), real(0.001));
     const real dqsl = qsat_tk * ep_2 * xlv / (r_d * (t * t));
-    alp[k] = one / (one + dqsl * xlvcp);
-    bet[k] = dqsl * exner[k];
+    alp = one / (one + dqsl * xlvcp);
+    bet = dqsl * exner[k];
     const real rsl = xl * qsat_tk / (r_v * (t * t));
     const real cpm = cp + qw[k] * cpv;
-    a[k] = one / (one + xl * rsl / cpm);
-    b[k] = a[k] * rsl;
+    a = one / (one + xl * rsl / cpm);
+    b = a * rsl;
     const real qw_pert = qw[k] + qw[k] * p5 * zero * real(0);  // spp_pbl = 0
     const real qmq = qw_pert - qsat_tk;
     real r3sq = c_max(qsq[k], zero);
@@ -970,8 +1059,8 @@ CPPWRF_HD inline void mym_condensation(int kte, const real* dz, const real* zw, 
     real c3sq = cov[k];
     c3sq = std::copysign(c_min(std::fabs(c3sq), std::sqrt(t3sq * r3sq)), c3sq);
     if (closure < real(2.7)) r3sq = r3sq;
-    else if (closure < real(3.0)) r3sq = r3sq + (bet[k] * bet[k]) * t3sq;
-    else r3sq = r3sq + (bet[k] * bet[k]) * t3sq - two * bet[k] * c3sq;
+    else if (closure < real(3.0)) r3sq = r3sq + (bet * bet) * t3sq;
+    else r3sq = r3sq + (bet * bet) * t3sq - two * bet * c3sq;
     sgm[k] = c_max(real(1e-13), std::sqrt(r3sq));
     sgm[k] = c_min(sgm[k], qw[k] * p5);
     real wt = c_min(one, c_max(zero, dz[k] - real(100.)) / real(500.));
@@ -986,21 +1075,21 @@ CPPWRF_HD inline void mym_condensation(int kte, const real* dz, const real* zw, 
     sgmc = c_max(sgmc, qw[k] * clim);
     sgmc = c_max(real(1e-13), sgmc);
     if (qmq >= zero) sgmc = c_max(real(0.02) * qw[k], sgmc);
-    q1[k] = qmq / sgmc;
+    q1 = qmq / sgmc;
     real wt2 = c_min(one, c_max(zero, zagl - pblh2) / real(300.));
     if ((qi[k] + qs[k]) > real(1.e-10) && (zagl > pblh2)) {
       real rh_adj = c_min(rhmax, rhcrit + wt2 * real(0.037) * (c_max(zero, ten + libm::log10(qi[k] + qs[k]))));
-      rh_adj = c_max(rh[k], rh_adj);
+      rh_adj = c_max(rh, rh_adj);
       const real q1_rh = real(-3.) + three * (rh_adj - rhcrit) / (one - rhcrit);
-      q1[k] = c_max(q1_rh, q1[k]);
+      q1 = c_max(q1_rh, q1);
     }
     if (qc[k] > real(1.e-5) && (zagl > pblh2)) {
       real rh_adj = c_min(rhmax, rhcrit + wt2 * real(0.07) * (c_max(zero, five + libm::log10(qc[k]))));
-      rh_adj = c_max(rh[k], rh_adj);
+      rh_adj = c_max(rh, rh_adj);
       const real q1_rh = real(-3.) + three * (rh_adj - rhcrit) / (one - rhcrit);
-      q1[k] = c_max(q1_rh, q1[k]);
+      q1 = c_max(q1_rh, q1);
     }
-    real q1k = q1[k];
+    real q1k = q1;
     wt2 = c_min(one, c_max(zero, (zagl - (pblh1 - real(100.))) / real(200.)));
     const real cldfra_qsq0 = c_max(zero, c_min(one, p5 + real(0.35) * libm::atan(real(3.6) * (q1k + real(0.05)))));
     const real cldfra_qsq1 = c_max(zero, c_min(one, p5 + real(0.39) * libm::atan(real(1.6) * (q1k + real(0.55)))));
@@ -1028,8 +1117,8 @@ CPPWRF_HD inline void mym_condensation(int kte, const real* dz, const real* zw, 
       qc_bl1[k] = zero;
       qi_bl1[k] = zero;
     }
-    if ((xland - real(1.5)) >= zero) q1k = c_max(q1[k], real(-2.5));
-    else q1k = c_max(q1[k], real(-2.0));
+    if ((xland - real(1.5)) >= zero) q1k = c_max(q1, real(-2.5));
+    else q1k = c_max(q1, real(-2.0));
     real Fng;
     if (q1k >= one) Fng = one;
     else if (q1k >= real(-1.7) && q1k < one) Fng = rexp(real(-0.4) * (q1k - one));
@@ -1039,14 +1128,20 @@ CPPWRF_HD inline void mym_condensation(int kte, const real* dz, const real* zw, 
     zsl = c_min(c_max(real(25.), p1 * pblh2), hundred);
     wt = c_min(zagl / zsl, one);
     cfmax = cfmax * wt;
-    const real bb = b[k] * t / th[k];
+    const real bb = b * t / th[k];
     const real qww = one + p608 * qw[k];
     const real alpha = p608 * th[k];
     const real beta = (th[k] / t) * (xl / cp) - real(1.61) * th[k];
     vt[k] = qww - cfmax * beta * bb * Fng - one;
-    vq[k] = alpha + cfmax * beta * a[k] * Fng - tv0;
+    vq[k] = alpha + cfmax * beta * a * Fng - tv0;
   }
-  }
+}
+
+template <class A_qc_bl1, class A_qi_bl1, class A_cldfra_bl1, class A_vt, class A_vq>
+CPPWRF_HD inline void condensation_post(int kte, int cloudpdf, A_qc_bl1 qc_bl1, A_qi_bl1 qi_bl1,
+                                        A_cldfra_bl1 cldfra_bl1, A_vt vt, A_vq vq) {
+  constexpr int kts = 1;
+  int k;
   if (cloudpdf < 0) {
     for (k = kts; k <= kte - 1; ++k) {
       cldfra_bl1[k] = zero;

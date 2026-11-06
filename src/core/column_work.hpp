@@ -31,6 +31,7 @@ template <class T>
 struct ColArray {
   T* p;
   CPPWRF_FORCEINLINE T& operator[](int k) const { return p[k * 32]; }
+  CPPWRF_FORCEINLINE explicit operator bool() const { return p != nullptr; }  // an optional array (null: absent)
 };
 
 // a [n1][N2] work array: element (k, n) of a thread at p[32 (k N2 + n)]
