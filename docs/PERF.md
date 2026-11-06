@@ -659,3 +659,65 @@ still runs taumol_sw per column (8.3 ms per daytime step in V1), the next candid
 Proof: every cuda_dp case against WRF at tolerance 0 (SUITE PASS 79 FAIL 0 SKIP 0, v05_files_links.tar included),
 the 16 FP32 cases with base and new builds (120 snapshots and 3 restart .nc files byte-identical), the CPU suite cases
 of every radiation option and the smoke set at tolerance 0 (15 PASS).
+
+## Single-GPU kernels (P01; measured, Colab G4)
+
+Profiled on the G4 (nsys and ncu with `CPPWRF_GRAPHS=0`, `CPPWRF_KTIME=1`) on P4 (radt 1 and radt 15), P6
+(Thompson), MYNN, N3 and L (a 360 x 270 domain made on the runtime with WPS 4.6.0 from GFS 0.25 deg, P4's physics,
+radt 15), FP64 and FP32. The top kernels and what changed:
+
+- **KNoahRs** (one thread for the whole domain: the RC of each land-ice point is the last RC that SFLX computed in
+  WRF's i-j loop order; 10 ms per step in L): now per point (`KNoahRcLast`, one thread per row, finds the last SFLX
+  point of each row; `KNoahRs` takes it from its own row or the nearest row before). Same values.
+- **KUpdate / KTendU, V, W, T** (FP64 compute-bound at 81-87 % of the SM: every face flux of the scalar transport
+  and of the rk_tendency advection was computed twice, once by each cell of the face): in FP64 builds the face
+  fluxes are computed once per face into a scratch array (`KFaceX/Y/Z`, `KFace<KTend*, d>`; the same expressions)
+  and both cells read them. FP32 builds keep the inline fluxes (those files build with `--fmad=true`, so the code
+  stays textually unchanged there).
+- **KLwBand** (one thread per (column, band), read-modify-write of the band sums; memory-bound: 35 % occupancy,
+  ~2.9 GB of local-memory traffic per launch): now `KLwGpoint` (one thread per (column, g-point): the rtrnmc sweeps
+  of one g-point as `rrtmg_lw_gpoint`, results in place in the work arrays) and `KLwLevel` (per (column, level): the
+  band sums in g-point order, then the level fluxes). The CPU band loop calls the same g-point routine in the same
+  order.
+- **column_for blocks of one warp (32 x 1)** instead of 64 x 2 (`CPPWRF_COLUMN_BLOCK=XxY` overrides it; X a multiple
+  of 32): the column physics (WSM6, KF, YSU, Thompson, MYNN) run at 5-8 % occupancy and are latency-bound, and
+  smaller blocks spread the columns over more SMs (P4 radt 15: 1.74 -> 1.64 s/h FP64, 0.56 -> 0.49 FP32).
+
+Tried and dropped: taumol per (layer, band) for the LW prep (KLwLayer 309 -> 324 ms per hour on P4: slower).
+
+Stepping s/h, 1 h, no history output, base origin/main 1b4c654 / port/P01 98a2c03, built in the same session, each
+twice, interleaved; peak device memory from nvidia-smi (`CPPWRF_MEMINFO=1`: stack limit 29008 B FP64, unchanged):
+
+| Case | base s/h | new s/h | gain | peak MiB base -> new |
+|---|---|---|---|---|
+| P4 FP64 (radt 1) | 2.915, 2.897 | 2.568, 2.563 | 1.13x | 13653 -> 13671 |
+| P4 FP32 | 1.741, 1.739 | 1.546, 1.546 | 1.13x | 8233 -> 8233 |
+| P4 FP64, radt 15 | 1.737, 1.724 | 1.514, 1.499 | 1.15x | 13653 -> 13673 |
+| P4 FP32, radt 15 | 0.558, 0.556 | 0.483, 0.482 | 1.15x | 8233 -> 8233 |
+| P6 FP64 (Thompson) | 1.661, 1.649 | 1.417, 1.405 | 1.17x | 5789 -> 5799 |
+| P6 FP32 | 0.461, 0.461 | 0.397, 0.396 | 1.16x | 2955 -> 2949 |
+| MYNN FP64 | 2.289, 2.272 | 2.011, 1.994 | 1.14x | 17733 -> 17745 |
+| MYNN FP32 | 0.725, 0.724 | 0.644, 0.642 | 1.13x | 10427 -> 10421 |
+| N3 FP64 (two domains) | 9.575, 9.528 | 8.456, 8.447 | 1.13x | 15203 -> 15241 |
+| N3 FP32 | 4.854, 4.843 | 4.393, 4.390 | 1.10x | 9331 -> 9333 |
+| L FP64 (360 x 270 x 45, radt 15) | 9.974, 9.971 | 8.085, 8.082 | 1.23x | 29957 -> 30067 |
+| L FP32 | 3.145, 3.142 | 2.642, 2.642 | 1.19x | 20791 -> 20791 |
+
+`CPPWRF_KTIME=1`, FP64, ms per step (advection: KUpdate, KTend* and the new face kernels; LW: every KLw* kernel;
+column physics: WSM6 / Thompson, KF, YSU):
+
+| Kernels | P4 radt 15 base | new | P6 base | new | L base | new |
+|---|---|---|---|---|---|---|
+| advection | 8.00 | 5.95 | 9.52 | 7.04 | 63.2 | 42.5 |
+| KNoahRs (+ KNoahRcLast) | 1.14 | 0.03 | 1.12 | 0.03 | 9.97 | 0.04 |
+| column physics | 9.96 | 9.72 | 8.48 | 8.28 | 30.7 | 28.1 |
+| all kernels | 32.2 | 28.6 | 30.9 | 27.0 | 173.1 | 137.3 |
+
+On P4 (radt 1) the LW band stage went from KLwBand 10.7 + KLwLevel 0.26 ms to KLwGpoint 7.2 + KLwLevel 1.85 ms per
+step. Memory:
+the FP64 face scratch (three arrays of the domain with halos) adds ~20 MiB on P4 and ~110 MiB on L (0.4 %).
+
+Proof (tolerance 0 throughout): history of P4, P4 radt 15, P6, MYNN, N3 and L every 20 min, base against new,
+byte-identical in FP64 and FP32; every cuda_dp case against WRF; the 16 FP32 suite cases with base and new builds
+byte-identical; the CPU suite cases of the changed code (dycore, radiation options, Noah, nests, ideal cases) against
+WRF.
