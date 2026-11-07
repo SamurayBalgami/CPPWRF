@@ -777,6 +777,64 @@ differential tests.
 Open: MYNN PBL (472 ms per hour FP64, 124 FP32 on the MYNN case) is now the largest column kernel there; YSU and
 KF (L FP64 ~320 ms each) build with `--fmad=true` in FP32, so a split there is FP64-only like WSM6's.
 
+## Column physics in stages II: MYNN PBL (P01c; measured, Colab G4)
+
+Profile of main 6d3c660 (`CPPWRF_KTIME=1`, ms per hour of 60 steps): MYNN PBL (`KMynnPblRunner`, one thread per
+column) 485 FP64 / 125 FP32 on the MYNN case, the largest column kernel there; on L YSU 329, KF 326 (FP64), behind
+KUV 331; on P4 YSU 82, KF 197; on N3 KF 574 (two domains). Peak memory of the MYNN case 17745 MiB FP64, 10423 FP32:
+the column kernel's local arrays (about 60 levels-sized arrays and DMP_mf's 10 plume arrays) are reserved for every
+resident thread.
+
+What changed (pbl_driver.cpp builds with `--fmad=false` in both precisions, so FP64 and FP32 take the same
+structure): mynnedmf runs as column parts (one thread per column) and level parts (one thread per (i, j, k)) on the
+column's arrays in the work buffer (`column_work_chunks`, `ColumnSlots(work, i, j, chunk, bx, by)` as Thompson's):
+
+| Part | Threads | What (module_bl_mynnedmf.F90 statements) |
+|---|---|---|
+| Load | (i, j, k) | the driver's loads and mynnedmf_pre_run, the level values qv1, sqw1, thl1, thv1, the arrays mynnedmf and DMP_mf clear |
+| Stage 0 | column | surface-flux limits, initialisation (first step), get_pblh, surface fluxes and stability, the tropopause |
+| Cond | (i, j, k) | mym_condensation's level loop |
+| Stage 1 | column | mym_condensation's top values, DMP_mf's plumes (to ktop) |
+| MfSum | (i, j, k) | DMP_mf's sums of the plume fluxes over the plumes (bl_mynn_edmf > 0) |
+| Stage 2 | column | the rest of DMP_mf (flux limit, edmf_* averages, the subgrid clouds) |
+| QcTot | (i, j, k) | total condensate, thlv1, thv1, mym_turbulence's first loops |
+| L2 | (i, j, k) | mym_level2 |
+| Stage 3 | column | mym_length (bl_mynn_mixlength 1: its column integrals) |
+| Boulac | (i, j, k) | boulac_length per level (bl_mynn_mixlength 1) |
+| Turb | (i, j, k) | mym_length's last loop and the LES blend, mym_turbulence's loop over the walls |
+| Stage 4 | column | the rest of mym_turbulence, mym_predict, mynn_tendencies, the exchange coefficients, the budget |
+| Store | (i, j, k) | mynnedmf_post_run and the driver's stores |
+
+The column scalars that later parts read (pblh, kpbl, the surface fluxes, DMP_mf's nup2, Psig_w, ktop and the
+plume tops) are kept in the work buffer between the kernels. Every value is the same statement on the same
+operands: the loop bodies moved unchanged into per-level functions (`mym_level2_k`, `condensation_level`,
+`turbulence_level`, `boulac_level`, `dmp_mf_sums_level`, ...) that the CPU calls in WRF's loop order; DMP_mf's sums
+keep the order over the plumes at each level. The CPU runs the parts per column (driver_bl_mynn.cpp unchanged).
+
+Kernel time per hour (KTIME, MYNN case, the MYNN PBL kernels, base -> new): FP64 485 -> 329 (Stage 4 123, Stage 1
+53, Load 38, Turb 23, Stage 2 21, Cond 19), FP32 125 -> 98 (Stage 4 44, Load 22, Stage 2 9, Stage 1 8).
+
+Stepping s/h, MYNN case 1 h, no history output, base origin/main 6d3c660 / port/P01c in one G4 session, each twice:
+
+| Case | base s/h | new s/h | gain | peak MiB base -> new |
+|---|---|---|---|---|
+| MYNN FP64 | 1.897, 1.895 | 1.747, 1.744 | 1.09x | 17745 -> 8827 |
+| MYNN FP32 | 0.598, 0.597 | 0.567, 0.567 | 1.05x | 10423 -> 7071 |
+
+Peak memory falls by half in FP64 (the local arrays move to the work buffer of the columns of one chunk). Proof
+(tolerance 0): history every 20 min of the MYNN, MYNNX1 (non-default options: tkeadvect, cloudpdf 1, mixlength
+2, closure 3.0, edmf_tke 1, mixqt 1, output 1, tke_budget 1) and MYNNX2 (edmf 0, mixlength 0, closure 2.5) runs,
+FP64 and FP32, base against new, byte-identical (snapshots and restart variables); every cuda_dp case against WRF
+(79); the FP32 suite cases with base and new builds byte-identical; the CPU suite cases of MYNN and the smoke set
+against WRF and the MYNN and suite differential tests.
+
+Not done: YSU and KF. Both build with `--fmad=true` in FP32, so a split is FP64-only with a second copy of the
+scheme; YSU's level-parallel loops are about 40 % of its time (ncu on P4: initialisation 11 %, the free-atmosphere
+diffusivity 12 %, tke 11 %, the tridiagonal coefficients of heat, moisture and momentum about 28 % with the
+solves 17 % sequential), a gain of about 1 % of L FP64. KF's updraft, downdraft and closure are sequential per
+column (the trigger loop over the source layers and the closure iteration). Next in the MYNN case: Stage 4
+(mym_predict and mynn_tendencies' tridiagonal solves per column; their coefficient loops could run per level).
+
 ## NetCDF output: chunks compressed on host threads (IO1; measured, Colab G4)
 
 WRF's NetCDF-4 history and restart files (external/io_netcdf `ext_ncd_write_field`) are chunked in halves of the two
