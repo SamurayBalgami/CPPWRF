@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
 """Compares a CPPWRF run output against a stored golden output.
 Checks diag.csv (excluding timing columns) and the final snapshot.
 Tolerances:
   FP64: rtol=1e-12, atol=1e-12
   FP32: rtol=1e-5,  atol=1e-5
+  diag.csv values stored with fewer significant digits: at least half a unit in their last digit
 """
 import csv
 import glob
@@ -12,6 +12,11 @@ import json
 import os
 import sys
 import numpy as np
+
+def stored_rtol(text):
+    """Relative rounding of a decimal written with the significant digits of `text` (0.5 ulp of the last digit)."""
+    mant = text.strip().lower().split("e")[0].lstrip("+-").replace(".", "").lstrip("0")
+    return 0.5 * 10.0 ** (1 - len(mant)) if mant else 0.0
 
 def read_diag(d):
     path = os.path.join(d, "diag.csv")
@@ -75,7 +80,9 @@ def compare(run_dir, golden_dir, prec="float32"):
         for c in cols_to_check:
             val_r = float(r_row[c])
             val_g = float(g_row[c])
-            if not np.isclose(val_r, val_g, rtol=rtol, atol=atol):
+            # a golden written with fewer digits (older diag.csv: 9 significant digits) is checked to the
+            # precision it was stored with, not to the FP64 tolerance it cannot meet
+            if not np.isclose(val_r, val_g, rtol=max(rtol, stored_rtol(g_row[c])), atol=atol):
                 diff = abs(val_r - val_g)
                 print(f"FAIL: diag.csv mismatch at row {row_idx}, col '{c}': run={val_r} gold={val_g} diff={diff:.3e}")
                 return 1
@@ -115,4 +122,12 @@ if __name__ == "__main__":
         print("usage: compare_golden.py <run_dir> <golden_dir> [precision]")
         sys.exit(2)
     p = sys.argv[3] if len(sys.argv) > 3 else "float32"
-    sys.exit(compare(sys.argv[1], sys.argv[2], p))
+    rc = compare(sys.argv[1], sys.argv[2], p)
+    if rc:
+        # a golden older than the code it checks fails for every change since; name its commit
+        commit = os.path.join(os.path.dirname(os.path.abspath(sys.argv[2])), "COMMIT")
+        if os.path.exists(commit):
+            with open(commit) as f:
+                print(f"       golden made at commit {f.read().strip()[:12]} (tools/regression/update_golden.sh "
+                      "refreshes it once the change is verified)")
+    sys.exit(rc)

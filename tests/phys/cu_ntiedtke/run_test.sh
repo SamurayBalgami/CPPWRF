@@ -20,7 +20,7 @@ for n in 2 4; do
     "$BUILD_DIR/cppwrf" "$REPO_ROOT/configs/real_p7_r8.ini" --set run.run_time=$((60 * n)) --set output.dir="$WORK/out" > run$n.log 2>&1
   r=$(./harness nt$n.bin | tail -1)
   echo "step $n: $r"
-  echo "$r" | awk '{exit !($2 > 0 && $NF == 0)}' || fail=1  # columns > 0, none mismatching
+  echo "$r" | awk '{exit !($2 > 0 && $4 > 0 && $NF == 0)}' || fail=1  # columns > 0, some active, none mismatching
 done
 cd /; rm -rf "$WORK"
 [ $fail = 0 ] && echo "PASS" || { echo "FAIL"; exit 1; }
