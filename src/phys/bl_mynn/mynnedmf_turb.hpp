@@ -598,26 +598,21 @@ CPPWRF_HD inline void mym_initialize(int kte, real ckmod, real taue, real xland,
   cov[kte] = cov[kte - 1];
 }
 
-// mym_turbulence (tkeprod_dn = 0: no downdrafts) in parts: turbulence_pre (qkw, qtw cleared, qpe), mym_level2,
-// mym_length, turbulence_level (the body of its loop over the walls at k = 2 .. kte) and turbulence_post (the
-// surface values, the divergence of tcd and qcd); sh, sm are overwritten with the final stability functions.
-// qshear / qbuoy (tke_budget = 1) may be null
+// mym_turbulence (tkeprod_dn = 0: no downdrafts) in parts: turbulence_pre_k (its first loops at level k: qkw, qtw
+// cleared, qpe), mym_level2, mym_length, turbulence_level (the body of its loop over the walls at k = 2 .. kte) and
+// turbulence_post (the surface values, the divergence of tcd and qcd); sh, sm are overwritten with the final stability
+// functions. qshear / qbuoy (tke_budget = 1) may be null
 template <class A_zw, class A_tsq, class A_qkw, class A_qtw, class A_qpe>
-CPPWRF_HD inline void turbulence_pre(int kte, real closure, real taue, A_zw zw, A_tsq tsq, real pblh, A_qkw qkw,
-                                     A_qtw qtw, A_qpe qpe) {
-  constexpr int kts = 1;
-  for (int k = kts; k <= kte; ++k) {
-    qkw[k] = zero;
-    qtw[k] = zero;
-  }
+CPPWRF_HD inline void turbulence_pre_k(int k, real closure, real taue, A_zw zw, A_tsq tsq, real pblh, A_qkw qkw,
+                                       A_qtw qtw, A_qpe qpe) {
+  qkw[k] = zero;
+  qtw[k] = zero;
   const real pblh2 = c_max(pblh, real(200.));
   if (closure < real(2.7)) {
-    for (int k = kts; k <= kte; ++k) qpe[k] = zero;
+    qpe[k] = zero;
   } else {
-    for (int k = kts; k <= kte; ++k) {
-      const real cpblh = c_min((zw[k] + p1 * pblh2) / (real(0.8) * pblh2), one);
-      qpe[k] = c_min(three, c_max(zero, cpblh * two * tsq[k] * (gtr * gtr) * (taue * taue)));
-    }
+    const real cpblh = c_min((zw[k] + p1 * pblh2) / (real(0.8) * pblh2), one);
+    qpe[k] = c_min(three, c_max(zero, cpblh * two * tsq[k] * (gtr * gtr) * (taue * taue)));
   }
 }
 

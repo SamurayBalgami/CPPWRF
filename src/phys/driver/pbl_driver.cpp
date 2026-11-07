@@ -102,52 +102,47 @@ struct KMynnPbl {
   V3 qke_adv_1, qke_adv_2;  // the scalar qke_adv (State q_1 / q_2), when present
   bool has_qke_adv = false;
   ColumnWork work{};  // the GPU's work buffer of mynnedmf's parts (mynnedmf::Column, Work, Slots)
-  // mynnedmf_driver before mynnedmf: the column, the surface-flux limits (hfx1, qfx1), mynnedmf_pre_run.
-  // qv1 .. qs1 are the moist fields themselves (the PBL scheme does not change them)
+  // mynnedmf_driver before mynnedmf at level k (1 .. kte): the column and mynnedmf_pre_run (qv1 .. qs1 are the moist
+  // fields themselves: the PBL scheme does not change them)
   template <int K>
-  CPPWRF_HD void pre(int i, int j, mynnedmf::Column<K>& c, real& hfx1, real& qfx1) const {
+  CPPWRF_HD void pre_level(int i, int j, int k, mynnedmf::Column<K>& c) const {
     using namespace mynnedmf;
-    c.kte = nz;
-    for (int k = 1; k <= nz; ++k) {
-      const int kk = k - 1;
-      c.dz[k] = dz8w(i, j, kk); c.u[k] = u(i, j, kk); c.v[k] = v(i, j, kk); c.w[k] = w(i, j, kk);
-      c.th[k] = th(i, j, kk); c.tk[k] = t(i, j, kk); c.pres[k] = p(i, j, kk); c.ex[k] = pi(i, j, kk);
-      c.rho[k] = rho(i, j, kk);
+    const int kk = k - 1;
+    c.dz[k] = dz8w(i, j, kk); c.u[k] = u(i, j, kk); c.v[k] = v(i, j, kk); c.w[k] = w(i, j, kk);
+    c.th[k] = th(i, j, kk); c.tk[k] = t(i, j, kk); c.pres[k] = p(i, j, kk); c.ex[k] = pi(i, j, kk);
+    c.rho[k] = rho(i, j, kk);
+    if (initflag == 0) {  // .or. restart
+      c.qc_bl[k] = qc_bl(i, j, kk); c.qi_bl[k] = qi_bl(i, j, kk); c.cldfra_bl[k] = cldfra_bl(i, j, kk);
+      c.qke[k] = qke(i, j, kk); c.qsq[k] = qsq(i, j, kk); c.tsq[k] = tsq(i, j, kk); c.cov[k] = cov(i, j, kk);
+      c.sh[k] = sh3d(i, j, kk); c.sm[k] = sm3d(i, j, kk); c.kh[k] = exch_h(i, j, kk); c.km[k] = exch_m(i, j, kk);
+      c.el[k] = el(i, j, kk);
+      // bl_mynn_tkeadvect: the advected scalar qke_adv (grid%scalar), else qke
+      c.qke_adv[k] = op.tkeadvect ? qke_adv_2(i, j, kk) : qke(i, j, kk);
     }
+    // mynnedmf_pre_run
+    const real qv1 = qv(i, j, kk), qc1 = qc(i, j, kk), qi1 = qi(i, j, kk), qs1 = qs(i, j, kk);
+    c.sqv[k] = qv1 / (one + qv1);
+    c.sqc[k] = qc1 / (one + qv1);
+    c.sqi[k] = qi1 / (one + qv1);
+    c.sqs[k] = qs1 / (one + qv1);
+  }
+  // the column's values: the surface-flux limits (hfx1, qfx1), pblh, kpbl
+  CPPWRF_HD void pre_column(int i, int j, real& pblh1, int& kpbl1, real& hfx1, real& qfx1) const {
     hfx1 = hfx(i, j);
     if (hfx1 > real(1200.)) hfx1 = real(1200.);
     if (hfx1 < real(-600.)) hfx1 = real(-600.);
     qfx1 = qfx(i, j);
     if (qfx1 > real(9e-4)) qfx1 = real(9e-4);
     if (qfx1 < real(-3e-4)) qfx1 = real(-3e-4);
-    c.pblh = pblh(i, j);
-    c.kpbl = kpbl(i, j);
-    if (initflag == 0) {  // .or. restart
-      for (int k = 1; k <= nz; ++k) {
-        const int kk = k - 1;
-        c.qc_bl[k] = qc_bl(i, j, kk); c.qi_bl[k] = qi_bl(i, j, kk); c.cldfra_bl[k] = cldfra_bl(i, j, kk);
-        c.qke[k] = qke(i, j, kk); c.qsq[k] = qsq(i, j, kk); c.tsq[k] = tsq(i, j, kk); c.cov[k] = cov(i, j, kk);
-        c.sh[k] = sh3d(i, j, kk); c.sm[k] = sm3d(i, j, kk); c.kh[k] = exch_h(i, j, kk); c.km[k] = exch_m(i, j, kk);
-        c.el[k] = el(i, j, kk);
-        // bl_mynn_tkeadvect: the advected scalar qke_adv (grid%scalar), else qke
-        c.qke_adv[k] = op.tkeadvect ? qke_adv_2(i, j, kk) : qke(i, j, kk);
-      }
-    }
-    for (int k = 1; k <= nz; ++k) {  // mynnedmf_pre_run
-      const int kk = k - 1;
-      const real qv1 = qv(i, j, kk), qc1 = qc(i, j, kk), qi1 = qi(i, j, kk), qs1 = qs(i, j, kk);
-      c.sqv[k] = qv1 / (one + qv1);
-      c.sqc[k] = qc1 / (one + qv1);
-      c.sqi[k] = qi1 / (one + qv1);
-      c.sqs[k] = qs1 / (one + qv1);
-    }
+    pblh1 = pblh(i, j);
+    kpbl1 = kpbl(i, j);
   }
-  // mynnedmf_post_run and the outputs
+  // mynnedmf_post_run and the outputs at level k (1 .. kte)
   template <int K>
-  CPPWRF_HD void post(int i, int j, mynnedmf::Column<K>& c) const {
+  CPPWRF_HD void post_level(int i, int j, int k, mynnedmf::Column<K>& c) const {
     using namespace mynnedmf;
-    for (int k = 1; k <= nz; ++k) {  // mynnedmf_post_run
-      const int kk = k - 1;
+    const int kk = k - 1;
+    {  // mynnedmf_post_run
       const real qv1 = qv(i, j, kk), qc1 = qc(i, j, kk), qi1 = qi(i, j, kk);
       const real sq = qv1 / (one + qv1);
       const real sqv = sq + c.dqv[k] * delt;
@@ -160,27 +155,27 @@ struct KMynnPbl {
       sqn = sqx + c.dqi[k] * delt;
       c.dqi[k] = (sqn * (one + sqv) - qi1) / delt;
     }
-    for (int k = 1; k <= nz; ++k) {
-      const int kk = k - 1;
-      qke(i, j, kk) = c.qke[k]; el(i, j, kk) = c.el[k]; sh3d(i, j, kk) = c.sh[k]; sm3d(i, j, kk) = c.sm[k];
-      exch_h(i, j, kk) = c.kh[k]; exch_m(i, j, kk) = c.km[k]; tsq(i, j, kk) = c.tsq[k]; qsq(i, j, kk) = c.qsq[k];
-      cov(i, j, kk) = c.cov[k];
-      rublten(i, j, kk) = c.du[k]; rvblten(i, j, kk) = c.dv[k]; rthblten(i, j, kk) = c.dth[k];
-      rqvblten(i, j, kk) = c.dqv[k]; rqcblten(i, j, kk) = c.dqc[k]; rqiblten(i, j, kk) = c.dqi[k];
-      qc_bl(i, j, kk) = c.qc_bl[k] / (one - c.sqv[k]);
-      qi_bl(i, j, kk) = c.qi_bl[k] / (one - c.sqv[k]);
-      cldfra_bl(i, j, kk) = c.cldfra_bl[k];
-      if (tke_budget == 1) {
-        dqke(i, j, kk) = c.dqke[k]; qwt(i, j, kk) = c.qwt[k]; qshear(i, j, kk) = c.qshear[k];
-        qbuoy(i, j, kk) = c.qbuoy[k]; qdiss(i, j, kk) = c.qdiss[k];
-      }
-      if (bl_mynn_output > 0) {
-        edmf_a(i, j, kk) = c.edmf_a[k]; edmf_w(i, j, kk) = c.edmf_w[k]; edmf_qt(i, j, kk) = c.edmf_qt[k];
-        edmf_thl(i, j, kk) = c.edmf_thl[k]; edmf_ent(i, j, kk) = c.edmf_ent[k]; edmf_qc(i, j, kk) = c.edmf_qc[k];
-      }
-      // qke_adv(i,k,j) = qke_adv1(k) into grid%scalar; rk_update_scalar (rk_step 1) then copies it to the old level
-      if (has_qke_adv) qke_adv_2(i, j, kk) = qke_adv_1(i, j, kk) = c.qke_adv[k];
+    qke(i, j, kk) = c.qke[k]; el(i, j, kk) = c.el[k]; sh3d(i, j, kk) = c.sh[k]; sm3d(i, j, kk) = c.sm[k];
+    exch_h(i, j, kk) = c.kh[k]; exch_m(i, j, kk) = c.km[k]; tsq(i, j, kk) = c.tsq[k]; qsq(i, j, kk) = c.qsq[k];
+    cov(i, j, kk) = c.cov[k];
+    rublten(i, j, kk) = c.du[k]; rvblten(i, j, kk) = c.dv[k]; rthblten(i, j, kk) = c.dth[k];
+    rqvblten(i, j, kk) = c.dqv[k]; rqcblten(i, j, kk) = c.dqc[k]; rqiblten(i, j, kk) = c.dqi[k];
+    qc_bl(i, j, kk) = c.qc_bl[k] / (one - c.sqv[k]);
+    qi_bl(i, j, kk) = c.qi_bl[k] / (one - c.sqv[k]);
+    cldfra_bl(i, j, kk) = c.cldfra_bl[k];
+    if (tke_budget == 1) {
+      dqke(i, j, kk) = c.dqke[k]; qwt(i, j, kk) = c.qwt[k]; qshear(i, j, kk) = c.qshear[k];
+      qbuoy(i, j, kk) = c.qbuoy[k]; qdiss(i, j, kk) = c.qdiss[k];
     }
+    if (bl_mynn_output > 0) {
+      edmf_a(i, j, kk) = c.edmf_a[k]; edmf_w(i, j, kk) = c.edmf_w[k]; edmf_qt(i, j, kk) = c.edmf_qt[k];
+      edmf_thl(i, j, kk) = c.edmf_thl[k]; edmf_ent(i, j, kk) = c.edmf_ent[k]; edmf_qc(i, j, kk) = c.edmf_qc[k];
+    }
+    // qke_adv(i,k,j) = qke_adv1(k) into grid%scalar; rk_update_scalar (rk_step 1) then copies it to the old level
+    if (has_qke_adv) qke_adv_2(i, j, kk) = qke_adv_1(i, j, kk) = c.qke_adv[k];
+  }
+  template <int K>
+  CPPWRF_HD void post_column(int i, int j, const mynnedmf::Column<K>& c) const {
     kpbl(i, j) = c.kpbl;
     pblh(i, j) = c.pblh;
     if (op.edmf > 0) {
@@ -197,18 +192,21 @@ struct KMynnPbl {
     auto w = std::make_unique<Work<K>>();
     Scalars sc{};
     real hfx1, qfx1;
-    pre<K>(i, j, *c, hfx1, qfx1);
+    c->kte = nz;
+    for (int k = 1; k <= nz; ++k) pre_level<K>(i, j, k, *c);
+    pre_column(i, j, c->pblh, c->kpbl, hfx1, qfx1);
     mynnedmf_parts<K>(*c, *w, sc, op, tke_budget, initflag, delt, dx, xland(i, j), tsk(i, j), psfc(i, j), ust(i, j),
                       hfx1, qfx1, wspd(i, j), uoce(i, j), voce(i, j));
-    post<K>(i, j, *c);
+    for (int k = 1; k <= nz; ++k) post_level<K>(i, j, k, *c);
+    post_column<K>(i, j, *c);
   }
 #endif
 };
 
 #if defined(CPPWRF_USE_CUDA)
 // mynnedmf's column parts on the GPU (one thread per column of a column_work_chunks chunk; the work buffer holds the
-// column's arrays and scalars from one kernel to the next): stage 0 = pre + stage_a, 1 = stage_b, 2 = stage_c,
-// 3 = stage_d + post
+// column's arrays and scalars from one kernel to the next): S = 0 the driver's column values + stage_a, 1 stage_b,
+// 2 stage_b2, 3 stage_c, 4 stage_d + the driver's column outputs
 template <int K, int S>
 struct KMynnStage {
   KMynnPbl k;
@@ -220,27 +218,29 @@ struct KMynnStage {
     Scalars sc{};
     if constexpr (S == 0) {
       real hfx1, qfx1;
-      k.template pre<K>(i, j, sl.c, hfx1, qfx1);
+      k.pre_column(i, j, sl.c.pblh, sl.c.kpbl, hfx1, qfx1);
       mynnedmf_stage_a<K>(sl.c, sl.w, sc, k.op, k.tke_budget, k.initflag, k.dx, k.xland(i, j), k.ust(i, j), hfx1, qfx1,
                           k.tsk(i, j));
     } else {
       scalars_load<K>(sl, sc);
       if constexpr (S == 1)
-        mynnedmf_stage_b<K>(sl.c, sl.w, sc, k.op, k.tke_budget, k.delt, k.dx, k.xland(i, j), k.ust(i, j), cppwrf_cw_);
-      if constexpr (S == 2) mynnedmf_stage_c<K>(sl.c, sl.w, sc, k.op, k.tke_budget, k.dx, k.xland(i, j));
-      if constexpr (S == 3) {
+        mynnedmf_stage_b<K>(sl.c, sl.w, sc, k.op, k.tke_budget, k.delt, k.dx, k.xland(i, j), k.ust(i, j));
+      if constexpr (S == 2)
+        mynnedmf_stage_b2<K>(sl.c, sl.w, sc, k.op, k.tke_budget, k.delt, k.dx, k.xland(i, j), k.ust(i, j));
+      if constexpr (S == 3) mynnedmf_stage_c<K>(sl.c, sl.w, sc, k.op, k.tke_budget, k.dx, k.xland(i, j));
+      if constexpr (S == 4) {
         mynnedmf_stage_d<K>(sl.c, sl.w, sc, k.op, k.tke_budget, k.delt, k.ust(i, j), k.psfc(i, j), k.wspd(i, j),
                             k.uoce(i, j), k.voce(i, j));
-        k.template post<K>(i, j, sl.c);
+        k.template post_column<K>(i, j, sl.c);
       }
     }
-    if constexpr (S < 3) scalars_store<K>(sl, sc);
+    if constexpr (S < 4) scalars_store<K>(sl, sc);
 #endif
   }
 };
 
-// mynnedmf's level parts on the GPU (one thread per (column, level) of a chunk; MYNN level k = kk + 1): L = 0
-// level_cond (k = 1 .. kte-1), 1 level_l2 (k = 2 .. kte), 2 level_boulac (iz = 1 .. kte-1), 3 level_turb (k = 2 .. kte)
+// mynnedmf's level parts on the GPU (one thread per (column, level) of a chunk; MYNN level k = kk + 1)
+enum MynnLevelPart { kLoad, kCond, kMfSum, kQcTot, kL2, kBoulac, kTurb, kStore };
 template <int K, int L>
 struct KMynnLevel {
   KMynnPbl k;
@@ -250,19 +250,27 @@ struct KMynnLevel {
 #if defined(__CUDA_ARCH__)
     using namespace mynnedmf;
     const int lev = kk + 1;
-    if constexpr (L == 0 || L == 2) {
+    if constexpr (L == kCond || L == kMfSum || L == kBoulac) {  // k = 1 .. kte-1
       if (lev > k.nz - 1) return;
-    } else {
+    } else if constexpr (L == kL2 || L == kTurb) {  // k = 2 .. kte
       if (lev < 2) return;
     }
     ColumnSlots cw(k.work, i, j, chunk, bx, by);
     Slots<K> sl = take_slots<K>(cw, k.nz);
     Scalars sc{};
-    scalars_load<K>(sl, sc);
-    if constexpr (L == 0) mynnedmf_level_cond<K>(lev, sl.c, sl.w, sc, k.op, k.xland(i, j));
-    if constexpr (L == 1) mynnedmf_level_l2<K>(lev, sl.c, sl.w, k.op, k.xland(i, j));
-    if constexpr (L == 2) mynnedmf_level_boulac<K>(lev, sl.c, sl.w);
-    if constexpr (L == 3) mynnedmf_level_turb<K>(lev, sl.c, sl.w, sc, k.op, k.tke_budget, k.dx, k.xland(i, j));
+    if constexpr (L == kCond || L == kMfSum || L == kTurb) scalars_load<K>(sl, sc);
+    if constexpr (L == kQcTot || L == kL2) scalars_load_pblh<K>(sl);
+    if constexpr (L == kLoad) {
+      k.template pre_level<K>(i, j, lev, sl.c);
+      mynnedmf_level_pre<K>(lev, sl.c, sl.w, k.op);
+    }
+    if constexpr (L == kCond) mynnedmf_level_cond<K>(lev, sl.c, sl.w, sc, k.op, k.xland(i, j));
+    if constexpr (L == kMfSum) mynnedmf_level_mfsum<K>(lev, sl.c, sl.w, sc, k.op);
+    if constexpr (L == kQcTot) mynnedmf_level_qctot<K>(lev, sl.c, sl.w, k.op);
+    if constexpr (L == kL2) mynnedmf_level_l2<K>(lev, sl.c, sl.w, k.op, k.xland(i, j));
+    if constexpr (L == kBoulac) mynnedmf_level_boulac<K>(lev, sl.c, sl.w);
+    if constexpr (L == kTurb) mynnedmf_level_turb<K>(lev, sl.c, sl.w, sc, k.op, k.tke_budget, k.dx, k.xland(i, j));
+    if constexpr (L == kStore) k.template post_level<K>(i, j, lev, sl.c);
 #endif
   }
 };
@@ -275,14 +283,19 @@ void run_mynn_gpu(const Range2D& cols, const KMynnPbl& kp) {
     k.work = wk;
     const ColumnBlock cb = column_block();
     const Range3D lv{c.i0, c.i1, c.j0, c.j1, 0, k.nz};
+    parallel_for(lv, KMynnLevel<K, kLoad>{k, c, cb.x, cb.y});
     column_for(c, KMynnStage<K, 0>{k});
-    parallel_for(lv, KMynnLevel<K, 0>{k, c, cb.x, cb.y});
+    parallel_for(lv, KMynnLevel<K, kCond>{k, c, cb.x, cb.y});
     column_for(c, KMynnStage<K, 1>{k});
-    parallel_for(lv, KMynnLevel<K, 1>{k, c, cb.x, cb.y});
+    if (k.op.edmf > 0) parallel_for(lv, KMynnLevel<K, kMfSum>{k, c, cb.x, cb.y});
     column_for(c, KMynnStage<K, 2>{k});
-    if (k.op.mixlength == 1) parallel_for(lv, KMynnLevel<K, 2>{k, c, cb.x, cb.y});
-    parallel_for(lv, KMynnLevel<K, 3>{k, c, cb.x, cb.y});
+    parallel_for(lv, KMynnLevel<K, kQcTot>{k, c, cb.x, cb.y});
+    parallel_for(lv, KMynnLevel<K, kL2>{k, c, cb.x, cb.y});
     column_for(c, KMynnStage<K, 3>{k});
+    if (k.op.mixlength == 1) parallel_for(lv, KMynnLevel<K, kBoulac>{k, c, cb.x, cb.y});
+    parallel_for(lv, KMynnLevel<K, kTurb>{k, c, cb.x, cb.y});
+    column_for(c, KMynnStage<K, 4>{k});
+    parallel_for(lv, KMynnLevel<K, kStore>{k, c, cb.x, cb.y});
   });
 }
 #else
