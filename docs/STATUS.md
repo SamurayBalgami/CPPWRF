@@ -155,6 +155,17 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | P4D16 | P4 with dt = 16 s and radt = 10 min on the 72 h inputs, history every hour (WRF's clock past one day: XTIME, coszen) | 30 h |
 | N3D50 | N3 with d01 dt = 50 s, so a nest step of 50/3 s (WRF's clock with a fraction of a second: XTIME, julian) | 1 h |
 | RSA | P4 with dt = 50 s and restart_interval = 2 min (not a multiple of dt), history every 150 s; the wrfrst files too; resumed from its wrfrst file of 150 s with restart_interval = 2 and = 0 (WRF's restart alarm of a resumed run: the first ring at the file's seconds to the next ring) | 700 s |
+| OVL1 | P4 with cldovrlp 1 (RRTMG McICA random overlap) | 1 h |
+| OVL3 | P4 with cldovrlp 3 (maximum overlap) | 1 h |
+| OVL4I | P4 with cldovrlp 4 (exponential overlap) and idcor 1 (latitude-dependent decorrelation length) | 1 h |
+| OVL5 | P4 with cldovrlp 5 (exponential-random overlap, constant decorrelation length) | 1 h |
+| ICL0 | P4 with icloud 0 (no cloud fraction in RRTMG) | 1 h |
+| D6O1 | P4 with diff_6th_opt 1 (sixth-order diffusion without the flux limiter) | 1 h |
+| KM3 | P4 with diff_opt 2 / km_opt 3 (3-D Smagorinsky) | 1 h |
+| TKA0 | P4 with diff_opt 2 / km_opt 2 (1.5-order TKE) and tke_adv_opt 0 | 1 h |
+| ADV0 | MYNN with moist_adv_opt 0 and scalar_adv_opt 0 | 1 h |
+| MPDFM1 | MYNN with bl_mynn_cloudpdf -1 (subgrid clouds zeroed) | 1 h |
+| MPDFM2 | MYNN with bl_mynn_cloudpdf -2 (subgrid clouds zeroed) | 1 h |
 | W1 | active w_damping (dt 450 s) | 10 steps |
 
 V1-V3, T6, G2, F1, F2, D0, D0V, SU1 and SU2 are compared in every wrfout variable over the whole run; V1-V3 start from the
