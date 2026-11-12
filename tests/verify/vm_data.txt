@@ -42,6 +42,9 @@ port_af2_data.tar
 # run_P3_r8's inputs and 1 h reference (the 60 min frame, every variable) for real_p3_r8_fp64_cuda_1h (the CPU case
 # reads run_P3_r8/steps)
 port_g01_data.tar
+# the coverage cases' references (OVL1, OVL3, OVL4I, OVL5, ICL0, D6O1, KM3, TKA0, ADV0, MPDFM1, MPDFM2) and their
+# inputs (tests/verify/cases/68_coverage.py)
+port_cov1_data.tar
 # whole references (every frame and variable) of the tolerance-0 cases and the ideal namelists
 # (tools/colab/stage_data.py --whole --refs-only --no-steps): after the tars above, whose files they replace
 v05_suite_refs.tar
