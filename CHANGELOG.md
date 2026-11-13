@@ -67,11 +67,18 @@ a verified configuration, of a configuration key or of an output file is a new m
 - Tiles no longer write `output.dir.tileN` copies: tile 0 writes the run's files from gathered fields.
 - An MPI run prints the peak host memory of the writer, of the largest other rank and of all ranks.
 ### Verification
-- New suite cases against WRF v4.8.0 real*8 (tests/verify/cases/68_coverage.py, data port_cov1_data.tar; 3 steps
-  and 1 h on the CPU, 1 h on the GPU, every variable at tolerance 0) for option values that had no suite case:
-  RRTMG `cldovrlp` 1, 3, 4 (with `idcor` 1) and 5 (OVL1, OVL3, OVL4I, OVL5), `icloud` 0 (ICL0), `diff_6th_opt` 1
-  (D6O1), `km_opt` 3 (KM3), `tke_adv_opt` 0 with `km_opt` 2 (TKA0), `moist_adv_opt` / `scalar_adv_opt` 0 (ADV0)
-  and `bl_mynn_cloudpdf` -1 / -2 (MPDFM1, MPDFM2). All verified tier.
+- New suite cases against WRF v4.8.0 real*8 (tests/verify/cases/68_coverage.py, data port_cov1_data.tar and
+  port_cov1b_data.tar; 3 steps and 1 h on the CPU, 1 h on the GPU, every variable at tolerance 0) for option values
+  that had no suite case: RRTMG `cldovrlp` 1, 3, 4 (with `idcor` 1) and 5 (OVL1, OVL3, OVL4I, OVL5), `icloud` 0
+  (ICL0), `diff_6th_opt` 1 (D6O1), `km_opt` 3 with `diff_opt` 1 (KM3H), `tke_adv_opt` 0 with `km_opt` 2 (TKA0),
+  `moist_adv_opt` / `scalar_adv_opt` 0 (ADV0) and `bl_mynn_cloudpdf` -1 / -2 (MPDFM1, MPDFM2). `km_opt` 3 with
+  `diff_opt` 2 (KM3) is compared over two steps only: on this 15 km domain WRF itself blows up in the third step
+  (NaN in every field, which wrf.exe does not stop on); CPPWRF is identical up to that point and then stops with its
+  non-finite check. All verified tier.
+- Verification coverage (docs/STATUS.md): the audit's order check (serial reversed and i-outer launch order against
+  the OpenMP run) and the pattern-initialised, bounds-checked build on the configurations whose inputs were not on
+  the workstation, and an NVIDIA compute-sanitizer pass (memcheck, racecheck, initcheck, synccheck; FP64 and FP32)
+  over P4, MYNN, Thompson, Morrison, RRTMG, the two-way nest, a 2x2 tiled run and an ideal case.
 
 ### Tools and documentation
 - The CPU FP64 suite on free GitHub-hosted runners (docs/USER_GUIDE.md, "The CPU Suite on GitHub"): the reference

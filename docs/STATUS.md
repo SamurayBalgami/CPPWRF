@@ -161,7 +161,8 @@ CPU, FP64 against WRF real*8 (tolerance 0: every compared value identical):
 | OVL5 | P4 with cldovrlp 5 (exponential-random overlap, constant decorrelation length) | 1 h |
 | ICL0 | P4 with icloud 0 (no cloud fraction in RRTMG) | 1 h |
 | D6O1 | P4 with diff_6th_opt 1 (sixth-order diffusion without the flux limiter) | 1 h |
-| KM3 | P4 with diff_opt 2 / km_opt 3 (3-D Smagorinsky) | 1 h |
+| KM3 | P4 with diff_opt 2 / km_opt 3 (3-D Smagorinsky; WRF is NaN from the third step on) | 2 steps |
+| KM3H | P4 with diff_opt 1 / km_opt 3 (3-D Smagorinsky Km, horizontal diffusion along the model surfaces) | 1 h |
 | TKA0 | P4 with diff_opt 2 / km_opt 2 (1.5-order TKE) and tke_adv_opt 0 | 1 h |
 | ADV0 | MYNN with moist_adv_opt 0 and scalar_adv_opt 0 | 1 h |
 | MPDFM1 | MYNN with bl_mynn_cloudpdf -1 (subgrid clouds zeroed) | 1 h |
@@ -298,6 +299,28 @@ feedback 0, parent_time_step_ratio 2, per-domain cu_physics (cumulus off on d02)
 and N3gc nests, whose dx below 15 km takes the scheme's log scale factor, is bit-identical. (WRF leaves RQCBLTEN / RQIBLTEN of runs without qc / qi
 and LH with isfflx 0 uninitialised; they are not compared.)
 
+### Verification coverage
+
+Option values that CPPWRF accepts and whose code paths are checked at model level against WRF (the coverage audit of
+2026-11, closed in tests/verify/cases/68_coverage.py): RRTMG `cldovrlp` 1, 3, 4, 5 and `idcor` 1, `icloud` 0,
+`diff_6th_opt` 1, `km_opt` 3 (with `diff_opt` 1 for 1 h; with `diff_opt` 2 two steps, after which WRF itself is NaN
+on the 15 km test domain), `tke_adv_opt` 0, `moist_adv_opt` / `scalar_adv_opt` 0 and `bl_mynn_cloudpdf` -1 / -2, each
+CPU and CUDA FP64 at tolerance 0. WRF's MYNN defaults (`bl_mynn_edmf` 1, `bl_mynn_edmf_mom` 1, `bl_mynn_mixlength` 1,
+`bl_mynn_cloudmix` 1, `bl_mynn_cloudpdf` 2, `bl_mynn_closure` 2.6) are what the MYNN, MYNNSF1 and MYNNSF2 cases run
+(their WRF namelists leave them at the Registry defaults); MYNNX1 / MYNNX2 run the other values with a port.
+`moist_adv_opt` / `scalar_adv_opt` / `tke_adv_opt` 2 (monotonic) and higher are not ported: CPPWRF rejects them at
+start-up.
+
+Order and initialisation: every CPU FP64 suite configuration, including the 56 whose inputs the audit did not have,
+gives the same bytes over 3 steps in the normal OpenMP run, serially with every launch's points in reversed order,
+serially with i outermost, and in a build with `-ftrivial-auto-var-init=pattern -fsanitize=bounds` (no bounds
+report). GPU: NVIDIA compute-sanitizer memcheck, initcheck, synccheck and racecheck report no error or hazard on
+CUDA FP64 and FP32 builds (one step each) of P4 (with and without CUDA graphs), MYNN-EDMF, Thompson, Morrison, RRTMG
+with cldovrlp 5, the two-way nest N3, P4 on 2x2 tiles and em_quarter_ss.
+
+Not reached at model level: the option values of "Not yet implemented" below, and the GPU-only code paths of
+schemes that no suite case runs on the GPU.
+
 ## Performance
 
 WRF v4.8.0 and CPPWRF were measured on one Google Colab G4 runtime: an AMD EPYC 9B45 with 48 hardware threads and an
@@ -330,7 +353,7 @@ serial compression). Wall times, GPU memory and the details are in docs/PERF.md.
 
 ## Not yet implemented
 
-Morrison with aerosols (mp_physics 40), Morrison's prognostic droplet number (progn 1) and its 10 cm reflectivity (do_radar_ref 1 with mp_physics 10), the Dudhia shortwave with cu_rad_feedback and Grell-Freitas (wrf.exe writes NaN cloud fractions there), the PX land surface (sf_surface_physics 7, pxlsm_* options and PX soil nudging), the Pleim-Xiu surface layer without ACM2 or Noah or with fractional_seaice = 1, sf_sfclay_physics 91, km_opt 5, the MYNN PBL with fractional_seaice = 1, the MYNN options bl_mynn_edmf 2, bl_mynn_edmf_dd, bl_mynn_mixnumcon, bl_mynn_mixaerosols 0, bl_mynn_output 2, other bl_mynn_closure values and the GFS surface-layer forms (sf_mynn_sfcflux_land 4, sf_mynn_sfcflux_water 5), Noah-MP options other than the defaults (and crop/irrigation/
+Morrison with aerosols (mp_physics 40), Morrison's prognostic droplet number (progn 1) and its 10 cm reflectivity (do_radar_ref 1 with mp_physics 10), the Dudhia shortwave with cu_rad_feedback and Grell-Freitas (wrf.exe writes NaN cloud fractions there), the PX land surface (sf_surface_physics 7, pxlsm_* options and PX soil nudging), the Pleim-Xiu surface layer without ACM2 or Noah or with fractional_seaice = 1, sf_sfclay_physics 91, km_opt 5, moist_adv_opt / scalar_adv_opt / tke_adv_opt 2 and higher (monotonic, WENO), the MYNN PBL with fractional_seaice = 1, the MYNN options bl_mynn_edmf 2, bl_mynn_edmf_dd, bl_mynn_mixnumcon, bl_mynn_mixaerosols 0, bl_mynn_output 2, other bl_mynn_closure values and the GFS surface-layer forms (sf_mynn_sfcflux_land 4, sf_mynn_sfcflux_water 5), Noah-MP options other than the defaults (and crop/irrigation/
 tile drainage), sst_skin and tmn_update with land surface models other than Noah, the adaptive time step with nests, sst_update, sst_skin, tmn_update, grid_fdda or ideal cases, spectral nudging (grid_fdda = 2),
 surface analysis nudging (grid_sfdda, needs OBSGRID's wrfsfdda_d0N), observation nudging (obs_nudge_opt), moving nests, ndown.exe (one-way nesting from a parent run's wrfout), I/O forms other than NetCDF
 (io_form 2) and auxiliary history / input streams other than sst_update's wrflowinp and grid_fdda's wrffdda (WRF writes none by default),
