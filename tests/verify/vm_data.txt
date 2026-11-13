@@ -45,6 +45,8 @@ port_g01_data.tar
 # the coverage cases' references (OVL1, OVL3, OVL4I, OVL5, ICL0, D6O1, KM3, TKA0, ADV0, MPDFM1, MPDFM2) and their
 # inputs (tests/verify/cases/68_coverage.py)
 port_cov1_data.tar
+# the KM3H reference (diff_opt 1 / km_opt 3) and its inputs (tests/verify/cases/68_coverage.py)
+port_cov1b_data.tar
 # whole references (every frame and variable) of the tolerance-0 cases and the ideal namelists
 # (tools/colab/stage_data.py --whole --refs-only --no-steps): after the tars above, whose files they replace
 v05_suite_refs.tar
