@@ -3,7 +3,7 @@
 # The GPU side of tools/bench/colab_fp32.sh, on the Colab runtime itself (its Ubuntu with the CUDA toolkit), started
 # next to the chroot job (tools/bench/fp32_body.sh):
 #
-#   fp32_gpu.sh STAMP [SUITE]   (SUITE 0: no suite cases)
+#   fp32_gpu.sh STAMP [SUITE]   (SUITE 0: no suite cases; FP32_EXTRA_BUILDS=1: also cuda_nofma and cpu)
 #
 # Builds CPPWRF's CUDA FP32 (cuda) and FP64 (cuda_dp) release binaries from /content/cpu/src.tar.gz, waits until the
 # chroot job has prepared the cases (STAMP in /opt/fp1/prepared), links /opt/fp1, /opt/job and /opt/wrfbench to the
@@ -27,11 +27,16 @@ done
 pip -q install netCDF4 > $G/pip.log 2>&1
 mkdir -p $G/src && tar xzf /content/cpu/src.tar.gz -C $G/src
 st=
-for b in cuda:OFF cuda_dp:ON; do
-  n=${b%%:*}
+# cuda (FP32), cuda_dp (FP64); with FP32_EXTRA_BUILDS=1 (the FP2 cases): cuda_nofma (FP32, no FMA contraction in any
+# kernel) and cpu (CPU FP32: glibc's libm, no FMA)
+B="cuda:ON:OFF cuda_dp:ON:ON"
+[ "${FP32_EXTRA_BUILDS:-0}" = 1 ] && B="$B cuda_nofma:ON:OFF cpu:OFF:OFF"
+for b in $B; do
+  n=${b%%:*} r=${b#*:}
   t0=$SECONDS
-  cmake -S $G/src -B $G/build-$n -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=ON -DCPPWRF_DOUBLE=${b#*:} \
-    > $G/build-$n.log 2>&1 && cmake --build $G/build-$n -j"$(nproc)" --target cppwrf >> $G/build-$n.log 2>&1
+  x=; [ "$n" = cuda_nofma ] && x=--fmad=false
+  cmake -S $G/src -B $G/build-$n -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=${r%%:*} -DCPPWRF_DOUBLE=${r#*:} \
+    ${x:+-DCMAKE_CUDA_FLAGS=$x} > $G/build-$n.log 2>&1 && cmake --build $G/build-$n -j"$(nproc)" --target cppwrf >> $G/build-$n.log 2>&1
   st="$st $n=$? (${n}_build_s=$((SECONDS - t0)))"
 done
 echo "builds:$st" >> $G/gpu.txt
