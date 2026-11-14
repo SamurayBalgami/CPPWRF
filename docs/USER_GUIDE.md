@@ -405,7 +405,7 @@ non-default value is an error unless it only concerns WPS / real.exe or I/O quil
 | `periodic_x/y`, `open_xs/xe/ys/ye`, `symmetric_xs/xe/ys/ye` | ideal cases (symmetric: no wind across the walls) |
 | **&physics** | |
 | `physics_suite` | `'CONUS'`, `'tropical'` and their `-1` entries |
-| `mp_physics` | 0, 1 (Kessler), 6 (WSM6; `hail_opt` 0, 1), 8 (Thompson), 10 (Morrison two-moment: real data, `morr_rimed_ice` 0 / 1, `progn = 0`, `do_radar_ref = 0`), 28 (aerosol-aware Thompson: one domain, `aer_init_opt` 0, `wif_input_opt` 0 / 1, not with MYNN) |
+| `mp_physics` | 0, 1 (Kessler), 6 (WSM6; `hail_opt` 0, 1), 8 (Thompson), 10 (Morrison two-moment: real data, `morr_rimed_ice` 0 / 1, `progn = 0`, `do_radar_ref = 0`), 28 (aerosol-aware Thompson: one domain, `aer_init_opt` 0, `wif_input_opt` 0 / 1, not with MYNN), 50 / 51 (P3, one ice category; 51 predicts the droplet number: real data, one domain, `do_radar_ref = 0`, `p3_lookupTable_1.dat-v5.4_2momI` in the run directory) |
 | `use_mp_re`, `mp_tend_lim`, `do_radar_ref`, `force_read_thompson` | 0, 1; any; 0, 1; `.false.`, `.true.` |
 | `cu_physics`, `cudt` | 0, 1 (Kain-Fritsch; `kfeta_trigger` 1, 3), 3 (Grell-Freitas-Li; `ishallow` 0, 1, `clos_choice` 0-16), 6 (Tiedtke), 16 (New Tiedtke); per domain |
 | `cu_rad_feedback`, `shallowcu_forced_ra`, `convtrans_avglen_m` | per domain (KF and GF clouds in RRTMG) |
@@ -434,7 +434,8 @@ an error, never silently:
 | `restart = .true.` in the namelist | resume with `run.restart_file` (section 9) |
 | `non_hydrostatic = .false.`, `rk_ord` 2, `use_theta_m = 0`, `h_sca_adv_order` different from `h_mom_adv_order`, `spec_exp` != 0 | not ported |
 | `km_opt` 5 (SMS-3DTKE) | not ported |
-| `mp_physics` other than 0, 1, 6, 8, 10, 28 (40: Morrison with aerosols) | not ported |
+| `mp_physics` other than 0, 1, 6, 8, 10, 28, 50, 51 (9: Milbrandt-Yau, 40: Morrison with aerosols, 52 / 53: P3 with two ice categories / three-moment ice) | not ported |
+| `mp_physics = 50 / 51` with nests, in the ideal cases or with `do_radar_ref = 1` | not ported (TH_OLD / QV_OLD of a nest, REFD_MAX) |
 | `progn = 1`, `do_radar_ref = 1` with `mp_physics = 10`, `mp_physics = 10` in the ideal cases | not ported (prognostic droplet number needs module_mixactivate; Morrison's 10 cm reflectivity is DOUBLE PRECISION, quad in a -r8 WRF) |
 | `cu_physics` other than 0, 1, 3, 6, 16 | not ported |
 | `bl_pbl_physics` other than 0, 1, 2, 5, 7; `shcu_physics` | not ported |
@@ -621,7 +622,7 @@ nested; a `[d0N]` key reaches that domain's configuration and is checked there.
 | `[dyn]` | `epssm` | double | `0.1` | Acoustic small-step forward-centering factor | `epssm` |
 | `[dyn]` | `smdiv`, `emdiv` | double | `0.1`, `0.01` | Acoustic divergence and external mode filters | `smdiv`, `emdiv` |
 | `[moist]` | `species` | string list | `""` | Comma-separated list of active water species (`qv,qc,qr,qi,qs,qg`) | WRF moisture array |
-| `[phys]` | `mp_physics` | integer | `0` | Microphysics scheme (0 = off, 1 = Kessler, 6 = WSM6, 8 = Thompson, 10 = Morrison two-moment: real data, `[moist] species` `qv,qc,qr,qi,qs,qg,qni,qns,qnr,qng`; 28 = aerosol-aware Thompson: real data, one domain, `[moist] species` with `qnc,qnwfa,qnifa,qnbca`, `CCN_ACTIVATE.BIN` in `table_dir`) | `mp_physics` |
+| `[phys]` | `mp_physics` | integer | `0` | Microphysics scheme (0 = off, 1 = Kessler, 6 = WSM6, 8 = Thompson, 10 = Morrison two-moment: real data, `[moist] species` `qv,qc,qr,qi,qs,qg,qni,qns,qnr,qng`; 28 = aerosol-aware Thompson: real data, one domain, `[moist] species` with `qnc,qnwfa,qnifa,qnbca`, `CCN_ACTIVATE.BIN` in `table_dir`; 50 / 51 = P3 with one ice category: real data, one domain, `[moist] species` `qv,qc,qr,qi,qni,qnr,qir,qib` (51: `qv,qc,qr,qi,qnc,qni,qnr,qir,qib`), `p3_lookupTable_1.dat-v5.4_2momI` in `table_dir`) | `mp_physics` |
 | `[phys]` | `morr_rimed_ice` | integer | `1` | mp_physics = 10: 1 = hail, 0 = graupel as the rimed ice (WRF: any value other than 1 means graupel) | `morr_rimed_ice` |
 | `[phys]` | `hail_opt`, `use_mp_re` | integer | `0`, `1` | WSM6 graupel/hail switch (0/1) and microphysics effective radii coupling to RRTMG (0/1) | `hail_opt`, `use_mp_re` |
 | `[phys]` | `do_radar_ref` | integer | `0`, `1` | 10-cm radar reflectivity REFL_10CM (dBZ) in the history: WSM6 and Thompson (8, 28) at the steps that end on a history time (as WRF's diag_flag), 0 with other microphysics; not in restart files (0 after a restart until the next history time) | `do_radar_ref` |

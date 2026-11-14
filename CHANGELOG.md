@@ -13,6 +13,11 @@ a verified configuration, of a configuration key or of an output file is a new m
   them); with the switch each one is logged and the wrfout / wrfrst files get the global attribute
   `CPPWRF_UNVERIFIED_OPTIONS`. The table has no row: every option is verified, and no output byte changes. A new
   option's entry in this changelog names its tier.
+- P3 microphysics with one ice category, `mp_physics = 50` (constant droplet number) and `51` (predicted droplet
+  number QNCLOUD), phys/module_mp_p3.F: rime mass and volume QIR / QIB, TH_OLD / QV_OLD in the restart files, P3's
+  REFL_10CM and effective radii for RRTMG; real data, one domain. Tier: verified (suite cases P3MP and P3NC against
+  WRF real*8 of the -fdefault-double-8 build; column test tests/phys/mp_p3). Milbrandt-Yau (9), P3 52 / 53, P3 with
+  nests, ideal cases or `do_radar_ref = 1` stay errors.
 
 ### Fixed
 - The restart alarm of a run resumed from a restart file (WRF's or CPPWRF's own) with a restart interval that is not
