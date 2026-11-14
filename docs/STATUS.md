@@ -316,7 +316,8 @@ gives the same bytes over 3 steps in the normal OpenMP run, serially with every 
 serially with i outermost, and in a build with `-ftrivial-auto-var-init=pattern -fsanitize=bounds` (no bounds
 report). GPU: NVIDIA compute-sanitizer memcheck, initcheck, synccheck and racecheck report no error or hazard on
 CUDA FP64 and FP32 builds (one step each) of P4 (with and without CUDA graphs), MYNN-EDMF, Thompson, Morrison, RRTMG
-with cldovrlp 5, the two-way nest N3, P4 on 2x2 tiles and em_quarter_ss.
+with cldovrlp 5, the two-way nest N3, P4 on 2x2 tiles and em_quarter_ss (racecheck of the FP32 2x2 tiled run did
+not finish within 40 min and reported nothing up to then).
 
 Not reached at model level: the option values of "Not yet implemented" below, and the GPU-only code paths of
 schemes that no suite case runs on the GPU.
