@@ -553,7 +553,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   // CANWAT = 0 (lsminit / NoahmpInitMain; the slab's from wrfinput), the accumulations and fluxes stay zero
   su.init_radiation(m.xlat, m.xlong);
   if (auto* pc = m.rk->physics(); pc && pc->params().microp_re)
-    su.set_effective_radii(&pc->re_cloud, &pc->re_ice, &pc->re_snow);
+    su.set_effective_radii(&pc->re_cloud, &pc->re_ice, pc->p3() ? nullptr : &pc->re_snow);  // P3: has_reqs = 0
   if (auto* pc = m.rk->physics(); pc && pc->params().mp_physics != 0) {
     const bool has_ice_precip = pc->ice_precip();
     su.set_microphysics_accum(&pc->rainnc);

@@ -12,6 +12,7 @@
 #include "core/field.hpp"
 #include "dyn/state.hpp"
 #include "phys/mp_morrison/morrison.hpp"
+#include "phys/mp_p3/p3.hpp"
 #include "phys/mp_radar/radar.hpp"
 #include "phys/mp_thompson/thompson_tables.hpp"
 #include "phys/mp_wsm6/wsm6.hpp"
@@ -19,14 +20,15 @@
 namespace cppwrf::dyn {
 
 struct PhysicsParams {
-  int mp_physics = 0;        // 0 = none, 1 = Kessler, 6 = WSM6, 8 = Thompson, 10 = Morrison, 28 = aerosol-aware Thompson
+  int mp_physics = 0;        // 0 = none, 1 = Kessler, 6 = WSM6, 8 = Thompson, 10 = Morrison, 28 = aerosol-aware Thompson,
+                             // 50 / 51 = P3 one ice category (specified / predicted droplet number)
   int hail_opt = 0;          // WSM6 graupel (0) or hail (1) parameters, WRF namelist hail_opt
   int morr_rimed_ice = 1;    // Morrison: dense precipitating ice is hail (1, WRF's default) or graupel (0)
   real mp_tend_lim = 10;     // K/s, WRF namelist mp_tend_lim (limit on the mp heating rate)
   std::string table_dir;     // Thompson: WRF's qr_acr_qg_V4.dat, qr_acr_qsV2.dat, freezeH2O.dat if there
   bool force_read_thompson = false;  // WRF namelist force_read_thompson: those files must be there
   bool microp_re = false;    // WSM6 / Thompson effective radii for RRTMG (WRF has_reqc = has_reqi = has_reqs = 1:
-                             // use_mp_re = 1 with RRTMG LW and SW)
+                             // use_mp_re = 1 with RRTMG LW and SW); P3: has_reqc = has_reqi = 1, has_reqs = 0
   int do_radar_ref = 0;      // WRF namelist do_radar_ref: REFL_10CM from WSM6 / Thompson at history steps
 };
 
@@ -40,8 +42,12 @@ class PhysicsCoupling {
   void init_aerosols(State& s, const BaseState& b);
   const PhysicsParams& params() const { return p_; }
   bool thompson() const { return p_.mp_physics == 8 || p_.mp_physics == 28; }
-  // the schemes with snow and graupel accumulations (SNOWNC, GRAUPELNC) and SR: WSM6, Thompson, Morrison
-  bool ice_precip() const { return p_.mp_physics == 6 || p_.mp_physics == 10 || thompson(); }
+  bool p3() const { return p_.mp_physics == 50 || p_.mp_physics == 51; }
+  // the schemes with snow and graupel accumulations (SNOWNC, GRAUPELNC) and SR: WSM6, Thompson, Morrison, P3 (no
+  // graupel: GRAUPELNC stays 0 as in WRF)
+  bool ice_precip() const { return p_.mp_physics == 6 || p_.mp_physics == 10 || thompson() || p3(); }
+  // P3's grid%itimestep (incremented per step; the restart's step after a restart)
+  long itimestep = 0;
   // Morrison: the cumulus scheme's decoupled tendencies RQRCUTEN, RQSCUTEN, RQICUTEN (phy_prep_part2 has run when
   // the microphysics runs); without cumulus WRF passes its zero arrays
   void set_cumulus_tendencies(const Field3* qr, const Field3* qs, const Field3* qi) {
@@ -56,6 +62,9 @@ class PhysicsCoupling {
   // do_radar_ref = 1 with WSM6 / Thompson: 10-cm radar reflectivity [dBZ], 0 until the first history step and
   // outside the microphysics columns (Kessler and no microphysics: 0 throughout, as in WRF)
   Field3 refl_10cm;
+  // P3: TH_OLD / QV_OLD (the theta and qv after the previous call; restart fields), the diagnostics V_ICE, D_ICE,
+  // RHO_ICE (history); REFL_10CM is P3's diag_ze, RE_CLOUD / RE_ICE its effective radii (every step)
+  Field3 th_old, qv_old, vmi3d, di3d, rhopo3d;
   // solve_em's diag_flag: the history alarm rings at the end of this step (set before each step)
   bool diagflag = false;
 
@@ -72,6 +81,8 @@ class PhysicsCoupling {
   std::shared_ptr<const phys::mp_thompson::ThompsonDeviceTables<real>> tp_;
   std::shared_ptr<const phys::radar::RadarDeviceTables<real>> radar_;  // radar_init of WSM6 / Thompson
   phys::mp_morrison::MorrisonParams<real> morr_{};  // morr_two_moment_init's constants
+  phys::mp_p3::P3Params<real> p3c_{};  // p3_init's constants
+  std::shared_ptr<const std::pair<Buffer, phys::mp_p3::P3Tables<real>>> p3t_;  // its tables on the device
   const Field3 *cu_qr_ = nullptr, *cu_qs_ = nullptr, *cu_qi_ = nullptr;  // Morrison: RQRCUTEN, RQSCUTEN, RQICUTEN
 };
 

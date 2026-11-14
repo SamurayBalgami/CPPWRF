@@ -333,6 +333,8 @@ void init_real_case(const io::Config& cfg, Model& m) {
     else if (nm == "qnr") extra_q = io_netcdf::read_window_var(wi_path, "QNRAIN", win);
     else if (nm == "qns") extra_q = io_netcdf::read_window_var(wi_path, "QNSNOW", win);
     else if (nm == "qng") extra_q = io_netcdf::read_window_var(wi_path, "QNGRAUPEL", win);
+    else if (nm == "qir") extra_q = io_netcdf::read_window_var(wi_path, "QIR", win);
+    else if (nm == "qib") extra_q = io_netcdf::read_window_var(wi_path, "QIB", win);
     else if (nm == "qnc") extra_q = io_netcdf::read_window_var(wi_path, "QNCLOUD", win);
     else if (nm == "qnwfa") extra_q = io_netcdf::read_window_var(wi_path, "QNWFA", win);
     else if (nm == "qnifa") extra_q = io_netcdf::read_window_var(wi_path, "QNIFA", win);

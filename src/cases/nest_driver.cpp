@@ -717,6 +717,12 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
   // verification tiers (io/option_tiers.hpp) of every domain's options, before any domain is built
   if (root_cfg.has("cppwrf.allow_unverified")) root_cfg.mark_accessed("cppwrf.allow_unverified");
   for (const NestDomainSpec& sp : specs) io::check_option_tiers(sp.cfg, sp.tag + ": ");
+  // P3 in a nest: TH_OLD / QV_OLD (Registry rusd: interpolated down, fed back) are not ported for nests
+  for (const NestDomainSpec& sp : specs) {
+    const long mp = sp.cfg.get_int("phys.mp_physics", 0);
+    if (mp == 50 || mp == 51)
+      throw std::runtime_error(sp.tag + ": phys.mp_physics = " + std::to_string(mp) + " (P3) with nests is not ported");
+  }
 
   struct DomInstance {
     NestDomainSpec spec;

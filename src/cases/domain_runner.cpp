@@ -81,7 +81,7 @@ std::vector<std::string> wrf_names(const std::string& n) {
       {"qv", "QVAPOR"}, {"qc", "QCLOUD"}, {"qr", "QRAIN"}, {"qi", "QICE"}, {"qs", "QSNOW"},
       {"qg", "QGRAUP"}, {"qni", "QNICE"}, {"qnr", "QNRAIN"}, {"qke_adv", "qke_adv"},
       {"qnc", "QNCLOUD"}, {"qnwfa", "QNWFA"}, {"qnifa", "QNIFA"}, {"qnbca", "QNBCA"}, {"qns", "QNSNOW"},
-      {"qng", "QNGRAUPEL"}};
+      {"qng", "QNGRAUPEL"}, {"qir", "QIR"}, {"qib", "QIB"}};
   if (n.rfind("q1_", 0) == 0 || n.rfind("q2_", 0) == 0) {  // moist/scalar arrays have one time level (q_1 = q_2
     const std::string q = n.substr(3);                      // at the step start); tke_1 / tke_2
     auto it = moist.find(q);
@@ -326,6 +326,14 @@ void DomainRunner::save_restart_file(const std::string& path, long step, double 
       add_field2("qnwfa2d", rk->physics()->qnwfa2d);
       add_field2("qnifa2d", rk->physics()->qnifa2d);
     }
+    if (rk->physics()->p3()) {  // Registry rusd: TH_OLD, QV_OLD; RE_CLOUD / RE_ICE (r) without RRTMG's coupling
+      add_field3("th_old", rk->physics()->th_old);
+      add_field3("qv_old", rk->physics()->qv_old);
+      if (!rk->physics()->params().microp_re) {
+        add_field3("re_cloud", rk->physics()->re_cloud);
+        add_field3("re_ice", rk->physics()->re_ice);
+      }
+    }
   }
 
   if (m_.suite) {  // column physics state (soil, surface, PBL, lagged t_1)
@@ -427,6 +435,14 @@ void DomainRunner::load_restart_file(const std::string& path) {
       reg_field2("graupelnc", rk->physics()->graupelnc);
       reg_field2("graupelncv", rk->physics()->graupelncv);
       reg_field2("sr", rk->physics()->sr);
+    }
+    if (rk->physics()->p3()) {
+      reg_field3("th_old", rk->physics()->th_old);
+      reg_field3("qv_old", rk->physics()->qv_old);
+      if (!rk->physics()->params().microp_re) {
+        reg_field3("re_cloud", rk->physics()->re_cloud);
+        reg_field3("re_ice", rk->physics()->re_ice);
+      }
     }
     if (rk->physics()->params().mp_physics == 28) {
       reg_field2("qnwfa2d", rk->physics()->qnwfa2d);
@@ -580,6 +596,7 @@ void DomainRunner::load_restart_file(const std::string& path) {
     t.f->upload(tile::local_part(*t.f, hw));
   }
   if (m_.suite) m_.suite->restarted(start_step);
+  if (rk && rk->physics()) rk->physics()->itimestep = start_step;
 }
 #endif
 
@@ -602,6 +619,9 @@ void DomainRunner::prepare_output() {
     if (m_.rk->physics()->params().mp_physics == 28)
       for (const Field2* f : {&m_.rk->physics()->qnwfa2d, &m_.rk->physics()->qnifa2d}) extra_2d_.push_back(f);
     if (m_.rk->physics()->refl_10cm.layout().total > 0) extra_3d_.push_back(&m_.rk->physics()->refl_10cm);
+    if (const dyn::PhysicsCoupling* pc = m_.rk->physics(); pc->p3())  // P3's restart and history fields
+      extra_3d_.insert(extra_3d_.end(),
+                       {&pc->th_old, &pc->qv_old, &pc->vmi3d, &pc->di3d, &pc->rhopo3d, &pc->re_cloud, &pc->re_ice});
   }
   if (m_.suite) {  // column physics surface and cumulus fields (WRF names in lower case)
     const phys::driver::PhysicsSuite& su = *m_.suite;
@@ -638,7 +658,7 @@ void DomainRunner::prepare_output() {
       for (const Field2* f : {&su.glw, &su.gsw, &su.swdown, &su.coszen}) extra_2d_.push_back(f);
       extra_3d_.push_back(&su.pt.rthraten);
       extra_3d_.push_back(&su.cldfra);
-      if (auto* pc = m_.rk->physics(); pc && pc->params().microp_re)
+      if (auto* pc = m_.rk->physics(); pc && pc->params().microp_re && !pc->p3())
         extra_3d_.insert(extra_3d_.end(), {&pc->re_cloud, &pc->re_ice, &pc->re_snow});
     }
     if (su.options().cu_physics != 0)

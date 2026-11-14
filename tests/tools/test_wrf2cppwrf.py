@@ -724,6 +724,40 @@ class TestValidationAndWarnings(unittest.TestCase):
         t.translate()
         self.assertIn("mp_physics = 10 (Morrison two-moment) is supported for real-data runs only", " ".join(t.errors))
 
+    def test_p3_one_category(self):
+        # mp_physics = 50 / 51 (module_mp_p3.F, one ice category): moist qv qc qr qi and scalar qni qnr qir qib (51:
+        # qnc first, Registry packages p3_1category / p3_1category_nc); not ported: 52 (two ice categories), 53
+        # (three-moment ice), do_radar_ref = 1, nests, the ideal cases; Milbrandt (9) stays rejected
+        def tr(extra="", mp=50, case=real_case):
+            t = WrfTranslator(parse_namelist(case(f"""
+            &time_control /
+            &domains time_step = 60 /
+            &physics mp_physics = {mp}, sf_sfclay_physics = 1, sf_surface_physics = 2, bl_pbl_physics = 1,
+                     cu_physics = 1{extra} /
+            &dynamics /
+            """)))
+            gen = t.translate()
+            return t, gen
+        for mp, sp in ((50, "qv,qc,qr,qi,qni,qnr,qir,qib"), (51, "qv,qc,qr,qi,qnc,qni,qnr,qir,qib")):
+            t, g = tr(mp=mp)
+            self.assertEqual(t.errors, [], mp)
+            self.assertEqual(g["moist"]["species"], sp)
+            self.assertEqual(g["phys"]["mp_physics"], mp)
+        for args, msg in (((", do_radar_ref = 1",), "do_radar_ref = 1 with mp_physics = 50"),
+                          (("", 52), "mp_physics"), (("", 53), "mp_physics"), (("", 9), "mp_physics")):
+            t, _ = tr(*args)
+            self.assertIn(msg, " ".join(t.errors), args)
+        doms = ("&domains time_step = 60, max_dom = 2, e_we = 100, 61, e_sn = 100, 61, e_vert = 45, 45,"
+                " parent_id = 0, 1, i_parent_start = 1, 30, j_parent_start = 1, 30,"
+                " parent_grid_ratio = 1, 3, parent_time_step_ratio = 1, 3 /\n")
+        t = WrfTranslator(parse_namelist(real_case(f"&time_control /\n{doms}&physics mp_physics = 51, 51 /\n")))
+        t.translate()
+        self.assertIn("mp_physics = 51 (P3) with nests is not supported", " ".join(t.errors))
+        t = WrfTranslator(parse_namelist(complete("&time_control /\n&domains time_step = 6 /\n"
+                                                   "&physics mp_physics = 50 /\n")), override_case="quarter_ss")
+        t.translate()
+        self.assertIn("mp_physics = 50 (P3) is supported for real-data runs only", " ".join(t.errors))
+
     def test_force_read_thompson(self):
         def phys(mp, extra):
             t = WrfTranslator(parse_namelist(real_case(f"""

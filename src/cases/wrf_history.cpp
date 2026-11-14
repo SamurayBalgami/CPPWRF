@@ -679,7 +679,8 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
                                                           {"qni", "QNICE"}, {"qnr", "QNRAIN"}, {"tke", "TKE"},
                                                           {"qke_adv", "qke_adv"}, {"qnc", "QNCLOUD"},
                                                           {"qnwfa", "QNWFA"}, {"qnifa", "QNIFA"}, {"qnbca", "QNBCA"},
-                                                          {"qns", "QNSNOW"}, {"qng", "QNGRAUPEL"}};
+                                                          {"qns", "QNSNOW"}, {"qng", "QNGRAUPEL"},
+                                                          {"qir", "QIR"}, {"qib", "QIB"}};
     auto it = wn.find(qn);
     if (it != wn.end() && it->second == name) return copy_field(s.q_2[std::size_t(q)], dims, out);
   }

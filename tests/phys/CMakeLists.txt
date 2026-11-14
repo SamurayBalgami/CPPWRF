@@ -34,6 +34,14 @@ foreach(t "mp_kessler;driver_kessler_cpu;driver_kessler.cpp;mp_kessler/kessler.c
   target_link_libraries(${exe} PRIVATE OpenMP::OpenMP_CXX)
 endforeach()
 
+# P3 (column work buffers; libmvec: WRF's vectorised exner pow)
+add_executable(driver_p3_cpu mp_p3/driver_p3.cpp ${CPPWRF_ROOT}/src/phys/mp_p3/p3.cpp
+               ${CPPWRF_ROOT}/src/core/backend.cpp ${CPPWRF_ROOT}/src/core/column_work.cpp)
+target_include_directories(driver_p3_cpu PRIVATE ${CPPWRF_ROOT}/src ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(driver_p3_cpu PRIVATE CPPWRF_DOUBLE)
+target_compile_options(driver_p3_cpu PRIVATE -O3 -march=native -ffp-contract=off)
+target_link_libraries(driver_p3_cpu PRIVATE OpenMP::OpenMP_CXX mvec m)
+
 # Kain-Fritsch, Noah LSM, Thompson (own CMake files: tables and column drivers)
 foreach(scheme cu_kf lsm_noah mp_thompson)
   add_subdirectory(${scheme})
@@ -47,6 +55,7 @@ foreach(t "kessler;mp_kessler;${PHYS_BIN}"
           "radar;mp_radar;${PHYS_BIN}"
           "sfclayrev;sf_sfclayrev;${PHYS_BIN}"
           "ysu;bl_ysu;${PHYS_BIN}"
+          "p3;mp_p3;${PHYS_BIN}"
           "bl_myj;bl_myj;${PHYS_BIN}/bl_myj_test"
           "lsm_noah_ice;lsm_noah_ice;${PHYS_BIN}/lsm_noah_ice_test"
           "lsm_noahmp;lsm_noahmp;${PHYS_BIN}/lsm_noahmp_test"

@@ -408,6 +408,8 @@ SUPPORTED_OPTIONS = {
         8: "Thompson",
         10: "Morrison two-moment (morr_rimed_ice 0 / 1, constant droplet number: progn = 0)",
         28: "Thompson aerosol-aware (aer_init_opt = 0, wif_input_opt 0 / 1)",
+        50: "P3, one ice category, constant droplet number",
+        51: "P3, one ice category, predicted droplet number",
     },
     "sf_sfclay_physics": {
         0: "None / off",
@@ -1780,6 +1782,10 @@ class WrfTranslator:
                 sections["moist"]["species"] = "qv,qc,qr,qi,qs,qg,qni,qnr,qnc,qnwfa,qnifa,qnbca"
             elif mp_physics == 10:  # Registry package morr_two_moment: scalar qni, qns, qnr, qng
                 sections["moist"]["species"] = "qv,qc,qr,qi,qs,qg,qni,qns,qnr,qng"
+            elif mp_physics == 50:  # Registry package p3_1category: scalar qni, qnr, qir, qib
+                sections["moist"]["species"] = "qv,qc,qr,qi,qni,qnr,qir,qib"
+            elif mp_physics == 51:  # Registry package p3_1category_nc: scalar qnc, qni, qnr, qir, qib
+                sections["moist"]["species"] = "qv,qc,qr,qi,qnc,qni,qnr,qir,qib"
             elif mp_physics == 6:
                 sections["moist"]["species"] = "qv, qc, qr, qi, qs, qg" if not has_physics_suite else "qv,qc,qr,qi,qs,qg"
             elif mp_physics == 1:
@@ -1791,6 +1797,8 @@ class WrfTranslator:
                 self.error("WRF mp_physics = 28 (aerosol-aware Thompson) is supported for real-data runs only.")
             if mp_physics == 10:
                 self.error("WRF mp_physics = 10 (Morrison two-moment) is supported for real-data runs only.")
+            if mp_physics in (50, 51):
+                self.error(f"WRF mp_physics = {mp_physics} (P3) is supported for real-data runs only.")
             sections["moist"] = {}
             if mp_physics == 8:
                 sections["moist"]["species"] = "qv,qc,qr,qi,qs,qg,qni,qnr"
@@ -1859,6 +1867,13 @@ class WrfTranslator:
                                "by CPPWRF.")
             elif rimed != 1:
                 self.notice(f"Option &physics.morr_rimed_ice = {rimed}: no effect without Morrison (mp_physics 10).")
+            if mp_physics in (50, 51):
+                # P3 always computes REFL_10CM; do_radar_ref = 1 adds REFD_MAX (not ported). TH_OLD / QV_OLD of a
+                # nest (rusd: interpolated, fed back) are not ported either
+                if self.get_opt("physics", "do_radar_ref", 0) == 1:
+                    self.error(f"WRF do_radar_ref = 1 with mp_physics = {mp_physics} (P3) is not supported by CPPWRF.")
+                if self._max_dom > 1:
+                    self.error(f"WRF mp_physics = {mp_physics} (P3) with nests is not supported by CPPWRF.")
 
             if has_physics_suite:
                 sections["phys"]["sf_sfclay_physics"] = sf_sfclay

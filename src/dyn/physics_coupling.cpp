@@ -17,6 +17,7 @@
 #include "core/vm_dump.hpp"
 #include "phys/mp_kessler/kessler.hpp"
 #include "phys/mp_morrison/morrison.hpp"
+#include "phys/mp_p3/p3.hpp"
 #include "phys/mp_thompson/thompson.hpp"
 #include "phys/mp_wsm6/wsm6.hpp"
 #include "phys/phys_constants.hpp"
@@ -95,6 +96,40 @@ std::shared_ptr<const phys::mp_thompson::ThompsonDeviceTables<real>> thompson_ta
   return t;
 }
 
+// module_mp_p3.F p3_init: the module's tables are read and computed once per process (is_init); one copy per device
+std::shared_ptr<const std::pair<Buffer, phys::mp_p3::P3Tables<real>>> p3_tables(const std::string& dir,
+                                                                               phys::mp_p3::P3Params<real>& c) {
+  using T = std::pair<Buffer, phys::mp_p3::P3Tables<real>>;
+  static std::mutex m;
+  static std::map<std::pair<std::string, int>, std::weak_ptr<const T>> made;
+  static std::map<std::string, phys::mp_p3::P3Host<real>> host;
+  std::lock_guard<std::mutex> lock(m);
+  auto hit = host.find(dir);
+  if (hit == host.end()) hit = host.emplace(dir, phys::mp_p3::p3_init<real>(dir)).first;
+  const phys::mp_p3::P3Host<real>& h = hit->second;
+  c = h.c;
+  std::weak_ptr<const T>& w = made[{dir, current_device()}];
+  if (auto t = w.lock()) return t;
+  auto t = std::make_shared<T>();
+  const std::size_t n = h.itab.size() + h.itabcoll.size() + h.vn.size() + h.vm.size() + h.revap.size();
+  t->first = Buffer(n);
+  real* d = t->first.get();
+  std::size_t off = 0;
+  auto up = [&](const std::vector<real>& v) {
+    copy_to_dev(d + off, v.data(), v.size() * sizeof(real));
+    const real* p = d + off;
+    off += v.size();
+    return p;
+  };
+  t->second.itab = up(h.itab);
+  t->second.itabcoll = up(h.itabcoll);
+  t->second.vn = up(h.vn);
+  t->second.vm = up(h.vm);
+  t->second.revap = up(h.revap);
+  w = t;
+  return t;
+}
+
 }  // namespace
 
 PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
@@ -103,17 +138,21 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
       dz8w(g, Stagger::M, "dz8w"), qv_diabatic(g, Stagger::M, "qv_diabatic"), qc_diabatic(g, Stagger::M, "qc_diabatic"),
       p_phy(g, Stagger::M, "p_phy") {
   if (p_.mp_physics != 0 && p_.mp_physics != 1 && p_.mp_physics != 6 && p_.mp_physics != 8 && p_.mp_physics != 10 &&
-      p_.mp_physics != 28)
-    throw std::runtime_error("phys.mp_physics must be 0, 1, 6, 8, 10 or 28");
+      p_.mp_physics != 28 && !p3())
+    throw std::runtime_error("phys.mp_physics must be 0, 1, 6, 8, 10, 28, 50 or 51");
   if (p_.mp_physics == 1) check_limit("Kessler", "nz", g.nz, phys::kessler::kMaxLevels);
   if (p_.do_radar_ref != 0 && p_.do_radar_ref != 1) throw std::runtime_error("phys.do_radar_ref must be 0 or 1");
-  if (p_.microp_re) {  // phy_init: background values RE_QC_BG, RE_QI_BG, RE_QS_BG
+  if (p_.microp_re || p3()) {  // phy_init: background values RE_QC_BG, RE_QI_BG, RE_QS_BG (has_reqc etc.)
     re_cloud = Field3(g, Stagger::M, "re_cloud");
     re_ice = Field3(g, Stagger::M, "re_ice");
-    re_snow = Field3(g, Stagger::M, "re_snow");
-    re_cloud.fill_host([](int, int, int) { return real(2.49E-6); });
-    re_ice.fill_host([](int, int, int) { return real(4.99E-6); });
-    re_snow.fill_host([](int, int, int) { return real(9.99E-6); });
+    if (p_.microp_re) {
+      re_cloud.fill_host([](int, int, int) { return real(2.49E-6); });
+      re_ice.fill_host([](int, int, int) { return real(4.99E-6); });
+    }
+    if (!p3()) {  // P3: has_reqs = 0
+      re_snow = Field3(g, Stagger::M, "re_snow");
+      re_snow.fill_host([](int, int, int) { return real(9.99E-6); });
+    }
   }
   if (p_.mp_physics == 6) {
     check_limit("WSM6", "nz", g.nz, phys::wsm6::kMaxLevels);
@@ -160,6 +199,26 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
       phys::mp_morrison::morrison_reserve<real>(Range2D{sx, g.nx - sx, sy, g.ny - sy}, g.nz);
     }
   }
+  if (p3()) {
+    check_limit("P3", "nz", g.nz, phys::mp_p3::kMaxLevels);
+    if (p_.do_radar_ref != 0)
+      throw std::runtime_error("phys.do_radar_ref = 1 with mp_physics = 50 / 51 (REFD_MAX of P3's REFL_10CM) is not "
+                               "ported");
+    snownc = Field2(g, Stagger::M, "snownc");
+    snowncv = Field2(g, Stagger::M, "snowncv");
+    graupelnc = Field2(g, Stagger::M, "graupelnc");
+    graupelncv = Field2(g, Stagger::M, "graupelncv");
+    sr = Field2(g, Stagger::M, "sr");
+    refl_10cm = Field3(g, Stagger::M, "refl_10cm");
+    th_old = Field3(g, Stagger::M, "th_old");  // WRF state arrays start at 0
+    qv_old = Field3(g, Stagger::M, "qv_old");
+    vmi3d = Field3(g, Stagger::M, "vmi3d");
+    di3d = Field3(g, Stagger::M, "di3d");
+    rhopo3d = Field3(g, Stagger::M, "rhopo3d");
+    p3t_ = p3_tables(p_.table_dir, p3c_);  // phy_init: p3_init('.', 1, .false., 'WRF')
+    const int sx = g.bc_x == BC::Specified ? 1 : 0, sy = g.bc_y == BC::Specified ? 1 : 0;
+    phys::mp_p3::p3_reserve<real>(Range2D{sx, g.nx - sx, sy, g.ny - sy}, g.nz);
+  }
   if (p_.do_radar_ref == 1 && (p_.mp_physics == 6 || thompson())) refl_10cm = Field3(g, Stagger::M, "refl_10cm");
   if (thompson()) {
     check_limit("Thompson", "nz", g.nz, phys::mp_thompson::kMaxLevels);
@@ -196,6 +255,9 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
   if (p_.mp_physics == 10 &&
       (s.P_QI < 0 || s.P_QS < 0 || s.P_QG < 0 || s.P_QNI < 0 || s.P_QNS < 0 || s.P_QNR < 0 || s.P_QNG < 0))
     throw std::runtime_error("mp_physics = 10 (Morrison) needs qv, qc, qr, qi, qs, qg, qni, qns, qnr, qng");
+  if (p3() && (s.P_QI < 0 || s.P_QNI < 0 || s.P_QNR < 0 || s.P_QIR < 0 || s.P_QIB < 0 ||
+                (p_.mp_physics == 51 && s.P_QNC < 0)))
+    throw std::runtime_error("mp_physics = 50 / 51 (P3) needs qv, qc, qr, qi, qni, qnr, qir, qib (51: and qnc)");
   if (p_.mp_physics == 28 && (s.P_QNC < 0 || s.P_QNWFA < 0 || s.P_QNIFA < 0 || s.P_QNBCA < 0))
     throw std::runtime_error("mp_physics = 28 (Thompson aerosol aware) also needs qnc, qnwfa, qnifa, qnbca");
   const Grid& g = g_;
@@ -301,6 +363,22 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
                                   &s.q_2[s.P_QG], &s.q_2[s.P_QNI], &s.q_2[s.P_QNS], &s.q_2[s.P_QNR],
                                   &s.q_2[s.P_QNG]},
                  {&rainnc, &rainncv, &snownc, &snowncv, &graupelnc, &graupelncv, &sr});
+  } else if (p3()) {
+    ++itimestep;  // solve_em: grid%itimestep (P3_MAIN's it; 1 at the first step of a cold start)
+    vmdump::dump("vm_mp_in", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QNI],
+                                 &s.q_2[s.P_QNR], &s.q_2[s.P_QIR], &s.q_2[s.P_QIB], &th_old, &qv_old, &p_phy, &dz8w},
+                 {&rainnc, &rainncv, &snownc, &snowncv, &sr});
+    const bool nc = p_.mp_physics == 51;
+    phys::mp_p3::run_p3<real>(p3c_, p3t_->second, dt, int(itimestep), nc, mp_cols, g.nz, th_phy.view(), qv.view(),
+                              s.q_2[s.P_QC].view(), s.q_2[s.P_QR].view(), s.q_2[s.P_QNR].view(),
+                              s.q_2[s.P_QI].view(), s.q_2[s.P_QNI].view(), s.q_2[s.P_QIR].view(),
+                              s.q_2[s.P_QIB].view(), nc ? s.q_2[s.P_QNC].view() : View3<real>{}, th_old.view(),
+                              qv_old.view(), p_phy.cview(), dz8w.cview(), refl_10cm.view(), re_cloud.view(),
+                              re_ice.view(), vmi3d.view(), di3d.view(), rhopo3d.view(), rainnc.view(),
+                              rainncv.view(), sr.view(), snownc.view(), snowncv.view());
+    vmdump::dump("vm_mp_out", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QNI],
+                                  &s.q_2[s.P_QNR], &s.q_2[s.P_QIR], &s.q_2[s.P_QIB]},
+                 {&rainnc, &rainncv, &snownc, &snowncv, &sr});
   } else {
     column_for(mp_cols,
                phys::kessler::KesslerKernel{th_phy.view(), qv.view(), s.q_2[s.P_QC].view(), s.q_2[s.P_QR].view(),
@@ -314,7 +392,7 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
                                        qc_diabatic.view(), dt, p_.mp_tend_lim, s.P_QC >= 0});
   std::vector<Field3*> fs{&s.t_2, &s.h_diabatic};
   for (int n = 0; n < s.n_moist; ++n) fs.push_back(&s.q_2[n]);
-  for (int n : {s.P_QNI, s.P_QNS, s.P_QNR, s.P_QNG, s.P_QNC, s.P_QNWFA, s.P_QNIFA, s.P_QNBCA})
+  for (int n : {s.P_QNI, s.P_QNS, s.P_QNR, s.P_QNG, s.P_QNC, s.P_QNWFA, s.P_QNIFA, s.P_QNBCA, s.P_QIR, s.P_QIB})
     if (n >= 0) fs.push_back(&s.q_2[n]);
   fill_halos(fs, g);
 }

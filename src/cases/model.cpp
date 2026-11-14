@@ -359,7 +359,8 @@ Model Model::build(const io::Config& cfg) {
     // phy_init: has_reqc = has_reqi = has_reqs = 1 with use_mp_re = 1, RRTMG LW + SW and WSM6 or Thompson
     pp.microp_re = cfg.get_int("phys.use_mp_re", 1) == 1 && cfg.get_int("phys.ra_lw_physics", 0) == 4 &&
                    cfg.get_int("phys.ra_sw_physics", 0) == 4 &&
-                   (pp.mp_physics == 6 || pp.mp_physics == 8 || pp.mp_physics == 28);
+                   (pp.mp_physics == 6 || pp.mp_physics == 8 || pp.mp_physics == 28 || pp.mp_physics == 50 ||
+                    pp.mp_physics == 51);
     if (pp.mp_physics == 28) {  // aerosol-aware Thompson: aer_init_opt = 0, wif_input_opt 0 / 1, qna_update = 0
       if (cname != "real") throw std::runtime_error("phys.mp_physics = 28: real-data runs only");
       const long wif = cfg.get_int("phys.wif_input_opt", 0);
@@ -376,6 +377,12 @@ Model Model::build(const io::Config& cfg) {
         throw std::runtime_error("phys.mp_physics = 28 with the MYNN PBL (aerosol mixing, bl_mynn_mixaerosols) is "
                                  "not ported");
     }
+    if (pp.mp_physics == 50 || pp.mp_physics == 51) {  // P3, one ice category (module_mp_p3.F)
+      if (cname != "real") throw std::runtime_error("phys.mp_physics = 50 / 51 (P3): real-data runs only");
+    }
+    if (pp.mp_physics == 52 || pp.mp_physics == 53)
+      throw std::runtime_error("phys.mp_physics = " + std::to_string(pp.mp_physics) +
+                               " (P3 with two ice categories / three-moment ice) is not ported");
     if (pp.mp_physics == 10) {  // Morrison two-moment without WRF-Chem: constant droplet number (no progn)
       if (cname != "real") throw std::runtime_error("phys.mp_physics = 10: real-data runs only");
       if (cfg.get_int("phys.progn", 0) != 0)
