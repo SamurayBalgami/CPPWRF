@@ -731,7 +731,9 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     return true;
   }
   if (name == "HAS_REQC" || name == "HAS_REQI" || name == "HAS_REQS") {  // microphysics radii to the radiation
-    out.assign(1, m_.rk && m_.rk->physics() && m_.rk->physics()->params().microp_re ? 1.0 : 0.0);
+    const dyn::PhysicsCoupling* pc = m_.rk ? m_.rk->physics() : nullptr;
+    // phy_init: P3 (mp_physics 50 / 51) sets has_reqc = has_reqi = 1 and leaves has_reqs = 0
+    out.assign(1, pc && pc->params().microp_re && !(name == "HAS_REQS" && pc->p3()) ? 1.0 : 0.0);
     return true;
   }
   if (name == "AKPBL" && m_.suite && m_.suite->options().cu_physics != 0 && dims.size() == 2) {  // cumulus_driver
