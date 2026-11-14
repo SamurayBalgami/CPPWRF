@@ -26,6 +26,7 @@
 #include "dyn/column_physics.hpp"
 #include "dyn/state.hpp"
 #include "phys/bl_mynn/mynnedmf_common.hpp"
+#include "phys/cu_bmj/bmj.hpp"
 #include "phys/cu_kf/kf.hpp"
 #include "phys/cu_kf/kf_tables.hpp"
 #include "phys/driver/phy_prep.hpp"
@@ -91,7 +92,9 @@ struct SuiteOptions {
   int bl_mynn_output = 0;        // 1: EDMF_A, EDMF_W, EDMF_THL, EDMF_QT, EDMF_ENT, EDMF_QC (and zero SUB_/DET_*3D)
   int tke_budget = 0;            // 1: the MYNN TKE budget (QSHEAR, QBUOY, QDISS, QWT, DQKE)
   int grav_settling = 0;         // 1, 2: fog water deposition (module_sf_fogdes.F / module_bl_fogdes.F)
-  int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME, 3 = GFLSCHEME, 6 = TIEDTKESCHEME, 16 = NTIEDTKESCHEME
+  int cu_physics = 0;            // 0 = none, 1 = KFETASCHEME, 2 = BMJSCHEME, 3 = GFLSCHEME, 6 = TIEDTKESCHEME,
+                                 // 16 = NTIEDTKESCHEME
+  bool bmj_rad_feedback = false;  // BMJ: its convective clouds in the radiation (rad.bmj_feedback)
   int gwd_opt = 0;                // 1 = KIM orographic gravity wave drag (bl_gwdo)
   double gwd_dx_factor = 2.0;     // effective grid factor of the gwd stress (WRF gwd_dx_factor)
   bool gwd_if_nonhyd = true;      // nonhydrostatic effect (WRF gwd_if_nonhyd)
@@ -270,6 +273,8 @@ class PhysicsSuite : public dyn::ColumnPhysics {
       ph_ndg_new, hfx_fdda;
   Field2 mu_ndg_old, mu_ndg_new;
   Field3 w0avg, cldfra_dp, cldfra_sh, qc_cu, qi_cu, gd_cloud, gd_cloud2, gd_cloud_a, gd_cloud2_a, gd_cldfr;  // cumulus 3D state and diagnostics
+  Field2 cldefi, convcld;           // BMJ (cu_physics = 2): precipitation efficiency (restart), convective cloud
+  Field3 ccldfra, qcconv, qiconv;   // BMJ: convective cloud fraction, cloud water and ice (restart)
   // every persistent field above, the physics tendencies and the phy_prep diagnostics (by WRF name)
   std::vector<const Field2*> fields2() const;
   std::vector<const Field3*> fields3() const;
@@ -362,6 +367,7 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   sfclayrev::SFClayRevTables<real>* d_sfclay_tables_ = nullptr;  // device copy, uploaded once
   sf_myjsfc::MYJSFCTableManager myjsfc_tables_;                  // host/device copy, uploaded once
   cu_kf::KFTables<real>* d_kf_tables_ = nullptr;                 // device copy, uploaded once
+  cu_bmj::BmjTables<real>* d_bmj_tables_ = nullptr;              // BMJINIT's tables, device copy
   mynnsfc::PsiTables* d_mynn_psi_ = nullptr;                     // MYNN psi_init tables, device copy
   // Noah driver scratch (inputs/outputs of SFLX per point)
   Field2 n_lwdn, n_soldn, n_solnet, n_sfcprs, n_prcp, n_sfctmp, n_th2, n_q2, n_q2sat, n_dqsdt2, n_ffrozp,

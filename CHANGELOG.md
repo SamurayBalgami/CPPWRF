@@ -18,6 +18,16 @@ a verified configuration, of a configuration key or of an output file is a new m
   REFL_10CM and effective radii for RRTMG; real data, one domain. Tier: verified (suite cases P3MP and P3NC against
   WRF real*8 of the -fdefault-double-8 build; column test tests/phys/mp_p3). Milbrandt-Yau (9), P3 52 / 53, P3 with
   nests, ideal cases or `do_radar_ref = 1` stay errors.
+- Betts-Miller-Janjic cumulus (cu_physics = 2, WRF's module_cu_bmj.F): BMJINIT's look-up tables and SPLINE, BMJ's
+  deep and shallow convection with the cloud efficiency CLDEFI (restart field), BMJDRV with its convective clouds
+  (CCLDFRA, QCCONV, QICONV, CONVCLD; restart fields), phy_cu_ten (theta and qv), advance_ppt's HTOP / HBOT, and
+  the adaptive time step's cudt = 0 (check_a_mundo); gfortran's libmvec lanes of the four vectorised loops.
+  **Tier column_verified**: BMJINIT and BMJDRV bit for bit with WRF's compiled module_cu_bmj.o in the column driver
+  tests/phys/cu_bmj (ctest test_phys_cu_bmj, label diff); not yet compared with a whole WRF run.
+- bmj_rad_feedback (per domain, with BMJ): BMJ's clouds in the radiation (module_radiation_driver.F: QCCONV / QICONV
+  added to qc / qi, CCLDFRA combined with CLDFRA); needs a microphysics scheme with cloud water and ice when the
+  radiation is on. **Tier unverified** (BMJDRV's part is column-verified, the radiation driver's has no column
+  driver).
 
 ### Fixed
 - The restart alarm of a run resumed from a restart file (WRF's or CPPWRF's own) with a restart interval that is not

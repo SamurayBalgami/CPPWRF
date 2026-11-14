@@ -107,6 +107,8 @@ struct KRadColumn {
   int icloud_cu;  // cu_rad_feedback: the cumulus clouds into cf and the staged qc (qcw), qi (qiw)
   View3<const real> qccu, qicu, cfdp, cfsh;
   int ci0 = 0, cj0 = 0, gnx = 0;  // the patch's first column; the domain's nx (calc_coszen's lanes)
+  bool bmj;  // bmj_rad_feedback: BMJ's clouds into the staged qc, qi and cf
+  View3<const real> qcconv, qiconv, ccldfra;
   CPPWRF_HD void operator()(int i, int j) const {
     const int col = (i - ci0) + nx * (j - cj0);
     double hr = 0;
@@ -152,6 +154,17 @@ struct KRadColumn {
         if (itimestep != 1) cf[q] = b;
         if (qcw[q] < 1.E-6 && b > 0.001) qcw[q] = qcw[q] + double(qcbl(i, j, k));
         if (qiw[q] < 1.E-8 && b > 0.001) qiw[q] = qiw[q] + double(qibl(i, j, k));
+      }
+    }
+    if (bmj) {  // module_radiation_driver.F:1578-1591 (PCC scheme)
+      for (int k = 0; k < nz; ++k) {
+        const std::size_t q = std::size_t(k) * ncol + col;
+        qcw[q] = qcw[q] + double(qcconv(i, j, k));
+        qiw[q] = qiw[q] + double(qiconv(i, j, k));
+        const double cc = double(ccldfra(i, j, k));
+        const double itrmx = c_min(cf[q], cc);
+        const double itrmn = c_max(0., cf[q] + cc - 1.);
+        cf[q] = cf[q] + cc - 0.5 * (itrmx + itrmn);
       }
     }
     if (has_cldfra)
@@ -300,6 +313,7 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
   // cldovrlp 0 (clear sky only) and the McICA overlaps 1-5 (mcica_subcol_lw/_sw stop for any other icld)
   if (o.cldovrlp < 0 || o.cldovrlp > 5) throw std::runtime_error("radiation: cldovrlp must be 0 to 5");
   if (o.icloud_cu < 0 || o.icloud_cu > 2) throw std::runtime_error("radiation: icloud_cu must be 0, 1 or 2");
+  if (o.bmj_feedback && o.icloud_cu != 0) throw std::runtime_error("radiation: bmj_rad_feedback with icloud_cu");
   // wrf.exe writes NaN cloud fractions with the Dudhia shortwave and the Grell clouds (V1 inputs): not ported
   if (o.ra_sw_physics == 1 && o.icloud_cu == 1)
     throw std::runtime_error("radiation: cu_rad_feedback with a Grell scheme and the Dudhia shortwave is not supported");
@@ -440,6 +454,10 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
     const int cnx = ob.i1 - ob.i0, ncol = cnx * (ob.j1 - ob.j0);
     const bool dudhia = o_.ra_sw_physics == 1, rrtm = o_.ra_lw_physics == 1;
     if (o_.icloud != 0 && o_.icloud != 1) throw std::runtime_error("radiation: only icloud = 0 or 1 are ported");
+    // bmj_rad_feedback adds QCCONV / QICONV to qc / qi: WRF's moist(P_QC) / moist(P_QI) without F_QC / F_QI is its
+    // scalar placeholder, not ported
+    if (o_.bmj_feedback && (!in.qc || !in.qi))
+      throw std::runtime_error("radiation: bmj_rad_feedback needs a microphysics scheme with cloud water and ice");
     if (in.qc && !in.qi && in.qs) throw std::runtime_error("radiation: F_QC, F_QS without F_QI is not ported");
     const bool clouds = o_.icloud != 0 && in.qc != nullptr;
     KStageAll ks{};
@@ -499,6 +517,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
       kc.qccu = in.qc_cu->cview(); kc.qicu = in.qi_cu->cview();
       kc.cfdp = in.cldfra_dp->cview(); kc.cfsh = in.cldfra_sh->cview();
     }
+    kc.bmj = o_.bmj_feedback;
+    if (kc.bmj) { kc.qcconv = in.qcconv->cview(); kc.qiconv = in.qiconv->cview(); kc.ccldfra = in.ccldfra->cview(); }
     column_for(Range2D{ob.i0, ob.i1, ob.j0, ob.j1}, kc);
     LwBatchInput li{};
     li.ncol = ncol;
@@ -614,9 +634,15 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
   if (o_.icloud_cu != 0) {
     in.qc_cu->download(qccu); in.qi_cu->download(qicu); in.cldfra_dp->download(cfdp); in.cldfra_sh->download(cfsh);
   }
+  std::vector<real> qcconv, qiconv, ccldfra;
+  if (o_.bmj_feedback) { in.qcconv->download(qcconv); in.qiconv->download(qiconv); in.ccldfra->download(ccldfra); }
   // icloud = 1 with F_QC or F_QI: cal_cldfra1 (else CLDFRA = 0); qc is required with qi (WSM/Kessler)
   const bool clouds = o_.icloud != 0 && in.qc != nullptr;
   if (o_.icloud != 0 && o_.icloud != 1) throw std::runtime_error("radiation: only icloud = 0 or 1 are ported");
+  // bmj_rad_feedback adds QCCONV / QICONV to qc / qi: WRF's moist(P_QC) / moist(P_QI) without F_QC / F_QI is its
+  // scalar placeholder, not ported
+  if (o_.bmj_feedback && (!in.qc || !in.qi))
+    throw std::runtime_error("radiation: bmj_rad_feedback needs a microphysics scheme with cloud water and ice");
   if (in.qc && !in.qi && in.qs) throw std::runtime_error("radiation: F_QC, F_QS without F_QI is not ported");
   in.tsk->download(tsk); in.albedo->download(alb); in.emiss->download(ems); in.xland->download(xland);
   in.xice->download(xice); in.snow->download(snow);
@@ -695,6 +721,18 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
           if (itimestep != 1) ccf[k] = cfbl[q];
           if (cqc[k] < 1.E-6 && cfbl[q] > 0.001) cqc[k] = cqc[k] + qcbl[q];
           if (cqi[k] < 1.E-8 && cfbl[q] > 0.001) cqi[k] = cqi[k] + qibl[q];
+        }
+      }
+      if (o_.bmj_feedback) {  // BMJ (module_radiation_driver.F:1578-1591, PCC scheme)
+        if (!clouds) std::fill(ccf.begin(), ccf.end(), 0.0);  // CLDFRA = 0 (the column buffer is reused)
+        for (int k = 0; k < nz; ++k) {
+          const std::size_t q = Lm.index(i, j, k);
+          cqc[k] = cqc[k] + double(qcconv[q]);
+          cqi[k] = cqi[k] + double(qiconv[q]);
+          const double cc = double(ccldfra[q]);
+          const double itrmx = c_min(ccf[k], cc);
+          const double itrmn = c_max(0., ccf[k] + cc - 1.);
+          ccf[k] = ccf[k] + cc - 0.5 * (itrmx + itrmn);
         }
       }
       if (out.cldfra)

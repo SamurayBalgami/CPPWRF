@@ -29,6 +29,9 @@ struct RadiationOptions {
   // cu_rad_feedback (phy_init's icloud_cu): 1 = Grell schemes (QC_CU / QI_CU added to qc / qi), 2 = KF (CLDFRA_DP
   // + CLDFRA_SH into CLDFRA, QC_CU / QI_CU times that fraction into qc / qi), 0 = none
   int icloud_cu = 0;
+  // bmj_rad_feedback with BMJ (cu_physics = 2; module_radiation_driver.F:1578-1591): QCCONV / QICONV added to qc /
+  // qi and the convective cloud fraction CCLDFRA combined with CLDFRA (after every other cloud change)
+  bool bmj_feedback = false;
   // oznini and the ozone interpolation run on domain 1 only (module_physics_init.F, module_radiation_driver.F,
   // EM_CORE): a nest's radiation uses o3rad, which med_nest_force interpolates from the parent (Registry f=p2c)
   bool oznini = true;
@@ -50,6 +53,8 @@ struct RadiationInputs {  // device fields (mass points) read by the radiation
   const Field3 *cldfra_bl = nullptr, *qc_bl = nullptr, *qi_bl = nullptr;
   // icloud_cu > 0: the cumulus scheme's clouds of its last call (radiation runs before cumulus_driver)
   const Field3 *qc_cu = nullptr, *qi_cu = nullptr, *cldfra_dp = nullptr, *cldfra_sh = nullptr;
+  // bmj_feedback: BMJ's clouds of its last call
+  const Field3 *qcconv = nullptr, *qiconv = nullptr, *ccldfra = nullptr;
   // Dudhia SW: rain and graupel (nullptr without F_QR / F_QG) and the terrain height of the direct / diffuse split
   const Field3 *qr = nullptr, *qg = nullptr;
   const BaseField2* ht = nullptr;

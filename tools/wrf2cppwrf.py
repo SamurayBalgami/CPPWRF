@@ -399,7 +399,7 @@ def parse_namelist(text: str) -> Dict[str, Dict[str, List[Any]]]:
 # -----------------------------------------------------------------------------
 
 # physics options a nest may set differently from its parent (verified bit-identical with WRF nests)
-PER_DOMAIN_PHYS = {"cu_physics", "cudt", "radt", "bldt", "cu_rad_feedback", "prec_acc_dt"}  # max_domains entries of the WRF Registry
+PER_DOMAIN_PHYS = {"cu_physics", "cudt", "radt", "bldt", "cu_rad_feedback", "bmj_rad_feedback", "prec_acc_dt"}  # max_domains entries of the WRF Registry
 SUPPORTED_OPTIONS = {
     "mp_physics": {
         0: "None / off",
@@ -434,6 +434,7 @@ SUPPORTED_OPTIONS = {
     "cu_physics": {
         0: "None / off",
         1: "Kain-Fritsch cumulus parameterization",
+        2: "Betts-Miller-Janjic cumulus parameterization",
         3: "Grell-Freitas cumulus parameterization",
         6: "Tiedtke cumulus parameterization",
         16: "New Tiedtke cumulus parameterization",
@@ -2250,6 +2251,25 @@ class WrfTranslator:
         # the radiation; with Tiedtke / New Tiedtke icloud_cu = 0 (no effect). Nests: [d0N] phys_cu_rad_feedback
         if bool(self.get_dom_opt("physics", "cu_rad_feedback", 0, False)):
             sections.setdefault("phys", {})["cu_rad_feedback"] = True
+        # bmj_rad_feedback (max_domains): BMJ's convective clouds (CCLDFRA, QCCONV, QICONV, CONVCLD; BMJDRV) and their
+        # use in the radiation (module_radiation_driver.F:1578, cu_physics == BMJSCHEME); other schemes ignore it.
+        # The radiation adds QCCONV / QICONV to moist(P_QC) / moist(P_QI): a scheme without cloud water and ice
+        # (mp_physics 0, 1) would change WRF's placeholder scalar, not ported
+        for d in range(max(1, self._max_dom)):
+            if not bool(self.get_dom_opt("physics", "bmj_rad_feedback", d, False)):
+                continue
+            if self.get_dom_opt("physics", "cu_physics", d, 0) != 2:
+                self.notice(f"Option &physics.bmj_rad_feedback = .true. on domain {d + 1}: used by BMJ (cu_physics "
+                            "= 2) only, no effect.")
+                continue
+            if d == 0:
+                sections.setdefault("phys", {})["bmj_rad_feedback"] = True
+            radiation = (self.get_dom_opt("physics", "ra_lw_physics", d, 0) != 0 or
+                         self.get_dom_opt("physics", "ra_sw_physics", d, 0) != 0)
+            if radiation and self.get_dom_opt("physics", "mp_physics", d, 0) in (0, 1):
+                self.error(f"WRF bmj_rad_feedback = .true. with the radiation and mp_physics = "
+                           f"{self.get_dom_opt('physics', 'mp_physics', d, 0)} on domain {d + 1} is not supported "
+                           "(BMJ's cloud water and ice go into the radiation's QC / QI, which this scheme lacks).")
         # the Dudhia shortwave with the Grell-Freitas clouds (icloud_cu = 1): wrf.exe writes NaN cloud fractions
         # (V1 inputs, 20 min); not reproducible, so not supported
         if self.get_opt("physics", "ra_sw_physics", 0) == 1:
@@ -2672,7 +2692,8 @@ class WrfTranslator:
                 phys_over = {}
                 for pk in ("mp_physics", "sf_sfclay_physics", "sf_surface_physics", "bl_pbl_physics",
                            "cu_physics", "ra_lw_physics", "ra_sw_physics", "radt", "bldt", "cudt",
-                           "prec_acc_dt", "ishallow", "clos_choice", "kfeta_trigger", "sf_urban_physics", "cu_rad_feedback"):
+                           "prec_acc_dt", "ishallow", "clos_choice", "kfeta_trigger", "sf_urban_physics", "cu_rad_feedback",
+                           "bmj_rad_feedback"):
                     if self.has_opt("physics", pk):
                         v_d = self.get_dom_opt("physics", pk, d, None)
                         v_0 = self.get_dom_opt("physics", pk, 0, None)

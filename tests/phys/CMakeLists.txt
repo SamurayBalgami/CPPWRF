@@ -48,7 +48,7 @@ foreach(scheme cu_kf lsm_noah mp_thompson)
 endforeach()
 
 # ctest entries (label diff). Schemes with CMake drivers get this build directory; the others (MYJ, Noah ice,
-# Noah-MP, MYNN) build their drivers in their own work directory.
+# Noah-MP, MYNN, BMJ) build their drivers in their own work directory.
 set(PHYS_BIN ${CMAKE_CURRENT_BINARY_DIR})
 foreach(t "kessler;mp_kessler;${PHYS_BIN}"
           "wsm6;mp_wsm6;${PHYS_BIN}"
@@ -57,6 +57,7 @@ foreach(t "kessler;mp_kessler;${PHYS_BIN}"
           "ysu;bl_ysu;${PHYS_BIN}"
           "p3;mp_p3;${PHYS_BIN}"
           "bl_myj;bl_myj;${PHYS_BIN}/bl_myj_test"
+          "cu_bmj;cu_bmj;${PHYS_BIN}/cu_bmj_test"
           "lsm_noah_ice;lsm_noah_ice;${PHYS_BIN}/lsm_noah_ice_test"
           "lsm_noahmp;lsm_noahmp;${PHYS_BIN}/lsm_noahmp_test"
           "bl_mynn;bl_mynn;${PHYS_BIN}/bl_mynn_test"

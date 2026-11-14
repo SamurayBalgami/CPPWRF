@@ -283,7 +283,10 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   o.cudt = cfg.get_double("phys.cudt", 0.0);
   // check_a_mundo (module_check_a_mundo.F:2156-2174): the adaptive time step runs BMJ, the SAS schemes and Tiedtke
   // every step (cudt = 0)
-  if (cfg.get_bool("time.adaptive", false) && o.cu_physics == 6) o.cudt = 0.0;
+  if (cfg.get_bool("time.adaptive", false) && (o.cu_physics == 2 || o.cu_physics == 6)) o.cudt = 0.0;
+  // bmj_rad_feedback (Registry max_domains, default .false.): BMJ's convective clouds (CCLDFRA, QCCONV, QICONV,
+  // CONVCLD) and their use in the radiation; other cumulus schemes ignore it
+  o.bmj_rad_feedback = o.cu_physics == 2 && cfg.get_bool("phys.bmj_rad_feedback", false);
   {
     const std::string nl_path = cfg.get_string("output.wrf_namelist", dir + "/namelist.input");
     const double nl_avg = std::filesystem::exists(nl_path)
@@ -373,6 +376,7 @@ void init_real_physics(const io::Config& cfg, Model& m) {
     // schemes (GF 3, G3 5, GD 93) and 0 with the others (Tiedtke 6, New Tiedtke 16: no feedback)
     if (cfg.get_bool("phys.cu_rad_feedback", false))
       r.icloud_cu = o.cu_physics == 1 ? 2 : (o.cu_physics == 3 || o.cu_physics == 5 || o.cu_physics == 93) ? 1 : 0;
+    r.bmj_feedback = o.bmj_rad_feedback;  // module_radiation_driver.F:1578 (cu_physics == BMJSCHEME)
     r.swrad_scat = cfg.get_double("phys.swrad_scat", 1.0);
     r.warm_rain = o.warm_rain;
     r.julday = int(in.att_num("JULDAY", 1));

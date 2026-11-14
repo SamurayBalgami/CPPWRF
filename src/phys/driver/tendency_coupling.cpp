@@ -203,6 +203,10 @@ void update_phy_ten(dyn::Tendencies& t, PhysicsTendencies& pt, const dyn::State&
     if (s.P_QI >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QI], pt.rqicuten);
     if (s.P_QS >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QS], pt.rqscuten);
   }
+  if (f.cu_physics == 2) {  // phy_cu_ten, BMJSCHEME: theta and qv
+    add.add(ar, KAdd::A2A, t.t_tendf, pt.rthcuten);
+    if (s.P_QV >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QV], pt.rqvcuten);
+  }
   if (f.cu_physics == 3) {  // phy_cu_ten, GFLSCHEME: no momentum (RUCUTEN/RVCUTEN are not added)
     add.add(ar, KAdd::A2A, t.t_tendf, pt.rthcuten);
     if (s.P_QV >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QV], pt.rqvcuten);

@@ -1239,6 +1239,29 @@ class TestWrfNamelistSemantics(unittest.TestCase):
         self.assertNotIn("cu_rad_feedback", sec["phys"])
         self.assertEqual(sec["d02"]["phys_cu_rad_feedback"], True)
 
+    def test_bmj_and_bmj_rad_feedback(self):
+        # cu_physics = 2 (BMJ, column-verified: a tier warning); bmj_rad_feedback per domain, used by BMJ only; with
+        # the radiation it needs cloud water and ice (QCCONV / QICONV go into the radiation's QC / QI)
+        t, sec = self.translate(self.NEST + "&physics cu_physics = 2, 2, bmj_rad_feedback = .true., .false. /\n")
+        self.assertEqual(t.errors, [])
+        self.assertEqual(sec["phys"]["cu_physics"], 2)
+        self.assertEqual(sec["phys"]["bmj_rad_feedback"], True)
+        self.assertEqual(sec["d02"]["phys_bmj_rad_feedback"], False)
+        self.assertTrue(any("cu_physics = 2: verification tier column_verified" in w for w in t.warnings), t.warnings)
+        self.assertTrue(any("bmj_rad_feedback = .true.: verification tier unverified" in w for w in t.warnings),
+                        t.warnings)
+        t, sec = self.translate(self.NEST + "&physics cu_physics = 1, 1, bmj_rad_feedback = 2*.true. /\n")
+        self.assertEqual(t.errors, [])
+        self.assertNotIn("bmj_rad_feedback", sec["phys"])
+        self.assertTrue(any("bmj_rad_feedback" in n and "no effect" in n for n in t.notices), t.notices)
+        t, _ = self.translate(self.NEST + "&physics cu_physics = 2, 2, mp_physics = 2*1, ra_lw_physics = 2*4, "
+                              "ra_sw_physics = 2*4, bmj_rad_feedback = .true. /\n")
+        self.assertTrue(any("bmj_rad_feedback = .true. with the radiation and mp_physics = 1" in e for e in t.errors),
+                        t.errors)
+        t, _ = self.translate(self.NEST + "&physics cu_physics = 2, 2, mp_physics = 2*6, ra_lw_physics = 2*4, "
+                              "ra_sw_physics = 2*4, bmj_rad_feedback = .true. /\n")
+        self.assertEqual(t.errors, [])
+
     def test_nest_entries_take_registry_defaults(self):
         # r32cudt1 / r32bldt1: a nest without a cudt / bldt entry calls the scheme every step (Registry default 0,
         # rconfig CUDT / BLDT in upper case)

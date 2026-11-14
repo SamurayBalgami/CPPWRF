@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <stdexcept>
 
+#include "phys/cu_bmj/bmj.hpp"
 #include "phys/cu_gfl/gfl.hpp"
 #include "phys/cu_ntiedtke/ntiedtke.hpp"
 #include "phys/cu_tiedtke/tiedtke.hpp"
@@ -359,6 +360,29 @@ struct KRowAny {
   }
 };
 
+// ---------------------------------------------------------------- Betts-Miller-Janjic
+// module_cu_bmj.F BMJDRV (BMJSCHEME, cu_physics = 2) for one column (cu_bmj::bmjdrv_column); the views as
+// cumulus_driver passes them: T = t_phy, QV = moist(P_QV), PMID = p_hyd, PINT = p_hyd_w, PI = pi_phy, RHO, DZ8W,
+// CUTOP / CUBOT = grid%cutop / grid%cubot (HTOP / HBOT), PRATEC = the driver's tmppratec (copied to PRATEC after)
+struct KBmj {
+  const cu_bmj::BmjTables<real>* tb;
+  int nz, stepcu;
+  real dt;
+  bool feedback;
+  C3 t, qv, p, p8w, pi, rho, dz8w;
+  C2 xland;
+  CI2 lowlyr;
+  V2 cldefi, raincv, pratec, convcld, cutop, cubot;
+  V3 ccldfra, qcconv, qiconv, rthcuten, rqvcuten;
+  ColumnWork work{};  // the GPU's column arrays (column_for_work)
+  static constexpr std::size_t kWorkBytes = cu_bmj::kWorkBytes<real>;
+  CPPWRF_HD void operator()(int i, int j) const {
+    CPPWRF_COLUMN_SLOTS(work, i, j)
+    using namespace wrfc;
+    cu_bmj::bmjdrv_column<real>(*this, *tb, i, j, nz, dt, stepcu, cp, r_d, xlv, g, svpt0, ep_1, feedback, cppwrf_cw_);
+  }
+};
+
 // ---------------------------------------------------------------- advance_ppt
 // phys/module_physics_addtendc.F advance_ppt (CASE KFETASCHEME)
 struct KAdvancePpt {
@@ -368,12 +392,13 @@ struct KAdvancePpt {
   real dt;
   int nz, kde;
   bool flag_qi, flag_qs, kfeta;  // kfeta: CASE (KFETASCHEME); otherwise CASE DEFAULT (accumulation only)
+  bool bmj;                      // CASE (BMJSCHEME, CAMZMSCHEME): HTOP / HBOT only
   CPPWRF_HD static int nint_f(real x) { return int(std::round(x)); }  // Fortran NINT (lround: half away from 0)
   CPPWRF_HD void operator()(int i, int j) const {
     rainc(i, j) = rainc(i, j) + pratec(i, j) * dt;
     rainsh(i, j) = rainsh(i, j) + pratesh(i, j) * dt;
     cuppt(i, j) = cuppt(i, j) + (pratec(i, j) + pratesh(i, j)) * dt / real(1000.);
-    if (!kfeta) return;
+    if (!kfeta && !bmj) return;
     const int ncutop = nint_f(cutop(i, j));
     const int ncubot = nint_f(cubot(i, j));
     if (ncutop > 1 && ncutop < kde) {
@@ -382,6 +407,7 @@ struct KAdvancePpt {
     if (ncubot > 0 && ncubot < kde) {
       if (cubot(i, j) < hbot(i, j)) hbot(i, j) = cubot(i, j);
     }
+    if (bmj) return;
     if (nca(i, j) > real(0.)) {
       if (nint_f(nca(i, j) / dt) <= 1) {
         for (int k = 0; k < nz; ++k) {
@@ -405,6 +431,7 @@ namespace suite_detail {
 std::size_t cumulus_work_bytes(int cu_physics, int nz) {
   if (cu_physics == 3)
     return nz <= 48 ? KGrellFreitasRunner<48>::kWorkBytes : KGrellFreitasRunner<cu_gfl::kMaxLevels>::kWorkBytes;
+  if (cu_physics == 2) return KBmj::kWorkBytes;
   if (cu_physics == 6) return KTiedtke::kWorkBytes;
   if (cu_physics == 16) return KNTiedtke::kWorkBytes;
   return 0;
@@ -507,6 +534,20 @@ void PhysicsSuite::cumulus_driver(const dyn::State& s, const dyn::BaseState& b) 
       w2(raincv); w2(pratec); w2(cutop); w2(cubot);
       std::fclose(f);
     }
+    return;
+  }
+  if (o_.cu_physics == 2) {
+    KBmj k{};
+    k.tb = d_bmj_tables_;
+    k.nz = g_.nz; k.stepcu = stepcu; k.dt = real(g_.dt); k.feedback = o_.bmj_rad_feedback;
+    k.t = prep.t_phy.cview(); k.qv = s.q_2[s.P_QV].cview(); k.p = prep.p_hyd.cview(); k.p8w = prep.p_hyd_w.cview();
+    k.pi = prep.pi_phy.cview(); k.rho = prep.rho.cview(); k.dz8w = prep.dz8w.cview();
+    k.xland = xland.cview(); k.lowlyr = lowlyr.cview();
+    k.cldefi = cldefi.view(); k.raincv = raincv.view(); k.pratec = pratec.view(); k.convcld = convcld.view();
+    k.cutop = cutop.view(); k.cubot = cubot.view();
+    k.ccldfra = ccldfra.view(); k.qcconv = qcconv.view(); k.qiconv = qiconv.view();
+    k.rthcuten = pt.rthcuten.view(); k.rqvcuten = pt.rqvcuten.view();
+    column_for_work(g_.columns(), k);
     return;
   }
   if (o_.cu_physics == 6) {
@@ -657,7 +698,7 @@ void PhysicsSuite::advance_ppt(const dyn::State& s) {
                                        pt.rqicuten.view(), pt.rqscuten.view(), rainc.view(), rainsh.view(),
                                        pratec.view(), pratesh.view(), nca.view(), htop.view(), hbot.view(),
                                        cuppt.view(), cutop.cview(), cubot.cview(), real(g_.dt), g_.nz, g_.nz + 1,
-                                       s.P_QI >= 0, s.P_QS >= 0, o_.cu_physics == 1});
+                                       s.P_QI >= 0, s.P_QS >= 0, o_.cu_physics == 1, o_.cu_physics == 2});
 }
 
 }  // namespace cppwrf::phys::driver

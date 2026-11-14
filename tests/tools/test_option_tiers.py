@@ -59,9 +59,11 @@ def global_att(path, name):
 
 class Table(unittest.TestCase):
     def test_builtin_table(self):
-        # every option on main is verified: the shipped table has no row (a port adds its own)
+        # the shipped table parses; each row (a port merged before its whole-model proof) names a WRF option and its
+        # scheme and column driver, or why there is none
         with open(os.path.join(REPO, "data", "option_tiers.txt")) as f:
-            self.assertEqual(w2c.parse_option_tiers(f.read(), "data/option_tiers.txt"), [])
+            for row in w2c.parse_option_tiers(f.read(), "data/option_tiers.txt"):
+                self.assertTrue(row["wrf_key"] and row["note"], row)
 
     def test_parse_and_match(self):
         rows = w2c.parse_option_tiers("phys.mp_physics physics.mp_physics 4,20:23 column_verified WSM5 (x)\n"

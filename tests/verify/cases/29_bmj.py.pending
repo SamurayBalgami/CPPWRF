@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Betts-Miller-Janjic cumulus (cu_physics = 2, phys/module_cu_bmj.F): P9BMJ (P9: MYJ + Eta + Noah, as BMJ runs with
+MYJ in WRF), P9BMJ5 (cudt 5) and P4BMJ / P4BMJF (P4: WSM6, RRTMG, YSU; F: bmj_rad_feedback), each against its WRF
+v4.8.0 real*8 run (the wrfref workflow of the CI repository, run wrfref-c11-bmj: the inputs of run_P9_r8 / run_P4_r8).
+
+PENDING: rename to 29_bmj.py (and add port_c11_data.tar to tests/verify/vm_data.txt) once the references are staged
+as port_c11_data.tar in the data release; then the cases prove BMJ and bmj_rad_feedback and their rows in
+data/option_tiers.txt (and allow_unverified below) are removed.
+
+CASES: see tests/verify/cases/__init__.py."""
+from cases.common import WR  # noqa: F401
+
+_D = "2026-10-12_00:00:00"
+_T = {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0, "RAINC": 0.0}
+_1H = ["run.run_time=3600", "output.out_interval=10", "output.diag_interval=10"]
+_P4 = ["cppwrf.allow_unverified=true", "phys.cu_physics=2"]
+
+CASES = [
+    # P9BMJ = P9 with BMJ: 3 steps (history every step), 1 h, 1 h restarted at 30 min (wrfrst identical)
+    ("real_p9bmj_r8_fp64_cpu", "cpu_dp", "configs/real_p9bmj_r8.ini", [],
+     f"{WR}/run_P9BMJ_r8/steps/wrfout_d01_{_D}", 180, _T),
+    ("real_p9bmj_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p9bmj_r8.ini", ["real.dir=" + f"{WR}/run_P9BMJ_r8"] + _1H,
+     f"{WR}/run_P9BMJ_r8/wrfout_d01_{_D}", 3600, _T),
+    ("real_p9bmj_r8_fp64_cpu_1h_rst", "cpu_dp", "configs/real_p9bmj_r8.ini",
+     ["real.dir=" + f"{WR}/run_P9BMJ_r8"] + _1H + ["suite.restart_at=1800"],
+     f"{WR}/run_P9BMJ_r8/wrfout_d01_{_D}", 3600, _T),
+    # P9BMJ5 = P9BMJ with cudt = 5 (stepcu 5: DTCNVC = 300 s, the tendencies held between the calls)
+    ("real_p9bmj5_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p9bmj_r8.ini",
+     ["real.dir=" + f"{WR}/run_P9BMJ5_r8", "phys.cudt=5"] + _1H,
+     f"{WR}/run_P9BMJ5_r8/wrfout_d01_{_D}", 3600, _T),
+    # P4BMJ / P4BMJF = P4 with BMJ instead of KF, without / with bmj_rad_feedback (BMJ's clouds in RRTMG)
+    ("real_p4bmj_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p4_r8.ini", ["real.dir=" + f"{WR}/run_P4BMJ_r8"] + _P4 + _1H,
+     f"{WR}/run_P4BMJ_r8/wrfout_d01_{_D}", 3600, dict(_T, QCLOUD=0.0, QICE=0.0)),
+    ("real_p4bmjf_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p4_r8.ini",
+     ["real.dir=" + f"{WR}/run_P4BMJF_r8", "phys.bmj_rad_feedback=true"] + _P4 + _1H,
+     f"{WR}/run_P4BMJF_r8/wrfout_d01_{_D}", 3600, dict(_T, QCLOUD=0.0, QICE=0.0)),
+    # CUDA FP64 (tolerance 0 expected as the P9 / P4 cases; SKIP without a GPU) and FP32 (tolerances to be measured
+    # on Colab, about 3x the relative L2; the values below are P9's / P4's)
+    ("real_p9bmj_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p9bmj_r8.ini", ["real.dir=" + f"{WR}/run_P9BMJ_r8"] + _1H,
+     f"{WR}/run_P9BMJ_r8/wrfout_d01_{_D}", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    ("real_p4bmjf_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p4_r8.ini",
+     ["real.dir=" + f"{WR}/run_P4BMJF_r8", "phys.bmj_rad_feedback=true"] + _P4 + _1H,
+     f"{WR}/run_P4BMJF_r8/wrfout_d01_{_D}", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
+    ("real_p9bmj_fp32_1h", "cuda", "configs/real_p9bmj_r8.ini", ["real.dir=" + f"{WR}/run_P9BMJ_r8"] + _1H,
+     f"{WR}/run_P9BMJ_r8/wrfout_d01_{_D}", 3600, {"U": 6e-4, "W": 1e-2, "THM": 1e-5, "QV": 2e-3}),
+]
+
+STATUS = [
+    ('P9BMJ', 'P9 with the Betts-Miller-Janjic cumulus (cu_physics 2; restarted at 30 min; cudt 5)', '1 h'),
+    ('P4BMJ', 'P4 with BMJ instead of Kain-Fritsch, without and with bmj_rad_feedback', '1 h'),
+]
+
+DATA = {c[0]: 'port_c11_data.tar' for c in CASES}

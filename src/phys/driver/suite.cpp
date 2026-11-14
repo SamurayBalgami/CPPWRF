@@ -13,6 +13,7 @@
 #include "phys/bl_myj/myjpbl.hpp"
 #include "phys/bl_mynn/mynnedmf.hpp"
 #include "phys/bl_ysu/ysu.hpp"
+#include "phys/cu_bmj/bmj_tables.hpp"
 #include "phys/cu_gfl/gfl.hpp"
 #include "phys/cu_ntiedtke/ntiedtke.hpp"
 #include "phys/cu_tiedtke/tiedtke.hpp"
@@ -353,8 +354,12 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
     throw std::runtime_error("PhysicsSuite: sf_mynn_sfcflux_land 0..3 and sf_mynn_sfcflux_water 0..4 are ported");
   if (o.sf_sfclay_physics == 5 && o.fractional_seaice == 1)
     throw std::runtime_error("PhysicsSuite: sf_sfclay_physics=5 with fractional_seaice=1 (MYNN_SEAICE_WRAPPER) is not ported");
-  if (o.cu_physics != 0 && o.cu_physics != 1 && o.cu_physics != 3 && o.cu_physics != 6 && o.cu_physics != 16)
-    throw std::runtime_error("PhysicsSuite: only cu_physics=0, 1 (Kain-Fritsch), 3 (Grell-Freitas-Li), 6 (Tiedtke) or 16 (New Tiedtke)");
+  if (o.cu_physics != 0 && o.cu_physics != 1 && o.cu_physics != 2 && o.cu_physics != 3 && o.cu_physics != 6 &&
+      o.cu_physics != 16)
+    throw std::runtime_error("PhysicsSuite: only cu_physics=0, 1 (Kain-Fritsch), 2 (Betts-Miller-Janjic), "
+                             "3 (Grell-Freitas-Li), 6 (Tiedtke) or 16 (New Tiedtke)");
+  if (o.cu_physics == 2 && g.nz > cu_bmj::kMaxLevels)
+    throw std::runtime_error("PhysicsSuite: nz exceeds the Betts-Miller-Janjic column limit");
   if (o.cu_physics == 3 && g.nz > cu_gfl::kMaxLevels)
     throw std::runtime_error("PhysicsSuite: nz exceeds the Grell-Freitas-Li column limit");
   // ishallow: WRF's GF runs the shallow plume for ishallow == 1 only, any other value is off.
@@ -584,6 +589,18 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   // the cumulus scheme's column arrays in the GPU's work buffer
   column_work_reserve(g.columns(), suite_detail::cumulus_work_bytes(o.cu_physics, g.nz));
   if (o.gwd_opt == 1) column_work_reserve(g.columns(), suite_detail::gwdo_work_bytes());
+  if (o.cu_physics == 2) {  // bmjinit (module_cu_bmj.F:1813-2077): the tables, CLDEFI = AVGEFI, LOWLYR = 1
+    using namespace wrfc;
+    auto h_bmj = std::make_unique<cu_bmj::BmjTables<real>>();
+    cu_bmj::init_bmj_tables<real>(*h_bmj, cp, r_d);
+    d_bmj_tables_ = static_cast<cu_bmj::BmjTables<real>*>(dev_alloc(sizeof(*h_bmj)));
+    copy_to_dev(d_bmj_tables_, h_bmj.get(), sizeof(*h_bmj));
+    cldefi = Field2(g, Stagger::M, "cldefi");
+    convcld = Field2(g, Stagger::M, "convcld");
+    mk3(ccldfra, g, "ccldfra"); mk3(qcconv, g, "qcconv"); mk3(qiconv, g, "qiconv");
+    cldefi.fill_host([](int, int, int) { return double(cu_bmj::BmjC<real>::AVGEFI); });
+    lowlyr.upload(std::vector<int>(lowlyr.layout().total, 1));
+  }
   if (o.cu_physics == 1) {
     cu_kf::kf_reserve<real>(g.columns(), g.nz);  // CUDA FP64: its column arrays in the work buffer
     using namespace wrfc;
@@ -743,6 +760,7 @@ PhysicsSuite::~PhysicsSuite() {
   if (d_noahmp_tables_) dev_free(d_noahmp_tables_);
   if (d_sfclay_tables_) dev_free(d_sfclay_tables_);
   if (d_kf_tables_) dev_free(d_kf_tables_);
+  if (d_bmj_tables_) dev_free(d_bmj_tables_);
   if (d_mynn_psi_) dev_free(d_mynn_psi_);
 }
 
@@ -800,6 +818,8 @@ std::vector<std::pair<std::string, Field2*>> PhysicsSuite::carried2() {
   for (Field2* f : clwrf_) v.emplace_back("sfc_" + f->name(), f);  // output_diagnostics (Registry rh3)
   if (o_.fdda.grid_fdda == 1)  // fdda2d members (Registry i{10}r)
     for (Field2* f : {&mu_ndg_old, &mu_ndg_new}) v.emplace_back("sfc_" + f->name(), f);
+  if (o_.cu_physics == 2)  // package bmjscheme and CLDEFI (Registry r)
+    for (Field2* f : {&cldefi, &convcld}) v.emplace_back("sfc_" + f->name(), f);
   if (o_.sf_surface_physics == 4) {
     for (Field2* f : {&xlat_sfc, &xlong_sfc, &tvxy, &tgxy, &canicexy, &canliqxy, &eahxy, &tahxy, &cmxy, &chxy,
                       &fwetxy, &sneqvoxy, &alboldxy, &qsnowxy, &qrainxy, &wslakexy, &zwtxy, &waxy, &wtxy, &lfmassxy,
@@ -854,6 +874,8 @@ std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
     v.emplace_back("sfc_rqvften", &pt.rqvften);
   }
   if (o_.cu_physics == 6) v.emplace_back("sfc_rqvften", &pt.rqvften);  // read by the next step's cu_tiedtke
+  if (o_.cu_physics == 2)  // package bmjscheme (Registry r)
+    for (Field3* f : {&ccldfra, &qcconv, &qiconv}) v.emplace_back("sfc_" + f->name(), f);
   if (o_.fdda.grid_fdda == 1)  // package psufddagd: the analyses (i{10}r), the tendencies (r) and HFX_FDDA (rh)
     for (Field3* f : {&u_ndg_old, &v_ndg_old, &t_ndg_old, &q_ndg_old, &ph_ndg_old, &u_ndg_new, &v_ndg_new, &t_ndg_new,
                       &q_ndg_new, &ph_ndg_new, &hfx_fdda, &pt.rundgdten, &pt.rvndgdten, &pt.rthndgdten, &pt.rqvndgdten})
@@ -914,6 +936,11 @@ void PhysicsSuite::part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies
       ri.qi_cu = &qi_cu;
       ri.cldfra_dp = &cldfra_dp;
       ri.cldfra_sh = &cldfra_sh;
+    }
+    if (o_.rad.bmj_feedback) {  // bmj_rad_feedback with BMJ
+      ri.qcconv = &qcconv;
+      ri.qiconv = &qiconv;
+      ri.ccldfra = &ccldfra;
     }
     RadiationOutputs ro{&pt.rthraten, &glw, &gsw, &swdown, &coszen, &cldfra, &rthratenlw, &rthratensw,
                         &rthratenlwc, &rthratenswc, &o3rad, &lwcf, &swcf, &hrang,
@@ -1070,6 +1097,7 @@ std::vector<const Field2*> PhysicsSuite::fields2() const {
   v.insert(v.end(), clwrf_.begin(), clwrf_.end());
   if (o_.sf_surface_physics == 1) v.push_back(&capg);  // THC: phy_init's landuse_init value (WrfHistory)
   if (o_.fdda.grid_fdda == 1) v.insert(v.end(), {&mu_ndg_old, &mu_ndg_new});
+  if (o_.cu_physics == 2) v.insert(v.end(), {&cldefi, &convcld});
   return v;
 }
 
@@ -1088,6 +1116,7 @@ std::vector<const Field3*> PhysicsSuite::fields3() const {
   if (o_.fdda.grid_fdda == 1)
     v.insert(v.end(), {&u_ndg_old, &v_ndg_old, &t_ndg_old, &q_ndg_old, &ph_ndg_old, &u_ndg_new, &v_ndg_new, &t_ndg_new,
                        &q_ndg_new, &ph_ndg_new, &hfx_fdda, &pt.rundgdten, &pt.rvndgdten, &pt.rthndgdten, &pt.rqvndgdten});
+  if (o_.cu_physics == 2) v.insert(v.end(), {&ccldfra, &qcconv, &qiconv});
   return v;
 }
 

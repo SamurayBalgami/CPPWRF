@@ -133,7 +133,7 @@ Each option accepts these values; any other value stops `cppwrf-wrf` (and the tr
 | `sf_sfclay_physics` | 0: None / off; 1: Revised MM5 surface layer (sfclayrev); 2: Eta similarity surface layer (MYJ); 5: MYNN surface layer; 7: Pleim-Xiu surface layer (with the ACM2 PBL and Noah) |
 | `sf_surface_physics` | 0: None / off; 1: 5-layer thermal diffusion land surface (slab); 2: Unified Noah land surface model (4 soil layers); 4: Noah-MP land surface model (v5.1.2, 4 soil layers) |
 | `bl_pbl_physics` | 0: None / off; 1: YSU (Yonsei University) planetary boundary layer; 2: MYJ (Mellor-Yamada-Janjic) planetary boundary layer; 5: MYNN-EDMF planetary boundary layer; 7: ACM2 (Asymmetric Convective Model 2) planetary boundary layer |
-| `cu_physics` | 0: None / off; 1: Kain-Fritsch cumulus parameterization; 3: Grell-Freitas cumulus parameterization; 6: Tiedtke cumulus parameterization; 16: New Tiedtke cumulus parameterization |
+| `cu_physics` | 0: None / off; 1: Kain-Fritsch cumulus parameterization; 2: Betts-Miller-Janjic cumulus parameterization; 3: Grell-Freitas cumulus parameterization; 6: Tiedtke cumulus parameterization; 16: New Tiedtke cumulus parameterization |
 | `ra_lw_physics` | 0: None / off; 1: RRTM longwave radiation; 4: RRTMG longwave radiation |
 | `ra_sw_physics` | 0: None / off; 1: Dudhia shortwave radiation; 4: RRTMG shortwave radiation |
 | `diff_opt` | 0: None / off; 1: Cartesian or coordinate-surface diffusion; 2: Physical-space (full metric) diffusion |
@@ -142,7 +142,7 @@ Each option accepts these values; any other value stops `cppwrf-wrf` (and the tr
 | `h_mom_adv_order`, `h_sca_adv_order` | 5: 5th-order upwind; 6: 6th-order centered |
 | `v_mom_adv_order`, `v_sca_adv_order` | 3: 3rd-order upwind; 4: 4th-order centered |
 
-Options a nest may set differently from its parent: `bldt`, `cu_physics`, `cu_rad_feedback`, `cudt`, `prec_acc_dt`, `radt`.
+Options a nest may set differently from its parent: `bldt`, `bmj_rad_feedback`, `cu_physics`, `cu_rad_feedback`, `cudt`, `prec_acc_dt`, `radt`.
 
 ### physics_suite
 

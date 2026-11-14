@@ -43,8 +43,8 @@ int main() {
   CHECK(rows[0].tier == Tier::column_verified && rows[0].note == "WSM5 (tests/phys/mp_wsm5)");
   CHECK(rows[2].wrf_key.empty() && rows[2].tier == Tier::unverified);
 
-  // the built-in table parses and has no row yet: every option on main is verified
-  CHECK(option_tiers().empty() || std::getenv("CPPWRF_OPTION_TIERS_EXTRA"));
+  // the built-in table parses; each of its rows names its scheme and its column driver or the reason for none
+  for (const TierRow& r : option_tiers()) CHECK(!r.config_key.empty() && !r.note.empty());
 
   // malformed rows
   CHECK(error_of([] { parse_option_tiers("phys.mp_physics physics.mp_physics 4", "t"); }).find("t:1") == 0);
