@@ -1873,6 +1873,11 @@ class WrfTranslator:
                 if (ra_lw == 0) != (ra_sw == 0):
                     self.error(f"WRF ra_lw_physics = {ra_lw} with ra_sw_physics = {ra_sw}: wrf.exe stops (a longwave "
                                f"scheme needs a shortwave scheme and the reverse).")
+                elif ra_lw == 3 or ra_sw == 3:
+                    # module_ra_cam.F (camrad: radclwmx / radcswmx, CAM_ABS_DATA, CAM_AEROPT_DATA) is not ported
+                    self.error(f"WRF CAM radiation (ra_lw_physics = 3 / ra_sw_physics = 3) is not ported to CPPWRF "
+                               f"(got ra_lw_physics = {ra_lw}, ra_sw_physics = {ra_sw}); use ra_lw_physics = 4 or 1 "
+                               f"with ra_sw_physics = 4 or 1.")
                 elif ra_lw != 0 and (ra_lw not in (1, 4) or ra_sw not in (1, 4)):
                     self.error(f"CPPWRF supports ra_lw_physics = 4 (RRTMG) or 1 (RRTM) with ra_sw_physics = 4 (RRTMG) "
                                f"or 1 (Dudhia) (got ra_lw_physics = {ra_lw}, ra_sw_physics = {ra_sw}).")

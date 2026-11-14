@@ -1053,6 +1053,9 @@ class TestValidationAndWarnings(unittest.TestCase):
             ("&physics ra_lw_physics = 1, ra_sw_physics = 0 /", "a longwave scheme needs a shortwave scheme"),
             ("&physics ra_lw_physics = 1, ra_sw_physics = 2 /", "ra_sw_physics = 2 is not supported"),
             ("&physics ra_lw_physics = 3, ra_sw_physics = 4 /", "ra_lw_physics = 3 is not supported"),
+            ("&physics ra_lw_physics = 3, ra_sw_physics = 3 /", "CAM radiation (ra_lw_physics = 3 / ra_sw_physics = 3) "
+             "is not ported"),
+            ("&physics ra_lw_physics = 4, ra_sw_physics = 3 /", "CAM radiation"),
             ("&physics ra_lw_physics = 4, ra_sw_physics = 2 /", "ra_sw_physics = 2 is not supported"),
             ("&physics ra_lw_physics = 4, ra_sw_physics = 1, cu_physics = 3, cu_rad_feedback = .true. /",
              "cu_rad_feedback with Grell-Freitas cumulus and the Dudhia shortwave"),
