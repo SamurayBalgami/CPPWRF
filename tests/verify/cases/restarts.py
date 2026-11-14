@@ -12,7 +12,7 @@ RESTARTS = (("p1", "configs/real_p1_r8.ini", "run_P1_r8"), ("a01", "configs/real
             ("t1", "configs/real_t1.ini", "run_R1_r8"),
             ("a05", "configs/real_a05_r8.ini", "run_A05_r8"), ("a05g", "configs/real_a05g_r8.ini", "run_A05G_r8"),
             ("slab1", "configs/real_slab1_r8.ini", "run_SLAB1_r8"), ("acm7", "configs/real_acm7_r8.ini", "run_ACM7_r8"),
-            ("morr", "configs/real_morr_r8.ini", "run_MORR_r8"))
+            ("morr", "configs/real_morr_r8.ini", "run_MORR_r8"), ("p3mp", "configs/real_p3mp_r8.ini", "run_P3MP_r8"))
 
 # the data tars (tests/verify/vm_data.txt) each case reads, in that file's order (tests/verify/case_data.py
 # derives them from the tars' file lists; tools/colab/colab_suite.sh --cases fetches only these)
@@ -37,6 +37,7 @@ DATA = {
     'restart_slab1_fp64': 'port_c22_data.tar',
     'restart_acm7_fp64': 'port_c16_data.tar',
     'restart_morr_fp64': 'port_c04_data.tar',
+    'restart_p3mp_fp64': 'port_c09_data.tar',
     'restart_p1_fp64_cuda': 'suite_data.tar,v05_files_links.tar',
     'restart_a01_fp64_cuda': 'suite_data.tar,v05_files_links.tar',
     'restart_p7_fp64_cuda': 'suite_data.tar,v05_files_links.tar',
@@ -54,4 +55,5 @@ DATA = {
     'restart_slab1_fp64_cuda': 'port_c22_data.tar',
     'restart_acm7_fp64_cuda': 'port_c16_data.tar',
     'restart_morr_fp64_cuda': 'port_c04_data.tar',
+    'restart_p3mp_fp64_cuda': 'port_c09_data.tar',
 }

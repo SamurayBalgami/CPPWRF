@@ -39,6 +39,8 @@ port_a11r_data.tar
 # their inputs (tests/verify/cases/67_clock.py; the P4D16 CPU case is slow)
 port_af1_data.tar
 port_af2_data.tar
+# the P3 references (P3MP, P3NC: mp_physics 50 / 51 on P4, tests/verify/cases/31_p3.py), with P3's lookup table
+port_c09_data.tar
 # run_P3_r8's inputs and 1 h reference (the 60 min frame, every variable) for real_p3_r8_fp64_cuda_1h (the CPU case
 # reads run_P3_r8/steps)
 port_g01_data.tar
@@ -63,4 +65,6 @@ v05_files_links.tar
 diff_data.tar
 # CCN_ACTIVATE.BIN of the two WRF builds (the mp_physics = 28 column test), until diff_data.tar is restaged
 port_c01_diff.tar
+# P3's p3_lookupTable_1.dat-v5.4_2momI in the -r8 -fdefault-double-8 build's run/ (the mp_physics = 50 / 51 column test)
+port_c09_diff.tar
 # not here: the slow cases' data (gcp_run.sh --slow --data ...,long_data.tar,long72_data.tar,long72n3_data.tar)

@@ -50,6 +50,7 @@ SKIP = ["wrfout*", "wrfrst*", "rsl.*", "met_em*", "*.exe", "*.log", "namelist.ou
         "tr*", "co2_trans", "grib*", "bulk*", "capacity.asc", "coeff_*", "constants.asc", "masses.asc",
         "termvels.asc", "*.nc"]
 THOMPSON = ["freezeH2O.dat", "qr_acr_qg_V4.dat", "qr_acr_qsV2.dat"]
+P3 = "p3_lookupTable_1.dat-v5.4_2momI"  # p3_init's table of mp_physics 50 / 51 (the other P3 tables: SKIP)
 COMPARED = ["Times", "XTIME", "U", "V", "W", "PH", "PHB", "MU", "MUB", "P", "PB", "QVAPOR", "QCLOUD", "QRAIN", "QICE",
             "QSNOW", "QGRAUP", "QNICE", "QNRAIN", "TKE", "RAINNC", "THM", "REFL_10CM"]
 
@@ -119,6 +120,7 @@ def main():
     log = (lambda *x: print(*x, file=sys.stderr)) if a.out == "-" else print  # stdout may be the tar
     want = [o for o in a.only.split(",") if o]
     dirs = {}  # run directory -> history files to keep, Thompson tables needed
+    p3dirs = set()  # run directories of P3 cases (its lookup table)
     ref_times = {}  # reference wrfout -> compared times
     exact = set()  # reference wrfout files of tolerance-0 cases
     restarts = set()  # WRF's wrfrst files at the restart of restarted cases
@@ -165,12 +167,16 @@ def main():
                 restarts.update(glob.glob(os.path.join(os.path.dirname(r), f"auxhist3_{dom}_*")))
         d = dirs.setdefault(rd, [set(), False]) if not a.refs_only else [set(), False]
         d[1] = d[1] or (mp.strip() in ("8", "28") and not a.no_thompson_tables)
+        if mp.strip() in ("50", "51") and not a.refs_only:
+            p3dirs.add(rd)
         log(f"{name}: {os.path.relpath(rd, WR)}")
     for tag, cfg, _ in wrf_suite.RESTARTS:  # restart_<tag>_*: the input directory of the configuration
         if not a.refs_only and any(o in n for n in wrf_suite.SPECIAL if n.startswith(f"restart_{tag}_") for o in want):
             rd = config_value(cfg, "real", "dir").replace("${CPPWRF_WRF_RUNS}", WR)
             d = dirs.setdefault(rd, [set(), False])
             d[1] = d[1] or ((config_value(cfg, "phys", "mp_physics") or "0").strip() in ("8", "28") and not a.no_thompson_tables)
+            if (config_value(cfg, "phys", "mp_physics") or "0").strip() in ("50", "51"):
+                p3dirs.add(rd)
             log(f"restart_{tag}: {os.path.relpath(rd, WR)}")
     skel, whole = {}, {}  # files test references: skeletons, whole files (path in the tar -> file)
     fcases = files_cases()
@@ -180,6 +186,8 @@ def main():
         rd = m.group(1) if m else config_value(cfg, "real", "dir").replace("${CPPWRF_WRF_RUNS}", WR)
         d = dirs.setdefault(rd, [set(), False])
         d[1] = d[1] or ((config_value(cfg, "phys", "mp_physics") or "0").strip() in ("8", "28") and not a.no_thompson_tables)
+        if (config_value(cfg, "phys", "mp_physics") or "0").strip() in ("50", "51"):
+            p3dirs.add(rd)
         rsm = rst.replace("/rst_", "/rsm_") if rst else None
         for x in (ref, rst, rsm):
             if not x or not os.path.isdir(x):
@@ -216,7 +224,8 @@ def main():
                         q = os.path.join(tmp, f)
                         trimmed(p, ref_times[p], q, p in exact)
                         tf.add(q, arcname=arc)
-                elif p in restarts or f in THOMPSON or not any(fnmatch.fnmatch(f, s) for s in SKIP):
+                elif p in restarts or f in THOMPSON or (f == P3 and d in p3dirs) or \
+                        not any(fnmatch.fnmatch(f, s) for s in SKIP):
                     tf.add(p, arcname=arc, recursive=False)
                 else:
                     added.discard(arc)
