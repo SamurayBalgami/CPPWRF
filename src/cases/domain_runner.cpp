@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "cases/domain_runner.hpp"
+#include "core/tiles.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -177,7 +178,7 @@ void read_wrfrst(const std::string& path, io_netcdf::RestartMeta& meta, std::vec
   if (!missing.empty()) {
     std::string m;
     for (const std::string& x : missing) m += " " + x;
-    std::fprintf(stderr, "cppwrf: %s: not in the restart stream, start from 0:%s\n", path.c_str(), m.c_str());
+    if (tile::writer()) std::fprintf(stderr, "cppwrf: %s: not in the restart stream, start from 0:%s\n", path.c_str(), m.c_str());
   }
 }
 #endif
@@ -260,6 +261,9 @@ DomainRunner::~DomainRunner() = default;
 
 #ifdef CPPWRF_HAVE_NETCDF
 void DomainRunner::save_restart_file(const std::string& path, long step, double time_sec) {
+  // a decomposed run: the writer's code with the whole fields (tile::Service)
+  const tile::Service svc;
+  if (svc.served()) return;
   const Grid& g = m_.g;
   dyn::State& st = *m_.st;
   dyn::RK3* rk = m_.rk.get();
@@ -281,16 +285,14 @@ void DomainRunner::save_restart_file(const std::string& path, long step, double 
 
   auto add_field3 = [&](const std::string& name, const Field3& f) {
     bufs.emplace_back();
-    f.download(bufs.back());
-    const Layout& L = f.layout();
+    const Layout L = tile::download_any(f, bufs.back());
     char stag = f.stagger() == Stagger::U ? 'U' : (f.stagger() == Stagger::V ? 'V' : (f.stagger() == Stagger::W ? 'W' : 'M'));
     vars.emplace_back(name, stag, L.nx, L.ny, L.nz, bufs.back().data() + L.offset, dt, L.sj, L.sk);
   };
 
   auto add_field2 = [&](const std::string& name, const Field2& f) {
     bufs.emplace_back();
-    f.download(bufs.back());
-    const Layout& L = f.layout();
+    const Layout L = tile::download_any(f, bufs.back());
     vars.emplace_back(name, 'M', L.nx, L.ny, 1, bufs.back().data() + L.offset, dt, L.sj, 0);
   };
 
@@ -331,9 +333,8 @@ void DomainRunner::save_restart_file(const std::string& path, long step, double 
     for (auto& [name, f] : m_.suite->carried3()) add_field3(name, *f);
     for (auto& [name, f] : m_.suite->carried_int()) {  // integers stored as reals (exact)
       std::vector<int> hi;
-      f->download(hi);
+      const Layout L = tile::download_any(*f, hi);
       bufs.emplace_back(hi.begin(), hi.end());
-      const Layout& L = f->layout();
       vars.emplace_back(name, 'M', L.nx, L.ny, 1, bufs.back().data() + L.offset, dt, L.sj, 0);
     }
   }
@@ -359,8 +360,7 @@ void DomainRunner::load_restart_file(const std::string& path) {
   auto reg_field3 = [&](const std::string& name, Field3& f) {
     size_t idx = bufs.size();
     bufs.emplace_back();
-    f.download(bufs.back());
-    const Layout& L = f.layout();
+    const Layout L = tile::local_whole(f, bufs.back());
     char stag = f.stagger() == Stagger::U ? 'U' : (f.stagger() == Stagger::V ? 'V' : (f.stagger() == Stagger::W ? 'W' : 'M'));
     vars.emplace_back(name, stag, L.nx, L.ny, L.nz, bufs.back().data() + L.offset, dt, L.sj, L.sk);
     targets3.push_back({name, &f, idx});
@@ -369,8 +369,7 @@ void DomainRunner::load_restart_file(const std::string& path) {
   auto reg_field2 = [&](const std::string& name, Field2& f) {
     size_t idx = bufs.size();
     bufs.emplace_back();
-    f.download(bufs.back());
-    const Layout& L = f.layout();
+    const Layout L = tile::local_whole(f, bufs.back());
     vars.emplace_back(name, 'M', L.nx, L.ny, 1, bufs.back().data() + L.offset, dt, L.sj, 0);
     targets2.push_back({name, &f, idx});
   };
@@ -395,10 +394,9 @@ void DomainRunner::load_restart_file(const std::string& path) {
     dyn::BaseState& b = *m_.base;
     auto reg_base = [&](const std::string& name, auto& f, char stag) {
       if (f.uniform()) return;
-      const Layout& L = f.layout();
       size_t idx = bufs.size();
       bufs.emplace_back();
-      f.download(bufs.back());
+      const Layout L = tile::local_whole(f, bufs.back());
       vars.emplace_back(name, stag, L.nx, L.ny, L.nz, bufs.back().data() + L.offset, dt, L.sj, L.sk);
       if constexpr (std::is_same_v<std::decay_t<decltype(f)>, BaseFieldT<3>>) targets_b.push_back({&f, nullptr, idx});
       else targets_b.push_back({nullptr, &f, idx});
@@ -443,10 +441,9 @@ void DomainRunner::load_restart_file(const std::string& path) {
     for (auto& [name, f] : m_.suite->carried3()) reg_field3(name, *f);
     for (auto& [name, f] : m_.suite->carried_int()) {
       std::vector<int> hi;
-      f->download(hi);
+      const Layout L = tile::local_whole(*f, hi);
       size_t idx = bufs.size();
       bufs.emplace_back(hi.begin(), hi.end());
-      const Layout& L = f->layout();
       vars.emplace_back(name, 'M', L.nx, L.ny, 1, bufs.back().data() + L.offset, dt, L.sj, 0);
       targets_i.push_back({f, idx});
     }
@@ -560,22 +557,27 @@ void DomainRunner::load_restart_file(const std::string& path) {
     }
   }
 
+  // a decomposed run: every worker read the file (whole fields) and keeps the points it holds
+  auto put = [&](auto& f, std::vector<real>& whole) {
+    const std::vector<real> h = tile::local_part(f, whole);
+    copy_to_dev(f.data() - f.layout().offset, h.data(), f.layout().total * sizeof(real));
+  };
   for (const auto& t : targets3) {
-    copy_to_dev(t.f->data() - t.f->layout().offset, bufs[t.buf_idx].data(), t.f->bytes());
+    put(*t.f, bufs[t.buf_idx]);
     fill_halo(*t.f, g);
   }
   for (const auto& t : targets2) {
-    copy_to_dev(t.f->data() - t.f->layout().offset, bufs[t.buf_idx].data(), t.f->bytes());
+    put(*t.f, bufs[t.buf_idx]);
     fill_halo(*t.f, g);
   }
   for (const auto& t : targets_b) {
-    if (t.f3) copy_to_dev(t.f3->data() - t.f3->layout().offset, bufs[t.buf_idx].data(), t.f3->layout().total * sizeof(real));
-    else copy_to_dev(t.f2->data() - t.f2->layout().offset, bufs[t.buf_idx].data(), t.f2->layout().total * sizeof(real));
+    if (t.f3) put(*t.f3, bufs[t.buf_idx]);
+    else put(*t.f2, bufs[t.buf_idx]);
   }
   for (const auto& t : targets_i) {
-    std::vector<int> hi(bufs[t.buf_idx].size());
-    for (size_t k = 0; k < hi.size(); ++k) hi[k] = int(std::lround(bufs[t.buf_idx][k]));
-    t.f->upload(hi);
+    std::vector<int> hw(bufs[t.buf_idx].size());
+    for (size_t k = 0; k < hw.size(); ++k) hw[k] = int(std::lround(bufs[t.buf_idx][k]));
+    t.f->upload(tile::local_part(*t.f, hw));
   }
   if (m_.suite) m_.suite->restarted(start_step);
 }
@@ -797,7 +799,9 @@ bool DomainRunner::start() {
       wrfout_->set_auxinput10_alarm(double(m_.suite->options().fdda.interval_m) * 60.0, aux10_first_s_, aux10_stop_s_);
   }
 
-  std::filesystem::create_directories(out_dir_);
+  // a decomposed run: the writer (core/tiles.hpp) makes the files; every worker takes part in the gathers
+  const bool wr = tile::writer();
+  if (wr) std::filesystem::create_directories(out_dir_);
 
   // run.json
   {
@@ -841,7 +845,7 @@ bool DomainRunner::start() {
     if (pos != std::string::npos) {
       js.replace(pos, token.size(), "\"config\":" + cj);
     }
-    io::write_text_file_atomic(out_dir_ + "/run.json", js + "\n");
+    if (wr) io::write_text_file_atomic(out_dir_ + "/run.json", js + "\n");
   }
 
   // Preserve pre-restart rows in diag.csv verbatim (M7)
@@ -865,14 +869,15 @@ bool DomainRunner::start() {
     }
   }
 
-  diag_ = std::make_unique<io::DiagWriter>(out_dir_ + "/diag.csv",
+  if (wr)
+    diag_ = std::make_unique<io::DiagWriter>(out_dir_ + "/diag.csv",
                                            std::vector<std::string>{"step", "time", "max_abs_u", "max_abs_v", "max_abs_w", "min_th_pert", "max_th_pert",
                                                                     "dry_mass", "theta_mass", "total_energy", "wall_s"});
   for (const auto& line : pre_diag_lines) {
-    diag_->raw_line(line);
+    if (diag_) diag_->raw_line(line);
   }
 
-  snap_ = std::make_unique<io::SnapshotWriter>(out_dir_);
+  if (wr) snap_ = std::make_unique<io::SnapshotWriter>(out_dir_);
   dg_ = std::make_unique<dyn::Diagnostics>(g, cfg_.get_int("dyn.use_theta_m", 1) == 1);
 
   prepare_output();
@@ -880,7 +885,8 @@ bool DomainRunner::start() {
   t0_ = std::chrono::steady_clock::now();
   step_time = 0.0;
 
-  std::printf("cppwrf: case=%s grid=%dx%dx%d dx=%g dt=%g n_sound=%d steps=%ld backend=%s precision=%s\n",
+  if (wr)
+    std::printf("cppwrf: case=%s grid=%dx%dx%d dx=%g dt=%g n_sound=%d steps=%ld backend=%s precision=%s\n",
               cname_.c_str(), g.nx, g.ny, g.nz, g.dx, g.dt, m_.n_sound, m_.nsteps, backend_name(), precision_name);
 
   if (!do_diag(start_step)) return false;
@@ -892,6 +898,7 @@ bool DomainRunner::start() {
 
 // WRF's end_timing: "Timing for <what>: <F10.5> elapsed seconds"
 void DomainRunner::wrf_timing_line(const std::string& what, std::chrono::steady_clock::time_point since) const {
+  if (!tile::writer()) return;
   const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - since).count();
   std::printf("Timing for %s: %10.5f elapsed seconds\n", what.c_str(), s);
   std::fflush(stdout);
@@ -1061,6 +1068,7 @@ bool DomainRunner::after_step(long n) {
 }
 
 void DomainRunner::finish() {
+  if (!tile::writer()) return;
   if (m_.nsteps > start_step) {
     double cells = double(m_.g.nx) * m_.g.ny * m_.g.nz;
     long taken = m_.nsteps - start_step;
@@ -1077,8 +1085,9 @@ std::string DomainRunner::first_nonfinite() const {
   const dyn::State& st = *m_.st;
   std::vector<real> h;
   auto scan = [&](const std::string& name, const auto& f) -> std::string {
-    f.download(h);
-    const Layout& L = f.layout();
+    Layout L;
+    tile::download(f, h, L);  // a decomposed run: the whole field on the writer
+    if (!tile::writer()) return "";
     for (int k = 0; k < std::max(L.nz, 1); ++k)
       for (int j = 0; j < L.ny; ++j)
         for (int i = 0; i < L.nx; ++i)
@@ -1090,21 +1099,26 @@ std::string DomainRunner::first_nonfinite() const {
           }
     return "";
   };
+  // every field is gathered (a collective of a decomposed run); the first message is kept
   std::string w;
+  auto keep = [&](std::string m) {
+    if (w.empty()) w = std::move(m);
+  };
   const std::pair<const char*, const Field3*> f3[] = {
       {"u", &st.u_2}, {"v", &st.v_2}, {"w", &st.w_2}, {"t (theta perturbation)", &st.t_2},
       {"ph (geopotential perturbation)", &st.ph_2}, {"p (pressure perturbation)", &st.p}, {"al", &st.al}};
-  for (const auto& [name, f] : f3)
-    if (!(w = scan(name, *f)).empty()) return w;
-  if (!(w = scan("mu (dry air mass perturbation)", st.mu_2)).empty()) return w;
-  for (int n = 0; n < st.n_scalars(); ++n)
-    if (!(w = scan(st.q_names[n], st.q_2[n])).empty()) return w;
+  for (const auto& [name, f] : f3) keep(scan(name, *f));
+  keep(scan("mu (dry air mass perturbation)", st.mu_2));
+  for (int n = 0; n < st.n_scalars(); ++n) keep(scan(st.q_names[n], st.q_2[n]));
+  if (!w.empty()) return w;
   return "none in the prognostic fields";
 }
 
 bool DomainRunner::nonfinite(long n, const dyn::DiagRow& r) {
-  std::fprintf(stderr, "ERROR: non-finite values at step %ld (t=%g s): max|u|=%g max|w|=%g th'=[%g,%g]; first: %s\n", n,
-               time_s(n), r.max_abs_u, r.max_abs_w, r.min_th_pert, r.max_th_pert, first_nonfinite().c_str());
+  const std::string first = first_nonfinite();
+  if (tile::writer())
+    std::fprintf(stderr, "ERROR: non-finite values at step %ld (t=%g s): max|u|=%g max|w|=%g th'=[%g,%g]; first: %s\n", n,
+                 time_s(n), r.max_abs_u, r.max_abs_w, r.min_th_pert, r.max_th_pert, first.c_str());
   // run.stop_on_nonfinite = false: go on as WRF does (its output then has the same NaN / Inf to compare)
   return stop_on_nonfinite_;
 }
@@ -1113,7 +1127,8 @@ bool DomainRunner::do_diag(long n) {
   dyn::DiagRow r = dg_->compute(*m_.st, *m_.base);
   double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0_).count();
   if (!r.finite() && nonfinite(n, r)) return false;
-  diag_->row({double(n), time_s(n), r.max_abs_u, r.max_abs_v, r.max_abs_w, r.min_th_pert, r.max_th_pert,
+  if (diag_)
+    diag_->row({double(n), time_s(n), r.max_abs_u, r.max_abs_v, r.max_abs_w, r.min_th_pert, r.max_th_pert,
               r.dry_mass, r.theta_mass, r.total_energy, wall});
   return true;
 }
@@ -1125,7 +1140,7 @@ void DomainRunner::do_snap(long n) {
 
   if (write_native_ && (n % out_iv_ == 0 || n == m_.nsteps)) {
     auto vars = dyn::snapshot_vars(st, base, g, store_, extra_2d_, extra_3d_);
-    snap_->write(n, time_s(n), vars);
+    if (snap_) snap_->write(n, time_s(n), vars);
   }
 
 #ifdef CPPWRF_HAVE_NETCDF

@@ -47,7 +47,9 @@ struct KDiffMetricsZX {
   View3<real> zx;
   real rdx;
   int nx;
-  bool periodic_x;
+  // 0: not periodic; 1: periodic, the points across the boundary by their own indices; 2: by the halo (a
+  // decomposed run with several patches along the direction: the halo holds the same values)
+  int periodic_x;
   bool open_copy;  // specified / open / nested boundaries: set_physical_bc3d copies the last column
   int ktop_unset;   // periodic: top w level left 0 on the boundary faces (-1: none)
   static constexpr real Gr = real(cst::g);
@@ -63,8 +65,8 @@ struct KDiffMetricsZX {
       v += rdx * (ph(ii, j, k) - ph(ii - 1, j, k)) / Gr;
       zx(i, j, k) = v;
     } else {
-      int i0 = (i == nx) ? 0 : i;
-      int im1 = (i == 0) ? nx - 1 : (i - 1);
+      int i0 = (i == nx && periodic_x != 2) ? 0 : i;
+      int im1 = (i == 0 && periodic_x != 2) ? nx - 1 : (i - 1);
       real v = rdx * (phb(i0, j, k) - phb(im1, j, k)) / Gr;
       v += rdx * (ph(i0, j, k) - ph(im1, j, k)) / Gr;
       zx(i, j, k) = v;
@@ -78,7 +80,7 @@ struct KDiffMetricsZY {
   View3<real> zy;
   real rdy;
   int ny;
-  bool periodic_y;
+  int periodic_y;  // as KDiffMetricsZX
   bool open_copy;
   int ktop_unset;
   static constexpr real Gr = real(cst::g);
@@ -94,8 +96,8 @@ struct KDiffMetricsZY {
       v += rdy * (ph(i, jj, k) - ph(i, jj - 1, k)) / Gr;
       zy(i, j, k) = v;
     } else {
-      int j0 = (j == ny) ? 0 : j;
-      int jm1 = (j == 0) ? ny - 1 : (j - 1);
+      int j0 = (j == ny && periodic_y != 2) ? 0 : j;
+      int jm1 = (j == 0 && periodic_y != 2) ? ny - 1 : (j - 1);
       real v = rdy * (phb(i, j0, k) - phb(i, jm1, k)) / Gr;
       v += rdy * (ph(i, j0, k) - ph(i, jm1, k)) / Gr;
       zy(i, j, k) = v;
@@ -124,10 +126,10 @@ inline void compute_diff_metrics(const DiffusionParams& p,
   column_for(Range2D{0, nx, 0, ny}, KDiffMetricsZ{ph, phb, z, rdz, rdzw, nz});
   // zx at U points: i = 0..nx, j = 0..ny-1, k = 0..nz
   parallel_for(Range3D{0, nx + 1, 0, ny, 0, nz + 1},
-               KDiffMetricsZX{ph, phb, zx, rdx, nx, p.periodic_x, physical_bc && (p.specified || p.open_xe), ktop_x});
+               KDiffMetricsZX{ph, phb, zx, rdx, nx, p.wrap_x(), physical_bc && (p.specified || p.open_xe), ktop_x});
   // zy at V points: i = 0..nx-1, j = 0..ny, k = 0..nz
   parallel_for(Range3D{0, nx, 0, ny + 1, 0, nz + 1},
-               KDiffMetricsZY{ph, phb, zy, rdy, ny, p.periodic_y, physical_bc && (p.specified || p.open_ye), ktop_y});
+               KDiffMetricsZY{ph, phb, zy, rdy, ny, p.wrap_y(), physical_bc && (p.specified || p.open_ye), ktop_y});
 }
 
 }  // namespace cppwrf::dyn::diffusion

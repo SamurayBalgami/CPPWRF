@@ -391,6 +391,8 @@ struct KBdySlabView3D {
   int side;  // 0: XS, 1: XE, 2: YS, 3: YE
   int npos;
   int nk;
+  // a worker of a decomposed run: only the entries of the nest's points it holds (its patch and halo)
+  int wi0 = INT32_MIN, wi1 = INT32_MAX, wj0 = INT32_MIN, wj1 = INT32_MAX;
 
   CPPWRF_HD void operator()(int pos, int k, int b) const {
     if (b >= sz) return;
@@ -414,6 +416,7 @@ struct KBdySlabView3D {
       nj = (ystag ? n_ny + 1 : n_ny) - b;
     }
 
+    if (ni - 1 < wi0 || ni - 1 >= wi1 || nj - 1 < wj0 || nj - 1 >= wj1) return;
     int ni_raw = ni + ioff;
     int nj_raw = nj + joff;
     int ci0 = (ipos - 1) + (ni_raw - 1) / nri;
@@ -454,6 +457,7 @@ struct KBdySlabView2D {
   int sz;
   int side;  // 0: XS, 1: XE, 2: YS, 3: YE
   int npos;
+  int wi0 = INT32_MIN, wi1 = INT32_MAX, wj0 = INT32_MIN, wj1 = INT32_MAX;  // as KBdySlabView3D's
 
   CPPWRF_HD void operator()(int pos, int /*k*/, int b) const {
     if (b >= sz) return;
@@ -472,6 +476,7 @@ struct KBdySlabView2D {
       nj = n_ny - b;
     }
 
+    if (ni - 1 < wi0 || ni - 1 >= wi1 || nj - 1 < wj0 || nj - 1 >= wj1) return;
     int ci0 = (ipos - 1) + (ni - 1) / nri;
     int cj0 = (jpos - 1) + (nj - 1) / nrj;
     int ip = (ni - 1) % nri;
@@ -498,11 +503,12 @@ struct KBdySlabView2D {
 };
 
 // Launch single-source boundary forcing for a 3D Field3 variable into LateralBC
+template <class CF, class NF>
 inline void force_nest_bdy_field3(
     dyn::LateralBC& lbc,
     dyn::LateralBC::Var v,
-    const Field3& cfld,
-    const Field3& nfld,
+    const CF& cfld,
+    const NF& nfld,
     int n_nx, int n_ny,
     int ipos, int jpos,
     int nri, int nrj,
@@ -515,6 +521,8 @@ inline void force_nest_bdy_field3(
   const int width = lbc.width();
   const int sz = std::min(std::max(spec_zone, relax_zone + 1), width);
 
+  // the nest field of a decomposed run is the worker's own (its patch and halo): only those entries
+  const Layout& NL = nfld.layout();
   for (int s = 0; s < 4; ++s) {
     const auto side = static_cast<dyn::LateralBC::Side>(s);
     const int npos = lbc.slab_npos(v, side);
@@ -523,17 +531,20 @@ inline void force_nest_bdy_field3(
     parallel_for(Range3D{0, npos, 0, nk, 0, sz},
                  KBdySlabView3D{cfld.cview(), nfld.cview(), d_val, d_tend,
                                 n_nx, n_ny, ipos, jpos, nri, nrj, cdt,
-                                xstag, ystag, sz, s, npos, nk});
+                                xstag, ystag, sz, s, npos, nk, NL.dom >= 0 ? NL.wi0 : INT32_MIN,
+                                NL.dom >= 0 ? NL.wi1 : INT32_MAX, NL.dom >= 0 ? NL.wj0 : INT32_MIN,
+                                NL.dom >= 0 ? NL.wj1 : INT32_MAX});
   }
   lbc.mark_set(v);
 }
 
 // Launch single-source boundary forcing for 2D MU into LateralBC
+template <class CF, class NF>
 inline void force_nest_bdy_field2(
     dyn::LateralBC& lbc,
     dyn::LateralBC::Var v,
-    const Field2& cfld,
-    const Field2& nfld,
+    const CF& cfld,
+    const NF& nfld,
     int n_nx, int n_ny,
     int ipos, int jpos,
     int nri, int nrj,
@@ -543,6 +554,8 @@ inline void force_nest_bdy_field2(
   const int width = lbc.width();
   const int sz = std::min(std::max(spec_zone, relax_zone + 1), width);
 
+  // the nest field of a decomposed run is the worker's own (its patch and halo): only those entries
+  const Layout& NL = nfld.layout();
   for (int s = 0; s < 4; ++s) {
     const auto side = static_cast<dyn::LateralBC::Side>(s);
     const int npos = lbc.slab_npos(v, side);
@@ -551,17 +564,19 @@ inline void force_nest_bdy_field2(
     parallel_for(Range3D{0, npos, 0, 1, 0, sz},
                  KBdySlabView2D{cfld.cview(), nfld.cview(), d_val, d_tend,
                                 n_nx, n_ny, ipos, jpos, nri, nrj, cdt,
-                                sz, s, npos});
+                                sz, s, npos, NL.dom >= 0 ? NL.wi0 : INT32_MIN, NL.dom >= 0 ? NL.wi1 : INT32_MAX,
+                                NL.dom >= 0 ? NL.wj0 : INT32_MIN, NL.dom >= 0 ? NL.wj1 : INT32_MAX});
   }
   lbc.mark_set(v);
 }
 
 // Launch single-source boundary forcing for a 3D scalar into LateralBC
+template <class CF, class NF>
 inline void force_nest_bdy_scalar_field3(
     dyn::LateralBC& lbc,
     int scalar_idx,
-    const Field3& cfld,
-    const Field3& nfld,
+    const CF& cfld,
+    const NF& nfld,
     int n_nx, int n_ny, int n_nz,
     int ipos, int jpos,
     int nri, int nrj,
@@ -571,6 +586,8 @@ inline void force_nest_bdy_scalar_field3(
   const int width = lbc.width();
   const int sz = std::min(std::max(spec_zone, relax_zone + 1), width);
 
+  // the nest field of a decomposed run is the worker's own (its patch and halo): only those entries
+  const Layout& NL = nfld.layout();
   for (int s = 0; s < 4; ++s) {
     const auto side = static_cast<dyn::LateralBC::Side>(s);
     const int npos = (s < 2) ? n_ny : n_nx;
@@ -579,7 +596,9 @@ inline void force_nest_bdy_scalar_field3(
     parallel_for(Range3D{0, npos, 0, n_nz, 0, sz},
                  KBdySlabView3D{cfld.cview(), nfld.cview(), d_val, d_tend,
                                 n_nx, n_ny, ipos, jpos, nri, nrj, cdt,
-                                false, false, sz, s, npos, n_nz});
+                                false, false, sz, s, npos, n_nz, NL.dom >= 0 ? NL.wi0 : INT32_MIN,
+                                NL.dom >= 0 ? NL.wi1 : INT32_MAX, NL.dom >= 0 ? NL.wj0 : INT32_MIN,
+                                NL.dom >= 0 ? NL.wj1 : INT32_MAX});
   }
 }
 

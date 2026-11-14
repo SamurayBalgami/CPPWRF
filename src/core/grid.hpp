@@ -26,6 +26,11 @@ struct Grid {
   double p_top = 0;            // Pa
   BC bc_x = BC::Periodic, bc_y = BC::Periodic;
   static constexpr int halo = 3;
+  // A decomposed run (core/tiles.hpp): the patch of the calling worker in decomposition `dom`, the mass points
+  // [pi0, pi1) x [pj0, pj1) it owns. Fields of this grid are allocated for the patch and its halo and are indexed
+  // with the domain's (global) indices. dom < 0: the whole domain.
+  int dom = -1, pi0 = 0, pi1 = 0, pj0 = 0, pj1 = 0;
+  bool patched() const { return dom >= 0; }
 
   bool two_d() const { return ny == 1; }
   int hy() const { return two_d() ? 0 : halo; }

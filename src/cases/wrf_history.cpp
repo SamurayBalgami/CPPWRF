@@ -31,11 +31,22 @@ namespace cppwrf::cases {
 namespace {
 
 // a device-to-host copy of an output field, timed for CPPWRF_IO_TIMING
+// A decomposed run (inside a tile::Service scope, on the writer): the whole field from the workers. Returns the
+// layout of h (the field's own without a decomposition).
 template <class F, class V>
-void download_timed(const F& f, V& h) {
+Layout download_timed(const F& f, V& h) {
   const auto t0 = std::chrono::steady_clock::now();
-  f.download(h);
+  Layout L = f.layout();
+  if (tile::tiled() && L.si != 0) {
+    std::vector<char> b;
+    tile::download(f.base(), b, L);
+    using T = typename V::value_type;
+    h.assign(reinterpret_cast<const T*>(b.data()), reinterpret_cast<const T*>(b.data()) + b.size() / sizeof(T));
+  } else {
+    f.download(h);
+  }
   wrf_io::deflate::stats().download_s += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+  return L;
 }
 
 std::string str(double v) {
@@ -61,12 +72,12 @@ bool copy_field(const F& f, const std::vector<std::size_t>& dims, std::vector<do
           : (int(ni) != L.nx || int(nj) != L.ny || (int(nk) != std::max(1, L.nz) && !pad)))
     return false;
   static thread_local std::vector<real> h;  // kept between fields: no new pages for every copy
-  download_timed(f, h);
+  const Layout W = download_timed(f, h);
   out.assign(nk * nj * ni, 0.0);
   for (std::size_t k = 0; k < (pad ? nk - 1 : nk); ++k)
     for (std::size_t j = 0; j < nj; ++j)
       for (std::size_t i = 0; i < ni; ++i)
-        out[(k * nj + j) * ni + i] = double(h[L.index(int(i), int(j), int(k))]);
+        out[(k * nj + j) * ni + i] = double(h[W.index(int(i), int(j), int(k))]);
   return true;
 }
 
@@ -81,11 +92,12 @@ bool store_field(F& f, const std::vector<std::size_t>& dims, const std::vector<d
   const bool pad = dims.size() == 3 && L.nz > 1 && int(nk) == L.nz + 1;
   if (int(ni) != L.nx || int(nj) != L.ny || (int(nk) != std::max(1, L.nz) && !pad)) return false;
   std::vector<real> h;
-  f.download(h);
+  const Layout W = download_timed(f, h);
   for (std::size_t k = 0; k < (pad ? nk - 1 : nk); ++k)
     for (std::size_t j = 0; j < nj; ++j)
-      for (std::size_t i = 0; i < ni; ++i) h[L.index(int(i), int(j), int(k))] = real(in[(k * nj + j) * ni + i]);
-  copy_to_dev(f.data() - L.offset, h.data(), L.total * sizeof(real));
+      for (std::size_t i = 0; i < ni; ++i) h[W.index(int(i), int(j), int(k))] = real(in[(k * nj + j) * ni + i]);
+  if (tile::tiled()) tile::upload(f, h, W);  // the points to the workers that hold them (the halos stay)
+  else copy_to_dev(f.data() - L.offset, h.data(), L.total * sizeof(real));
   return true;
 }
 
@@ -99,13 +111,13 @@ bool copy_base(const F& f, const std::vector<std::size_t>& dims, int nx, int ny,
   else return false;
   if (int(ni) != nx || int(nj) != ny || int(nk) != nzl) return false;
   static thread_local std::vector<real> h;  // kept between fields: no new pages for every copy
-  download_timed(f, h);
+  const Layout W = download_timed(f, h);
   const bool u = f.uniform();
   out.resize(nk * nj * ni);
   for (std::size_t k = 0; k < nk; ++k)
     for (std::size_t j = 0; j < nj; ++j)
       for (std::size_t i = 0; i < ni; ++i)
-        out[(k * nj + j) * ni + i] = double(h[L.index(u ? 0 : int(i), u ? 0 : int(j), int(k))]);
+        out[(k * nj + j) * ni + i] = double(h[W.index(u ? 0 : int(i), u ? 0 : int(j), int(k))]);
   return true;
 }
 
@@ -117,6 +129,9 @@ WrfHistory::WrfHistory(const io::Config& cfg, const Model& m, std::string out_di
       f2_(std::move(fields2)), f3_(std::move(fields3)) {
   // options below the verified tier (run with cppwrf.allow_unverified): CPPWRF_UNVERIFIED_OPTIONS of every file
   unverified_ = io::tier_attribute(io::config_tier_hits(cfg));
+  // a decomposed run: the writer's code; the other workers answer its requests for the fields (tile::Service)
+  const tile::Service svc;
+  if (svc.served()) return;
   const std::string real_dir = cfg.get_string("real.dir", "");
   std::string nl_path = cfg.get_string("output.wrf_namelist", real_dir.empty() ? "" : real_dir + "/namelist.input");
   nl_ = std::make_unique<wrf_io::Namelist>(!nl_path.empty() && std::filesystem::exists(nl_path)
@@ -380,6 +395,9 @@ void WrfHistory::start_em_slopes() {  // start_em: slope-radiation arrays and th
 }
 
 void WrfHistory::after_solve(long n) {
+  // a decomposed run: the writer's code; the other workers answer its requests for the fields (tile::Service)
+  const tile::Service svc;
+  if (svc.served()) return;
   std::vector<double> t;
   const long saved = step_;
   step_ = -1;  // no snapshot lookup: the current state
@@ -402,7 +420,10 @@ void WrfHistory::first_rk_prep() {
   pp.use_theta_m = m_.st->P_QV >= 0 ? 1 : 0;
   pp.mut_from_mu = true;
   phys::driver::run_phy_prep(*m_.st, *m_.base, *prep_, pp);
-  tile::gather(prep_->p_hyd);  // inside a tiled step: every tile's points
+  dev_sync();
+  // a decomposed run: the writer's code; the other workers answer its requests for the fields (tile::Service)
+  const tile::Service svc;
+  if (svc.served()) return;
   std::vector<double> ph;
   if (copy_field(prep_->p_hyd, {std::size_t(m_.g.nz), std::size_t(m_.g.ny), std::size_t(m_.g.nx)}, ph))
     p_hyd_snap_[n] = std::move(ph);
@@ -508,9 +529,8 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
   }
   if (name == "T") {  // th_phy_m_t0: dry potential temperature - t0
     static thread_local std::vector<real> ht, hq;
-    download_timed(s.t_2, ht);
+    const Layout L = download_timed(s.t_2, ht);
     if (s.P_QV >= 0) download_timed(s.q_2[s.P_QV], hq);
-    const Layout& L = s.t_2.layout();
     return mass3([&](int i, int j, int k) {
       const double tm = double(ht[L.index(i, j, k)]) + b.t0;
       const double th = hq.empty() || m_.st->P_QV < 0 ? tm : tm / (1.0 + cst::rvovrd * double(hq[L.index(i, j, k)]));
@@ -536,8 +556,7 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
     if (!fi) fi = m_.suite->bucket_int(to_lower(name));  // I_RAINC, I_ACSWUPT, ... (bucket_mm, bucket_J)
     if (fi) {
       std::vector<int> h;
-      download_timed(*fi, h);
-      const Layout& L = fi->layout();
+      const Layout L = download_timed(*fi, h);
       out.resize(n);
       for (std::size_t j = 0; j < dims[0]; ++j)
         for (std::size_t i = 0; i < dims[1]; ++i) out[j * dims[1] + i] = double(h[L.index(int(i), int(j), 0)]);
@@ -627,9 +646,7 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
   if (name == "P_HYD" && !(m_.suite && step_ > 0)) {  // start_em: p_hyd = p + pb until phy_prep sets it
     if (p_hyd0_.empty()) {
       std::vector<real> hp, hpb;
-      download_timed(s.p, hp);
-      download_timed(b.pb, hpb);
-      const Layout &L = s.p.layout(), &Lb = b.pb.layout();
+      const Layout L = download_timed(s.p, hp), Lb = download_timed(b.pb, hpb);
       mass3([&](int i, int j, int k) { return double(hp[L.index(i, j, k)] + hpb[Lb.index(i, j, k)]); });
       p_hyd0_ = out;
     }
@@ -718,8 +735,7 @@ bool WrfHistory::value(const std::string& name, const std::string& varname, cons
   }
   if (name == "AKPBL" && m_.suite && m_.suite->options().cu_physics != 0 && dims.size() == 2) {  // cumulus_driver
     std::vector<int> h;
-    download_timed(m_.suite->kpbl, h);
-    const Layout& L = m_.suite->kpbl.layout();
+    const Layout L = download_timed(m_.suite->kpbl, h);
     out.resize(n);
     for (std::size_t j = 0; j < dims[0]; ++j)
       for (std::size_t i = 0; i < dims[1]; ++i) out[j * dims[1] + i] = double(h[L.index(int(i), int(j), 0)]);
@@ -911,6 +927,50 @@ WrfHistory::FeedbackCache& WrfHistory::feedback_cache() {
 void WrfHistory::feedback_physics(WrfHistory& child, int ipos, int jpos, int ratio) {
   const Grid& g = m_.g;
   const Grid& cg = child.m_.g;
+  // A decomposed run: the writer, which alone has the output's tables, finds the field pairs and names them to the
+  // other workers (tile::field_index: the same number on every worker); every worker then feeds back the points
+  // of its patch of the parent from a whole copy of the nest's field.
+  struct Wire {
+    int kind, pidx, cidx, point, xs, ys, cnx, cny, nk, fnk;
+  };
+  std::vector<Wire> wire;
+  int wire_zone = 1;
+  auto run_wire = [&] {
+    const tile::Use use(g);
+    for (const Wire& e : wire) {
+      const tile::FieldRef pr = tile::field_at(e.pidx), cr = tile::field_at(e.cidx);
+      tile::WholeCopy wc;
+      wc.get(cr.base, cr.L);
+      const Layout& cL = wc.layout();
+      const int istag = e.xs ? 0 : 1, jstag = e.ys ? 0 : 1;
+      const int ci0 = std::max(ipos + wire_zone, 1), ci1 = std::min(ipos + cg.nx / ratio - istag - wire_zone, e.cnx);
+      const int cj0 = std::max(jpos + wire_zone, 1), cj1 = std::min(jpos + cg.ny / ratio - jstag - wire_zone, e.cny);
+      const Range3D r{ci0 - 1, ci1, cj0 - 1, cj1, 0, e.nk};
+      if (e.kind == 0) {
+        parallel_for(r, KFeedbackInt{View2<int>{pr.data<int>(), int(pr.L.sj)}, View2<const int>{wc.data<int>(), int(cL.sj)},
+                                     ipos, jpos, ratio, ratio, e.point != 0});
+      } else if (e.kind == 2) {
+        using K = KFeedbackReal<View2<real>, View2<const real>>;
+        parallel_for(r, K{View2<real>{pr.data<real>(), int(pr.L.sj)}, View2<const real>{wc.data<real>(), int(cL.sj)}, ipos,
+                          jpos, ratio, ratio, e.fnk, e.point != 0, e.xs != 0, e.ys != 0});
+      } else {
+        using K = KFeedbackReal<View3<real>, View3<const real>>;
+        parallel_for(r, K{View3<real>{pr.data<real>(), int(pr.L.sj), int(pr.L.sk)},
+                          View3<const real>{wc.data<real>(), int(cL.sj), int(cL.sk)}, ipos, jpos, ratio, ratio, e.fnk,
+                          e.point != 0, e.xs != 0, e.ys != 0});
+      }
+      tile::exchange_base(pr.base);
+    }
+  };
+  if (tile::tiled() && !tile::writer()) {
+    int head[2] = {0, 1};
+    tile::recv(0, head, sizeof head);
+    wire.resize(std::size_t(head[0]));
+    wire_zone = head[1];
+    tile::recv(0, wire.data(), wire.size() * sizeof(Wire));
+    run_wire();
+    return;
+  }
   FeedbackCache& fc = feedback_cache();
   const int spec_zone = std::max(1, wc_->integer("spec_zone"));
   auto it = fc.pairs.find(&child);
@@ -984,6 +1044,25 @@ void WrfHistory::feedback_physics(WrfHistory& child, int ipos, int jpos, int rat
     }
     it = fc.pairs.find(&child);
   }
+  if (tile::tiled()) {
+    for (const FbPair& e : it->second) {
+      Wire w{};
+      w.kind = e.pi ? 0 : e.p2 ? 2 : 3;
+      w.pidx = tile::field_index(e.pi ? e.pi->base() : e.p2 ? e.p2->base() : e.p3->base());
+      w.cidx = tile::field_index(e.pi ? e.ci->base() : e.p2 ? e.c2->base() : e.c3->base());
+      w.point = e.point; w.xs = e.xs; w.ys = e.ys;
+      w.cnx = e.cnx; w.cny = e.cny; w.nk = e.nk; w.fnk = e.fnk;
+      wire.push_back(w);
+    }
+    wire_zone = spec_zone;
+    const int head[2] = {int(wire.size()), spec_zone};
+    for (int o = 1; o < tile::count(); ++o) {
+      tile::send(o, head, sizeof head);
+      tile::send(o, wire.data(), wire.size() * sizeof(Wire));
+    }
+    run_wire();
+    return;
+  }
   // feedback()'s bounds: the nest's interior on the parent without spec_zone rows (fine ide = nx + 1)
   for (const FbPair& e : it->second) {
     const int istag = e.xs ? 0 : 1, jstag = e.ys ? 0 : 1;
@@ -1003,11 +1082,17 @@ void WrfHistory::feedback_physics(WrfHistory& child, int ipos, int jpos, int rat
 }
 
 void WrfHistory::restart_slopes() {
+  // a decomposed run: the writer's code; the other workers answer its requests for the fields (tile::Service)
+  const tile::Service svc;
+  if (svc.served()) return;
   start_em_slopes();
   for (const char* f : {"TOPOSLPX", "TOPOSLPY", "LAP_HGT", "SLOPE", "SLP_AZI"}) fed_.erase(f);
 }
 
 void WrfHistory::keep_ht_coarse() {
+  // a decomposed run: the writer's code; the other workers answer its requests for the fields (tile::Service)
+  const tile::Service svc;
+  if (svc.served()) return;
   const Grid& g = m_.g;
   for (const wrf_io::OutVar& v : fb_schema_->restart_vars(*wc_, g.nx + 1, g.ny + 1, g.nz + 1, int(sizeof(real))))
     if (v.name == "HT_COARSE") {
@@ -1017,6 +1102,9 @@ void WrfHistory::keep_ht_coarse() {
 }
 
 void WrfHistory::feedback_from(WrfHistory& child, int ipos, int jpos, int ratio) {
+  // a decomposed run: the writer's code; the other workers answer its requests for the fields (tile::Service)
+  const tile::Service svc;
+  if (svc.served()) return;
   const Grid& cg = child.m_.g;
   // history and restart fields (the restart stream carries more of them)
   FeedbackCache& fc = feedback_cache();
@@ -1129,6 +1217,9 @@ std::string WrfHistory::date_of(double time_sec) const {
 
 void WrfHistory::write_restart(long step, double time_sec, double history_interval_s, double history_ref_s,
                                double restart_secs_to_ring, double auxinput4_ref_s) {
+  // a decomposed run: the writer's code; the other workers answer its requests for the fields (tile::Service)
+  const tile::Service svc;
+  if (svc.served()) return;
   step_ = step;
   time_sec_ = time_sec;
   const std::string date = date_of(time_sec);
@@ -1210,6 +1301,9 @@ void WrfHistory::write_restart(long step, double time_sec, double history_interv
 }
 
 void WrfHistory::write(long step, double time_sec) {
+  // a decomposed run: the writer's code; the other workers answer its requests for the fields (tile::Service)
+  const tile::Service svc;
+  if (svc.served()) return;
   step_ = step;
   time_sec_ = time_sec;
   const std::string date = date_of(time_sec);
@@ -1242,6 +1336,9 @@ void WrfHistory::write(long step, double time_sec) {
 // output_wrf treats the auxiliary history streams as the history (global attributes of history_only) except
 // adjust_output_times; the variables are those of stream h:3 (Registry h3, iofields_filename)
 void WrfHistory::write_auxhist3(long step, double time_sec) {
+  // a decomposed run: the writer's code; the other workers answer its requests for the fields (tile::Service)
+  const tile::Service svc;
+  if (svc.served()) return;
   step_ = step;
   time_sec_ = time_sec;
   const std::string date = date_of(time_sec);

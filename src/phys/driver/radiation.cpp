@@ -8,6 +8,7 @@
 #include <stdexcept>
 
 #include "core/data_dir.hpp"
+#include "core/tiles.hpp"
 #include "phys/phys_constants.hpp"
 #include "phys/ra_rrtm_lw/rrtm_lw.hpp"
 #include "phys/ra_rrtm_lw/rrtm_lw_tables.hpp"
@@ -48,7 +49,8 @@ void radconst(double julian, double& declin, double& solcon) {
 
 
 #if defined(CPPWRF_USE_CUDA)
-// device path: model fields -> double arrays with the column index fastest (col = i + nx*j)
+// device path: model fields -> double arrays with the column index fastest: the columns the worker owns (a
+// decomposed run: its patch [ci0, ci0 + nx) x [cj0, ...); else the domain), col = (i - ci0) + nx (j - cj0)
 struct KStageAll {
   int nx, nz, ncol, n3;
   View3<const real> f3w[2];
@@ -62,8 +64,9 @@ struct KStageAll {
   // a tile stages the whole rows of its patch (the batch's columns i + nx j are contiguous by row); a column it does
   // not own gets the inputs of its nearest own column in the row (valid values; its results are not used)
   int oi0 = -2147483647 - 1, oi1 = 2147483647;
+  int ci0 = 0, cj0 = 0;
   CPPWRF_HD void operator()(int i, int j, int k) const {
-    const int col = i + nx * j;
+    const int col = (i - ci0) + nx * (j - cj0);
     const std::size_t idx = std::size_t(k) * ncol + col;
     i = i < oi0 ? oi0 : (i >= oi1 ? oi1 - 1 : i);
     d3w[0][idx] = double(f3w[0](i, j, k));
@@ -103,11 +106,12 @@ struct KRadColumn {
   double *qcw, *qiw;
   int icloud_cu;  // cu_rad_feedback: the cumulus clouds into cf and the staged qc (qcw), qi (qiw)
   View3<const real> qccu, qicu, cfdp, cfsh;
+  int ci0 = 0, cj0 = 0, gnx = 0;  // the patch's first column; the domain's nx (calc_coszen's lanes)
   CPPWRF_HD void operator()(int i, int j) const {
-    const int col = i + nx * j;
+    const int col = (i - ci0) + nx * (j - cj0);
     double hr = 0;
     // lane i of the nx-trip i loop, as the host path: gfortran's 2-lane sin / cos of calc_coszen
-    const double c = calc_coszen(julian, xtime_mid, gmt, declin, xlong[col], xlat[col], i, nx, &hr);
+    const double c = calc_coszen(julian, xtime_mid, gmt, declin, xlong[col], xlat[col], i, gnx, &hr);
     if (has_diag) hrang_out(i, j) = real(hr);
     cz[col] = c;
     coszen_out(i, j) = real(c);
@@ -164,8 +168,9 @@ struct KDudhia {
   int icloud;
   bool warm_rain;
   double *rsw, *rswc, *gsw;
+  int ci0 = 0, cj0 = 0;
   CPPWRF_HD void operator()(int i, int j) const {
-    const int col = i + nx * j;
+    const int col = (i - ci0) + nx * (j - cj0);
     auto v = [&](const double* a) { return a ? CSD(a + col, ncol) : CSD(); };
     gsw[col] = dudhia_swpara(nz, v(t), v(p), v(dz), v(qv), v(qc), v(qr), v(qi), v(qs), v(qg), double(real(cz[col])),
                              alb[col], solcon, icloud, cssca, warm_rain, SD{rsw + col, ncol});
@@ -193,8 +198,9 @@ struct KRadOut {
   bool dudhia = false;  // Dudhia SW: added at night too, no SW diagnostics; the direct / diffuse split from ht
   const double* ht = nullptr;
   double solcon = 0;
+  int ci0 = 0, cj0 = 0;
   CPPWRF_HD void operator()(int i, int j, int k) const {
-    const int col = i + nx * j;
+    const int col = (i - ci0) + nx * (j - cj0);
     const std::size_t q = std::size_t(k) * ncol + col;
     const bool day = cz[col] > 0.0;
     double r = rlw[q];
@@ -260,7 +266,7 @@ struct RadiationDriver::Impl {
   std::unique_ptr<RrtmgSwTables> sw;
   CamGases gases;
   CamOzone ozone;
-  std::vector<double> xlat, xlong, ozmixm;  // ozmixm: [col][month][level] (oznini)
+  std::vector<double> xlat, xlong, ozmixm;  // ozmixm: [the worker's column][month][level] (oznini)
 #if defined(CPPWRF_USE_CUDA)
   std::unique_ptr<RrtmgLwBatch> lwb;
   std::unique_ptr<RrtmgSwBatch> swb;
@@ -335,11 +341,17 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
   p_->xlat = xlat;
   p_->xlong = xlong;
   if (o.o3input == 2) {  // oznini (phy_init, domain 1 only)
-    const std::size_t nc = std::size_t(g.nx) * g.ny, per = std::size_t(CamOzone::nmon) * CamOzone::levsiz;
+    // the columns the worker owns (a decomposed run: its patch), row by row
+    const tile::PatchBox ob = tile::own_box(g);
+    const std::size_t onx = std::size_t(ob.i1 - ob.i0), nc = onx * std::size_t(ob.j1 - ob.j0);
+    const std::size_t per = std::size_t(CamOzone::nmon) * CamOzone::levsiz;
     p_->ozmixm.assign(nc * per, 0.0);
     if (o.oznini) {
       p_->ozone.load(o.table_dir);
-      for (std::size_t c = 0; c < nc; ++c) p_->ozone.column(xlat[c], &p_->ozmixm[c * per]);
+      for (int j = ob.j0; j < ob.j1; ++j)
+        for (int i = ob.i0; i < ob.i1; ++i)
+          p_->ozone.column(xlat[std::size_t(i) + std::size_t(g.nx) * j],
+                           &p_->ozmixm[(std::size_t(i - ob.i0) + onx * std::size_t(j - ob.j0)) * per]);
     } else {
       p_->ozone.pin.assign(CamOzone::levsiz, 0.0);
     }
@@ -347,15 +359,27 @@ RadiationDriver::RadiationDriver(const Grid& g, const RadiationOptions& o, const
 #if defined(CPPWRF_USE_CUDA)
   {
     Impl& q = *p_;
-    const std::size_t nc = std::size_t(g.nx) * g.ny, n3 = nc * g.nz, n3w = nc * (g.nz + 1);
+    // the columns the worker owns (a decomposed run: its patch), row by row
+    const tile::PatchBox ob = tile::own_box(g);
+    const int cnx = ob.i1 - ob.i0;
+    const std::size_t nc = std::size_t(cnx) * std::size_t(ob.j1 - ob.j0), n3 = nc * g.nz, n3w = nc * (g.nz + 1);
     auto up = [&](const std::vector<double>& h) {
       double* d = q.dev(std::max<std::size_t>(h.size(), 1));
       if (!h.empty()) copy_to_dev(d, h.data(), h.size() * sizeof(double));
       return d;
     };
-    q.xlat_d = up(xlat);
-    q.xlong_d = up(xlong);
-    q.oz_d = up(q.ozmixm);
+    auto own = [&](const std::vector<double>& h, std::size_t per) {  // per values per column of the domain
+      if (h.empty() || !g.patched()) return up(h);
+      std::vector<double> l(nc * per);
+      for (int j = ob.j0; j < ob.j1; ++j)
+        for (int i = ob.i0; i < ob.i1; ++i)
+          std::copy_n(&h[(std::size_t(i) + std::size_t(g.nx) * j) * per], per,
+                      &l[(std::size_t(i - ob.i0) + std::size_t(cnx) * (j - ob.j0)) * per]);
+      return up(l);
+    };
+    q.xlat_d = own(xlat, 1);
+    q.xlong_d = own(xlong, 1);
+    q.oz_d = up(q.ozmixm);  // the worker's columns already
     q.pin_d = up(q.ozone.pin);
     q.p8w = q.dev(n3w); q.t8w = q.dev(n3w);
     for (double** a : {&q.p3d, &q.pi3d, &q.t3d, &q.qv, &q.qc, &q.qi, &q.qs, &q.rec, &q.rei, &q.res, &q.cf, &q.o3, &q.dz,
@@ -411,13 +435,16 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
   {
     (void)per;
     Impl& q = *p_;
-    const int nx = g_.nx, ny = g_.ny, nz = g_.nz, ncol = nx * ny;
+    const int nz = g_.nz;
+    const tile::PatchBox ob = tile::own_box(g_);  // the worker's columns (the domain without a decomposition)
+    const int cnx = ob.i1 - ob.i0, ncol = cnx * (ob.j1 - ob.j0);
     const bool dudhia = o_.ra_sw_physics == 1, rrtm = o_.ra_lw_physics == 1;
     if (o_.icloud != 0 && o_.icloud != 1) throw std::runtime_error("radiation: only icloud = 0 or 1 are ported");
     if (in.qc && !in.qi && in.qs) throw std::runtime_error("radiation: F_QC, F_QS without F_QI is not ported");
     const bool clouds = o_.icloud != 0 && in.qc != nullptr;
     KStageAll ks{};
-    ks.nx = nx; ks.nz = nz; ks.ncol = ncol; ks.n3 = 0;
+    ks.nx = cnx; ks.nz = nz; ks.ncol = ncol; ks.n3 = 0;
+    ks.ci0 = ob.i0; ks.cj0 = ob.j0;
     ks.f3w[0] = in.p_hyd_w->cview(); ks.d3w[0] = q.p8w;
     ks.f3w[1] = in.t8w->cview();     ks.d3w[1] = q.t8w;
     auto add3 = [&](const Field3* f, double* d) {
@@ -443,18 +470,10 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
     ks.f2[3] = in.xice->cview();   ks.d2[3] = q.xice;
     ks.f2[4] = in.snow->cview();   ks.d2[4] = q.snow;
     ks.f2[5] = in.albedo->cview(); ks.d2[5] = q.albedo;
-    // a tile: the rows of its patch, every column (the batch's column ranges below)
-    const int rj0 = tile::ctx.on ? std::max(tile::ctx.j0, 0) : 0, rj1 = tile::ctx.on ? std::min(tile::ctx.j1, ny) : ny;
-    if (tile::ctx.on) {
-      ks.oi0 = std::max(tile::ctx.i0, 0);
-      ks.oi1 = std::min(tile::ctx.i1, nx);
-    }
-    {
-      const tile::Whole rows;
-      parallel_for(Range3D{0, nx, rj0, rj1, 0, nz + 1}, ks);
-    }
+    parallel_for(Range3D{ob.i0, ob.i1, ob.j0, ob.j1, 0, nz + 1}, ks);
     KRadColumn kc{};
-    kc.nx = nx; kc.nz = nz; kc.ncol = ncol;
+    kc.nx = cnx; kc.nz = nz; kc.ncol = ncol;
+    kc.ci0 = ob.i0; kc.cj0 = ob.j0; kc.gnx = g_.nx;
     kc.julian = julian; kc.xtime_mid = xtime + o_.radt * 0.5; kc.gmt = o_.gmt; kc.declin = declin;
     kc.xlat = q.xlat_d; kc.xlong = q.xlong_d;
     kc.o3input = o_.o3input; kc.ozmixm = q.oz_d; kc.pin = q.pin_d; kc.nm = nm; kc.np = np; kc.f1 = f1; kc.f2 = f2;
@@ -480,14 +499,11 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
       kc.qccu = in.qc_cu->cview(); kc.qicu = in.qi_cu->cview();
       kc.cfdp = in.cldfra_dp->cview(); kc.cfsh = in.cldfra_sh->cview();
     }
-    {
-      const tile::Whole rows;
-      column_for(Range2D{0, nx, rj0, rj1}, kc);
-    }
+    column_for(Range2D{ob.i0, ob.i1, ob.j0, ob.j1}, kc);
     LwBatchInput li{};
     li.ncol = ncol;
-    li.col_begin = rj0 * nx;  // a tile: the rows of its patch (the column index is i + nx j)
-    li.col_end = rj1 * nx;
+    li.col_begin = 0;
+    li.col_end = ncol;
     li.tsk = q.tsk; li.emiss = q.emiss; li.xland = q.xland; li.xice = q.xice; li.snow = q.snow;
     li.p8w = q.p8w; li.t8w = q.t8w; li.p3d = q.p3d; li.pi3d = q.pi3d; li.t3d = q.t3d; li.qv = q.qv; li.cldfra = q.cf;
     li.o3 = q.o3; li.xlat = q.xlat_d; li.dz8w = q.dz;
@@ -532,10 +548,11 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
       q.lwb->run(rrtmg_lw_call_config(nz, lc, in.re_cloud, in.re_ice, in.re_snow), li, lo);
     }
     if (dudhia) {
-      KDudhia kd{nx, nz, ncol, q.t3d, q.p3d, q.dz, q.pi3d, q.qv, in.qc ? q.qc : nullptr, in.qr ? q.qr : nullptr,
+      KDudhia kd{cnx, nz, ncol, q.t3d, q.p3d, q.dz, q.pi3d, q.qv, in.qc ? q.qc : nullptr, in.qr ? q.qr : nullptr,
                  in.qi ? q.qi : nullptr, in.qs ? q.qs : nullptr, in.qg ? q.qg : nullptr, q.cz, q.albedo, solcon,
                  dudhia_cssca(o_.swrad_scat), o_.icloud, o_.warm_rain, q.rsw, q.rswc, q.gsw};
-      column_for(Range2D{0, nx, 0, ny}, kd);
+      kd.ci0 = ob.i0; kd.cj0 = ob.j0;
+      column_for(Range2D{ob.i0, ob.i1, ob.j0, ob.j1}, kd);
     } else {
       SwBatchInput si{};
       si.ncol = ncol; si.col_begin = li.col_begin; si.col_end = li.col_end; si.coszen = q.cz; si.albedo = q.albedo; si.xland = q.xland; si.xice = q.xice; si.snow = q.snow;
@@ -545,7 +562,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
       q.swb->run(rrtmg_sw_call_config(nz, sc), si,
                  SwBatchOutput{q.rsw, q.gsw, q.swd, q.rswc, q.swcf, out.swsfc[0] ? q.sws : nullptr});
     }
-    KRadOut ko{nx, ncol, q.rlw, q.rsw, q.glw, q.gsw, q.cz, q.olr, q.lwd, q.swd, q.rlwc, q.rswc, q.lwcf, q.swcf,
+    KRadOut ko{cnx, ncol, q.rlw, q.rsw, q.glw, q.gsw, q.cz, q.olr, q.lwd, q.swd, q.rlwc, q.rswc, q.lwcf, q.swcf,
                out.rthraten->view(), out.glw->view(), out.gsw->view(), out.swdown->view(), in.albedo->cview(),
                out.rthratlw != nullptr};
     if (o3lw) {
@@ -569,7 +586,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
     ko.dudhia = dudhia;
     ko.ht = q.ht;
     ko.solcon = solcon;
-    parallel_for(Range3D{0, nx, 0, ny, 0, nz}, ko);
+    ko.ci0 = ob.i0; ko.cj0 = ob.j0;
+    parallel_for(Range3D{ob.i0, ob.i1, ob.j0, ob.j1, 0, nz}, ko);
     return true;
   }
 #else
@@ -692,7 +710,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
       if (o_.o3input == 2 && o3nest)
         for (int k = 0; k < nz; ++k) co3[k] = double(o3h[Lo3.index(i, j, k)]);
       else if (o_.o3input == 2)
-        ozone_column(&p_->ozmixm[c * per + nm * CamOzone::levsiz], &p_->ozmixm[c * per + np * CamOzone::levsiz], f1, f2,
+        ozone_column(&p_->ozmixm[std::size_t(oc) * per + nm * CamOzone::levsiz],
+                     &p_->ozmixm[std::size_t(oc) * per + np * CamOzone::levsiz], f1, f2,
                      p_->ozone.pin.data(), nz, sd(cp.data()), sd(co3.data()));
       double g_lw, olr, lwcf = 0, a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, a6 = 0, a7 = 0, a8 = 0;
       if (rrtm) {  // RRTMLWRAD: no LW flux diagnostics, LWCF untouched (0)

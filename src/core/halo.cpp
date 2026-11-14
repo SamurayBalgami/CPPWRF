@@ -20,12 +20,28 @@ Layout Layout::make(const Grid& g, Stagger s, int rank, bool uniform) {
     return L;
   }
   L.hy = g.hy();
-  std::ptrdiff_t pitch = (lpad + L.nx + Grid::halo + 31) / 32 * 32;
+  // the indices held: the whole domain, or the worker's patch (its points, the last face and the lateral halo at
+  // the domain's edges) and Grid::halo points around it
+  L.wi0 = -Grid::halo;
+  L.wi1 = L.nx + Grid::halo;
+  L.wj0 = -L.hy;
+  L.wj1 = L.ny + L.hy;
+  if (g.patched()) {
+    L.dom = g.dom;
+    L.wi0 = g.pi0 - Grid::halo;
+    L.wi1 = (g.pi1 == g.nx ? L.nx : g.pi1) + Grid::halo;
+    if (!g.two_d()) {
+      L.wj0 = g.pj0 - L.hy;
+      L.wj1 = (g.pj1 == g.ny ? L.ny : g.pj1) + L.hy;
+    }
+  }
+  // a row: lpad elements, the points, the halo; the first point after the west halo is aligned (element lpad)
+  std::ptrdiff_t pitch = (lpad + (L.wi1 - L.wi0 - Grid::halo) + 31) / 32 * 32;
   L.si = 1;
   L.sj = g.two_d() ? 0 : pitch;
-  std::ptrdiff_t plane = pitch * (L.ny + 2 * L.hy);
+  std::ptrdiff_t plane = pitch * (L.wj1 - L.wj0);
   L.sk = rank == 3 ? plane : 0;
-  L.offset = lpad + L.hy * pitch;
+  L.offset = lpad - (L.wi0 + Grid::halo) - L.wj0 * L.sj;
   L.total = std::size_t(plane) * (rank == 3 ? L.nz : 1);
   if (L.total >= (std::size_t(1) << 31)) throw std::runtime_error("field too large for 32-bit view indexing");
   return L;
@@ -42,9 +58,11 @@ struct HaloLine {
   bool odd;
   bool flat = false;  // specified: copy the outermost row outward (WRF set_physical_bc*)
   bool odd_face = false;  // symmetric: the wall face itself changes sign too (Parity::OddFace)
+  int lo = -(1 << 30), hi = 1 << 30;  // the halo points lo <= i < hi only (a patch: those its allocation holds)
   CPPWRF_HD void operator()(int a, int b, int k) const {
     const int nl = face ? 4 : 3;
     int i = a < nl ? (face ? -a : -1 - a) : n + (a - nl);
+    if (i < lo || i >= hi) return;
     int src;
     if (flat) {
       const int last = face ? n : n - 1;
@@ -81,7 +99,9 @@ struct HaloMulti {
   int nf, nkmax;
   real* p[kMaxFields];
   std::ptrdiff_t st[kMaxFields], sk[kMaxFields];
-  int nk[kMaxFields], nt[kMaxFields];
+  int nk[kMaxFields];
+  int t0[kMaxFields], t1[kMaxFields];  // tangential range of field f
+  int lo[kMaxFields], hi[kMaxFields];  // the halo points along the filled direction (HaloLine::lo, hi)
   bool face[kMaxFields], odd[kMaxFields], odd_face[kMaxFields];
   std::ptrdiff_t sn;  // stride along the filled direction (1 for x, pitch for y): per field below
   std::ptrdiff_t snf[kMaxFields];
@@ -94,72 +114,96 @@ struct HaloMulti {
     const int a = y, b = x;  // a = halo slot, b = tangential index
     const int na = face[f] ? 8 : 6;
     if (a >= na) return;
-    if (ydir ? (b < -3 || b >= nt[f] + 3) : (b >= nt[f])) return;
-    HaloLine h{p[f], snf[f], st[f], sk[f], n, face[f], periodic, odd[f], flat, odd_face[f]};
+    if (b < t0[f] || b >= t1[f]) return;
+    HaloLine h{p[f], snf[f], st[f], sk[f], n, face[f], periodic, odd[f], flat, odd_face[f], lo[f], hi[f]};
     h(a, b, k);
   }
 };
 
-// Tiles: first the values the neighbouring tiles own near this tile's patch (and the periodic wrap's sources), then
-// the boundary fill on the whole halo (the halo lines' index space is not (i, j)): the points this tile owns get the
-// values of a run without tiles.
+// A decomposed run (core/tiles.hpp). First the exchange: the points the other patches own inside this patch's
+// allocation. Then, x before y: the boundary fill of the direction on the halo points the allocation holds (their
+// sources are inside it too), over its tangential range; a periodic direction with several patches along it takes
+// the halo from the patch that owns the wrapped point instead (tile::hooks.wrap). The halo lines' index space is not
+// (i, j): the launches are not clipped to the patch (tile::Whole). No decomposition: the fill of the whole halo.
 void exchange_bases(const void* const* b, int n) {
-  if (tile::ctx.on && tile::hooks.exchange) tile::hooks.exchange(b, n);
+  if (tile::ctx.patch && tile::hooks.exchange) tile::hooks.exchange(b, n, false);
 }
+bool wraps(const Layout& L, int axis) { return tile::ctx.patch && tile::hooks.wraps && tile::hooks.wraps(L.dom, axis); }
 
 void fill_impl(real* p, const Layout& L, const Grid& g, bool ux, bool vy, Parity px, Parity py) {
   const void* const base = p - L.offset;
   exchange_bases(&base, 1);
   const tile::Whole whole;
   const int nk = L.nz;
-  {  // x direction over interior rows
-    HaloLine h{p, 1, L.sj, L.sk, g.nx, ux, g.bc_x == BC::Periodic, px != Parity::Even, g.flat_x(), px == Parity::OddFace};
+  if (wraps(L, 0)) {
+    tile::hooks.wrap(&base, 1, 0);
+    tile::after_launch("halo wrap x");  // the check counts the launch of a run with one patch
+  } else {  // x direction over interior rows
+    HaloLine h{p, 1, L.sj, L.sk, g.nx, ux, g.bc_x == BC::Periodic, px != Parity::Even, g.flat_x(), px == Parity::OddFace,
+               L.wi0, L.wi1};
     int na = ux ? 8 : 6;
-    parallel_for(Range3D{0, L.ny, 0, na, 0, nk}, HaloLineT{h});  // rows as the fastest thread index
+    parallel_for(Range3D{L.j0(), L.j1(), 0, na, 0, nk}, HaloLineT{h});  // rows as the fastest thread index
   }
-  if (!g.two_d()) {  // y direction over full x extent incl. halos -> corners
-    HaloLine h{p, L.sj, 1, L.sk, g.ny, vy, g.bc_y == BC::Periodic, py != Parity::Even, g.flat_y(), py == Parity::OddFace};
+  if (g.two_d()) return;
+  if (wraps(L, 1)) {
+    tile::hooks.wrap(&base, 1, 1);
+    tile::after_launch("halo wrap y");
+  } else {  // y direction over full x extent incl. halos -> corners
+    HaloLine h{p, L.sj, 1, L.sk, g.ny, vy, g.bc_y == BC::Periodic, py != Parity::Even, g.flat_y(), py == Parity::OddFace,
+               L.wj0, L.wj1};
     int na = vy ? 8 : 6;
-    parallel_for(Range3D{0, na, -Grid::halo, L.nx + Grid::halo, 0, nk}, h);
+    parallel_for(Range3D{0, na, L.wi0, L.wi1, 0, nk}, h);
   }
 }
 }  // namespace
 
 static void fill_many(const std::vector<HaloField>& v, const Grid& g) {
-  if (tile::ctx.on) {
-    std::vector<const void*> b;
+  if (v.empty()) return;
+  std::vector<const void*> b;
+  if (tile::ctx.patch) {
     b.reserve(v.size());
     for (const HaloField& f : v) b.push_back(f.p - f.L.offset);
     exchange_bases(b.data(), int(b.size()));
   }
   const tile::Whole whole;
-  for (std::size_t s0 = 0; s0 < v.size(); s0 += kMaxFields) {
-    const int nf = int(std::min<std::size_t>(kMaxFields, v.size() - s0));
-    HaloMulti hx{}, hy{};
-    int nkmax = 1, ntx = 1, nty = 1;
-    for (int f = 0; f < nf; ++f) {
-      const HaloField& fld = v[s0 + f];
-      const Layout& L = fld.L;
-      const bool ux = fld.st == Stagger::U, vy = fld.st == Stagger::V;
-      nkmax = std::max(nkmax, L.nz);
-      hx.p[f] = hy.p[f] = fld.p;
-      hx.sk[f] = hy.sk[f] = L.sk;
-      hx.nk[f] = hy.nk[f] = L.nz;
-      // x pass: along i (stride 1), tangential j over interior rows (as fill_impl)
-      hx.snf[f] = 1; hx.st[f] = L.sj; hx.nt[f] = L.ny; hx.face[f] = ux;
-      hx.odd[f] = fld.px != Parity::Even; hx.odd_face[f] = fld.px == Parity::OddFace;
-      // y pass: along j (stride sj), tangential i over the full x extent incl. halos
-      hy.snf[f] = L.sj; hy.st[f] = 1; hy.nt[f] = L.nx; hy.face[f] = vy;
-      hy.odd[f] = fld.py != Parity::Even; hy.odd_face[f] = fld.py == Parity::OddFace;
-      ntx = std::max(ntx, L.ny);
-      nty = std::max(nty, L.nx);
+  const bool wrap_x = wraps(v[0].L, 0), wrap_y = !g.two_d() && wraps(v[0].L, 1);
+  // each field's x pass before its y pass: every x pass, then every y pass (the fields are distinct)
+  for (int pass = 0; pass < (g.two_d() ? 1 : 2); ++pass) {
+    if (pass == 0 ? wrap_x : wrap_y) {
+      tile::hooks.wrap(b.data(), int(b.size()), pass);
+      for (std::size_t s0 = 0; s0 < v.size(); s0 += kMaxFields) tile::after_launch("halo wrap");  // as the launches below
+      continue;
     }
-    hx.nf = hy.nf = nf;
-    hx.nkmax = hy.nkmax = nkmax;
-    hx.n = g.nx; hx.periodic = g.bc_x == BC::Periodic; hx.ydir = false; hx.flat = g.flat_x();
-    hy.n = g.ny; hy.periodic = g.bc_y == BC::Periodic; hy.ydir = true; hy.flat = g.flat_y();
-    parallel_for(Range3D{0, ntx, 0, 8, 0, nf * nkmax}, hx);
-    if (!g.two_d()) parallel_for(Range3D{-Grid::halo, nty + Grid::halo, 0, 8, 0, nf * nkmax}, hy);
+    for (std::size_t s0 = 0; s0 < v.size(); s0 += kMaxFields) {
+      const int nf = int(std::min<std::size_t>(kMaxFields, v.size() - s0));
+      HaloMulti h{};
+      int nkmax = 1, ta = 1 << 30, tb = -(1 << 30);
+      for (int f = 0; f < nf; ++f) {
+        const HaloField& fld = v[s0 + f];
+        const Layout& L = fld.L;
+        const bool ux = fld.st == Stagger::U, vy = fld.st == Stagger::V;
+        nkmax = std::max(nkmax, L.nz);
+        h.p[f] = fld.p;
+        h.sk[f] = L.sk;
+        h.nk[f] = L.nz;
+        if (pass == 0) {  // x pass: along i (stride 1), tangential j over interior rows (as fill_impl)
+          h.snf[f] = 1; h.st[f] = L.sj; h.t0[f] = L.j0(); h.t1[f] = L.j1(); h.face[f] = ux;
+          h.lo[f] = L.wi0; h.hi[f] = L.wi1;
+          h.odd[f] = fld.px != Parity::Even; h.odd_face[f] = fld.px == Parity::OddFace;
+        } else {  // y pass: along j (stride sj), tangential i over the full x extent incl. halos
+          h.snf[f] = L.sj; h.st[f] = 1; h.t0[f] = L.wi0; h.t1[f] = L.wi1; h.face[f] = vy;
+          h.lo[f] = L.wj0; h.hi[f] = L.wj1;
+          h.odd[f] = fld.py != Parity::Even; h.odd_face[f] = fld.py == Parity::OddFace;
+        }
+        ta = std::min(ta, h.t0[f]);
+        tb = std::max(tb, h.t1[f]);
+      }
+      h.nf = nf;
+      h.nkmax = nkmax;
+      if (pass == 0) { h.n = g.nx; h.periodic = g.bc_x == BC::Periodic; h.ydir = false; h.flat = g.flat_x(); }
+      else { h.n = g.ny; h.periodic = g.bc_y == BC::Periodic; h.ydir = true; h.flat = g.flat_y(); }
+      parallel_for(Range3D{ta, tb, 0, 8, 0, nf * nkmax}, h);
+    }
   }
 }
 

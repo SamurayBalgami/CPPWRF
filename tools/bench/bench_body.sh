@@ -21,7 +21,9 @@
 # Then tools/bench/bench_run.py runs each case of CASES (R1, P4, P4R15, N3, L) with the WRF layouts of LAYOUTS and
 # writes J/results.txt, J/report.md (tools/bench/bench_report.py) and J/fetch/bench.tar.gz (the logs).
 # Progress: J/bench.log. Nothing runs next to the timed runs (the builds and downloads end before them).
-J=$1 CASES=$2 LAYOUTS=$3 STAMP=$4
+J=$1 CASES=$2 LAYOUTS=$3 STAMP=$4 SCALING=${5:-}
+# SCALING (colab_bench.sh --scaling): "CASE:N,N,...;CASE:..." - only WRF-r8 (dmpar) and CPPWRF's CPU FP64 build with
+# CPPWRF_MPI (cpu-dp-mpi) are built, and each case runs bench_run.py scaling with its rank counts (J/scaling.md).
 W=/opt/wrfbench Q=/opt/wrfbench/gpu
 mkdir -p $W $J/fetch/logs
 touch $J/setup.out $J/results.txt
@@ -92,27 +94,35 @@ wps() {  # met_em files of the large domain in $W/wps
   rm -f gfs.f* FILE:*
   touch met_ok
 }
-build_cpu() {  # NAME PORTABLE_LIBMVEC
+build_cpu() {  # NAME PORTABLE_LIBMVEC [CMAKE OPTION]
   cmake -S $J/src -B $W/$1 -DCMAKE_BUILD_TYPE=Release -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_DOUBLE=ON \
-    -DCPPWRF_PORTABLE_LIBMVEC=$2 > $J/build-$1.log 2>&1 && cmake --build $W/$1 -j 16 --target cppwrf >> $J/build-$1.log 2>&1
+    -DCPPWRF_PORTABLE_LIBMVEC=$2 $3 > $J/build-$1.log 2>&1 && cmake --build $W/$1 -j 16 --target cppwrf >> $J/build-$1.log 2>&1
 }
 
 B "WRF source, WRF builds, WPS and CPPWRF CPU builds"
+WRFS="r4 r8 r4sm r8sm"; [ -z "$SCALING" ] || WRFS=r8
 ( wrf_src || exit 1
-  build_wrf r4 34 "" > /dev/null 2>&1 & build_wrf r8 34 -r8 > /dev/null 2>&1 &
-  build_wrf r4sm 35 "" > /dev/null 2>&1 & build_wrf r8sm 35 -r8 > /dev/null 2>&1 &
+  build_wrf r8 34 -r8 > /dev/null 2>&1 &
+  if [ -z "$SCALING" ]; then
+    build_wrf r4 34 "" > /dev/null 2>&1 &
+    build_wrf r4sm 35 "" > /dev/null 2>&1 & build_wrf r8sm 35 -r8 > /dev/null 2>&1 &
+  fi
   wait ) > $J/wrf_build.log 2>&1 &
 WRFB=$!
-( wps ) > $J/wps.log 2>&1 &
+case ",$CASES," in *,L,*) ( wps ) > $J/wps.log 2>&1 & ;; *) ( : ) & ;; esac
 WPSP=$!
 t0=$SECONDS
-build_cpu cpu-dp ON || echo "BENCH_BUILD_FAILED cpu-dp (build-cpu-dp.log)" >> $J/setup.out
-build_cpu cpu-dp-hwlog OFF || echo "BENCH_BUILD_FAILED cpu-dp-hwlog (build-cpu-dp-hwlog.log)" >> $J/setup.out
+if [ -n "$SCALING" ]; then
+  build_cpu cpu-dp-mpi ON -DCPPWRF_MPI=ON || echo "BENCH_BUILD_FAILED cpu-dp-mpi (build-cpu-dp-mpi.log)" >> $J/setup.out
+else
+  build_cpu cpu-dp ON || echo "BENCH_BUILD_FAILED cpu-dp (build-cpu-dp.log)" >> $J/setup.out
+  build_cpu cpu-dp-hwlog OFF || echo "BENCH_BUILD_FAILED cpu-dp-hwlog (build-cpu-dp-hwlog.log)" >> $J/setup.out
+fi
 B "CPPWRF CPU builds: $((SECONDS - t0)) s"
 wait $WPSP; B "WPS: $(ls $W/wps/met_em.d01.* 2> /dev/null | wc -l) met_em files ($( [ -f $W/wps/met_ok ] && echo ok || echo FAILED))"
 for f in geogrid ungrib metgrid; do tail -3 $W/wps/$f.log > $J/fetch/logs/wps_$f.log 2> /dev/null; done
 wait $WRFB
-for n in r4 r8 r4sm r8sm; do
+for n in $WRFS; do
   d=$W/WRF-$n
   if [ -x $d/main/wrf.exe ]; then B "WRF-$n built"; else
     B "WRF-$n FAILED"; echo "BENCH_BUILD_FAILED WRF-$n" >> $J/setup.out
@@ -126,6 +136,28 @@ if [ -f $W/wps/met_ok ] && [ -x $W/WRF-r8/main/real.exe ]; then
   [ -s $W/run_L/wrfbdy_d01 ] || python3 $J/src/tools/bench/bench_run.py make-large $J/data/wrf_runs/run_P4_r8 $W/wps
 fi
 cd $J/src || exit 1
+ranks_of() { local x; for x in ${SCALING//;/ }; do [ "${x%%:*}" = "$1" ] && echo "${x#*:}"; done; }
+for c in ${CASES//,/ }; do
+  [ -n "$SCALING" ] || break
+  r=$(ranks_of $c); [ -n "$r" ] || { B "$c: no rank counts in --scaling"; continue; }
+  case $c in
+    R1) python3 tools/bench/bench_run.py scaling R1 $J/data/wrf_runs/run_R1_r8 --ranks "$r" ;;
+    P4) python3 tools/bench/bench_run.py scaling P4 $J/data/wrf_runs/run_P4_r8 --ref --ranks "$r" ;;
+    P4R15) python3 tools/bench/bench_run.py scaling P4R15 $J/data/wrf_runs/run_P4_r8 --set physics.radt=15 --ranks "$r" ;;
+    N3) python3 tools/bench/bench_run.py scaling N3 $J/data/wrf_runs/run_N3h_r8 --ref --ranks "$r" ;;
+    L) if [ -s $W/run_L/wrfbdy_d01 ]; then
+         python3 tools/bench/bench_run.py scaling L $W/run_L --set physics.radt=15 --ranks "$r"
+       else B "L: no inputs (WPS or real.exe failed)"; echo "BENCH_L_FAILED" >> $J/setup.out; fi ;;
+    *) B "unknown case $c" ;;
+  esac >> $J/run.log 2>&1
+done
+if [ -n "$SCALING" ]; then
+  python3 tools/bench/bench_run.py scaling-report >> $J/run.log 2>&1
+  cp $J/results.txt $J/scaling.md $J/wrf_config.txt $J/compilers.txt $J/lscpu.txt $J/bench.log $J/fetch/logs/ 2> /dev/null
+  tar czf $J/fetch/bench.tar.gz -C $J/fetch logs
+  B "end"
+  exit 0
+fi
 for c in ${CASES//,/ }; do
   case $c in
     R1) python3 tools/bench/bench_run.py case R1 $J/data/wrf_runs/run_R1_r8 --serial --layouts "$LAYOUTS" ;;

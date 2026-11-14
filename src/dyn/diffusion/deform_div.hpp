@@ -91,13 +91,15 @@ struct KDeform12 {
   View3<real> defor12;
   real rdx, rdy;
   int nx, ny, nz;
-  bool periodic_x, periodic_y;
+  // 0: not periodic; 1: periodic, the points across the boundary by their own indices; 2: by the halo (a
+  // decomposed run with several patches along the direction: the halo holds the same values)
+  int periodic_x, periodic_y;
 
   CPPWRF_HD void operator()(int i, int j) const {
-    int im1 = (i == 0) ? (periodic_x ? nx - 1 : 0) : i - 1;
-    int i0  = (i == nx) ? (periodic_x ? 0 : nx - 1) : i;
-    int jm1 = (j == 0) ? (periodic_y ? ny - 1 : 0) : j - 1;
-    int j0  = (j == ny) ? (periodic_y ? 0 : ny - 1) : j;
+    int im1 = (i == 0) ? (periodic_x ? (periodic_x == 2 ? -1 : nx - 1) : 0) : i - 1;
+    int i0  = (i == nx) ? (periodic_x ? (periodic_x == 2 ? nx : 0) : nx - 1) : i;
+    int jm1 = (j == 0) ? (periodic_y ? (periodic_y == 2 ? -1 : ny - 1) : 0) : j - 1;
+    int j0  = (j == ny) ? (periodic_y ? (periodic_y == 2 ? ny : 0) : ny - 1) : j;
 
     const real mm = real(0.25) * (msfux(i, jm1) + msfux(i, j0)) * (msfvy(im1, j) + msfvy(i0, j));
     const int ktes1 = nz - 1;
@@ -160,12 +162,13 @@ struct KDeform13 {
   View3<real> defor13;
   real rdx;
   int nx, nz;
-  bool periodic_x, mix_full_fields;
+  int periodic_x;  // as KDeform12
+  bool mix_full_fields;
 
   CPPWRF_HD void operator()(int i, int j) const {
     const real mm = msfux(i, j) * msfuy(i, j);
-    int im1 = (i == 0) ? (periodic_x ? nx - 1 : 0) : i - 1;
-    int i0  = (i == nx) ? (periodic_x ? 0 : nx - 1) : i;
+    int im1 = (i == 0) ? (periodic_x ? (periodic_x == 2 ? -1 : nx - 1) : 0) : i - 1;
+    int i0  = (i == nx) ? (periodic_x ? (periodic_x == 2 ? nx : 0) : nx - 1) : i;
 
     real hat_wm[128], hat_wp[128], hatavg[128];
     for (int k = 0; k <= nz; ++k) {
@@ -197,12 +200,13 @@ struct KDeform23 {
   View3<real> defor23;
   real rdy;
   int ny, nz;
-  bool periodic_y, mix_full_fields;
+  int periodic_y;  // as KDeform12
+  bool mix_full_fields;
 
   CPPWRF_HD void operator()(int i, int j) const {
     const real mm = msfvx(i, j) * msfvy(i, j);
-    int jm1 = (j == 0) ? (periodic_y ? ny - 1 : 0) : j - 1;
-    int j0  = (j == ny) ? (periodic_y ? 0 : ny - 1) : j;
+    int jm1 = (j == 0) ? (periodic_y ? (periodic_y == 2 ? -1 : ny - 1) : 0) : j - 1;
+    int j0  = (j == ny) ? (periodic_y ? (periodic_y == 2 ? ny : 0) : ny - 1) : j;
 
     real hat_wm[128], hat_wp[128], hatavg[128];
     for (int k = 0; k <= nz; ++k) {
@@ -279,37 +283,41 @@ inline void cal_deform_and_div(const DiffusionParams& p,
   column_for(Range2D{i12_s, i12_e, j12_s, j12_e},
              KDeform12{u, v, zx, zy, rdzw, msfux, msfvy,
                        fnm, fnp, dn, dnw, cf1, cf2, cf3, defor12,
-                       rdx, rdy, nx, ny, nz, p.periodic_x, p.periodic_y});
+                       rdx, rdy, nx, ny, nz, p.wrap_x(), p.wrap_y()});
 
-  if (p.periodic_x || p.periodic_y) tile::exchange_ptrs({defor12.p});  // tiles: the wrap's sources
+  // The copies of an edge row or column below: launches over the edge's positions, on the workers at that edge for
+  // the positions they own (tile::edge_rows / edge_cols); a periodic copy from the other side of the domain comes
+  // from the worker that owns it (tile::wrap_line) when there are several patches along the direction.
   if (p.periodic_x) {
-    column_for_whole(Range2D{0, 1, 0, ny + 1}, [=] CPPWRF_HD (int, int j) {
-      for (int k = 0; k < nz; ++k) defor12(nx, j, k) = defor12(0, j, k);
-    });
+    if (!tile::wrap_line(defor12.p, 0, nx, 0, 0, ny + 1))
+      column_for_whole(tile::edge_rows(tile::Edge::East, 0, ny + 1), [=] CPPWRF_HD (int, int j) {
+        for (int k = 0; k < nz; ++k) defor12(nx, j, k) = defor12(0, j, k);
+      });
   } else if (bxs) {
-    column_for_whole(Range2D{0, 1, 0, ny + 1}, [=] CPPWRF_HD (int, int j) {
+    column_for_whole(tile::edge_rows(tile::Edge::West, 0, ny + 1), [=] CPPWRF_HD (int, int j) {
       for (int k = 0; k < nz; ++k) defor12(0, j, k) = defor12(1, j, k);
     });
   }
 
   if (p.periodic_y) {
-    column_for_whole(Range2D{0, nx + 1, 0, 1}, [=] CPPWRF_HD (int i, int) {
-      for (int k = 0; k < nz; ++k) defor12(i, ny, k) = defor12(i, 0, k);
-    });
+    if (!tile::wrap_line(defor12.p, 1, ny, 0, 0, nx + 1))
+      column_for_whole(tile::edge_cols(tile::Edge::North, 0, nx + 1), [=] CPPWRF_HD (int i, int) {
+        for (int k = 0; k < nz; ++k) defor12(i, ny, k) = defor12(i, 0, k);
+      });
   } else if (bys) {
-    column_for_whole(Range2D{0, nx + 1, 0, 1}, [=] CPPWRF_HD (int i, int) {
+    column_for_whole(tile::edge_cols(tile::Edge::South, 0, nx + 1), [=] CPPWRF_HD (int i, int) {
       for (int k = 0; k < nz; ++k) defor12(i, 0, k) = defor12(i, 1, k);
     });
   }
 
   if (bxe) {
-    column_for_whole(Range2D{0, 1, 0, ny + 1}, [=] CPPWRF_HD (int, int j) {
+    column_for_whole(tile::edge_rows(tile::Edge::East, 0, ny + 1), [=] CPPWRF_HD (int, int j) {
       for (int k = 0; k < nz; ++k) defor12(nx, j, k) = defor12(nx - 1, j, k);
     });
   }
 
   if (bye) {
-    column_for_whole(Range2D{0, nx + 1, 0, 1}, [=] CPPWRF_HD (int i, int) {
+    column_for_whole(tile::edge_cols(tile::Edge::North, 0, nx + 1), [=] CPPWRF_HD (int i, int) {
       for (int k = 0; k < nz; ++k) defor12(i, ny, k) = defor12(i, ny - 1, k);
     });
   }
@@ -322,14 +330,12 @@ inline void cal_deform_and_div(const DiffusionParams& p,
   const int j13_e = ny;
 
   column_for(Range2D{i13_s, i13_e, j13_s, j13_e},
-             KDeform13{u, w, zx, rdz, msfux, msfuy, msfty, u_base, defor13, rdx, nx, nz, p.periodic_x, p.mix_full_fields});
+             KDeform13{u, w, zx, rdz, msfux, msfuy, msfty, u_base, defor13, rdx, nx, nz, p.wrap_x(), p.mix_full_fields});
 
-  if (p.periodic_x) {
-    tile::exchange_ptrs({defor13.p});  // tiles: the wrap's sources
-    column_for_whole(Range2D{0, 1, 0, ny}, [=] CPPWRF_HD (int, int j) {
+  if (p.periodic_x && !tile::wrap_line(defor13.p, 0, nx, 0, 0, ny))
+    column_for_whole(tile::edge_rows(tile::Edge::East, 0, ny), [=] CPPWRF_HD (int, int j) {
       for (int k = 0; k <= nz; ++k) defor13(nx, j, k) = defor13(0, j, k);
     });
-  }
 
   // 4. defor23 at v-w points (staggered in y and z): WRF's dw/dy loop i = its..MIN(ite, ide-1),
   // j = jts..MIN(jte, jde-1) (to jde when periodic_y)
@@ -339,42 +345,40 @@ inline void cal_deform_and_div(const DiffusionParams& p,
   const int j23_e = p.periodic_y ? ny + 1 : ny;
 
   column_for(Range2D{i23_s, i23_e, j23_s, j23_e},
-             KDeform23{v, w, zy, rdz, msfvx, msfvy, msftx, v_base, defor23, rdy, ny, nz, p.periodic_y, p.mix_full_fields});
+             KDeform23{v, w, zy, rdz, msfvx, msfvy, msftx, v_base, defor23, rdy, ny, nz, p.wrap_y(), p.mix_full_fields});
 
-  if (p.periodic_y) {
-    tile::exchange_ptrs({defor23.p});  // tiles: the wrap's sources
-    column_for_whole(Range2D{0, nx, 0, 1}, [=] CPPWRF_HD (int i, int) {
+  if (p.periodic_y && !tile::wrap_line(defor23.p, 1, ny, 0, 0, nx))
+    column_for_whole(tile::edge_cols(tile::Edge::North, 0, nx), [=] CPPWRF_HD (int i, int) {
       for (int k = 0; k <= nz; ++k) defor23(i, ny, k) = defor23(i, 0, k);
     });
-  }
 
   // WRF's boundary update of defor13 and defor23 (with the dw/dy loop limits): the start faces of an
   // open / specified / nested side and the end faces of every non-periodic side (symmetric too) are copied
   // from the next ones, in the order xs, ys, xe, ye
   const bool exe = !p.periodic_x, eye = !p.periodic_y;
   if (bxs)
-    column_for_whole(Range2D{0, 1, 0, ny + 1}, [=] CPPWRF_HD (int, int j) {
+    column_for_whole(tile::edge_rows(tile::Edge::West, 0, ny + 1), [=] CPPWRF_HD (int, int j) {
       for (int k = 0; k <= nz; ++k) {
         defor13(0, j, k) = defor13(1, j, k);
         defor23(0, j, k) = defor23(1, j, k);
       }
     });
   if (bys)
-    column_for_whole(Range2D{0, nx + 1, 0, 1}, [=] CPPWRF_HD (int i, int) {
+    column_for_whole(tile::edge_cols(tile::Edge::South, 0, nx + 1), [=] CPPWRF_HD (int i, int) {
       for (int k = 0; k <= nz; ++k) {
         defor13(i, 0, k) = defor13(i, 1, k);
         defor23(i, 0, k) = defor23(i, 1, k);
       }
     });
   if (exe)
-    column_for_whole(Range2D{0, 1, 0, ny + 1}, [=] CPPWRF_HD (int, int j) {
+    column_for_whole(tile::edge_rows(tile::Edge::East, 0, ny + 1), [=] CPPWRF_HD (int, int j) {
       for (int k = 0; k <= nz; ++k) {
         defor13(nx, j, k) = defor13(nx - 1, j, k);
         defor23(nx, j, k) = defor23(nx - 1, j, k);
       }
     });
   if (eye)
-    column_for_whole(Range2D{0, nx + 1, 0, 1}, [=] CPPWRF_HD (int i, int) {
+    column_for_whole(tile::edge_cols(tile::Edge::North, 0, nx + 1), [=] CPPWRF_HD (int i, int) {
       for (int k = 0; k <= nz; ++k) {
         defor13(i, ny, k) = defor13(i, ny - 1, k);
         defor23(i, ny, k) = defor23(i, ny - 1, k);

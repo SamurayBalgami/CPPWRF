@@ -10,6 +10,7 @@
 
 #include "core/constants.hpp"
 #include "core/halo.hpp"
+#include "core/tiles.hpp"
 
 namespace cppwrf::cases {
 
@@ -78,6 +79,7 @@ static void init_ideal(const io::Config& cfg, Model& m, const std::string& cname
   g.bc_x = parse_bc(cfg.get_string("domain.bc_x", "periodic"));
   g.bc_y = parse_bc(cfg.get_string("domain.bc_y", "periodic"));
   g.dt = cfg.get_double("time.dt");
+  tile::set_domain(g);
   m.run_time = cfg.get_double("run.run_time", 0.0);
   m.nsteps = std::lround(m.run_time / g.dt);
   if (std::fabs(m.nsteps * g.dt - m.run_time) > 1e-9 * std::max(1.0, m.run_time))
@@ -144,19 +146,35 @@ static void init_ideal(const io::Config& cfg, Model& m, const std::string& cname
     while (m.st->q_names[idx] != n) ++idx;
     init_tracer(cfg, n, g, *m.base, m.st->q_1[idx], m.st->q_2[idx]);
   }
-  // module_initialize_ideal: u_base(k) = u_1(1,k,1), v_base(k) = v_1(1,k,1), t_base, qv_base, z_base (all ideal cases)
-  std::vector<real> h;
-  m.st->u_2.download(h);
-  for (int k = 0; k < g.nz; ++k) m.base->u_base[k] = h[m.st->u_2.layout().index(0, 0, k)];
-  m.st->v_2.download(h);
-  for (int k = 0; k < g.nz; ++k) m.base->v_base[k] = h[m.st->v_2.layout().index(0, 0, k)];
-  m.base->t_init.download(h);
-  for (int k = 0; k < g.nz; ++k) m.base->t_base[k] = h[m.base->t_init.layout().index(0, 0, k)];
-  m.base->qv_base.download(h);
-  for (int k = 0; k < g.nz; ++k) m.base->qv_base_1d[k] = h[m.base->qv_base.layout().index(0, 0, k)];
-  m.base->phb.download(h);
-  for (int k = 0; k < g.nz; ++k)
-    m.base->z_base[k] = real(0.5) * (h[m.base->phb.layout().index(0, 0, k)] + h[m.base->phb.layout().index(0, 0, k + 1)]) / cst::g;
+  // module_initialize_ideal: u_base(k) = u_1(1,k,1), v_base(k) = v_1(1,k,1), t_base, qv_base, z_base (all ideal cases);
+  // a decomposed run: from the worker that holds the column (0, 0)
+  {
+    const bool have = !tile::tiled() || tile::id() == 0;
+    std::vector<double> col(5 * std::size_t(g.nz), 0.0);
+    if (have) {
+      std::vector<real> h;
+      auto at = [&](const Layout& L, int k) { return double(h[L.index(0, 0, k)]); };
+      m.st->u_2.download(h);
+      for (int k = 0; k < g.nz; ++k) col[std::size_t(k)] = at(m.st->u_2.layout(), k);
+      m.st->v_2.download(h);
+      for (int k = 0; k < g.nz; ++k) col[std::size_t(g.nz + k)] = at(m.st->v_2.layout(), k);
+      m.base->t_init.download(h);
+      for (int k = 0; k < g.nz; ++k) col[std::size_t(2 * g.nz + k)] = at(m.base->t_init.layout(), k);
+      m.base->qv_base.download(h);
+      for (int k = 0; k < g.nz; ++k) col[std::size_t(3 * g.nz + k)] = at(m.base->qv_base.layout(), k);
+      m.base->phb.download(h);
+      for (int k = 0; k < g.nz; ++k)
+        col[std::size_t(4 * g.nz + k)] = real(0.5) * (h[m.base->phb.layout().index(0, 0, k)] + h[m.base->phb.layout().index(0, 0, k + 1)]) / cst::g;
+    }
+    tile::from_owner(have, col.data(), col.size() * sizeof(double));
+    for (int k = 0; k < g.nz; ++k) {
+      m.base->u_base[k] = col[std::size_t(k)];
+      m.base->v_base[k] = col[std::size_t(g.nz + k)];
+      m.base->t_base[k] = col[std::size_t(2 * g.nz + k)];
+      m.base->qv_base_1d[k] = col[std::size_t(3 * g.nz + k)];
+      m.base->z_base[k] = col[std::size_t(4 * g.nz + k)];
+    }
+  }
   m.base->upload_levels();
 }
 
@@ -185,15 +203,16 @@ static void init_adaptive(const io::Config& cfg, Model& m, const std::string& cn
   if (o.interval_seconds <= 0) throw std::runtime_error("time.interval_seconds must be > 0");
   m.adapt = std::make_unique<AdaptTimeStep>(o);
   // MAXVAL(grid%msftx), MAXVAL(grid%msfty): the input's map factors (the memory halo of a serial WRF is 0)
+  // a decomposed run: over the points the worker holds, then over the workers
   auto maxval = [](const BaseField2& f) {
     std::vector<real> h;
     f.download(h);
     const Layout& L = f.layout();
     if (f.uniform()) return h[L.index(0, 0, 0)];
-    real mx = h[L.index(0, 0, 0)];
-    for (int j = 0; j < L.ny; ++j)
-      for (int i = 0; i < L.nx; ++i) mx = std::max(mx, h[L.index(i, j, 0)]);
-    return mx;
+    real mx = h[L.index(L.i0(), L.j0(), 0)];
+    for (int j = L.j0(); j < L.j1(); ++j)
+      for (int i = L.i0(); i < L.i1(); ++i) mx = std::max(mx, h[L.index(i, j, 0)]);
+    return real(tile::max(double(mx)));
   };
   const bool restart = !cfg.get_string("run.restart_file", "").empty();
   m.adapt->start_em(0, g.dx, g.dy, maxval(m.base->msftx), maxval(m.base->msfty), restart);

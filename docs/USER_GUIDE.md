@@ -136,6 +136,7 @@ environment variable `CPPWRF_DATA_DIR` overrides both.
 | `CPPWRF_NATIVE` | `ON` | Release builds: `-march=native`; `OFF` for portable binaries (same values either way) |
 | `CPPWRF_PORTABLE_LIBMVEC` | `ON` | glibc's vector `log` / `log10` as on Intel CPUs, on every x86-64 CPU (the WRF references are Intel-made) |
 | `CPPWRF_CUDA_GLIBC_MATH` | `ON` | CUDA FP64: glibc's math functions on the device (bit-identical to WRF); `OFF`: CUDA's math library |
+| `CPPWRF_MPI` | `OFF` | `ON`: the program runs as MPI ranks under `mpirun` (needs an MPI library with its C API, e.g. MPICH or Open MPI; section 7, "Tiles and MPI ranks"); `OFF`: no MPI header or library is used |
 | `CPPWRF_DIFF_TESTS` | `OFF` | Register the differential tests against WRF's compiled Fortran (need a WRF build, `WRF_DIR`) |
 
 ### Required Flags and Determinism
@@ -325,7 +326,9 @@ does not know is an error at start-up (`unknown configuration key ...`), so a ty
 | `CPPWRF_DEVICE_MEMORY_MIB=N` | GPU builds: size the work buffers (column physics, RRTMG) as on a device of N MiB |
 | `CPPWRF_KTIME=1` | GPU builds: time every kernel (slower; a table at the end) |
 | `CPPWRF_GRAPHS=0` | GPU builds: no CUDA graphs |
-| `CPPWRF_TILES=PxQ` | run the domain as P x Q tiles (overrides `run.tiles`; section 7, "Tiles") |
+| `CPPWRF_TILES=PxQ` | run the domain as P x Q tiles (overrides `run.tiles`; section 7, "Tiles and MPI ranks") |
+| `CPPWRF_RANKS=PxQ` | an MPI run's layout: P patches along x times Q along y, P Q = the rank count (overrides `run.ranks`; default: the most square layout with P <= Q) |
+| `CPPWRF_RANK_DEVICES=d0,d1,...` | GPU builds under MPI: the device of rank r is `d[r % n]` (default: every rank on the current GPU) |
 | `CPPWRF_TILE_DEVICES=d0,d1,...` | GPU builds: the device of tile t is `d[t % n]` (default: all tiles on the current GPU) |
 | `CPPWRF_TILE_CHECK=1` | CPU builds: compare every launch of every time step of the tiles with a run without tiles (slow; the first point that differs names the launch, the field and the stale fields) |
 | `CPPWRF_WRF_RUNS`, `CPPWRF_WRF_REF` | the WRF run and reference directories that `configs/real_*.ini` and the tests name |
@@ -491,25 +494,56 @@ CPU build.
   measured minimum per suite).
 - **Determinism:** the GPU build has no atomics in floating-point sums and gives the same bits in every run.
 
-### Tiles (domain decomposition)
+### Tiles and MPI ranks (domain decomposition)
 
-`run.tiles = PxQ` (or `CPPWRF_TILES=PxQ`) runs one domain as P tiles along x times Q along y (src/core/tiles.hpp).
-Each tile is a host thread with its own copy of every field, its own CUDA stream and its own device
-(`CPPWRF_TILE_DEVICES`; by default every tile on the one GPU). Inside a time step a tile computes only the points it
-owns (its patch; the edge tiles also own the last faces and the lateral halos), and the tiles' copies meet through
-halo exchanges: every halo fill first copies, from the neighbouring tiles, the points they own within 3 points of the
-patch (and the sources of a periodic wrap), D2D (peer) copies on the GPU, memcpy on the CPU; where WRF has a
-`HALO_EM_*` exchange without a physical boundary fill, an exchange alone. A point is always computed by one tile from
-the values a run without tiles has, so **the result is the same bits for every layout** (CPU FP64 = one-process WRF
-real*8, CUDA FP64 and FP32 the same as without tiles). The start, the input and the output run in every tile one after
-another (the output of tile 0 goes to `output.dir`, tile N's to `output.dir.tileN`); before the output the tiles
-gather every field. Without `run.tiles` (or with 1) nothing of this runs.
+One domain, and its nests, can run as P x Q *patches* (docs/MPI.md has the design). A patch is a rectangle of the
+horizontal grid with its own memory: its points plus a halo of 3 points, not the whole domain. A patch is run by a
+*worker*, of one of two kinds that share all of the decomposition code (src/core/tiles.hpp):
 
-Phase 1 limits: every tile allocates the whole domain (the decomposition does not divide the memory yet); CUDA
-graphs are off with tiles (the exchanges synchronise the tiles from the host); nested runs have one tile per domain
-(`run.tiles` with nests is an error); a tile must be at least 3 points wide and a 2-D (x-z) domain has one tile along
-y. The suite's cases `*_tPxQ` (tests/verify/cases/85_tiles.py) run other cases as tiles against the same WRF
-references; `tools/colab/colab_tiles.sh` runs suite cases with several layouts and the check on a Colab runtime.
+- **Tiles**: `run.tiles = PxQ` (or `CPPWRF_TILES=PxQ`), host threads of one process, each with its own fields, its
+  own CUDA stream and device (`CPPWRF_TILE_DEVICES`; by default every tile on the one GPU).
+- **MPI ranks**: a build with `-DCPPWRF_MPI=ON` under `mpirun`, one patch per rank:
+
+```bash
+cmake -B build-mpi -DCMAKE_BUILD_TYPE=Release -DCPPWRF_DOUBLE=ON -DCPPWRF_ENABLE_CUDA=OFF -DCPPWRF_MPI=ON
+cmake --build build-mpi -j --target cppwrf
+OMP_NUM_THREADS=4 mpirun -np 6 build-mpi/cppwrf configs/real_p4_r8.ini                 # 2 x 3 patches
+CPPWRF_RANKS=3x2 OMP_NUM_THREADS=4 mpirun -np 6 build-mpi/cppwrf configs/real_p4_r8.ini
+# a CUDA build with CPPWRF_MPI: two ranks on one GPU, or one GPU per rank
+mpirun -np 2 build-cuda-mpi/cppwrf CONFIG.ini
+CPPWRF_RANK_DEVICES=0,1 mpirun -np 2 build-cuda-mpi/cppwrf CONFIG.ini
+```
+
+  The layout is `run.ranks = PxQ` (or `CPPWRF_RANKS`), P patches along x times Q along y with P Q = the rank count;
+  without it the most square layout with P <= Q, as WRF's. Each rank uses `OMP_NUM_THREADS` threads (CPU build), so
+  ranks times threads should not exceed the cores. The same binary without `mpirun` (or with one rank) runs as one
+  process. `run.tiles` in an MPI run is an error. At the end the run prints the ranks' peak host memory.
+
+Inside a time step a worker computes only the points it owns (the edge patches also own the last faces and the
+lateral halos). The workers meet in halo exchanges (every halo fill first receives, from the neighbouring workers,
+the points they own within 3 points of the patch, and the sources of a periodic wrap), in the domain-wide
+reductions (maxima; sums in the order of a run with one patch) and in the output: **one worker (patch 0) writes
+every file**, from fields gathered one at a time, so the files are those of a run with one patch, in `output.dir`.
+A point is always computed by one worker from the values a run with one patch has, so **the result is the same
+bits for every worker count and layout**: CPU FP64 = one-process WRF real*8, CUDA FP64 the same; WRF's own MPI
+runs do not have this property (docs/PERF.md). Nested runs decompose every domain into the same P x Q patches of
+its own grid; the nest forcing and the feedback read, from the other domain's fields, the box over the worker's
+patch.
+Without `run.tiles` and outside `mpirun` nothing of this runs.
+
+Limits: a worker's memory is its patch's fields; a real-data start reads only the patch's window of wrfinput's
+3-D variables, but the 2-D variables, the wrfbdy records, a restart file's fields (one at a time) and the ideal
+cases' initial arrays are whole on every worker while they are read, the lateral boundary slabs are whole edges,
+and the writer holds the output frame it writes (memory that does not shrink with the worker count). CUDA graphs are off with several workers (the exchanges synchronise them from the host). A
+patch must be at least 3 points wide; a 2-D (x-z) domain has one patch along y (`run.ranks = Nx1`), a y-z domain
+one along x. `CPPWRF_TILE_CHECK` is for tiles without nests. Proved: the layouts and cases of docs/MPI.md, section
+5, on one machine; runs on several GPUs or several nodes have not been made (docs/MPI.md, section 6).
+
+The suite's cases `*_tPxQ` (tests/verify/cases/85_tiles.py) run other cases as tiles against the same WRF
+references; `tools/colab/colab_tiles.sh` runs suite cases with several tile layouts and the check on a Colab
+runtime, `tools/colab/colab_mpi.sh` runs suite cases under `mpirun` with several rank layouts (CPU, and
+`--gpu-cases` with several ranks on the runtime's GPU), each against the WRF references and byte for byte against
+the run with one rank; `tools/bench/colab_bench.sh --scaling` measures the strong scaling next to WRF dmpar.
 
 ---
 
@@ -533,6 +567,8 @@ nested; a `[d0N]` key reaches that domain's configuration and is checked there.
 | `[run]` | `start_date` | string | `"2000-01-01_00:00:00"` | UTC start timestamp string | `start_year/month/day/hour/etc` |
 | `[run]` | `stop_on_nonfinite` | bool | `true` | Stop when a diagnostic step finds a NaN / Inf (false: go on, as WRF does) | none |
 | `[run]` | `check_nonfinite_every_step` | bool | `false` | Look for NaN / Inf after every step (default: on the `output.diag_interval` steps); the message names the first non-finite field and point | none |
+| `[run]` | `tiles` | string | `"1"` | `PxQ` (or `P`): the domain as P x Q tiles, host threads of one process (section 7, "Tiles and MPI ranks") | none |
+| `[run]` | `ranks` | string | `""` | `PxQ`: the layout of an MPI run's ranks (P Q = the rank count; default the most square with P <= Q) | `nproc_x`, `nproc_y` |
 | `[cppwrf]` | `allow_unverified` | bool | `false` | Run options below the verified tier (`data/option_tiers.txt`: column_verified, unverified); without it such an option stops the run, naming the option, value and tier. With it: a warning per option and the global attribute `CPPWRF_UNVERIFIED_OPTIONS` (`mp_physics=4:column_verified;...`) in every wrfout / wrfrst file (docs/STATUS.md) | `&cppwrf allow_unverified = .true.` (read by the translator and cppwrf_real; wrf.exe skips the group) |
 | `[run]` | `restart_any_commit` | bool | `false` | Resume from a CPPWRF `restart_*.nc` file written by another commit | none |
 | `[real]` | `dir` | string | *required (real)* | Directory containing `wrfinput_d01` and `wrfbdy_d01` | WRF run directory |

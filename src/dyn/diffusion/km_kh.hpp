@@ -601,30 +601,29 @@ inline void calculate_km_kh(const DiffusionParams& p,
                            xkmh, xkmv, xkhh, xkhv, dx, dy, p.c_s, p.prandtl, p.diff_opt, nz});
 
     if (p.specified) {
-      column_for_whole(Range2D{0, 1, 0, ny}, [=] CPPWRF_HD (int, int j) {
-        for (int k = 0; k < nz; ++k) {
-          xkmh(0, j, k) = real(0);
-          xkmh(nx - 1, j, k) = real(0);
-          xkmv(0, j, k) = real(0);
-          xkmv(nx - 1, j, k) = real(0);
-          xkhh(0, j, k) = real(0);
-          xkhh(nx - 1, j, k) = real(0);
-          xkhv(0, j, k) = real(0);
-          xkhv(nx - 1, j, k) = real(0);
-        }
-      });
-      column_for_whole(Range2D{0, nx, 0, 1}, [=] CPPWRF_HD (int i, int) {
-        for (int k = 0; k < nz; ++k) {
-          xkmh(i, 0, k) = real(0);
-          xkmh(i, ny - 1, k) = real(0);
-          xkmv(i, 0, k) = real(0);
-          xkmv(i, ny - 1, k) = real(0);
-          xkhh(i, 0, k) = real(0);
-          xkhh(i, ny - 1, k) = real(0);
-          xkhv(i, 0, k) = real(0);
-          xkhv(i, ny - 1, k) = real(0);
-        }
-      });
+      // the edge columns and rows, each on the workers at that edge for the positions they own
+      for (int side = 0; side < 2; ++side) {
+        const int ic = side == 0 ? 0 : nx - 1;
+        column_for_whole(tile::edge_rows(side == 0 ? tile::Edge::West : tile::Edge::East, 0, ny), [=] CPPWRF_HD (int, int j) {
+          for (int k = 0; k < nz; ++k) {
+            xkmh(ic, j, k) = real(0);
+            xkmv(ic, j, k) = real(0);
+            xkhh(ic, j, k) = real(0);
+            xkhv(ic, j, k) = real(0);
+          }
+        });
+      }
+      for (int side = 0; side < 2; ++side) {
+        const int jc = side == 0 ? 0 : ny - 1;
+        column_for_whole(tile::edge_cols(side == 0 ? tile::Edge::South : tile::Edge::North, 0, nx), [=] CPPWRF_HD (int i, int) {
+          for (int k = 0; k < nz; ++k) {
+            xkmh(i, jc, k) = real(0);
+            xkmv(i, jc, k) = real(0);
+            xkhh(i, jc, k) = real(0);
+            xkhv(i, jc, k) = real(0);
+          }
+        });
+      }
     }
   }
 }

@@ -1,11 +1,75 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <cstddef>
+#include <functional>
 #include <map>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace cppwrf::io_netcdf {
+
+// The part of the horizontal grid a reader keeps of the 3-D variables: the mass points [i0, i1) x [j0, j1) (and
+// the staggered point after the last); whole(): everything. A decomposed run (docs/MPI.md) reads only the
+// worker's patch and its halo, so the start does not hold the domain's 3-D arrays on every worker.
+struct Window {
+  int i0 = 0, i1 = -1, j0 = 0, j1 = -1;
+  bool whole() const { return i1 < 0; }
+};
+
+// A (nk, ny, nx) variable of a WRF file (a 2-D one: nk = 1), whole or only a Window of it, indexed with the whole
+// array's flat index (k ny + j) nx + i as a std::vector of the whole variable is; an index outside the window is an
+// error. size() is the whole variable's.
+class WArray {
+ public:
+  WArray() = default;
+  // whole: n values (the flat vector)
+  explicit WArray(std::size_t n) : v_(n), n_(n) {}
+  // (nk, ny, nx) with the columns [i0, i1) x [j0, j1)
+  WArray(std::size_t nx, std::size_t ny, std::size_t nk, std::size_t i0, std::size_t i1, std::size_t j0, std::size_t j1)
+      : v_((i1 - i0) * (j1 - j0) * nk), n_(nx * ny * nk), nx_(nx), ny_(ny), i0_(i0), i1_(i1), j0_(j0), j1_(j1),
+        win_(!(i0 == 0 && i1 == nx && j0 == 0 && j1 == ny)) {}
+  // (nk, ny, nx) with the window w of the mass grid: the columns [w.i0, min(nx, w.i1 + 1)) x [w.j0, min(ny, w.j1 + 1))
+  static WArray make(std::size_t nx, std::size_t ny, std::size_t nk, const Window& w) {
+    if (w.whole()) return WArray(nx, ny, nk, 0, nx, 0, ny);
+    const std::size_t i1 = std::size_t(w.i1) + 1 < nx ? std::size_t(w.i1) + 1 : nx;
+    const std::size_t j1 = std::size_t(w.j1) + 1 < ny ? std::size_t(w.j1) + 1 : ny;
+    return WArray(nx, ny, nk, std::size_t(w.i0), i1, std::size_t(w.j0), j1);
+  }
+  std::size_t size() const { return n_; }
+  bool empty() const { return n_ == 0; }
+  void clear() { *this = WArray(); }
+  bool windowed() const { return win_; }
+  // the columns held: i0, i1, j0, j1
+  std::size_t i0() const { return i0_; }
+  std::size_t i1() const { return i1_; }
+  std::size_t j0() const { return j0_; }
+  std::size_t j1() const { return j1_; }
+  double operator[](std::size_t n) const { return v_[at(n)]; }
+  double& operator[](std::size_t n) { return v_[at(n)]; }
+  // the values held, (nk, j1 - j0, i1 - i0) (the reader's buffer)
+  std::vector<double>& held() { return v_; }
+  const std::vector<double>& held() const { return v_; }
+
+ private:
+  std::size_t at(std::size_t n) const {
+    if (!win_) return n;
+    const std::size_t nxy = nx_ * ny_, k = n / nxy, r = n - k * nxy, j = r / nx_, i = r - j * nx_;
+    if (i < i0_ || i >= i1_ || j < j0_ || j >= j1_ || n >= n_)
+      throw std::out_of_range("WArray: point (" + std::to_string(i) + ", " + std::to_string(j) + ") is outside the window [" +
+                              std::to_string(i0_) + ", " + std::to_string(i1_) + ") x [" + std::to_string(j0_) + ", " +
+                              std::to_string(j1_) + ")");
+    return (k * (j1_ - j0_) + (j - j0_)) * (i1_ - i0_) + (i - i0_);
+  }
+  std::vector<double> v_;
+  std::size_t n_ = 0, nx_ = 0, ny_ = 0, i0_ = 0, i1_ = 0, j0_ = 0, j1_ = 0;
+  bool win_ = false;
+};
+// The window of a file with nx x ny mass points (the reader calls it once the dimensions are known)
+using WindowFn = std::function<Window(int nx, int ny)>;
+// A (Time = 1) variable with horizontal dimensions as the last two, the window w of it; empty if absent
+WArray read_window_var(const std::string& path, const char* name, const Window& w);
 
 /**
  * Data structure holding all required dycore initialization fields from wrfinput.
@@ -104,28 +168,28 @@ struct WrfInputData {
   std::vector<double> mapfac_vy;  // [ny_stag * nx]
 
   // 3D Mass grid fields: size nz * ny * nx
-  std::vector<double> pb;       // Base pressure [Pa]
-  std::vector<double> p;        // Perturbation pressure [Pa]
-  std::vector<double> t;        // Perturbation potential temperature (theta - 300 K)
-  std::vector<double> t_init;   // Initial potential temperature
-  std::vector<double> alb;      // Base inverse density
-  std::vector<double> al;       // Perturbation inverse density
-  std::vector<double> qvapor;   // Water vapor mixing ratio [kg/kg]
+  WArray pb;       // Base pressure [Pa]
+  WArray p;        // Perturbation pressure [Pa]
+  WArray t;        // Perturbation potential temperature (theta - 300 K)
+  WArray t_init;   // Initial potential temperature
+  WArray alb;      // Base inverse density
+  WArray al;       // Perturbation inverse density
+  WArray qvapor;   // Water vapor mixing ratio [kg/kg]
 
   // 3D Staggered fields
-  std::vector<double> u;        // [nz * ny * nx_stag]
-  std::vector<double> v;        // [nz * ny_stag * nx]
-  std::vector<double> w;        // [nz_stag * ny * nx]
-  std::vector<double> phb;      // [nz_stag * ny * nx]
-  std::vector<double> ph;       // [nz_stag * ny * nx]
+  WArray u;        // [nz * ny * nx_stag]
+  WArray v;        // [nz * ny_stag * nx]
+  WArray w;        // [nz_stag * ny * nx]
+  WArray phb;      // [nz_stag * ny * nx]
+  WArray ph;       // [nz_stag * ny * nx]
 
   // Other moist species if present
-  std::vector<double> qcloud;
-  std::vector<double> qrain;
-  std::vector<double> qice;
-  std::vector<double> qsnow;
-  std::vector<double> qgraup;
-  std::map<std::string, std::vector<double>> moist_species;
+  WArray qcloud;
+  WArray qrain;
+  WArray qice;
+  WArray qsnow;
+  WArray qgraup;
+  std::map<std::string, WArray> moist_species;
 
   // Surface and soil fields
   int num_soil_layers = 0;
@@ -242,7 +306,8 @@ struct WrfBdyData {
 };
 
 // Reads wrfinput file at specified path.
-WrfInputData read_wrfinput(const std::string& path);
+// window: the part of the 3-D variables to keep (none: everything)
+WrfInputData read_wrfinput(const std::string& path, const WindowFn& window = {});
 
 // Reads wrfbdy file at specified path.
 WrfBdyData read_wrfbdy(const std::string& path);

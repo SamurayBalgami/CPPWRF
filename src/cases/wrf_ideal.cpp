@@ -13,6 +13,7 @@
 #include "core/backend.hpp"
 #include "core/constants.hpp"
 #include "core/halo.hpp"
+#include "core/tiles.hpp"
 #include "dyn/rk3.hpp"
 
 namespace cppwrf::cases {
@@ -207,6 +208,7 @@ void init_wrf_ideal(const io::Config& cfg, Model& m, const std::string& name) {
   gr.bc_x = parse_bc(cfg.get_string("domain.bc_x", "periodic"));
   gr.bc_y = parse_bc(cfg.get_string("domain.bc_y", "periodic"));
   gr.dt = cfg.get_double("time.dt");
+  tile::set_domain(gr);
   m.run_time = cfg.get_double("run.run_time", 0.0);
   m.nsteps = std::lround(m.run_time / gr.dt);
   if (std::fabs(m.nsteps * gr.dt - m.run_time) > 1e-9 * std::max(1.0, m.run_time))

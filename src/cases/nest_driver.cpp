@@ -15,6 +15,7 @@
 #include "core/constants.hpp"
 #include "core/halo.hpp"
 #include "io/option_tiers.hpp"
+#include "core/tiles.hpp"
 #include "nest/nest_bdy.hpp"
 #include "nest/nest_couple.hpp"
 #include "nest/nest_feedback.hpp"
@@ -71,9 +72,11 @@ void recompute_start_domain(const io::Config& cfg, Model& m, const BaseField2* h
   dyn::BaseState& b = *m.base;
   dyn::State& s = *m.st;
 
+  // A decomposed run: the worker's buffers laid out as whole fields (tile::local_whole; the points it does not hold
+  // are 0 and their columns' results are not used: every column is computed from its own values, and the fills
+  // below store the points the worker holds)
   std::vector<real> h_ht;
-  b.ht.download(h_ht);
-  const Layout& Lht = b.ht.layout();
+  const Layout Lht = tile::local_whole(b.ht, h_ht);
 
   std::vector<double> ht_2d(std::size_t(nx) * ny);
   for (int j = 0; j < ny; ++j)
@@ -138,12 +141,9 @@ void recompute_start_domain(const io::Config& cfg, Model& m, const BaseField2* h
   b.phb.fill_host_halo(m3(phb, nz + 1));
 
   std::vector<real> h_ph, h_mu, h_thm;
-  s.ph_2.download(h_ph);
-  s.mu_2.download(h_mu);
-  s.t_2.download(h_thm);
-  const Layout& Lph = s.ph_2.layout();
-  const Layout& Lmu = s.mu_2.layout();
-  const Layout& Lm = s.t_2.layout();
+  const Layout Lph = tile::local_whole(s.ph_2, h_ph);
+  const Layout Lmu = tile::local_whole(s.mu_2, h_mu);
+  const Layout Lm = tile::local_whole(s.t_2, h_thm);
 
   auto idx3 = [&](int i, int j, int k) { return (std::size_t(k) * ny + j) * nx + i; };
   std::vector<double> al(pb.size()), p(pb.size());
@@ -179,8 +179,7 @@ void recompute_start_domain(const io::Config& cfg, Model& m, const BaseField2* h
   // start_em.F lines 988-996: IF (press_adj) mu_2(i,j) += al(i,1,j) / (alt(i,1,j) * alb(i,1,j)) * g * (ht - ht_fine)
   if (ht_fine_for_press_adj != nullptr) {
     std::vector<real> h_ht_fine;
-    ht_fine_for_press_adj->download(h_ht_fine);
-    const Layout& Lhf = ht_fine_for_press_adj->layout();
+    const Layout Lhf = tile::local_whole(*ht_fine_for_press_adj, h_ht_fine);
     std::vector<double> mu_adj(std::size_t(nx) * ny);
     for (int j = 0; j < ny; ++j)
       for (int i = 0; i < nx; ++i) {
@@ -194,6 +193,9 @@ void recompute_start_domain(const io::Config& cfg, Model& m, const BaseField2* h
     s.mu_2.fill_host([&](int i, int j, int) { return mu_adj[std::size_t(j) * nx + i]; });
   }
 
+  // a decomposed run: the points of the other workers inside this worker's allocation (the host fills above set
+  // them from the worker's own copies of the neighbours' columns, which the nest's start has left behind)
+  tile::exchange_all();
   fill_halos({&s.u_2, &s.v_2, &s.w_2, &s.t_2, &s.ph_2, &s.al, &s.p}, g);
   fill_halo(s.mu_2, g);
   for (int q = 0; q < s.n_scalars(); ++q) {
@@ -207,6 +209,7 @@ void recompute_start_domain(const io::Config& cfg, Model& m, const BaseField2* h
   s.mu_1.copy_from(s.mu_2);
   dyn::set_w_surface(s.w_1, s.u_1, s.v_1, b, g, true);
   dyn::set_w_surface(s.w_2, s.u_2, s.v_2, b, g, true);
+  tile::exchange_all();  // w's surface values
 }
 #endif
 
@@ -433,17 +436,20 @@ void med_nest_initial(const io::Config& parent_cfg, Model& parent,
   BaseField2 ht_int(cg, Stagger::M, "ht_int", false), mub_int(cg, Stagger::M, "mub_int", false);
   BaseField3 phb_int(cg, Stagger::W, "phb_int", false);
   {
-    auto c_ht = nest::const_view2(parent.base->ht);
+    const tile::Use use(cg);  // the nest's patch; the parent's fields as wholes
+    const nest::WholeField<2> p_ht(parent.base->ht), p_mub(parent.base->mub);
+    const nest::WholeField<3> p_phb(parent.base->phb);
+    auto c_ht = nest::const_view2(p_ht);
     auto n_ht = nest::mut_view2(ht_int);
     parallel_for(Range3D{0, nx, 0, ny, 0, 1},
                  nest::KSintView2D<decltype(c_ht), decltype(n_ht)>{c_ht, n_ht, ipos, jpos, nri, nrj, false, false});
 
-    auto c_mub = nest::const_view2(parent.base->mub);
+    auto c_mub = nest::const_view2(p_mub);
     auto n_mub = nest::mut_view2(mub_int);
     parallel_for(Range3D{0, nx, 0, ny, 0, 1},
                  nest::KSintView2D<decltype(c_mub), decltype(n_mub)>{c_mub, n_mub, ipos, jpos, nri, nrj, false, false});
 
-    auto c_phb = nest::const_view3(parent.base->phb);
+    auto c_phb = nest::const_view3(p_phb);
     auto n_phb = nest::mut_view3(phb_int);
     parallel_for(Range3D{0, nx, 0, ny, 0, nz + 1},
                  nest::KSintView3D<decltype(c_phb), decltype(n_phb)>{c_phb, n_phb, ipos, jpos, nri, nrj, false, false});
@@ -452,13 +458,18 @@ void med_nest_initial(const io::Config& parent_cfg, Model& parent,
   // 2. Load raw wrfinput_d0N fields (before start_domain(child) recomputes base state / w)
   const std::string dir = child_spec.cfg.get_string("real.dir");
   const std::string wi = dir + "/" + child_spec.cfg.get_string("real.wrfinput", "wrfinput_" + child_spec.tag);
-  const io_netcdf::WrfInputData d = io_netcdf::read_wrfinput(wi);
+  // a decomposed run reads the worker's patch and halo of the 3-D variables
+  const io_netcdf::WrfInputData d = io_netcdf::read_wrfinput(wi, [](int fnx, int fny) {
+    if (!tile::tiled()) return io_netcdf::Window{};
+    const tile::PatchBox w = tile::input_window(fnx, fny);
+    return io_netcdf::Window{w.i0, w.i1, w.j0, w.j1};
+  });
 
   auto cl = [](int a, int lo, int hi) { return a < lo ? lo : (a > hi ? hi : a); };
   auto m2 = [&](const std::vector<double>& v) {
     return [&v, nx, ny, cl](int i, int j, int) { return v[std::size_t(cl(j, 0, ny - 1)) * nx + cl(i, 0, nx - 1)]; };
   };
-  auto m3 = [&](const std::vector<double>& v, int nk) {
+  auto m3 = [&](const io_netcdf::WArray& v, int nk) {
     return [&v, nx, ny, nk, cl](int i, int j, int k) {
       return v[(std::size_t(cl(k, 0, nk - 1)) * ny + cl(j, 0, ny - 1)) * nx + cl(i, 0, nx - 1)];
     };
@@ -489,6 +500,7 @@ void med_nest_initial(const io::Config& parent_cfg, Model& parent,
       nc_close(nc);
     }
   }
+  const tile::Use use_child(cg);
   if (save_topo_from_real == 1) {
     nest::blend_terrain_field2(ht_int, child.base->ht, nx, ny, child_spec.spec_bdy_width, child_spec.blend_width);
     nest::blend_terrain_field2(mub_int, child.base->mub, nx, ny, child_spec.spec_bdy_width, child_spec.blend_width);
@@ -512,7 +524,10 @@ void med_nest_initial(const io::Config& parent_cfg, Model& parent,
   recompute_start_domain(child_spec.cfg, child, &ht_fine);
 
   // 7. start_domain(parent) with press_adj = false
-  recompute_start_domain(parent_cfg, parent, nullptr);
+  {
+    const tile::Use use_parent(parent.g);
+    recompute_start_domain(parent_cfg, parent, nullptr);
+  }
   dev_sync();
 #endif
 }
@@ -536,52 +551,95 @@ void med_nest_force(Model& parent, Model& child, const NestDomainSpec& child_spe
   const int nrj = child_spec.parent_grid_ratio;
   const double cdt = pg.dt;
 
+  // A decomposed run (nest/nest_whole.hpp): each domain's kernels run on its own patch (tile::Use). Of the boundary
+  // slabs (whole edges on every worker) a worker computes the entries of the nest's points it holds (its patch and
+  // halo: the boundary kernels read the entries of a point's neighbours), from the nest's own field, whose halo is
+  // exchanged first, and from the box of the parent's field under those points (the 5 x 5 stencil included).
+  const int cdom = cg.dom, cnx = cg.nx, cny = cg.ny;
+  const std::function<tile::PatchBox(int)> pbox = [=](int t) {
+    const tile::PatchBox c = tile::patch(cdom, t);
+    const int h = Grid::halo;
+    const int i0 = std::max(0, c.i0 - h), i1 = std::min(cnx + 1, c.i1 + h + 1);
+    const int j0 = std::max(0, c.j0 - h), j1 = std::min(cny + 1, c.j1 + h + 1);
+    return tile::PatchBox{(ipos - 1) + i0 / nri - 3, (ipos - 1) + (i1 + nri) / nri + 4, (jpos - 1) + j0 / nrj - 3,
+                          (jpos - 1) + (j1 + nrj) / nrj + 4};
+  };
   // 1. Couple parent in-place
-  nest::couple_or_uncouple_state(pg, *parent.st, *parent.base, true);
-  fill_state_halos(*parent.st, pg);
-  // mu_2's halo is left as the dycore's halo schedule had it (WRF's uncouple reads it at ids/jds)
+  {
+    const tile::Use use(pg);
+    // mu_2's halo is left as the dycore's halo schedule had it (WRF's uncouple reads it at ids/jds); the points of
+    // it that another worker owns are that worker's values, as in a run with one patch (the staggered couplings
+    // average mu_2 across the patch's edge)
+    nest::exchange_field(parent.st->mu_2);
+    nest::couple_or_uncouple_state(pg, *parent.st, *parent.base, true);
+    fill_state_halos(*parent.st, pg);
+  }
 
   // 2. Couple child in-place
-  nest::couple_or_uncouple_state(cg, *child.st, *child.base, true);
+  {
+    const tile::Use use(cg);
+    nest::exchange_field(child.st->mu_2);
+    nest::couple_or_uncouple_state(cg, *child.st, *child.base, true);
+  }
 
   // 3. Interpolate parent -> child LateralBC slabs (bdy_interp1 / KBdySlabView3D / KBdySlabView2D)
   dyn::LateralBC& lbc = *child.bc;
-  nest::force_nest_bdy_field3(lbc, dyn::LateralBC::U, parent.st->u_2, child.st->u_2, cg.nx, cg.ny, ipos, jpos, nri, nrj,
-                              cdt);
-  nest::force_nest_bdy_field3(lbc, dyn::LateralBC::V, parent.st->v_2, child.st->v_2, cg.nx, cg.ny, ipos, jpos, nri, nrj,
-                              cdt);
-  nest::force_nest_bdy_field3(lbc, dyn::LateralBC::W, parent.st->w_2, child.st->w_2, cg.nx, cg.ny, ipos, jpos, nri, nrj,
-                              cdt);
-  nest::force_nest_bdy_field3(lbc, dyn::LateralBC::PH, parent.st->ph_2, child.st->ph_2, cg.nx, cg.ny, ipos, jpos, nri,
-                              nrj, cdt);
-  nest::force_nest_bdy_field3(lbc, dyn::LateralBC::T, parent.st->t_2, child.st->t_2, cg.nx, cg.ny, ipos, jpos, nri, nrj,
-                              cdt);
-  nest::force_nest_bdy_field2(lbc, dyn::LateralBC::MU, parent.st->mu_2, child.st->mu_2, cg.nx, cg.ny, ipos, jpos, nri,
-                              nrj, cdt);
-
-  const int n_scalars = std::min(parent.st->n_scalars(), child.st->n_scalars());
-  for (int s = 0; s < n_scalars; ++s) {
-    // Registry: tke has no f (force) flag - the nest keeps flow-dependent boundaries for it (solve_em)
-    if (s == child.st->P_TKE) continue;
-    nest::force_nest_bdy_scalar_field3(lbc, s, parent.st->q_2[s], child.st->q_2[s], cg.nx, cg.ny, cg.nz, ipos, jpos,
-                                       nri, nrj, cdt);
+  {
+    const tile::Whole whole;
+    auto force3 = [&](dyn::LateralBC::Var v, const Field3& pf, const Field3& cf) {
+      nest::exchange_field(cf);
+      const nest::WholeField<3> P(pf, pbox);
+      nest::force_nest_bdy_field3(lbc, v, P, cf, cg.nx, cg.ny, ipos, jpos, nri, nrj, cdt);
+    };
+    force3(dyn::LateralBC::U, parent.st->u_2, child.st->u_2);
+    force3(dyn::LateralBC::V, parent.st->v_2, child.st->v_2);
+    force3(dyn::LateralBC::W, parent.st->w_2, child.st->w_2);
+    force3(dyn::LateralBC::PH, parent.st->ph_2, child.st->ph_2);
+    force3(dyn::LateralBC::T, parent.st->t_2, child.st->t_2);
+    {
+      const nest::WholeField<2> P(parent.st->mu_2, pbox);  // the nest's mu_2: exchanged before the coupling
+      nest::force_nest_bdy_field2(lbc, dyn::LateralBC::MU, P, child.st->mu_2, cg.nx, cg.ny, ipos, jpos, nri, nrj, cdt);
+    }
+    const int n_scalars = std::min(parent.st->n_scalars(), child.st->n_scalars());
+    for (int s = 0; s < n_scalars; ++s) {
+      // Registry: tke has no f (force) flag - the nest keeps flow-dependent boundaries for it (solve_em)
+      if (s == child.st->P_TKE) continue;
+      nest::exchange_field(child.st->q_2[s]);
+      const nest::WholeField<3> P(parent.st->q_2[s], pbox);
+      nest::force_nest_bdy_scalar_field3(lbc, s, P, child.st->q_2[s], cg.nx, cg.ny, cg.nz, ipos, jpos, nri, nrj, cdt);
+    }
   }
   lbc.dtbc = 0.0;
 
   // o3rad (Registry rdf=(p2c)): the child's whole field from the parent's, which only domain 1 computes
   if (parent.suite && child.suite && parent.suite->radiation() && child.suite->radiation()) {
-    fill_halo(parent.suite->o3rad, pg);
-    auto c_o3 = nest::const_view3(parent.suite->o3rad);
+    {
+      const tile::Use use(pg);
+      fill_halo(parent.suite->o3rad, pg);
+    }
+    const tile::Use use(cg);
+    const nest::WholeField<3> p_o3(parent.suite->o3rad, pbox);
+    auto c_o3 = nest::const_view3(p_o3);
     auto n_o3 = nest::mut_view3(child.suite->o3rad);
     parallel_for(Range3D{0, cg.nx, 0, cg.ny, 0, cg.nz},
                  nest::KSintView3D<decltype(c_o3), decltype(n_o3)>{c_o3, n_o3, ipos, jpos, nri, nrj, false, false});
+    nest::exchange_field(child.suite->o3rad);
   }
 
   // 4. Uncouple child and parent in-place (preserving exact reciprocal-multiply roundoff)
-  nest::couple_or_uncouple_state(cg, *child.st, *child.base, false);
-  nest::couple_or_uncouple_state(pg, *parent.st, *parent.base, false);
-
-  fill_state_halos(*child.st, cg);
+  {
+    const tile::Use use(cg);
+    nest::couple_or_uncouple_state(cg, *child.st, *child.base, false);
+  }
+  {
+    const tile::Use use(pg);
+    nest::couple_or_uncouple_state(pg, *parent.st, *parent.base, false);
+  }
+  {
+    const tile::Use use(cg);
+    fill_state_halos(*child.st, cg);
+  }
+  const tile::Use use(pg);
   fill_state_halos(*parent.st, pg);
 }
 
@@ -596,40 +654,51 @@ void med_nest_feedback(Model& parent, const Model& child, const NestDomainSpec& 
   const int nrj = child_spec.parent_grid_ratio;
   const int sm = child_spec.smooth_option;
 
+  // a decomposed run: the parent's patch; of each nest field the box over that patch (nest/nest_whole.hpp): the
+  // nest's points inside the parent's cells of the patch and two cells around it
+  const tile::Use use(pg);
+  const int pdom = pg.dom;
+  const std::function<tile::PatchBox(int)> cbox = [=](int t) {
+    const tile::PatchBox p = tile::patch(pdom, t);
+    return tile::PatchBox{(p.i0 - (ipos - 1) - 2) * nri, (p.i1 - (ipos - 1) + 2) * nri, (p.j0 - (jpos - 1) - 2) * nrj,
+                          (p.j1 - (jpos - 1) + 2) * nrj};
+  };
+  auto W3 = [&](const auto& f) { return nest::WholeField<3>(f, cbox); };
+  auto W2 = [&](const auto& f) { return nest::WholeField<2>(f, cbox); };
   // Note: WRF med_feedback_domain operates directly on UNCOUPLED fields (no couple_or_uncouple_em call)
-  nest::feedback_field3(pg, parent.st->u_2, child.st->u_2, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, true, false, sm, 1, scratch);
-  nest::feedback_field3(pg, parent.st->v_2, child.st->v_2, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, true, sm, 1, scratch);
-  nest::feedback_field3(pg, parent.st->w_2, child.st->w_2, n_nx, n_ny, n_nz + 1, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
-  nest::feedback_field3(pg, parent.st->ph_2, child.st->ph_2, n_nx, n_ny, n_nz + 1, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
-  nest::feedback_field3(pg, parent.st->t_2, child.st->t_2, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
-  nest::feedback_field2(pg, parent.st->mu_2, child.st->mu_2, n_nx, n_ny, ipos, jpos, nri, nrj, sm, 1, scratch);
+  nest::feedback_field3(pg, parent.st->u_2, W3(child.st->u_2), n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, true, false, sm, 1, scratch);
+  nest::feedback_field3(pg, parent.st->v_2, W3(child.st->v_2), n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, true, sm, 1, scratch);
+  nest::feedback_field3(pg, parent.st->w_2, W3(child.st->w_2), n_nx, n_ny, n_nz + 1, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
+  nest::feedback_field3(pg, parent.st->ph_2, W3(child.st->ph_2), n_nx, n_ny, n_nz + 1, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
+  nest::feedback_field3(pg, parent.st->t_2, W3(child.st->t_2), n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
+  nest::feedback_field2(pg, parent.st->mu_2, W2(child.st->mu_2), n_nx, n_ny, ipos, jpos, nri, nrj, sm, 1, scratch);
 
   const int n_scalars = std::min(parent.st->n_scalars(), child.st->n_scalars());
   for (int s = 0; s < n_scalars; ++s) {
     if (s == parent.st->P_TKE) continue;  // tke is not fed back (Registry: no u flag)
-    nest::feedback_field3(pg, parent.st->q_2[s], child.st->q_2[s], n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
+    nest::feedback_field3(pg, parent.st->q_2[s], W3(child.st->q_2[s]), n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
   }
 
   // Base-state fields fed back in inc/nest_feedbackup_interp.inc; inc/nest_feedbackup_smooth.inc smooths them
   // and ht as well (map factors, f, e, sina, cosa are fed back without smoothing)
-  nest::feedback_field3(pg, parent.base->phb, child.base->phb, n_nx, n_ny, n_nz + 1, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
-  nest::feedback_field2(pg, parent.base->mub, child.base->mub, n_nx, n_ny, ipos, jpos, nri, nrj, sm, 1, scratch);
-  nest::feedback_field3(pg, parent.base->alb, child.base->alb, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
-  nest::feedback_field3(pg, parent.base->pb, child.base->pb, n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
-  nest::feedback_field2(pg, parent.base->ht, child.base->ht, n_nx, n_ny, ipos, jpos, nri, nrj, sm, 1, scratch);
+  nest::feedback_field3(pg, parent.base->phb, W3(child.base->phb), n_nx, n_ny, n_nz + 1, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
+  nest::feedback_field2(pg, parent.base->mub, W2(child.base->mub), n_nx, n_ny, ipos, jpos, nri, nrj, sm, 1, scratch);
+  nest::feedback_field3(pg, parent.base->alb, W3(child.base->alb), n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
+  nest::feedback_field3(pg, parent.base->pb, W3(child.base->pb), n_nx, n_ny, n_nz, ipos, jpos, nri, nrj, false, false, sm, 1, scratch);
+  nest::feedback_field2(pg, parent.base->ht, W2(child.base->ht), n_nx, n_ny, ipos, jpos, nri, nrj, sm, 1, scratch);
 
   if (parent.base->mapped && child.base->mapped) {
-    nest::feedback_field2_fcnm(parent.base->msftx, child.base->msftx, n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
-    nest::feedback_field2_fcnm(parent.base->msfty, child.base->msfty, n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
-    nest::feedback_field2_fcnm(parent.base->msfux, child.base->msfux, n_nx, n_ny, ipos, jpos, nri, nrj, true, false);
-    nest::feedback_field2_fcnm(parent.base->msfuy, child.base->msfuy, n_nx, n_ny, ipos, jpos, nri, nrj, true, false);
-    nest::feedback_field2_fcnm(parent.base->msfvx, child.base->msfvx, n_nx, n_ny, ipos, jpos, nri, nrj, false, true);
-    nest::feedback_field2_fcnm(parent.base->msfvx_inv, child.base->msfvx_inv, n_nx, n_ny, ipos, jpos, nri, nrj, false, true);
-    nest::feedback_field2_fcnm(parent.base->msfvy, child.base->msfvy, n_nx, n_ny, ipos, jpos, nri, nrj, false, true);
-    nest::feedback_field2_fcnm(parent.base->f, child.base->f, n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
-    nest::feedback_field2_fcnm(parent.base->e, child.base->e, n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
-    nest::feedback_field2_fcnm(parent.base->sina, child.base->sina, n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
-    nest::feedback_field2_fcnm(parent.base->cosa, child.base->cosa, n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
+    nest::feedback_field2_fcnm(parent.base->msftx, W2(child.base->msftx), n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
+    nest::feedback_field2_fcnm(parent.base->msfty, W2(child.base->msfty), n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
+    nest::feedback_field2_fcnm(parent.base->msfux, W2(child.base->msfux), n_nx, n_ny, ipos, jpos, nri, nrj, true, false);
+    nest::feedback_field2_fcnm(parent.base->msfuy, W2(child.base->msfuy), n_nx, n_ny, ipos, jpos, nri, nrj, true, false);
+    nest::feedback_field2_fcnm(parent.base->msfvx, W2(child.base->msfvx), n_nx, n_ny, ipos, jpos, nri, nrj, false, true);
+    nest::feedback_field2_fcnm(parent.base->msfvx_inv, W2(child.base->msfvx_inv), n_nx, n_ny, ipos, jpos, nri, nrj, false, true);
+    nest::feedback_field2_fcnm(parent.base->msfvy, W2(child.base->msfvy), n_nx, n_ny, ipos, jpos, nri, nrj, false, true);
+    nest::feedback_field2_fcnm(parent.base->f, W2(child.base->f), n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
+    nest::feedback_field2_fcnm(parent.base->e, W2(child.base->e), n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
+    nest::feedback_field2_fcnm(parent.base->sina, W2(child.base->sina), n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
+    nest::feedback_field2_fcnm(parent.base->cosa, W2(child.base->cosa), n_nx, n_ny, ipos, jpos, nri, nrj, false, false);
   }
 
   // update_after_feedback_em: only a DM halo exchange in WRF (no-op on one task): the parent's halos
@@ -637,6 +706,9 @@ void med_nest_feedback(Model& parent, const Model& child, const NestDomainSpec& 
 }
 
 int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
+  // A decomposed run: a domain's launches are clipped to the worker's patch of that domain (tile::Use); tiles run
+  // the host code one at a time (tile::Serial), released for the time steps.
+  tile::Serial serial;
   // adapt_timestep's nest branches (the child's dt from the parent's, adaptation_domain) are not ported
   if (root_cfg.get_bool("time.adaptive", false))
     throw std::runtime_error("time.adaptive (WRF use_adaptive_time_step) with nests is not supported");
@@ -682,6 +754,7 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
   // 2. Create DomainRunner per domain (out_dir/d01, out_dir/d02, ...)
   for (int i = 0; i < max_dom; ++i) {
     std::string dom_out = out_dir + "/" + doms[i].spec.tag;
+    const tile::Use use(doms[i].model.g);
     doms[i].runner = std::make_unique<DomainRunner>(doms[i].spec.cfg, doms[i].model, dom_out, doms[i].spec.tag);
     if (doms[i].spec.parent_id > 0) doms[i].runner->set_defer_output(true);
   }
@@ -694,7 +767,10 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
         doms[i].runner->set_need_history(true);
         doms[c_idx].runner->set_need_history(true);
       }
-  for (int i = 0; i < max_dom; ++i) doms[i].runner->prepare_output();
+  for (int i = 0; i < max_dom; ++i) {
+    const tile::Use use(doms[i].model.g);
+    doms[i].runner->prepare_output();
+  }
 #endif
   // med_nest_initial: parent%ht_coarse = parent%ht; its feedback (feedback != 0) of the history fields the model
   // does not carry, then start_domain(parent) (start_em, topo_wind = 0): CTOPO = CTOPO2 = 1 again (the fed-back
@@ -736,15 +812,22 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
       }
   };
 
+  // a domain's start in its patch; then every field's halo from the other workers (the start sets fields on the host)
+  auto start = [&](int i) {
+    const tile::Use use(doms[i].model.g);
+    const bool ok = doms[i].runner->start();
+    tile::exchange_all();
+    return ok;
+  };
   // 3. Root domain (d01) writes its t=0 initial frame before its first step
-  if (!doms[0].runner->start()) return 3;
+  if (!start(0)) return 3;
   doms[0].started = true;
   doms[0].step = doms[0].runner->start_step;
   // a resumed run: the nests read their restart files before the first med_nest_force, which takes the
   // nest's boundary tendencies from its current state (no initial frames are written)
   if (doms[0].step > 0)
     for (int i = 1; i < max_dom; ++i) {
-      if (!doms[i].runner->start()) return 3;
+      if (!start(i)) return 3;
       doms[i].started = true;
       doms[i].step = doms[i].runner->start_step;
     }
@@ -775,9 +858,14 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
   std::function<bool(int)> advance_domain = [&](int idx) -> bool {
     DomInstance& d = doms[idx];
     const long n = ++d.step;
-    d.runner->before_step(n);
-    d.model.rk->step(*d.model.st, *d.model.tend, *d.model.base);
-    d.runner->after_solve(n);
+    {
+      const tile::Use use(d.model.g);
+      d.runner->before_step(n);
+      serial.unlock();
+      d.model.rk->step(*d.model.st, *d.model.tend, *d.model.base);
+      serial.lock();
+      d.runner->after_solve(n);
+    }
     // CUDA graphs: no wait per step (one stream; every read of device data waits), except in the run's last
     // root step (the stepping times end with the device's work)
     const bool wait = !step_graphs_on() || doms[0].step == doms[0].model.nsteps;
@@ -792,7 +880,7 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
       DomInstance& c = doms[c_idx];
       if (!c.started) {
         open_children(c_idx);
-        if (!c.runner->start()) return false;
+        if (!start(c_idx)) return false;
         c.started = true;
         c.step = c.runner->start_step;
       }
@@ -805,6 +893,7 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
     if (!stop_time)
       for (int c_idx : d.children) feedback(d, doms[c_idx]);
 
+    const tile::Use use(d.model.g);
     if (!d.runner->after_step(n)) return false;
     return true;
   };
@@ -818,7 +907,7 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
         dev_sync();
         if (!c.started) {
           open_children(c_idx);
-          if (!c.runner->start()) return 3;
+          if (!start(c_idx)) return 3;
           c.started = true;
         }
       }
@@ -831,6 +920,7 @@ int run_nested(const io::Config& root_cfg, const std::string& out_dir) {
   }
 
   for (int i = 0; i < max_dom; ++i) {
+    const tile::Use use(doms[i].model.g);
     if (doms[i].started) doms[i].runner->finish();
   }
 

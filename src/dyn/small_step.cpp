@@ -500,8 +500,9 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
 
   if (stage_ == 1) {  // WRF small_step_prep (rk_step == 1): reset the external-mode filter
     V2 md = mudf.view();
-    const tile::Whole whole;  // a tile: its halo too (the neighbours' points read below are 0 in every tile)
-    parallel_for(Range3D{-Grid::halo, nx + Grid::halo, -g.hy(), ny + g.hy(), 0, 1},
+    const tile::Whole whole;  // every point of the allocation, the halo too (a patch: its neighbours' points are 0)
+    const Layout& Lm = mudf.layout();
+    parallel_for(Range3D{Lm.wi0, Lm.wi1, Lm.wj0, Lm.wj1, 0, 1},
                  [=] CPPWRF_HD(int i, int j, int) { md(i, j) = 0; });
   }
 
@@ -552,13 +553,18 @@ void SmallStep::run_stage(State& s, const Tendencies& tend, const BaseState& b, 
                                            c, dts, real(b.rdx), real(b.rdy), nz, it, n_small, do_y, b.msftx.view(),
                                            b.msfty.view(), b.msfuy.view(), b.msfvx_inv.view(), ed});
     {
-      const tile::Whole whole;  // (position along the edge, level) index space
+      // (position along the edge, level) index space: the east edge's rows and the north edge's columns the
+      // worker owns
+      int ja = 0, jb = ny, ia = 0, ib = nx;
+      tile::edge_clip(tile::Edge::East, ja, jb);
+      tile::edge_clip(tile::Edge::North, ia, ib);
+      const tile::Whole whole;
       LaunchBatch<KSumEdge, 2> edge;  // ru_m and rv_m in one launch
       if (ed.x || ed.ox)
-        edge.add(Range3D{0, ny, 0, nz, 0, 1}, KSumEdge{s.ru_m.view(), s.u_2.cview(), u_save.cview(), s.muu.cview(), c,
+        edge.add(Range3D{ja, jb, 0, nz, 0, 1}, KSumEdge{s.ru_m.view(), s.u_2.cview(), u_save.cview(), s.muu.cview(), c,
                                                        b.msfuy.view(), true, nx, ny, it, n_small});
       if (ed.y || ed.oy)
-        edge.add(Range3D{0, nx, 0, nz, 0, 1}, KSumEdge{s.rv_m.view(), s.v_2.cview(), v_save.cview(), s.muv.cview(), c,
+        edge.add(Range3D{ia, ib, 0, nz, 0, 1}, KSumEdge{s.rv_m.view(), s.v_2.cview(), v_save.cview(), s.muv.cview(), c,
                                                        b.msfvx_inv.view(), false, nx, ny, it, n_small});
       edge.run();
     }

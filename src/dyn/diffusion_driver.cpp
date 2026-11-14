@@ -61,6 +61,8 @@ DiffusionDriver::DiffusionDriver(const Grid& g, const DiffusionConfig& c)
   p_.fft_filter_lat = c.fft_filter_lat;
   p_.periodic_x = g.bc_x == BC::Periodic;
   p_.periodic_y = g.bc_y == BC::Periodic;
+  p_.halo_x = tile::hooks.wraps && tile::hooks.wraps(g.dom, 0);
+  p_.halo_y = tile::hooks.wraps && tile::hooks.wraps(g.dom, 1);
   p_.specified = g.specified();
   p_.open_xs = p_.open_xe = g.open_x();
   p_.open_ys = p_.open_ye = g.open_y();

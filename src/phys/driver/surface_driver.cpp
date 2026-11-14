@@ -5,6 +5,7 @@
 #include "core/tiles.hpp"
 
 #include <cmath>
+#include <limits>
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
@@ -1440,10 +1441,66 @@ void PhysicsSuite::surface_driver(const dyn::State& s, const dyn::BaseState& b) 
         std::fclose(fp);
       }
       noah::run_noah(nk, cols);
-      tile::gather(n_active, n_rc);  // tiles: the glacial points' RS reads the points before them in WRF's order
-      column_for_whole(Range2D{0, 1, cols.j0, cols.j1}, KNoahRcLast{n_active.cview(), n_rclast.view(), cols.i0, cols.i1});
-      column_for(cols, KNoahRs{n_rc.cview(), n_active.cview(), n_ice.cview(), n_rclast.cview(), rs.view(), cols.i0,
-                               cols.j0});
+      if (!g_.patched()) {
+        column_for_whole(Range2D{0, 1, cols.j0, cols.j1}, KNoahRcLast{n_active.cview(), n_rclast.view(), cols.i0, cols.i1});
+        column_for(cols, KNoahRs{n_rc.cview(), n_active.cview(), n_ice.cview(), n_rclast.cview(), rs.view(), cols.i0,
+                                 cols.j0});
+      } else {
+        // A decomposed run: the same copies on the host. Per row and column of patches, the last SFLX point of the
+        // worker's columns and its RC go to every worker; a land-ice point takes the last SFLX point before it in
+        // lsm's loop order: in its row to the west (its own columns, then the patches to the west), else in the
+        // nearest row below that has one (its easternmost).
+        const tile::PatchBox ob = tile::own_box(g_);
+        const int px = tile::patches_x(), tx = tile::id() % px, ny = g_.ny;
+        std::vector<int> ha, hice;
+        std::vector<real> hrc, hrs;
+        n_active.download(ha);
+        n_ice.download(hice);
+        n_rc.download(hrc);
+        rs.download(hrs);
+        const Layout& L = n_active.layout();
+        // table (tx, j): the last SFLX column (-1: none) and its RC; -inf where another worker owns the entry
+        const double none = -std::numeric_limits<double>::infinity();
+        std::vector<double> tab(2 * std::size_t(px) * std::size_t(ny), none);
+        auto last_of = [&](int t, int j) -> double& { return tab[2 * (std::size_t(t) * std::size_t(ny) + std::size_t(j))]; };
+        auto rc_of = [&](int t, int j) -> double& { return tab[2 * (std::size_t(t) * std::size_t(ny) + std::size_t(j)) + 1]; };
+        for (int j = std::max(ob.j0, cols.j0); j < std::min(ob.j1, cols.j1); ++j) {
+          int last = -1;
+          for (int i = std::max(ob.i0, cols.i0); i < std::min(ob.i1, cols.i1); ++i)
+            if (ha[L.index(i, j, 0)] == 1) last = i;
+          last_of(tx, j) = double(last);
+          rc_of(tx, j) = last >= 0 ? double(hrc[L.index(last, j, 0)]) : 0.0;
+        }
+        tile::max_each(tab.data(), tab.size());
+        for (int j = std::max(ob.j0, cols.j0); j < std::min(ob.j1, cols.j1); ++j)
+          for (int i = std::max(ob.i0, cols.i0); i < std::min(ob.i1, cols.i1); ++i) {
+            const std::size_t q = L.index(i, j, 0);
+            if (ha[q] == 1) {
+              hrs[q] = hrc[q];
+            } else if (hice[q] == -1) {
+              real last = real(0.);
+              bool found = false;
+              for (int ii = i - 1; ii >= std::max(ob.i0, cols.i0) && !found; --ii)
+                if (ha[L.index(ii, j, 0)] == 1) {
+                  last = hrc[L.index(ii, j, 0)];
+                  found = true;
+                }
+              for (int t = tx - 1; t >= 0 && !found; --t)
+                if (last_of(t, j) >= 0) {
+                  last = real(rc_of(t, j));
+                  found = true;
+                }
+              for (int jj = j - 1; jj >= cols.j0 && !found; --jj)
+                for (int t = px - 1; t >= 0 && !found; --t)
+                  if (last_of(t, jj) >= 0) {
+                    last = real(rc_of(t, jj));
+                    found = true;
+                  }
+              hrs[q] = last;
+            }
+          }
+        copy_to_dev(rs.data() - rs.layout().offset, hrs.data(), rs.bytes());
+      }
       if (do_ndump) {
         std::FILE* fp = std::fopen((std::string(ndump) + "/noah_out_c.bin").c_str(), "wb");
         const int hdr[2] = {int(ncol.size()), nsoil};

@@ -54,7 +54,54 @@ std::vector<std::string> read_time_strings(int ncid, const char* varname) {
 
 }  // namespace
 
-WrfInputData read_wrfinput(const std::string& path) {
+namespace {
+// name's (Time = 1) frame, the window w of its last two dimensions, into out; false if absent or unreadable
+bool read_window(int ncid, const char* name, const Window& w, WArray& out) {
+  int varid = -1;
+  if (nc_inq_varid(ncid, name, &varid) != NC_NOERR) return false;
+  int ndims = 0;
+  nc_inq_varndims(ncid, varid, &ndims);
+  std::vector<int> dimids(static_cast<std::size_t>(ndims));
+  nc_inq_vardimid(ncid, varid, dimids.data());
+  std::vector<size_t> len(static_cast<std::size_t>(ndims), 1);
+  int first = 0;
+  for (int d = 0; d < ndims; ++d) {
+    nc_inq_dimlen(ncid, dimids[static_cast<std::size_t>(d)], &len[static_cast<std::size_t>(d)]);
+    if (d == 0) {
+      char dname[NC_MAX_NAME + 1];
+      nc_inq_dimname(ncid, dimids[0], dname);
+      if (std::string(dname) == "Time") first = 1;
+    }
+  }
+  const int nd = ndims - first;  // (nk, ny, nx) or (ny, nx)
+  if (nd < 2 || nd > 3) return false;
+  const size_t nx = len[static_cast<std::size_t>(ndims - 1)], ny = len[static_cast<std::size_t>(ndims - 2)];
+  const size_t nk = nd == 3 ? len[static_cast<std::size_t>(ndims - 3)] : 1;
+  out = WArray::make(nx, ny, nk, w);
+  std::vector<size_t> start(static_cast<std::size_t>(ndims), 0), count(static_cast<std::size_t>(ndims), 1);
+  if (nd == 3) count[static_cast<std::size_t>(ndims - 3)] = nk;
+  start[static_cast<std::size_t>(ndims - 2)] = out.j0();
+  count[static_cast<std::size_t>(ndims - 2)] = out.j1() - out.j0();
+  start[static_cast<std::size_t>(ndims - 1)] = out.i0();
+  count[static_cast<std::size_t>(ndims - 1)] = out.i1() - out.i0();
+  if (nc_get_vara_double(ncid, varid, start.data(), count.data(), out.held().data()) != NC_NOERR) {
+    out.clear();
+    return false;
+  }
+  return true;
+}
+}  // namespace
+
+WArray read_window_var(const std::string& path, const char* name, const Window& w) {
+  int ncid = 0;
+  if (nc_open(path.c_str(), NC_NOWRITE, &ncid) != NC_NOERR) throw std::runtime_error("cannot open " + path);
+  WArray out;
+  read_window(ncid, name, w, out);
+  nc_close(ncid);
+  return out;
+}
+
+WrfInputData read_wrfinput(const std::string& path, const WindowFn& window) {
   ScopedNcFile ncid;
   int status = nc_open(path.c_str(), NC_NOWRITE, ncid.ptr());
   if (status != NC_NOERR) {
@@ -149,6 +196,17 @@ WrfInputData read_wrfinput(const std::string& path) {
     return true;
   };
 
+  // the 3-D variables: the window of them
+  const Window win = window ? window(data.nx, data.ny) : Window{};
+  auto read_var3 = [&](const char* name, WArray& out) -> bool { return read_window(ncid, name, win, out); };
+  auto read_required_var3 = [&](const char* name, WArray& out, size_t expected_size) {
+    if (!read_var3(name, out) || out.empty())
+      throw std::runtime_error("read_wrfinput: required variable '" + std::string(name) + "' missing in '" + path + "'");
+    if (out.size() != expected_size)
+      throw std::runtime_error("read_wrfinput: variable '" + std::string(name) + "' size mismatch: got " +
+                               std::to_string(out.size()) + ", expected " + std::to_string(expected_size));
+  };
+
   // Helper lambda to read a required variable with exact size verification
   auto read_required_var = [&](const char* name, std::vector<double>& out, size_t expected_size) {
     if (!read_var(name, out) || out.empty()) {
@@ -219,27 +277,27 @@ WrfInputData read_wrfinput(const std::string& path) {
   read_required_var("MAPFAC_VY", data.mapfac_vy, s_2d_v);
 
   // 3D Mass fields
-  read_required_var("PB", data.pb, s_3d);
-  read_var("P", data.p);  // P, T, T_INIT, AL and W: read when present (the model computes its own)
-  read_var("T", data.t);
-  read_var("T_INIT", data.t_init);
-  read_required_var("ALB", data.alb, s_3d);
-  read_var("AL", data.al);
-  read_required_var("QVAPOR", data.qvapor, s_3d);
+  read_required_var3("PB", data.pb, s_3d);
+  read_var3("P", data.p);  // P, T, T_INIT, AL and W: read when present (the model computes its own)
+  read_var3("T", data.t);
+  read_var3("T_INIT", data.t_init);
+  read_required_var3("ALB", data.alb, s_3d);
+  read_var3("AL", data.al);
+  read_required_var3("QVAPOR", data.qvapor, s_3d);
 
   // 3D Staggered fields
-  read_required_var("U", data.u, s_3d_u);
-  read_required_var("V", data.v, s_3d_v);
-  read_var("W", data.w);
-  read_required_var("PHB", data.phb, s_3d_w);
-  read_required_var("PH", data.ph, s_3d_w);
+  read_required_var3("U", data.u, s_3d_u);
+  read_required_var3("V", data.v, s_3d_v);
+  read_var3("W", data.w);
+  read_required_var3("PHB", data.phb, s_3d_w);
+  read_required_var3("PH", data.ph, s_3d_w);
 
   // Moist species (optional, not duplicated)
-  read_var("QCLOUD", data.qcloud);
-  read_var("QRAIN", data.qrain);
-  read_var("QICE", data.qice);
-  read_var("QSNOW", data.qsnow);
-  read_var("QGRAUP", data.qgraup);
+  read_var3("QCLOUD", data.qcloud);
+  read_var3("QRAIN", data.qrain);
+  read_var3("QICE", data.qice);
+  read_var3("QSNOW", data.qsnow);
+  read_var3("QGRAUP", data.qgraup);
 
   // Inquire all 3D moisture variables starting with 'Q'
   int nvars = 0;
@@ -251,8 +309,8 @@ WrfInputData read_wrfinput(const std::string& path) {
       int nd = 0;
       nc_inq_varndims(ncid, v, &nd);
       if (nd == 4) {
-        std::vector<double> buf;
-        if (read_var(vname, buf) && !buf.empty()) {
+        WArray buf;
+        if (read_var3(vname, buf) && !buf.empty()) {
           data.moist_species[vname] = std::move(buf);
         }
       }

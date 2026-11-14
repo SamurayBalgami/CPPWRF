@@ -16,17 +16,16 @@
 
 using namespace cppwrf;
 
-// One tile of a tiled run (core/tiles.hpp): the run of a single domain, its output in out_dir (tile 0),
-// out_dir.tileN (tile N) or out_dir.ref (the check's reference run). The start, the input and the output one tile at a
-// time; the time steps together (the halo exchanges inside them), with the fields gathered before the output.
-static int run_tile(const io::Config& cfg0, const std::string& out_dir, int t) {
+// One worker of a decomposed run (core/tiles.hpp): the run of a single domain on the worker's patch. The writer
+// (patch 0) writes the output in out_dir, the check's reference run in out_dir.ref.
+static int run_tile(const io::Config& cfg, const std::string& out_dir, int t) {
+  // tiles: the start, the input and the output one tile at a time (tile::Serial); the time steps together
   tile::Serial serial;
-  io::Config cfg = cfg0;
-  const std::string dir = t == 0 ? out_dir : out_dir + (t < 0 ? ".ref" : ".tile" + std::to_string(t));
+  const std::string dir = t >= 0 ? out_dir : out_dir + ".ref";
   cases::Model m = cases::Model::build(cfg);
-  tile::set_domain(m.g.nx, m.g.ny, m.g.bc_x == BC::Periodic, m.g.bc_y == BC::Periodic);
   cases::DomainRunner r(cfg, m, dir, "d01");
   if (!r.start()) return 3;
+  tile::exchange_all();
   serial.unlock();
   for (long n = r.start_step + 1; n <= m.nsteps; ++n) {
     {
@@ -38,7 +37,6 @@ static int run_tile(const io::Config& cfg0, const std::string& out_dir, int t) {
       m.rk->step(*m.st, *m.tend, *m.base);
     }
     dev_sync();
-    if (r.reads_state(n)) tile::allgather();
     tile::Serial s;
     if (!r.after_step(n)) return 3;
   }
@@ -47,7 +45,7 @@ static int run_tile(const io::Config& cfg0, const std::string& out_dir, int t) {
   return 0;
 }
 
-static int run(int argc, char** argv) {
+static int run(int argc, char** argv, bool mpi) {
   if (argc == 2 && std::string(argv[1]) == "--version") {  // the drop-in tools choose the binary of a mode by it
     std::printf("cppwrf %s commit %s backend %s precision %s\n", CPPWRF_VERSION, CPPWRF_COMMIT, backend_name(),
                 precision_name);
@@ -71,9 +69,17 @@ static int run(int argc, char** argv) {
   if (!cases::has_nests(cfg)) io::check_option_tiers(cfg);
 
   const tile::Options tiles = tile::options(cfg.get_string("run.tiles", "1"));
+  const std::string ranks = cfg.get_string("run.ranks", "");  // the layout of an MPI run (a known key in every run)
+  if (mpi) {  // several MPI ranks: each is the worker of one patch (docs/MPI.md)
+    if (tiles.on()) throw std::runtime_error("run.tiles: an MPI run has one patch per rank (run.ranks)");
+    const bool nests = cases::has_nests(cfg);  // every domain in the same P x Q patches
+    return tile::mpi_run(ranks,
+                         [&](int t) { return nests ? cases::run_nested(cfg, out_dir) : run_tile(cfg, out_dir, t); });
+  }
   if (tiles.on()) {
-    if (cases::has_nests(cfg)) throw std::runtime_error("run.tiles: nested runs have one tile per domain");
-    return tile::run(tiles, [&](int t) { return run_tile(cfg, out_dir, t); });
+    const bool nests = cases::has_nests(cfg);
+    if (nests && tiles.check) throw std::runtime_error("CPPWRF_TILE_CHECK: not with nests");
+    return tile::run(tiles, [&](int t) { return nests ? cases::run_nested(cfg, out_dir) : run_tile(cfg, out_dir, t); });
   }
 
   if (cases::has_nests(cfg)) {
@@ -98,10 +104,15 @@ static int run(int argc, char** argv) {
 }
 
 int main(int argc, char** argv) {
+  int rc = 2;
   try {
-    return run(argc, argv);
+    const bool mpi = tile::mpi_start(&argc, &argv);
+    rc = run(argc, argv, mpi);
   } catch (const std::exception& e) {
     std::fprintf(stderr, "cppwrf: error: %s\n", e.what());
-    return 2;
+    tile::mpi_abort(2);
+    rc = 2;
   }
+  tile::mpi_finish();
+  return rc;
 }

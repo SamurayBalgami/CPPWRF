@@ -6,6 +6,7 @@
 #include <limits>
 
 #include "core/constants.hpp"
+#include "core/tiles.hpp"
 #include "dyn/large_step.hpp"
 
 namespace cppwrf::dyn {
@@ -85,14 +86,19 @@ std::vector<io::VarView> snapshot_vars(const State& s, const BaseState& b, const
                                        const std::vector<const Field2*>& extra_2d,
                                        const std::vector<const Field3*>& extra_3d) {
   std::vector<real> hu, hv, hw, ht, hp, hph, hmu, bpb, bphb, bti, bmub;
-  s.u_2.download(hu); s.v_2.download(hv); s.w_2.download(hw); s.t_2.download(ht);
-  s.p.download(hp); s.ph_2.download(hph); s.mu_2.download(hmu);
-  b.pb.download(bpb); b.phb.download(bphb); b.t_init.download(bti); b.mub.download(bmub);
+  // a decomposed run: the whole fields on the writer (the other workers take part in the gathers and return no variables)
+  Layout Lu, Lv, Lw, Lm, Lph, Lmu, Lpb, Lphb, Lti, Lmub, Lq;
+  const bool wr = tile::writer();
+  tile::download(s.u_2, hu, Lu); tile::download(s.v_2, hv, Lv); tile::download(s.w_2, hw, Lw); tile::download(s.t_2, ht, Lm);
+  tile::download(s.p, hp, Lq); tile::download(s.ph_2, hph, Lph); tile::download(s.mu_2, hmu, Lmu);
+  tile::download(b.pb, bpb, Lpb); tile::download(b.phb, bphb, Lphb); tile::download(b.t_init, bti, Lti);
+  tile::download(b.mub, bmub, Lmub);
   const io::DType dt = sizeof(real) == 8 ? io::DType::F64 : io::DType::F32;
   std::vector<io::VarView> vars;
   store.clear();
   store.reserve(64);
   auto add = [&](const char* name, char st, int nx, int ny, int nz, auto f) {
+    if (!wr) return;
     store.emplace_back(size_t(nx) * ny * nz);
     auto& a = store.back();
     for (int k = 0; k < nz; ++k)
@@ -101,22 +107,19 @@ std::vector<io::VarView> snapshot_vars(const State& s, const BaseState& b, const
     vars.push_back(io::VarView{name, st, nx, ny, nz, a.data(), dt, nx, std::ptrdiff_t(nx) * ny});
   };
   auto at = [](const std::vector<real>& h, const Layout& L, int i, int j, int k) { return double(h[L.index(i, j, k)]); };
-  const Layout &Lu = s.u_2.layout(), &Lv = s.v_2.layout(), &Lw = s.w_2.layout(), &Lm = s.t_2.layout(),
-               &Lph = s.ph_2.layout(), &Lmu = s.mu_2.layout(), &Lpb = b.pb.layout(), &Lphb = b.phb.layout(),
-               &Lti = b.t_init.layout(), &Lmub = b.mub.layout();
   const int nx = g.nx, ny = g.ny, nz = g.nz;
   add("u", 'U', g.nxs(Stagger::U), ny, nz, [&](int i, int j, int k) { return at(hu, Lu, i, j, k); });
   add("v", 'V', nx, g.nys(Stagger::V), nz, [&](int i, int j, int k) { return at(hv, Lv, i, j, k); });
   add("w", 'W', nx, ny, nz + 1, [&](int i, int j, int k) { return at(hw, Lw, i, j, k); });
   std::vector<real> hqv;
-  if (s.P_QV >= 0) s.q_2[s.P_QV].download(hqv);
+  if (s.P_QV >= 0) tile::download(s.q_2[s.P_QV], hqv, Lq);
   auto theta = [&](int i, int j, int k) {  // dry theta (t_2 holds theta_m - t0 when moist)
     const double tm = at(ht, Lm, i, j, k) + cst::t0;
-    return hqv.empty() ? tm : tm / (1.0 + cst::rvovrd * at(hqv, Lm, i, j, k));
+    return s.P_QV < 0 ? tm : tm / (1.0 + cst::rvovrd * at(hqv, Lm, i, j, k));
   };
   add("th_pert", 'M', nx, ny, nz, [&](int i, int j, int k) { return theta(i, j, k) - cst::t0 - at(bti, Lti, i, j, k); });
   add("theta", 'M', nx, ny, nz, theta);
-  if (!hqv.empty()) add("theta_m", 'M', nx, ny, nz, [&](int i, int j, int k) { return at(ht, Lm, i, j, k) + cst::t0; });
+  if (s.P_QV >= 0) add("theta_m", 'M', nx, ny, nz, [&](int i, int j, int k) { return at(ht, Lm, i, j, k) + cst::t0; });
   add("p", 'M', nx, ny, nz, [&](int i, int j, int k) { return at(hp, Lm, i, j, k) + at(bpb, Lpb, i, j, k); });
   add("p_pert", 'M', nx, ny, nz, [&](int i, int j, int k) { return at(hp, Lm, i, j, k); });
   add("ph", 'W', nx, ny, nz + 1, [&](int i, int j, int k) { return at(hph, Lph, i, j, k) + at(bphb, Lphb, i, j, k); });
@@ -127,16 +130,16 @@ std::vector<io::VarView> snapshot_vars(const State& s, const BaseState& b, const
   });
   std::vector<real> hq;
   for (int n = 0; n < s.n_scalars(); ++n) {  // moist species and tracers, under their names
-    s.q_2[n].download(hq);
+    tile::download(s.q_2[n], hq, Lq);
     add(s.q_names[n].c_str(), 'M', nx, ny, nz, [&](int i, int j, int k) { return at(hq, Lm, i, j, k); });
   }
   for (const Field2* f : extra_2d) {
-    f->download(hq);
-    add(f->name().c_str(), 'M', nx, ny, 1, [&](int i, int j, int) { return at(hq, f->layout(), i, j, 0); });
+    tile::download(*f, hq, Lq);
+    add(f->name().c_str(), 'M', nx, ny, 1, [&](int i, int j, int) { return at(hq, Lq, i, j, 0); });
   }
   for (const Field3* f : extra_3d) {  // mass-point fields with their own level count (e.g. soil)
-    f->download(hq);
-    add(f->name().c_str(), 'M', nx, ny, f->layout().nz, [&](int i, int j, int k) { return at(hq, f->layout(), i, j, k); });
+    tile::download(*f, hq, Lq);
+    add(f->name().c_str(), 'M', nx, ny, f->layout().nz, [&](int i, int j, int k) { return at(hq, Lq, i, j, k); });
   }
   return vars;
 }

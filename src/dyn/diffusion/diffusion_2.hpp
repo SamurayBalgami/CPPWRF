@@ -420,7 +420,10 @@ struct KVertDiffSfcFluxU2 {
   View3<const real> u_2, v_2, rho;
   View2<const real> ust;
   View1<const real> dnw;
-  bool has_ust, periodic_x;
+  bool has_ust;
+  // 0: not periodic; 1: periodic, the points across the boundary by their own indices; 2: by the halo (a
+  // decomposed run with several patches along the direction: the halo holds the same values)
+  int periodic_x;
   int isfflx, nx;
   real tke_drag_coefficient;
   View3<real> ru_tendf;
@@ -428,8 +431,8 @@ struct KVertDiffSfcFluxU2 {
   CPPWRF_HD void operator()(int i, int j) const {
     constexpr real epsilon = real(1.0e-15);
     const int k   = 0;
-    const int i0  = (i == nx) ? (periodic_x ? 0 : nx - 1) : i;
-    const int im1 = (i == 0) ? (periodic_x ? nx - 1 : 0) : (i - 1);
+    const int i0  = (i == nx) ? (periodic_x ? (periodic_x == 2 ? nx : 0) : nx - 1) : i;
+    const int im1 = (i == 0) ? (periodic_x ? (periodic_x == 2 ? -1 : nx - 1) : 0) : (i - 1);
     real v_avg  = (v_2(i0, j, k) + v_2(i0, j + 1, k) + v_2(im1, j, k) + v_2(im1, j + 1, k)) / real(4.0);
     real V0_u   = std::sqrt((u_2(i, j, k) * u_2(i, j, k)) + (v_avg * v_avg)) + epsilon;
     real tao_xz;
@@ -449,7 +452,8 @@ struct KVertDiffSfcFluxV2 {
   View3<const real> u_2, v_2, rho;
   View2<const real> ust;
   View1<const real> dnw;
-  bool has_ust, periodic_y;
+  bool has_ust;
+  int periodic_y;  // as KVertDiffSfcFluxU2
   int isfflx, ny;
   real tke_drag_coefficient;
   View3<real> rv_tendf;
@@ -457,8 +461,8 @@ struct KVertDiffSfcFluxV2 {
   CPPWRF_HD void operator()(int i, int j) const {
     constexpr real epsilon = real(1.0e-15);
     const int k   = 0;
-    const int j0  = (j == ny) ? (periodic_y ? 0 : ny - 1) : j;
-    const int jm1 = (j == 0) ? (periodic_y ? ny - 1 : 0) : (j - 1);
+    const int j0  = (j == ny) ? (periodic_y ? (periodic_y == 2 ? ny : 0) : ny - 1) : j;
+    const int jm1 = (j == 0) ? (periodic_y ? (periodic_y == 2 ? -1 : ny - 1) : 0) : (j - 1);
     real u_avg  = (u_2(i, j0, k) + u_2(i, jm1, k) + u_2(i + 1, j0, k) + u_2(i + 1, jm1, k)) / real(4.0);
     real V0_v   = std::sqrt((v_2(i, j, k) * v_2(i, j, k)) + (u_avg * u_avg)) + epsilon;
     real tao_yz;
@@ -777,10 +781,10 @@ inline void vertical_diffusion_2(const DiffusionParams& p,
   // 3b. Surface momentum fluxes (vflux) if u_2 and v_2 are provided
   if (u_2.p != nullptr && v_2.p != nullptr) {
     column_for(Range2D{0, nx + 1, 0, ny},
-               KVertDiffSfcFluxU2{u_2, v_2, rho, ust, dnw, has_ust, p.periodic_x,
+               KVertDiffSfcFluxU2{u_2, v_2, rho, ust, dnw, has_ust, p.wrap_x(),
                                   p.isfflx, nx, p.tke_drag_coefficient, ru_tendf});
     column_for(Range2D{0, nx, 0, ny + 1},
-               KVertDiffSfcFluxV2{u_2, v_2, rho, ust, dnw, has_ust, p.periodic_y,
+               KVertDiffSfcFluxV2{u_2, v_2, rho, ust, dnw, has_ust, p.wrap_y(),
                                   p.isfflx, ny, p.tke_drag_coefficient, rv_tendf});
   }
 

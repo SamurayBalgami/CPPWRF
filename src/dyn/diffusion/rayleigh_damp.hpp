@@ -32,13 +32,15 @@ struct KRayleighDampU {
   View3<real> ru_tendf;
   real dampcoef, zdamp, pii;
   int nx, nz;
-  bool periodic_x;
+  // 0: not periodic; 1: periodic, the points across the boundary by their own indices; 2: by the halo (a
+  // decomposed run with several patches along the direction: the halo holds the same values)
+  int periodic_x;
 
   CPPWRF_HD void operator()(int i, int j) const {
     constexpr real g = real(9.81);
     const int ktf    = nz - 1;
-    const int i0     = (i == nx) ? (periodic_x ? 0 : nx - 1) : i;
-    const int im1    = (i == 0)  ? (periodic_x ? nx - 1 : 0) : (i - 1);
+    const int i0     = (i == nx) ? (periodic_x ? (periodic_x == 2 ? nx : 0) : nx - 1) : i;
+    const int im1    = (i == 0)  ? (periodic_x ? (periodic_x == 2 ? -1 : nx - 1) : 0) : (i - 1);
 
     real ztop = real(0.5) * (phb(i0, j, nz) + phb(im1, j, nz) +
                              ph(i0, j, nz) + ph(im1, j, nz)) / g;
@@ -94,13 +96,13 @@ struct KRayleighDampV {
   View3<real> rv_tendf;
   real dampcoef, zdamp, pii;
   int ny, nz;
-  bool periodic_y;
+  int periodic_y;  // as KRayleighDampU
 
   CPPWRF_HD void operator()(int i, int j) const {
     constexpr real g = real(9.81);
     const int ktf    = nz - 1;
-    const int j0     = (j == ny) ? (periodic_y ? 0 : ny - 1) : j;
-    const int jm1    = (j == 0)  ? (periodic_y ? ny - 1 : 0) : (j - 1);
+    const int j0     = (j == ny) ? (periodic_y ? (periodic_y == 2 ? ny : 0) : ny - 1) : j;
+    const int jm1    = (j == 0)  ? (periodic_y ? (periodic_y == 2 ? -1 : ny - 1) : 0) : (j - 1);
 
     real ztop = real(0.5) * (phb(i, j0, nz) + phb(i, jm1, nz) +
                              ph(i, j0, nz) + ph(i, jm1, nz)) / g;
@@ -245,11 +247,11 @@ inline void rk_rayleigh_damp(const DiffusionParams& p,
 
   column_for(Range2D{0, nx + 1, 0, ny},
              KRayleighDampU{u, ph, phb, muu, c1h, c2h, u_base, z_base,
-                            ru_tendf, p.dampcoef, p.zdamp, pii, nx, nz, p.periodic_x});
+                            ru_tendf, p.dampcoef, p.zdamp, pii, nx, nz, p.wrap_x()});
 
   column_for(Range2D{0, nx, 0, ny + 1},
              KRayleighDampV{v, ph, phb, muv, c1h, c2h, v_base, z_base,
-                            rv_tendf, p.dampcoef, p.zdamp, pii, ny, nz, p.periodic_y});
+                            rv_tendf, p.dampcoef, p.zdamp, pii, ny, nz, p.wrap_y()});
 
   column_for(Range2D{0, nx, 0, ny},
              KRayleighDampWT{w, t, ph, phb, mut, c1h, c2h, c1f, c2f, t_base, z_base,

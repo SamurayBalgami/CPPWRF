@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dyn/large_step.hpp"
+#include "core/tiles.hpp"
 #include "core/vm_dump.hpp"
 
 #include <stdexcept>
@@ -746,16 +747,18 @@ struct KFace {
 #endif
 }  // namespace
 
-// three arrays over i in [-halo, nx + 1 + halo), j in [-halo, ny + 1 + halo), k in [0, nz + 2): every face of every
-// staggering the tendency kernels read
+// three arrays over i in [-halo, nx + 1 + halo), j in [-halo, ny + 1 + halo) (of the worker's patch), k in
+// [0, nz + 2): every face of every staggering the tendency kernels read
 struct LargeStep::FaceScratch {
   Buffer b[3];
   View3<real> v[3];
   explicit FaceScratch(const Grid& g) {
-    const int h = Grid::halo, sj = g.nx + 1 + 2 * h, sk = sj * (g.ny + 1 + 2 * h);
+    // a decomposed run: the worker's patch in place of the domain, under the domain's indices
+    const tile::PatchBox ob = tile::own_box(g);
+    const int h = Grid::halo, sj = (ob.i1 - ob.i0) + 1 + 2 * h, sk = sj * ((ob.j1 - ob.j0) + 1 + 2 * h);
     for (int a = 0; a < 3; ++a) {
       b[a] = Buffer(std::size_t(sk) * std::size_t(g.nz + 2));
-      v[a] = View3<real>{b[a].get() + h + h * sj, sj, sk};
+      v[a] = View3<real>{b[a].get() + (h - ob.i0) + std::ptrdiff_t(h - ob.j0) * sj, sj, sk};
     }
   }
 };

@@ -7,6 +7,7 @@
 //   Reducer::max/sum(Range3D, f): f(i,j,k)->double; deterministic (per-k partials,
 //                                 combined on the host in fixed order).
 // Ranges are half-open. Kernels are trivially-copyable structs, no virtuals/exceptions.
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -255,19 +256,21 @@ namespace cppwrf {
 struct Range3D { int i0, i1, j0, j1, k0, k1; };
 struct Range2D { int i0, i1, j0, j1; };
 
-// ---- tiles (src/core/tiles.*): one domain as several tiles, each a host thread with its own copy of every field, its
-// own stream and device; halos are exchanged between the tiles' copies ----
-// Inside a time step of a tiled run (tile::ctx.on) every launch over (i, j) is clipped to the points the calling tile
-// owns: its patch, extended to the array's end at the domain's edges (so the edge tiles own the faces nx / ny and the
-// lateral halos). Launches whose index space is not (i, j) (halo lines, boundary rings, column batches) run on the
-// whole range under tile::Whole. Off (no tiles, and outside the step): every range as given.
+// ---- domain decomposition (src/core/tiles.*, docs/MPI.md): one domain as several patches, each run by a worker (a
+// host thread or an MPI rank) with its own fields (allocated for the patch and its halo, indexed with the domain's
+// indices), stream and device; halos are exchanged between the workers ----
+// In a worker (tile::ctx.on) every launch over (i, j) is clipped to the points the worker owns: its patch, extended
+// without bound at the domain's edges (so the edge patches own the faces nx / ny and the lateral halos). Launches
+// whose index space is not (i, j) (halo lines, boundary rings, column batches) run under tile::Whole on the range
+// given, which they keep inside the worker's allocation themselves. Off (no decomposition): every range as given.
 namespace tile {
 struct Ctx {
-  bool on = false;
+  bool on = false;     // launches are clipped to the worker's points (off inside tile::Whole)
+  bool patch = false;  // the calling thread is a worker with a patch (the bounds below), also inside tile::Whole
   int i0 = 0, i1 = 0, j0 = 0, j1 = 0;  // owned i0 <= i < i1, j0 <= j < j1 (INT_MIN / INT_MAX at the domain's edges)
 };
 inline thread_local Ctx ctx;
-inline thread_local bool in_step = false;  // this thread is inside a time step (tiles and the check's reference run)
+inline thread_local bool in_step = false;  // this thread is inside a time step (workers and the check's reference run)
 inline void clip(Range3D& r) {
   if (!ctx.on) return;
   r.i0 = r.i0 > ctx.i0 ? r.i0 : ctx.i0; r.i1 = r.i1 < ctx.i1 ? r.i1 : ctx.i1;
@@ -287,8 +290,8 @@ inline Range3D faces_of(Range3D cells, int axis) {
   else ++cells.j1;
   return cells;
 }
-// the launches in this scope run on their whole range (every tile computes every point; those it does not own are
-// overwritten by the next exchange)
+// the launches in this scope run on the range given, not clipped to the points the worker owns: the caller keeps
+// the points they read and write inside the worker's allocation
 class Whole {
  public:
   Whole() : saved_(ctx.on) { ctx.on = false; }
@@ -299,20 +302,62 @@ class Whole {
  private:
   bool saved_;
 };
-// set by the tile runner (src/core/tiles.cpp); null without tiles
+// set by the decomposition (src/core/tiles.cpp); null without one
 struct Hooks {
-  bool multi = false;                                   // several tiles in this process
+  bool multi = false;                                   // several workers (tiles) in this process
   void (*check)(const char* what) = nullptr;            // CPPWRF_TILE_CHECK: after every launch inside a step
-  double (*max)(double v) = nullptr;                    // the maximum over the tiles (collective)
-  void (*exchange)(const void* const* bases, int n) = nullptr;  // halo exchange of registered fields (collective)
+  double (*max)(double v) = nullptr;                    // the maximum over the workers (collective)
+  // halo exchange of registered fields (collective): their allocations, or (data) their views' data pointers
+  void (*exchange)(const void* const* bases, int n, bool data) = nullptr;
+  // a periodic direction (axis 0: x, 1: y) of decomposition dom has several patches along it; then the halo of
+  // that direction comes from the worker that owns the wrapped point (collective)
+  bool (*wraps)(int dom, int axis) = nullptr;
+  void (*wrap)(const void* const* bases, int n, int axis) = nullptr;
+  // the sum over r of the values v of the worker's points own (k slowest, i fastest), added in the order of a run
+  // with one patch (collective)
+  double (*sum)(const Range3D& r, const Range3D& own, const double* v) = nullptr;
+  // the line `dst` along axis (0: the column i = dst, 1: the row j = dst) of the field with the view data pointer
+  // `data` takes the values of the line `src`, for the tangential positions t0 <= t < t1, when the two lines belong
+  // to different workers (a periodic direction with several patches along it; collective). false: the caller
+  // copies the line itself.
+  bool (*line)(const void* data, int axis, int dst, int src, int t0, int t1) = nullptr;
 };
 inline Hooks hooks;
 // halo exchange of the fields whose allocations hold these pointers (views' data); see tile::exchange (field.hpp)
 inline void exchange_ptrs(std::initializer_list<const void*> ps) {
-  if (ctx.on && hooks.exchange) hooks.exchange(ps.begin(), int(ps.size()));
+  if (ctx.on && hooks.exchange) hooks.exchange(ps.begin(), int(ps.size()), true);
 }
 inline void after_launch(const char* what) {
   if (hooks.check && in_step) hooks.check(what);
+}
+inline bool wrap_line(const void* data, int axis, int dst, int src, int t0, int t1) {
+  if (!(ctx.patch && hooks.line && hooks.line(data, axis, dst, src, t0, t1))) return false;
+  after_launch("edge line");  // the check counts the launch of a run with one patch
+  return true;
+}
+// Launches over a line of the domain's edge (their index is a position along the edge, not the point they write):
+// the positions a0 <= a < a1 of the edge the worker owns, none when its patch is not at that edge. Launch the
+// range under tile::Whole. No decomposition: the range given.
+enum class Edge { West, East, South, North };
+inline void edge_clip(Edge e, int& a0, int& a1) {
+  if (!ctx.patch) return;
+  const bool at = e == Edge::West ? ctx.i0 == INT_MIN : e == Edge::East ? ctx.i1 == INT_MAX
+                  : e == Edge::South ? ctx.j0 == INT_MIN : ctx.j1 == INT_MAX;
+  const bool x_edge = e == Edge::West || e == Edge::East;
+  const int lo = x_edge ? ctx.j0 : ctx.i0, hi = x_edge ? ctx.j1 : ctx.i1;
+  a0 = a0 > lo ? a0 : lo;
+  a1 = a1 < hi ? a1 : hi;
+  if (!at || a1 < a0) a1 = a0;
+}
+// the rows j0 <= j < j1 of the west / east edge as a column_for range {0, 1, rows}, and the columns of the south /
+// north edge as {columns, 0, 1}
+inline Range2D edge_rows(Edge e, int j0, int j1) {
+  edge_clip(e, j0, j1);
+  return Range2D{0, 1, j0, j1};
+}
+inline Range2D edge_cols(Edge e, int i0, int i1) {
+  edge_clip(e, i0, i1);
+  return Range2D{i0, i1, 0, 1};
 }
 }  // namespace tile
 
@@ -737,25 +782,56 @@ class Reducer {
   int max_k_;
   double* dpart_ = nullptr;  // device partials (CUDA) or unused
   std::vector<double> hpart_;
-  // inside a tiled step: the maximum over the calling tile's points, then over the tiles (every tile gets the
-  // maximum of the whole range; a maximum does not depend on the order). A sum needs the whole domain: the tile
-  // runner gathers the fields and sums outside the step.
+  // a worker of a decomposed run: the maximum over its points, then over the workers (every worker gets the maximum
+  // of the whole range; a maximum does not depend on the order). A sum: the values of the worker's points go to one
+  // worker, which adds them in the order of a run with one patch (tile::hooks.sum).
+ public:  // a kernel type (CUDA: the template argument of a launch must be accessible)
+  template <class F> struct Values {
+    F f;
+    double* out;
+    Range3D r;
+    CPPWRF_HD void operator()(int i, int j, int k) const {
+      out[(std::size_t(k - r.k0) * std::size_t(r.j1 - r.j0) + std::size_t(j - r.j0)) * std::size_t(r.i1 - r.i0) +
+          std::size_t(i - r.i0)] = f(i, j, k);
+    }
+  };
+
+ private:
   template <class F, bool MAX> double run(const Range3D& r0, const F& f) {
     if (tile::ctx.on) {
-      if constexpr (!MAX) throw std::logic_error("Reducer::sum inside a tiled time step");
       Range3D r = r0;
       tile::clip(r);
+      if (r.i1 < r.i0) r.i1 = r.i0;
+      if (r.j1 < r.j0) r.j1 = r.j0;
       const tile::Ctx saved = tile::ctx;
       tile::ctx.on = false;
       double v = -1e308;
+      std::vector<double> vals;
       try {
-        v = run<F, MAX>(r, f);
+        if constexpr (MAX) {
+          v = run<F, MAX>(r, f);
+        } else {
+          const std::size_t n = std::size_t(r.i1 - r.i0) * std::size_t(r.j1 - r.j0) * std::size_t(r.k1 > r.k0 ? r.k1 - r.k0 : 0);
+          vals.resize(n);
+          if (n > 0) {
+            double* d = static_cast<double*>(dev_alloc(n * sizeof(double)));
+            try {
+              parallel_for(r, Values<F>{f, d, r});
+              copy_to_host(vals.data(), d, n * sizeof(double));
+            } catch (...) {
+              dev_free(d);
+              throw;
+            }
+            dev_free(d);
+          }
+        }
       } catch (...) {
         tile::ctx = saved;
         throw;
       }
       tile::ctx = saved;
-      return tile::hooks.max ? tile::hooks.max(v) : v;
+      if constexpr (MAX) return tile::hooks.max ? tile::hooks.max(v) : v;
+      else return tile::hooks.sum(r0, r, vals.data());
     }
     const Range3D& r = r0;
     int nk = r.k1 - r.k0;

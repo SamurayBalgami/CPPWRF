@@ -16,6 +16,9 @@
 # tables made the suite's met_em files (default ~/wrf_real/WPS-4.6.0; ~3 MB are uploaded). Everything else is
 # downloaded on the runtime: WRF's release source (github.com/wrf-model/WRF), WPS's low-resolution geography (UCAR),
 # the GFS files (NOAA open data); the data tars come from Drive / the bucket as for tools/colab/colab_suite.sh.
+# --scaling "CASE:N,N,...;CASE:N,..." (in place of --cases / --layouts): the strong scaling of the MPI builds
+# (docs/MPI.md): WRF real*8 dmpar and CPPWRF's CPU FP64 build with CPPWRF_MPI with N ranks each (bench_run.py
+# scaling; no GPU side, no real*4 or dm+sm builds); the report is OUT/scaling.md.
 # --hours: the longest wait (default 5); --rev, --session, --keep as colab_suite.sh (a --keep session keeps the WRF
 # builds, the met_em files and the CUDA builds for the next run with --session).
 #
@@ -31,6 +34,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 : "${CPPWRF_GCP_BUCKET:?set CPPWRF_GCP_BUCKET}"
 BK=$CPPWRF_GCP_BUCKET
 CASES=P4,L,P4R15,N3,R1 LAYOUTS=dm12,dm24,dm48,sm24x2,sm12x4 WPS=$HOME/wrf_real/WPS-4.6.0 OUT= HOURS=5 REV=HEAD S= KEEP=0
+SCALING=
 NPROC= ANY_CPU=1
 # R1: dycore_data.tar; P4: suite_data.tar; N3: n3_data.tar; the whole 1 h references of P4 and N3: v05_suite_refs.tar
 DATA=dycore_data.tar,suite_data.tar,n3_data.tar,v05_suite_refs.tar
@@ -38,7 +42,8 @@ while [ $# -gt 0 ]; do
   case $1 in
     --cases) CASES=$2; shift 2 ;; --layouts) LAYOUTS=$2; shift 2 ;; --wps) WPS=$2; shift 2 ;; --out) OUT=$2; shift 2 ;;
     --hours) HOURS=$2; shift 2 ;; --rev) REV=$2; shift 2 ;; --session) S=$2; shift 2 ;; --keep) KEEP=1; shift ;;
-    *) sed -n '3,28p' "$0"; exit 2 ;;
+    --scaling) SCALING=$2; shift 2 ;;
+    *) sed -n '3,33p' "$0"; exit 2 ;;
   esac
 done
 STAMP=$(date +%Y%m%d_%H%M%S)
@@ -57,10 +62,15 @@ TAG=colab_bench
 . "$REPO/tools/colab/colab_lib.sh"
 cj_start G4
 cj_send "$OUT/wps.tar.gz" in/wps.tar.gz
-cj_send "$REPO/tools/bench/bench_gpu.sh" gpu.sh
-cj_launch "$REPO/tools/bench/bench_body.sh" "$DATA" "$CASES" "$LAYOUTS" "$STAMP"
-echo "import subprocess; subprocess.Popen('nohup bash /content/cpu/gpu.sh $STAMP > /dev/null 2>&1 &', shell=True); print('started')" |
-  rx 60 | grep started > /dev/null || echo "[colab_bench] the GPU side did not start"
+if [ -n "$SCALING" ]; then  # the MPI builds only: no GPU side
+  CASES=$(echo "$SCALING" | tr ';' '\n' | sed 's/:.*//' | paste -sd,)
+  cj_launch "$REPO/tools/bench/bench_body.sh" "$DATA" "$CASES" "$LAYOUTS" "$STAMP" "$SCALING"
+else
+  cj_send "$REPO/tools/bench/bench_gpu.sh" gpu.sh
+  cj_launch "$REPO/tools/bench/bench_body.sh" "$DATA" "$CASES" "$LAYOUTS" "$STAMP"
+  echo "import subprocess; subprocess.Popen('nohup bash /content/cpu/gpu.sh $STAMP > /dev/null 2>&1 &', shell=True); print('started')" |
+    rx 60 | grep started > /dev/null || echo "[colab_bench] the GPU side did not start"
+fi
 bad=0
 cj_wait "$HOURS" bench.log || bad=1
 timeout 120 colab usage 2>&1 | grep -v '^\[colab\]' > "$OUT/usage.txt" || true
@@ -70,7 +80,9 @@ if timeout 1800 colab download -s "$S" /content/cpu/fetch/bench.tar.gz "$OUT/ben
 else echo "[colab_bench] bench.tar.gz: download failed"; bad=1; fi
 grep . "$OUT/setup.out" 2> /dev/null && bad=1
 rate=$(sed -nE 's/.*Usage rate: *([0-9.]+).*/\1/p' "$OUT/usage.txt" | head -1)
-if [ -f "$OUT/results.txt" ]; then
+if [ -n "$SCALING" ]; then
+  [ -f "$OUT/logs/scaling.md" ] && cp "$OUT/logs/scaling.md" "$OUT/scaling.md" && echo "[colab_bench] report: $OUT/scaling.md" || bad=1
+elif [ -f "$OUT/results.txt" ]; then
   python3 "$REPO/tools/bench/bench_report.py" "$OUT/results.txt" ${rate:+--rate "$rate"} > "$OUT/report.md"
   echo "[colab_bench] G4 rate ${rate:-?} compute units / hour; report: $OUT/report.md"
 else echo "[colab_bench] no results.txt"; bad=1; fi

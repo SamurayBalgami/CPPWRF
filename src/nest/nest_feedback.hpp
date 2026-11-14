@@ -14,6 +14,7 @@
 #include <memory>
 #include "core/backend.hpp"
 #include "core/field.hpp"
+#include "nest/nest_whole.hpp"
 
 namespace cppwrf::nest {
 
@@ -407,11 +408,11 @@ struct FeedbackScratch {
 
 // Single-source View-based feedback + optional smoother for Field3 / BaseField3
 // (scratch: the temporaries of the smoother, else allocated for this call)
-template <class Field3T>
+template <class Field3T, class NField3T>
 inline void feedback_field3(
     const Grid& c_grid,
     Field3T& cfld,
-    const Field3T& nfld,
+    const NField3T& nfld,
     int n_nx, int n_ny, int nk,
     int ipos, int jpos,
     int nri, int nrj,
@@ -429,6 +430,7 @@ inline void feedback_field3(
   auto nv = const_view3(nfld);
   parallel_for(Range3D{ci0_begin, ci0_end, cj0_begin, cj0_end, 0, nk},
                KCopyFcnView3D<decltype(cv), decltype(nv)>{cv, nv, ipos, jpos, nri, nrj, xstag, ystag});
+  exchange_field(cfld);  // a decomposed run: the smoother reads the neighbours' points
 
   if (smooth_option == 1 || smooth_option == 2) {
     const int s_i0 = ipos + 1;
@@ -446,15 +448,19 @@ inline void feedback_field3(
       if (smooth_option == 1) {
         parallel_for(Range3D{s_i0 - 1, s_i1 + 1, s_j0 - 1, s_j1 + 1, 0, nk}, KCopy3D{tv, ccv});
         parallel_for(Range3D{s_i0, s_i1, s_j0, s_j1, 0, nk}, KSm121J3D{tv, ccv});
+        exchange_field(tmp);
         parallel_for(Range3D{s_i0, s_i1, s_j0, s_j1, 0, nk}, KSm121I3D{cv, tcv});
+        exchange_field(cfld);
       } else {
         const double xnu[2] = {0.50, -0.52};
         for (int pass = 0; pass < 2; ++pass) {
           const double nu = xnu[pass];
           parallel_for(Range3D{s_i0, s_i1, s_j0, s_j1, 0, nk}, KSmdsmJ3D{tv, ccv, nu});
           parallel_for(Range3D{s_i0, s_i1, s_j0, s_j1, 0, nk}, KCopy3D{cv, tcv});
+          exchange_field(cfld);
           parallel_for(Range3D{s_i0, s_i1, s_j0, s_j1, 0, nk}, KSmdsmI3D{tv, ccv, nu});
           parallel_for(Range3D{s_i0, s_i1, s_j0, s_j1, 0, nk}, KCopy3D{cv, tcv});
+          exchange_field(cfld);
         }
       }
     }
@@ -462,11 +468,11 @@ inline void feedback_field3(
 }
 
 // Single-source View-based feedback + optional smoother for Field2 / BaseField2
-template <class Field2T>
+template <class Field2T, class NField2T>
 inline void feedback_field2(
     const Grid& c_grid,
     Field2T& cfld,
-    const Field2T& nfld,
+    const NField2T& nfld,
     int n_nx, int n_ny,
     int ipos, int jpos,
     int nri, int nrj,
@@ -483,6 +489,7 @@ inline void feedback_field2(
   auto nv = const_view2(nfld);
   parallel_for(Range3D{ci0_begin, ci0_end, cj0_begin, cj0_end, 0, 1},
                KCopyFcnView2D<decltype(cv), decltype(nv)>{cv, nv, ipos, jpos, nri, nrj});
+  exchange_field(cfld);  // a decomposed run: the smoother reads the neighbours' points
 
   if (smooth_option == 1 || smooth_option == 2) {
     const int s_i0 = ipos + 1;
@@ -499,15 +506,19 @@ inline void feedback_field2(
       if (smooth_option == 1) {
         parallel_for(Range3D{s_i0 - 1, s_i1 + 1, s_j0 - 1, s_j1 + 1, 0, 1}, KCopy2D{tv, ccv});
         parallel_for(Range3D{s_i0, s_i1, s_j0, s_j1, 0, 1}, KSm121J2D{tv, ccv});
+        exchange_field(tmp);
         parallel_for(Range3D{s_i0, s_i1, s_j0, s_j1, 0, 1}, KSm121I2D{cv, tcv});
+        exchange_field(cfld);
       } else {
         const double xnu[2] = {0.50, -0.52};
         for (int pass = 0; pass < 2; ++pass) {
           const double nu = xnu[pass];
           parallel_for(Range3D{s_i0, s_i1, s_j0, s_j1, 0, 1}, KSmdsmJ2D{tv, ccv, nu});
           parallel_for(Range3D{s_i0, s_i1, s_j0, s_j1, 0, 1}, KCopy2D{cv, tcv});
+          exchange_field(cfld);
           parallel_for(Range3D{s_i0, s_i1, s_j0, s_j1, 0, 1}, KSmdsmI2D{tv, ccv, nu});
           parallel_for(Range3D{s_i0, s_i1, s_j0, s_j1, 0, 1}, KCopy2D{cv, tcv});
+          exchange_field(cfld);
         }
       }
     }
@@ -515,10 +526,10 @@ inline void feedback_field2(
 }
 
 // Single-source View-based point-sampling feedback (copy_fcnm) for 2D map-factor / Coriolis fields
-template <class Field2T>
+template <class Field2T, class NField2T>
 inline void feedback_field2_fcnm(
     Field2T& cfld,
-    const Field2T& nfld,
+    const NField2T& nfld,
     int n_nx, int n_ny,
     int ipos, int jpos,
     int nri, int nrj,
@@ -535,6 +546,7 @@ inline void feedback_field2_fcnm(
   auto nv = const_view2(nfld);
   parallel_for(Range3D{ci0_begin, ci0_end, cj0_begin, cj0_end, 0, 1},
                KCopyFcnmView2D<decltype(cv), decltype(nv)>{cv, nv, ipos, jpos, nri, nrj, xstag, ystag});
+  exchange_field(cfld);
 }
 
 // ============================================================================

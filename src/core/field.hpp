@@ -48,6 +48,16 @@ struct Layout {
   int hy = 0;
   std::ptrdiff_t si = 1, sj = 0, sk = 0, offset = 0;
   std::size_t total = 0;
+  // the indices the allocation holds: wi0 <= i < wi1, wj0 <= j < wj1 (the halo included). The whole domain:
+  // [-halo, nx + halo) x [-hy, ny + hy); a patch of a decomposed run (dom >= 0): its points and halo
+  int wi0 = 0, wi1 = 0, wj0 = 0, wj1 = 0;
+  int dom = -1;
+  // the field's points (no lateral halo) in the allocation: host loops over the domain run over these
+  int i0() const { return wi0 > 0 ? wi0 : 0; }
+  int i1() const { return wi1 < nx ? wi1 : nx; }
+  int j0() const { return wj0 > 0 ? wj0 : 0; }
+  int j1() const { return wj1 < ny ? wj1 : ny; }
+  bool holds(int i, int j) const { return si == 0 || (i >= wi0 && i < wi1 && (sj == 0 || (j >= wj0 && j < wj1))); }
   static constexpr int lpad = 8;
   static Layout make(const Grid& g, Stagger s, int rank, bool uniform = false);
   std::size_t index(int i, int j, int k) const { return std::size_t(offset + i * si + j * sj + k * sk); }
@@ -109,8 +119,8 @@ template <int R> class FieldT {
   template <class F> void fill_host(F f) {
     std::vector<real> h(L_.total, real(0));
     for (int k = 0; k < L_.nz; ++k)
-      for (int j = 0; j < L_.ny; ++j)
-        for (int i = 0; i < L_.nx; ++i) h[L_.index(i, j, k)] = real(f(i, j, k));
+      for (int j = L_.j0(); j < L_.j1(); ++j)
+        for (int i = L_.i0(); i < L_.i1(); ++i) h[L_.index(i, j, k)] = real(f(i, j, k));
     copy_to_dev(buf_.get(), h.data(), bytes());
   }
   void download(std::vector<real>& h) const {  // whole buffer incl. halos
@@ -151,10 +161,10 @@ template <int R> class BaseFieldT {
   // f(i,j,k); for uniform fields only i=j=0 is evaluated.
   template <class F> void fill_host(F f) {
     std::vector<real> h(L_.total, real(0));
-    int ni = uniform_ ? 1 : L_.nx, nj = uniform_ ? 1 : L_.ny;
+    const int ia = uniform_ ? 0 : L_.i0(), ib = uniform_ ? 1 : L_.i1(), ja = uniform_ ? 0 : L_.j0(), jb = uniform_ ? 1 : L_.j1();
     for (int k = 0; k < L_.nz; ++k)
-      for (int j = 0; j < nj; ++j)
-        for (int i = 0; i < ni; ++i) h[L_.index(i, j, k)] = real(f(i, j, k));
+      for (int j = ja; j < jb; ++j)
+        for (int i = ia; i < ib; ++i) h[L_.index(i, j, k)] = real(f(i, j, k));
     copy_to_dev(buf_.get(), h.data(), L_.total * sizeof(real));
   }
   // As fill_host, but a non-uniform field is also filled in its lateral halo:
@@ -162,10 +172,9 @@ template <int R> class BaseFieldT {
   template <class F> void fill_host_halo(F f) {
     if (uniform_) { fill_host(f); return; }
     std::vector<real> h(L_.total, real(0));
-    const int hx = Grid::halo, hy = L_.hy;
     for (int k = 0; k < L_.nz; ++k)
-      for (int j = -hy; j < L_.ny + hy; ++j)
-        for (int i = -hx; i < L_.nx + hx; ++i) h[L_.index(i, j, k)] = real(f(i, j, k));
+      for (int j = L_.wj0; j < L_.wj1; ++j)
+        for (int i = L_.wi0; i < L_.wi1; ++i) h[L_.index(i, j, k)] = real(f(i, j, k));
     copy_to_dev(buf_.get(), h.data(), L_.total * sizeof(real));
   }
   void download(std::vector<real>& h) const {
@@ -210,14 +219,14 @@ template <class... F>
 void exchange(const F&... f) {
   if (!ctx.on || !hooks.exchange) return;
   const void* const b[] = {f.base()...};
-  hooks.exchange(b, int(sizeof...(F)));
+  hooks.exchange(b, int(sizeof...(F)), false);
 }
 template <class F>
 void exchange(const std::vector<F>& fs) {
   if (!ctx.on || !hooks.exchange || fs.empty()) return;
   std::vector<const void*> b;
   for (const F& f : fs) b.push_back(f.base());
-  hooks.exchange(b.data(), int(b.size()));
+  hooks.exchange(b.data(), int(b.size()), false);
 }
 }  // namespace tile
 

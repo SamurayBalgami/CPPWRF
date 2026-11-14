@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dyn/physics_coupling.hpp"
+#include "core/tiles.hpp"
 
 #include <map>
 #include <mutex>
@@ -132,7 +133,9 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
 #if defined(CPPWRF_DOUBLE)
     {  // the work arrays of wsm6_stages for step()'s mp_cols
       const int sx = g.bc_x == BC::Specified ? 1 : 0, sy = g.bc_y == BC::Specified ? 1 : 0;
-      wsm6_work_ = Buffer(phys::wsm6::Wsm6Work<real>::size(Range2D{sx, g.nx - sx, sy, g.ny - sy}, g.nz));
+      const tile::PatchBox ob = tile::own_box(g);  // the worker's columns of mp_cols (wsm6_stages clips them)
+      wsm6_work_ = Buffer(phys::wsm6::Wsm6Work<real>::size(
+          Range2D{std::max(sx, ob.i0), std::min(g.nx - sx, ob.i1), std::max(sy, ob.j0), std::min(g.ny - sy, ob.j1)}, g.nz));
     }
 #endif
     if (p_.do_radar_ref == 1)  // mp_wsm6_init: m(D) = pi*den/6 D**3 of rain, snow and graupel (hail), mu = 0
@@ -209,6 +212,10 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
   // microphysics_driver: with specified boundaries the spec zone is skipped (sz = spec_zone)
   const int sx = g.bc_x == BC::Specified ? 1 : 0, sy = g.bc_y == BC::Specified ? 1 : 0;
   const Range2D mp_cols{sx, g.nx - sx, sy, g.ny - sy};
+  // the worker's columns of mp_cols (wsm6_stages' work arrays are indexed from the range's first column)
+  const tile::PatchBox mp_ob = tile::own_box(g);
+  const Range2D mp_own{std::max(sx, mp_ob.i0), std::min(g.nx - sx, mp_ob.i1), std::max(sy, mp_ob.j0),
+                       std::min(g.ny - sy, mp_ob.j1)};
   if (p_.mp_physics == 6) {
     // debug (CPPWRF_VM_DUMP): WSM6 inputs and outputs, for a replay through WRF's mp_wsm6
     vmdump::dump("vm_mp_in", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS],
@@ -219,7 +226,7 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
     auto wsm6 = [&](auto nl) {
 #if defined(CPPWRF_DOUBLE)  // FP64 builds: the level loops in parallel, the sedimentation per column (wsm6.hpp)
       phys::wsm6::wsm6_stages<real, decltype(nl)::value>(
-          wp_, dt, g.nz, mp_cols, wsm6_work_.get(), th_phy.view(), qv.view(), s.q_2[s.P_QC].view(),
+          wp_, dt, g.nz, mp_own, wsm6_work_.get(), th_phy.view(), qv.view(), s.q_2[s.P_QC].view(),
           s.q_2[s.P_QR].view(), s.q_2[s.P_QI].view(), s.q_2[s.P_QS].view(), s.q_2[s.P_QG].view(), rho.cview(),
           pii.cview(), p_phy.cview(), dz8w.cview(), rainnc.view(), rainncv.view(), snownc.view(), snowncv.view(),
           graupelnc.view(), graupelncv.view(), sr.view());
@@ -319,7 +326,7 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
 void PhysicsCoupling::init_aerosols(State& s, const BaseState& b) {
   if (p_.mp_physics != 28) return;
   const Grid& g = g_;
-  const int nx = g.nx, ny = g.ny, nz = g.nz;
+  const int nz = g.nz;
   std::vector<real> ph, phb, nw, w2d;
   s.ph_2.download(ph);
   b.phb.download(phb);
@@ -334,14 +341,16 @@ void PhysicsCoupling::init_aerosols(State& s, const BaseState& b) {
   auto profile = [&](int n, double na0, double na1, double lna, bool emission) {
     Field3& f = s.q_2[n];
     f.download(nw);
-    double max_test = double(nw[LM.index(0, 0, 0)]);
+    // a decomposed run: the points the worker holds (the host loops below), the maximum over the workers
+    double max_test = -std::numeric_limits<double>::infinity();
     for (int k = 0; k < nz; ++k)  // MAXVAL(nwfa(its:ite-1,:,jts:jte-1)): every mass point (WRF's kde level is 0)
-      for (int j = 0; j < ny; ++j)
-        for (int i = 0; i < nx; ++i) max_test = std::max(max_test, double(nw[LM.index(i, j, k)]));
+      for (int j = LM.j0(); j < LM.j1(); ++j)
+        for (int i = LM.i0(); i < LM.i1(); ++i) max_test = std::max(max_test, double(nw[LM.index(i, j, k)]));
+    max_test = tile::max(max_test);
     if (!(max_test < phys::mp_thompson::eps_val)) return;
     if (emission) qnwfa2d.download(w2d);
-    for (int j = 0; j < ny; ++j)
-      for (int i = 0; i < nx; ++i) {
+    for (int j = LM.j0(); j < LM.j1(); ++j)
+      for (int i = LM.i0(); i < LM.i1(); ++i) {
         const double h1 = hgt(i, 0, j);
         double h_01;
         if (h1 <= 1000.0) h_01 = 0.8;

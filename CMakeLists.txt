@@ -124,6 +124,17 @@ set_source_files_properties(
   PROPERTIES COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>")
 
 add_library(cppwrf_core STATIC ${CPPWRF_SOURCES})
+# MPI ranks as the workers of a decomposed run (docs/MPI.md): mpirun -n N cppwrf ... Off: no MPI is needed and
+# the build is the one without this option.
+option(CPPWRF_MPI "Domain decomposition over MPI ranks (mpirun -n N cppwrf)" OFF)
+if(CPPWRF_MPI)
+  find_package(MPI REQUIRED COMPONENTS CXX)
+  target_compile_definitions(cppwrf_core PUBLIC CPPWRF_MPI MPICH_SKIP_MPICXX OMPI_SKIP_MPICXX)  # the C interface only
+  # the headers and the libraries only: the compile and link options of the MPI wrapper are the distribution's
+  # (Ubuntu's MPICH: -flto=auto, which nvcc's host compile of a CUDA source cannot take)
+  target_include_directories(cppwrf_core SYSTEM PUBLIC ${MPI_CXX_INCLUDE_DIRS})
+  target_link_libraries(cppwrf_core PUBLIC ${MPI_CXX_LIBRARIES})
+endif()
 # tables shipped with the sources (data/rrtmg)
 target_compile_definitions(cppwrf_core PRIVATE CPPWRF_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
 target_include_directories(cppwrf_core PUBLIC ${CMAKE_SOURCE_DIR}/src)

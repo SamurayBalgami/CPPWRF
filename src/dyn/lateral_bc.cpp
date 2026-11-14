@@ -2,6 +2,7 @@
 #include "dyn/lateral_bc.hpp"
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <stdexcept>
 
@@ -38,18 +39,26 @@ CPPWRF_HD inline int slab_of_side(int side) { return side < 2 ? side + 2 : side 
 struct Ring {
   int ibe, jbe;  // inclusive last index in x / y for this staggering
   int b0;        // first b of this launch
+  // a worker of a decomposed run: the ring's points it owns (tile::ctx); else every point
+  int oi0 = INT_MIN, oi1 = INT_MAX, oj0 = INT_MIN, oj1 = INT_MAX;
   CPPWRF_HD bool map(int pos, int side, int b, int& i, int& j) const {
+    bool in;
     switch (side) {
-      case 0: j = b; i = pos; return pos >= b && pos <= ibe - b;
-      case 1: j = jbe - b; i = pos; return pos >= b && pos <= ibe - b;
-      case 2: i = b; j = pos; return pos >= b + 1 && pos <= jbe - b - 1;
-      default: i = ibe - b; j = pos; return pos >= b + 1 && pos <= jbe - b - 1;
+      case 0: j = b; i = pos; in = pos >= b && pos <= ibe - b; break;
+      case 1: j = jbe - b; i = pos; in = pos >= b && pos <= ibe - b; break;
+      case 2: i = b; j = pos; in = pos >= b + 1 && pos <= jbe - b - 1; break;
+      default: i = ibe - b; j = pos; in = pos >= b + 1 && pos <= jbe - b - 1; break;
     }
+    return in && i >= oi0 && i < oi1 && j >= oj0 && j < oj1;
   }
 };
 
 Ring ring_for(const Grid& g, char var, int b0) {
-  return Ring{var == 'u' ? g.nx : g.nx - 1, var == 'v' ? g.ny : g.ny - 1, b0};
+  Ring r{var == 'u' ? g.nx : g.nx - 1, var == 'v' ? g.ny : g.ny - 1, b0};
+  if (tile::ctx.patch) {
+    r.oi0 = tile::ctx.i0; r.oi1 = tile::ctx.i1; r.oj0 = tile::ctx.j0; r.oj1 = tile::ctx.j1;
+  }
+  return r;
 }
 Range3D ring_range(const Ring& r, int nk, int nb) {
   return Range3D{0, std::max(r.ibe, r.jbe) + 1, 0, nk, 0, 4 * nb};
@@ -283,7 +292,7 @@ SlabSet scalar_slabs(const Buffer& d, const std::vector<std::size_t>& off, int n
 }  // namespace
 
 void LateralBC::relax_dry(const State& s, Tendencies& t, const BaseState& b) const {
-  const tile::Whole whole;  // ring kernels: (position, level, row) index space
+  const tile::Whole whole;  // ring kernels: (position, level, row) index space; a worker's own points (Ring)
   const A1 fcx{coef_.get()}, gcx{coef_.get() + width_};
   const int nb = relax_zone_ - 1;  // rows spec_zone .. spec_zone + relax_zone - 2
   auto sl = [&](Var v) { return slabs(data_[v], off_[v], nk_[v], npos(v, XS), npos(v, YS)); };
@@ -326,7 +335,7 @@ void LateralBC::relax_dry(const State& s, Tendencies& t, const BaseState& b) con
 }
 
 void LateralBC::spec_dry(Tendencies& t) const {
-  const tile::Whole whole;  // ring kernels: (position, level, row) index space
+  const tile::Whole whole;  // ring kernels: (position, level, row) index space; a worker's own points (Ring)
   auto sl = [&](Var v) { return slabs(data_[v], off_[v], nk_[v], npos(v, XS), npos(v, YS)); };
   const int nb = spec_zone_;
   auto r = [&](char c) { return ring_for(g_, c, 0); };
@@ -342,7 +351,7 @@ void LateralBC::spec_dry(Tendencies& t) const {
 }
 
 void LateralBC::update_uv(State& s, const Tendencies& t, real dts) const {
-  const tile::Whole whole;  // ring kernels: (position, level, row) index space
+  const tile::Whole whole;  // ring kernels: (position, level, row) index space; a worker's own points (Ring)
   const int nb = spec_zone_;
   const Ring ru = ring_for(g_, 'u', 0), rv = ring_for(g_, 'v', 0);
   LaunchBatch<KUpdate, 2> up;  // u and v in one launch
@@ -352,7 +361,7 @@ void LateralBC::update_uv(State& s, const Tendencies& t, real dts) const {
 }
 
 void LateralBC::update_mu_t(State& s, const Tendencies& t, real dts) const {
-  const tile::Whole whole;  // ring kernels: (position, level, row) index space
+  const tile::Whole whole;  // ring kernels: (position, level, row) index space; a worker's own points (Ring)
   const int nb = spec_zone_;
   const Ring rm = ring_for(g_, 't', 0);
   LaunchBatch<KUpdate, 3> up;  // t, mu and muts in one launch (mu_tend is only read)
@@ -363,7 +372,7 @@ void LateralBC::update_mu_t(State& s, const Tendencies& t, real dts) const {
 }
 
 void LateralBC::update_ph_w(State& s, const Field3& ph_save, const Tendencies& t, const BaseState& b, real dts) const {
-  const tile::Whole whole;  // ring kernels: (position, level, row) index space
+  const tile::Whole whole;  // ring kernels: (position, level, row) index space; a worker's own points (Ring)
   const int nb = spec_zone_;
   const Ring rh = ring_for(g_, 'h', 0);
   const Range3D rr = ring_range(rh, g_.nz + 1, nb);
@@ -377,7 +386,7 @@ void LateralBC::update_ph_w(State& s, const Field3& ph_save, const Tendencies& t
 }
 
 void LateralBC::relax_scalars(const std::vector<int>& ns, Tendencies& t, const State& s, const BaseState& b) const {
-  const tile::Whole whole;  // ring kernels: (position, level, row) index space
+  const tile::Whole whole;  // ring kernels: (position, level, row) index space; a worker's own points (Ring)
   const A1 fcx{coef_.get()}, gcx{coef_.get() + width_};
   const Ring r = ring_for(g_, 'q', spec_zone_);
   LaunchBatch<KRelax, 8> relax;  // each species its own tendency
@@ -392,7 +401,7 @@ void LateralBC::relax_scalars(const std::vector<int>& ns, Tendencies& t, const S
 }
 
 void LateralBC::spec_scalars(const std::vector<int>& ns, Tendencies& t) const {
-  const tile::Whole whole;  // ring kernels: (position, level, row) index space
+  const tile::Whole whole;  // ring kernels: (position, level, row) index space; a worker's own points (Ring)
   const Ring r = ring_for(g_, 'q', 0);
   LaunchBatch<KSpecTend, 8> spec;
   for (int n : ns) {
@@ -405,7 +414,7 @@ void LateralBC::spec_scalars(const std::vector<int>& ns, Tendencies& t) const {
 }
 
 void LateralBC::flow_dep(const std::vector<int>& ns, State& s) const {
-  const tile::Whole whole;  // ring kernels: (position, level, row) index space
+  const tile::Whole whole;  // ring kernels: (position, level, row) index space; a worker's own points (Ring)
   const Ring r = ring_for(g_, 'q', 0);
   LaunchBatch<KFlowDep, 8> fd;  // each species reads and writes only itself
   for (int n : ns)
@@ -414,7 +423,7 @@ void LateralBC::flow_dep(const std::vector<int>& ns, State& s) const {
 }
 
 void LateralBC::final(State& s, const BaseState& b) const {
-  const tile::Whole whole;  // ring kernels: (position, level, row) index space
+  const tile::Whole whole;  // ring kernels: (position, level, row) index space; a worker's own points (Ring)
   auto sl = [&](Var v) { return slabs(data_[v], off_[v], nk_[v], npos(v, XS), npos(v, YS)); };
   const int nb = spec_zone_;
   const real d = real(dtbc);

@@ -49,6 +49,24 @@ a verified configuration, of a configuration key or of an output file is a new m
 - tools/colab/colab_run.sh `--base REV` (both builds in one session: times, memory, kernel times, outputs byte for
   byte) and `--device-mib N` (the runs see N MiB of free device memory).
 
+### Added
+- Domain decomposition with divided memory, and MPI (docs/MPI.md, USER_GUIDE section 7): a domain and its nests run
+  as P x Q patches, each worker holding its patch and a halo of 3 points under the domain's indices. The workers
+  are tiles (`run.tiles`, as before, now also with nests) or MPI ranks: a build with `-DCPPWRF_MPI=ON` (off by
+  default) under `mpirun -np N`, layout `run.ranks = PxQ` / `CPPWRF_RANKS` (default the most square with P <= Q),
+  `CPPWRF_RANK_DEVICES` for the GPUs of a CUDA build. One worker writes every output file. The result has the same
+  bits for every worker count and layout (CPU FP64 = one-process WRF real*8): proved on one machine for 1 to 8
+  ranks in 13 layouts on eight cases, 53 suite cases in three layouts, and up to 48 ranks against the one-process
+  run; not run on several GPUs or nodes. A real-data start reads only the worker's window of wrfinput's 3-D
+  variables. Results without tiles and outside `mpirun` are unchanged.
+- tools/colab/colab_mpi.sh (suite cases under `mpirun` with several layouts on a Colab runtime, CPU and GPU, each
+  against the WRF references and byte for byte against one rank) and tools/bench/colab_bench.sh `--scaling` (strong
+  scaling next to WRF real*8 dmpar).
+
+### Changed
+- Tiles no longer write `output.dir.tileN` copies: tile 0 writes the run's files from gathered fields.
+- An MPI run prints the peak host memory of the writer, of the largest other rank and of all ranks.
+
 ### Tools and documentation
 - The CPU FP64 suite on free GitHub-hosted runners (docs/USER_GUIDE.md, "The CPU Suite on GitHub"): the reference
   data (the tars of tests/verify/vm_data.txt) are public release assets of github.com/Xassemblianist/cppwrf-data,

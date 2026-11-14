@@ -22,7 +22,7 @@ is verified against WRF, and the current results. All numbers come from `tests/v
 | Namelist | physics_suite CONUS and tropical (the -1 options), in tools/wrf2cppwrf.py and in the WRF I/O schema | verified |
 | Diagnostics | accumulation buckets bucket_mm and bucket_J (I_RAINC, I_RAINNC, I_ACSWUPT ... I_ACLWDNBC) and the precipitation windows prec_acc_dt (PREC_ACC_C, PREC_ACC_NC, SNOW_ACC_NC, per domain), output_diagnostics = 1 (T2MIN ... RAINNCVSTD over auxhist3_interval, the auxhist3 files), with the column physics; radar reflectivity (do_radar_ref); nwp_diagnostics is not ported | verified |
 | I/O | reads wrfinput_d0N / wrfbdy_d01; writes WRF v4.8.0 wrfout_d0N and wrfrst_d0N files (WRF I/O schema, iofields_filename, history_outname / rst_outname, frames_per_outfile, use_netcdf_classic) and its own restart files; native binary output; cppwrf_real (real.exe) | verified |
-| Domain decomposition | run.tiles = PxQ: one domain as tiles (host threads with their own fields and CUDA streams, halo exchanges between them; single-domain runs, phase 1), the same bits as without tiles (suite cases `*_tPxQ`) | verified |
+| Domain decomposition | one domain and its nests as P x Q patches, each with its own memory (its points and a halo): tiles (`run.tiles`, host threads with their own fields and CUDA streams) or MPI ranks (a `CPPWRF_MPI` build under `mpirun`, `run.ranks`); halo exchanges, layout-independent reductions, one writer of the output; the same bits for every worker count and layout (docs/MPI.md: 13 layouts of up to 8 ranks on eight cases, 53 suite cases in three layouts, up to 48 ranks against the one-process run; suite cases `*_tPxQ`). Not run: several GPUs, several nodes | verified |
 | Ideal cases | WRF's ideal.exe for em_hill2d_x, em_quarter_ss, em_squall2d_x/y, em_grav2d_x; CPPWRF's own analytic tests (rest state, warm bubble, Straka, inertia-gravity wave, 2-D squall line) | verified |
 
 Tier: every row is **verified**, its whole-model output identical to WRF's at tolerance 0 (CPU FP64 and CUDA FP64,
@@ -323,6 +323,6 @@ Morrison with aerosols (mp_physics 40), Morrison's prognostic droplet number (pr
 tile drainage), sst_skin and tmn_update with land surface models other than Noah, the adaptive time step with nests, sst_update, sst_skin, tmn_update, grid_fdda or ideal cases, spectral nudging (grid_fdda = 2),
 surface analysis nudging (grid_sfdda, needs OBSGRID's wrfsfdda_d0N), observation nudging (obs_nudge_opt), moving nests, ndown.exe (one-way nesting from a parent run's wrfout), I/O forms other than NetCDF
 (io_form 2) and auxiliary history / input streams other than sst_update's wrflowinp and grid_fdda's wrffdda (WRF writes none by default),
-tiles with nests (run.tiles with a nested run is an error), and parallel (MPI) runs. Options without a port are rejected by `tools/wrf2cppwrf.py` and by the model with an
+and runs on several GPUs or several nodes (docs/MPI.md, section 6). Options without a port are rejected by `tools/wrf2cppwrf.py` and by the model with an
 error. Noah-MP with nests is rejected because wrf.exe 4.8.0 aborts with it (heap corruption in the nest run's
 first history output).

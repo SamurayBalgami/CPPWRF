@@ -6,6 +6,14 @@
                                              namelist and tables, real.exe (WRF real*8 build) on MET_DIR's met_em files
   bench_run.py case NAME BASE [--ref] [--serial] [--set SECTION.key=VALUE ...] [--layouts L,...]
   bench_run.py report                        /opt/job/report.md from /opt/job/results.txt (tools/bench/bench_report.py)
+  bench_run.py scaling NAME BASE [--ref] [--set SECTION.key=VALUE ...] --ranks N,...
+                                             strong scaling of the MPI builds (docs/MPI.md): WRF real*8 dmpar and
+                                             CPPWRF's CPU FP64 build with CPPWRF_MPI (cpu-dp-mpi), each with N ranks,
+                                             history off; CPPWRF with one OpenMP thread per rank (as WRF dmpar) and
+                                             with the vCPUs shared among the ranks; with history on every CPPWRF
+                                             layout's wrfout files against the one-rank run's (tolerance 0; --ref:
+                                             that run against BASE's references)
+  bench_run.py scaling-report                /opt/job/scaling.md from /opt/job/results.txt
 
 A case runs BASE's namelist for 1 simulated hour (run_hours = 1, restart off, all frames in one file per domain) with
 the case's changes, once with history every 10 minutes ("on") and once with history_interval = 1440 ("off": WRF and
@@ -322,6 +330,120 @@ def gpu_runs(case, jobs, timeout=7200):
 
 
 # ---- comparisons
+def mpi_run(case, R, nl, hist, ranks, threads):
+    """CPPWRF's MPI build with `ranks` ranks of `threads` OpenMP threads (ranks 0: the plain process)."""
+    lay = f"mpi{ranks}x{threads}" if ranks else f"omp{threads}"
+    out = f"{R}/out_{lay}"
+    exe = f"{W}/cpu-dp-mpi/cppwrf"
+    rec = dict(kind="run", case=case, model="cpu_fp64_mpi", layout=lay, hist=hist, ok=False, grid=grid(nl), ranks=ranks,
+               threads=threads)
+    env = dict(os.environ, OMP_NUM_THREADS=str(threads))
+    pre = f"mpiexec -n {ranks} {bind(ranks)} " if ranks else ""
+    rc, wall = sh(f"exec {pre}{exe} {R}/case.ini --set output.dir={out}", R, env, out=f"{lay}.log")
+    text = open(f"{R}/{lay}.log", errors="replace").read()
+    rec.update(exit=rc, wall=wall, load=LOAD[0], **cpp_timings(text))
+    m = re.search(r"peak host memory: (\d+) MiB the writer \(rank 0\), (\d+) MiB the largest other rank, (\d+) MiB in all", text)
+    if m:
+        rec.update(writer_mib=int(m.group(1)), rank_mib=int(m.group(2)), all_mib=int(m.group(3)))
+    m = re.search(r"(\d+) MPI ranks as (\d+) x (\d+) patches", text)
+    if m:
+        rec["patches"] = f"{m.group(2)}x{m.group(3)}"
+    rec["ok"] = rc == 0 and "stepping" in rec
+    if not rec["ok"]:
+        rec["error"] = text.strip().splitlines()[-4:]
+    save(case, R, [f"{lay}.log"], f"cpp_{hist}")
+    emit(rec)
+    log(f"{case} cpu_fp64_mpi {lay} {hist}: {'ok' if rec['ok'] else 'FAILED'} wall {wall:.1f} s, stepping "
+        f"{rec.get('stepping', 0):.2f} s, peak {rec.get('writer_mib', '?')} MiB the writer, {rec.get('rank_mib', '?')} MiB the "
+        f"largest other rank")
+    return rec, out
+
+
+def scaling(name, base, sets, ref, ranks):
+    log(f"== scaling {name}: {base} {' '.join(sets)} ranks {ranks}")
+    shutil.rmtree(f"{W}/runs/{name}", ignore_errors=True)
+    for n in ranks:
+        rec, R = wrf_run(name, base, sets, "r8", f"dm{n}", "off")
+        if R:
+            shutil.rmtree(R, ignore_errors=True)
+    dirs = {}
+    for hist in ("off", "on"):
+        R, nl = make_dir(name, f"cpp_{hist}", base, sets, hist)
+        if translate(R):
+            dirs[hist] = (R, nl)
+        else:
+            log(f"{name} {hist}: wrf2cppwrf.py FAILED: {open(R + '/translate.log').read().strip().splitlines()[-1:]}")
+        save(name, R, ["translate.log", "case.ini", "namelist.input"], f"cpp_{hist}")
+    if "off" in dirs:
+        R, nl = dirs["off"]
+        mpi_run(name, R, nl, "off", 0, NP)
+        for n in ranks:
+            for t in sorted({1, max(1, NP // n)}):
+                mpi_run(name, R, nl, "off", n, t)
+    if "on" in dirs:
+        R, nl = dirs["on"]
+        rec, one = mpi_run(name, R, nl, "on", 0, NP)
+        if rec["ok"]:
+            if ref:
+                cmp_exact(name, "cpu_fp64_mpi one process vs WRF r8 reference (suite, Intel)", one, base, nl, subset=True)
+            for n in ranks:
+                if n == 1:
+                    continue
+                rec, out = mpi_run(name, R, nl, "on", n, max(1, NP // n))
+                if rec["ok"]:
+                    cmp_exact(name, f"cpu_fp64_mpi {n} ranks ({rec.get('patches', '?')}) vs one process", out, one, nl)
+                shutil.rmtree(out, ignore_errors=True)
+    shutil.rmtree(f"{W}/runs/{name}", ignore_errors=True)
+    log(f"== scaling {name} done")
+
+
+def scaling_report():
+    recs = [json.loads(x) for x in open(RES) if x.strip()]
+    out = ["# Strong scaling: WRF v4.8.0 real*8 dmpar and CPPWRF CPU FP64 with MPI ranks", "",
+           "Stepping seconds per simulated hour, history off (tools/bench/bench_run.py scaling). `N x 1`: N ranks with",
+           "one OpenMP thread each (as WRF dmpar); `N x T`: the vCPUs shared among the ranks. Speed-up: against the",
+           "smallest rank count of the table, times that count. Memory: peak resident memory of the writer (rank 0, which",
+           "gathers the fields of the output), of the largest other rank and of all ranks together (N x 1 runs).", ""]
+    cases = []
+    for r in recs:
+        if r.get("kind") == "run" and r["case"] not in cases:
+            cases.append(r["case"])
+    for c in cases:
+        runs = [r for r in recs if r.get("kind") == "run" and r["case"] == c and r.get("hist") == "off"]
+        wrf = {int(r["layout"][2:]): r for r in runs if r["model"] == "wrf_r8"}
+        cpp = {(r["ranks"], r["threads"]): r for r in runs if r["model"] == "cpu_fp64_mpi"}
+        ns = sorted({n for n in wrf} | {n for n, _ in cpp if n})
+        f = lambda r: f"{r['stepping']:.2f}" if r and r.get("ok") else ("FAILED" if r else "-")  # noqa: E731
+        n0 = ns[0] if ns else 1  # the speed-ups: against the smallest rank count, times that count
+        w1 = wrf.get(n0, {}).get("stepping") if wrf.get(n0, {}).get("ok") else None
+        c1 = cpp.get((n0, 1), {}).get("stepping") if cpp.get((n0, 1), {}).get("ok") else None
+        sp = lambda r, b: f"{n0 * b / r['stepping']:.2f}" if r and r.get("ok") and b else "-"  # noqa: E731
+        omp = next((r for (n, t), r in cpp.items() if n == 0), None)
+        g = next((r["grid"] for r in runs if r.get("grid")), None)
+        out += [f"## {c}" + (f" ({g[0][0]} cells, {g[0][1]} steps per hour" + (f", {len(g)} domains" if len(g) > 1 else "") + ")"
+                             if g else ""), "",
+                f"CPPWRF in one process with OpenMP on every vCPU: {f(omp)} s.", "",
+                "| Ranks | WRF r8 dmN | speed-up | CPPWRF N x 1 | speed-up | writer MiB | other MiB | all MiB | CPPWRF N x T | T | N x 1 vs WRF |",
+                "|---|---|---|---|---|---|---|---|---|---|---|"]
+        for n in ns:
+            a = cpp.get((n, 1))
+            hy = next((r for (m, t), r in sorted(cpp.items()) if m == n and t > 1), None)
+            w = wrf.get(n)
+            ratio = (f"{w['stepping'] / a['stepping']:.2f}x" if w and a and w.get("ok") and a.get("ok") else "-")
+            mem = " | ".join(str(a.get(k, "-")) if a else "-" for k in ("writer_mib", "rank_mib", "all_mib"))
+            out.append(f"| {n} | {f(w)} | {sp(w, w1)} | {f(a)} | {sp(a, c1)} | {mem} | "
+                       f"{f(hy)} | {hy['threads'] if hy else '-'} | {ratio} |")
+        out.append("")
+        for r in recs:
+            if r.get("kind") == "exact" and r["case"] == c:
+                res = "; ".join(f"{d} " + (v.get("error") or (f"{v['frames']} frames identical" if not v["differ"] else
+                                                               f"{v['frames']} frames, DIFFER {sorted(v['differ'])[:8]}"))
+                                for d, v in r["domains"].items())
+                out.append(f"- {r['what']}: {res}")
+        out.append("")
+    return "\n".join(out)
+
+
 def files(d, dom):
     """dom's wrfout files in d (WRF's run directory) or d/dom (CPPWRF's nested runs: output.dir/d01, d02, ...)."""
     return sorted(glob.glob(f"{d}/wrfout_{dom}_*") + glob.glob(f"{d}/{dom}/wrfout_{dom}_*"))
@@ -503,11 +625,14 @@ def main():
         import bench_report
         open(J + "/report.md", "w").write(bench_report.report(RES, logs=LOGS))
         return
-    if not a or a[0] != "case":
+    if a and a[0] == "scaling-report":
+        open(J + "/scaling.md", "w").write(scaling_report())
+        return
+    if not a or a[0] not in ("case", "scaling"):
         print(__doc__)
         sys.exit(2)
     name, base = a[1], a[2]
-    ref, sets, layouts, serial = False, [], "dm12,dm24,dm48,sm24x2,sm12x4", False
+    ref, sets, layouts, serial, ranks = False, [], "dm12,dm24,dm48,sm24x2,sm12x4", False, "1,2,4,8"
     i = 3
     while i < len(a):
         if a[i] == "--ref":
@@ -522,10 +647,16 @@ def main():
         elif a[i] == "--layouts":
             layouts = a[i + 1]
             i += 2
+        elif a[i] == "--ranks":
+            ranks = a[i + 1]
+            i += 2
         else:
             raise SystemExit(f"unknown argument {a[i]}")
     topology()
     log(f"topology: {NP} vCPUs, {CORES} cores, binding {'on' if BIND else 'off'}")
+    if a[0] == "scaling":
+        scaling(name, base, sets, ref, [int(x) for x in ranks.split(",") if x])
+        return
     case(name, base, sets, ref, [x for x in layouts.split(",") if x], serial)
 
 

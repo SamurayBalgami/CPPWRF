@@ -16,6 +16,7 @@
 #include "cases/model.hpp"
 #include "core/constants.hpp"
 #include "core/halo.hpp"
+#include "core/tiles.hpp"
 #include "dyn/lateral_bc.hpp"
 #ifdef CPPWRF_HAVE_NETCDF
 #include "io_netcdf/wrf_readers.hpp"
@@ -45,6 +46,13 @@ BaseParams read_base_params(const std::string& path) {
   BaseParams b{get("T00"), get("P00"), get("TLP"), get("TISO"), get("TLP_STRAT"), get("P_STRAT")};
   nc_close(nc);
   return b;
+}
+
+// The worker's window of a file's 3-D variables (a decomposed run reads its patch and halo only)
+io_netcdf::Window input_window(int nx, int ny) {
+  if (!tile::tiled()) return io_netcdf::Window{};
+  const tile::PatchBox w = tile::input_window(nx, ny);
+  return io_netcdf::Window{w.i0, w.i1, w.j0, w.j1};
 }
 
 // A whole (Time = 1) variable of wrfinput as doubles; empty if absent.
@@ -83,7 +91,8 @@ void init_real_aerosols(const io::Config&, Model&) { throw std::runtime_error("c
 #else
 void init_real_case(const io::Config& cfg, Model& m) {
   const std::string dir = cfg.get_string("real.dir");
-  const io_netcdf::WrfInputData d = io_netcdf::read_wrfinput(dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01"));
+  const io_netcdf::WrfInputData d =
+      io_netcdf::read_wrfinput(dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01"), input_window);
   Grid& g = m.g;
   g.nx = d.nx; g.ny = d.ny; g.nz = d.nz;
   // grid%dx / grid%dy are the namelist's (rconfig dx, dy; a nest's dx(1) / parent ratios from check_a_mundo):
@@ -92,6 +101,7 @@ void init_real_case(const io::Config& cfg, Model& m) {
   g.dt = cfg.get_double("time.dt", d.dt);
   g.p_top = d.p_top;
   g.bc_x = g.bc_y = BC::Specified;
+  tile::set_domain(g);
   m.run_time = cfg.get_double("run.run_time", 0.0);
   m.nsteps = std::lround(m.run_time / g.dt);
   m.xlat = d.xlat;
@@ -174,7 +184,7 @@ void init_real_case(const io::Config& cfg, Model& m) {
     b.msfvx_inv.fill_host_halo(v2(inv));
   }
 
-  auto m3 = [&](const std::vector<double>& v, int nk) {
+  auto m3 = [&](const io_netcdf::WArray& v, int nk) {
     return [&v, nx, ny, nk, cl](int i, int j, int k) {
       return v[(std::size_t(cl(k, 0, nk - 1)) * ny + cl(j, 0, ny - 1)) * nx + cl(i, 0, nx - 1)];
     };
@@ -232,12 +242,17 @@ void init_real_case(const io::Config& cfg, Model& m) {
         if (cfg.has(k) && cfg.get_int(k) != att(a, -1)) mismatch(std::string(k).substr(5), cfg.get_int(k), att(a, -1));
     }
   }
-  std::vector<double> pb(std::size_t(nx) * ny * nz), alb(pb.size()), t_init(pb.size());
-  std::vector<double> mub(std::size_t(nx) * ny), phb(std::size_t(nx) * ny * (nz + 1));
+  // the columns of the worker's window (a decomposed run: its patch and halo; else the domain)
+  const tile::PatchBox iw = tile::input_window(nx, ny);
+  const io_netcdf::Window win = input_window(nx, ny);
+  using io_netcdf::WArray;
+  WArray pb = WArray::make(nx, ny, nz, win), alb = WArray::make(nx, ny, nz, win), t_init = WArray::make(nx, ny, nz, win);
+  WArray phb = WArray::make(nx, ny, nz + 1, win);
+  std::vector<double> mub(std::size_t(nx) * ny);
   {
     const double t00 = bp.t00, p00 = bp.p00, a = bp.a, tiso = bp.tiso, a_strat = bp.a_strat, p_strat = bp.p_strat;
-    for (int j = 0; j < ny; ++j)
-      for (int i = 0; i < nx; ++i) {
+    for (int j = iw.j0; j < iw.j1; ++j)
+      for (int i = iw.i0; i < iw.i1; ++i) {
         const std::size_t ij = std::size_t(j) * nx + i;
         const double ht = d.hgt[ij];
         const double p_surf = p00 * libm::exp(-t00 / a + libm::pow((t00 / a) * (t00 / a) - 2. * cst::g * ht / a / cst::r_d, 0.5));  // WRF **0.5 is pow, not sqrt
@@ -297,10 +312,10 @@ void init_real_case(const io::Config& cfg, Model& m) {
     m.tend->add_scalar(g, "qke_adv");
   }
   if (s.P_QV < 0) throw std::runtime_error("case = real needs qv in moist.species");
-  const std::vector<double>& qv = d.qvapor;
+  const WArray& qv = d.qvapor;
   const std::string wi_path = dir + "/" + cfg.get_string("real.wrfinput", "wrfinput_d01");
   // t_2 = theta_m - t0: WRF reads it from wrfinput (Registry dataname THM)
-  const std::vector<double> thm = read_var_if_present(wi_path, "THM", qv.size());
+  const WArray thm = io_netcdf::read_window_var(wi_path, "THM", win);
   if (thm.empty()) throw std::runtime_error("real: " + wi_path + " lacks THM (needs real.exe of WRF v4)");
   auto idx3 = [&](int i, int j, int k, int ni, int nj) { return (std::size_t(k) * nj + j) * ni + i; };
   s.u_2.fill_host([&](int i, int j, int k) { return d.u[idx3(i, j, k, nxs, ny)]; });
@@ -313,18 +328,18 @@ void init_real_case(const io::Config& cfg, Model& m) {
   for (int q = 0; q < s.n_scalars(); ++q) {  // other moist/scalar species from wrfinput if present, else 0
     if (q == s.P_QV) continue;
     const std::string& nm = s.q_names[q];
-    std::vector<double> extra_q;
-    if (nm == "qni") extra_q = read_var_if_present(wi_path, "QNICE", qv.size());
-    else if (nm == "qnr") extra_q = read_var_if_present(wi_path, "QNRAIN", qv.size());
-    else if (nm == "qns") extra_q = read_var_if_present(wi_path, "QNSNOW", qv.size());
-    else if (nm == "qng") extra_q = read_var_if_present(wi_path, "QNGRAUPEL", qv.size());
-    else if (nm == "qnc") extra_q = read_var_if_present(wi_path, "QNCLOUD", qv.size());
-    else if (nm == "qnwfa") extra_q = read_var_if_present(wi_path, "QNWFA", qv.size());
-    else if (nm == "qnifa") extra_q = read_var_if_present(wi_path, "QNIFA", qv.size());
-    else if (nm == "qnbca") extra_q = read_var_if_present(wi_path, "QNBCA", qv.size());
-    else if (nm == "tke") extra_q = read_var_if_present(wi_path, "TKE", qv.size());
-    else if (nm == "qke_adv") extra_q = read_var_if_present(wi_path, "qke_adv", qv.size());
-    const std::vector<double>* src = nm == "qc" ? &d.qcloud : nm == "qr" ? &d.qrain : nm == "qi" ? &d.qice
+    WArray extra_q;
+    if (nm == "qni") extra_q = io_netcdf::read_window_var(wi_path, "QNICE", win);
+    else if (nm == "qnr") extra_q = io_netcdf::read_window_var(wi_path, "QNRAIN", win);
+    else if (nm == "qns") extra_q = io_netcdf::read_window_var(wi_path, "QNSNOW", win);
+    else if (nm == "qng") extra_q = io_netcdf::read_window_var(wi_path, "QNGRAUPEL", win);
+    else if (nm == "qnc") extra_q = io_netcdf::read_window_var(wi_path, "QNCLOUD", win);
+    else if (nm == "qnwfa") extra_q = io_netcdf::read_window_var(wi_path, "QNWFA", win);
+    else if (nm == "qnifa") extra_q = io_netcdf::read_window_var(wi_path, "QNIFA", win);
+    else if (nm == "qnbca") extra_q = io_netcdf::read_window_var(wi_path, "QNBCA", win);
+    else if (nm == "tke") extra_q = io_netcdf::read_window_var(wi_path, "TKE", win);
+    else if (nm == "qke_adv") extra_q = io_netcdf::read_window_var(wi_path, "qke_adv", win);
+    const WArray* src = nm == "qc" ? &d.qcloud : nm == "qr" ? &d.qrain : nm == "qi" ? &d.qice
                                      : nm == "qs" ? &d.qsnow : nm == "qg" ? &d.qgraup
                                      : (!extra_q.empty() ? &extra_q : nullptr);
     const bool have = src && src->size() == qv.size();
@@ -333,10 +348,10 @@ void init_real_case(const io::Config& cfg, Model& m) {
     s.q_1[q].copy_from(s.q_2[q]);
   }
   // al (hypsometric_opt) and p from start_em, theta_m with qvf = 1
-  std::vector<double> al(pb.size()), p(pb.size());
+  WArray al = WArray::make(nx, ny, nz, win), p = WArray::make(nx, ny, nz, win);
   for (int k = 0; k < nz; ++k)
-    for (int j = 0; j < ny; ++j)
-      for (int i = 0; i < nx; ++i) {
+    for (int j = iw.j0; j < iw.j1; ++j)
+      for (int i = iw.i0; i < iw.i1; ++i) {
         const std::size_t n = idx3(i, j, k, nx, ny), n1 = idx3(i, j, k + 1, nx, ny);
         const double mu = d.mu[std::size_t(j) * nx + i], mt = mub[std::size_t(j) * nx + i] + mu;
         double a;

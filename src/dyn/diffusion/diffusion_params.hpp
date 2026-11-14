@@ -28,6 +28,11 @@ struct DiffusionParams {
   // Boundary conditions
   bool periodic_x = false;
   bool periodic_y = false;
+  // a decomposed run with several patches along a periodic direction (docs/MPI.md): kernels that read the points
+  // across the boundary by their own indices (nx - 1 from 0, 0 from nx) read the halo instead
+  bool halo_x = false, halo_y = false;
+  int wrap_x() const { return periodic_x ? (halo_x ? 2 : 1) : 0; }
+  int wrap_y() const { return periodic_y ? (halo_y ? 2 : 1) : 0; }
   bool specified = false;        // real-data lateral boundary conditions
   bool mix_full_fields = false;  // mix perturbations vs full fields (WRF default = false)
   bool open_xs = false;

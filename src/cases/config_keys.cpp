@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "cases/config_keys.hpp"
+#include "core/tiles.hpp"
 
 #include "cases/model.hpp"
 
@@ -43,7 +44,7 @@ void check_config_keys(const io::Config& cfg) {
   for (const std::string& k : cfg.unaccessed_keys()) {
     if (!known_config_key(k, cfg)) bad += (bad.empty() ? "'" : ", '") + k + "'";
     // an option this run does not read (another scheme's; tools/gcp/matrix_variant.py reports these as UNREAD-KEYS)
-    else std::fprintf(stderr, "cppwrf: warning: unaccessed config key '%s'\n", k.c_str());
+    else if (tile::writer()) std::fprintf(stderr, "cppwrf: warning: unaccessed config key '%s'\n", k.c_str());
   }
   if (!bad.empty())
     throw io::ConfigError("unknown configuration key " + bad +

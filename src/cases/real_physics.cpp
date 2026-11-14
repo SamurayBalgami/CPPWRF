@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "cases/model.hpp"
+#include "core/tiles.hpp"
 #include "phys/driver/landuse_tables.hpp"
 #include "phys/driver/suite.hpp"
 #include "phys/lsm_noah/noah.hpp"
@@ -465,8 +466,9 @@ void init_real_physics(const io::Config& cfg, Model& m) {
   put_const(su.ctopo, 1.0); put_const(su.ctopo2, 1.0);
   {
     std::vector<int> h(su.ivgtyp.layout().total, 0), hs(su.isltyp.layout().total, 0);
-    for (int j = 0; j < ny; ++j)
-      for (int i = 0; i < nx; ++i) {
+    const Layout& Li = su.ivgtyp.layout();
+    for (int j = Li.j0(); j < Li.j1(); ++j)  // the points the allocation holds (a decomposed run: the patch's)
+      for (int i = Li.i0(); i < Li.i1(); ++i) {
         h[su.ivgtyp.layout().index(i, j, 0)] = int(std::lround(lu[i + std::size_t(nx) * j]));
         hs[su.isltyp.layout().index(i, j, 0)] = int(std::lround(isl[i + std::size_t(nx) * j]));
       }
