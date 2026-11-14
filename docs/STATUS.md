@@ -302,7 +302,7 @@ and LH with isfflx 0 uninitialised; they are not compared.)
 ### Verification coverage
 
 Option values that CPPWRF accepts and whose code paths are checked at model level against WRF (the coverage audit of
-2026-11, closed in tests/verify/cases/68_coverage.py): RRTMG `cldovrlp` 1, 3, 4, 5 and `idcor` 1, `icloud` 0,
+2026-11, closed in tests/verify/cases/69_coverage.py): RRTMG `cldovrlp` 1, 3, 4, 5 and `idcor` 1, `icloud` 0,
 `diff_6th_opt` 1, `km_opt` 3 (with `diff_opt` 1 for 1 h; with `diff_opt` 2 two steps, after which WRF itself is NaN
 on the 15 km test domain), `tke_adv_opt` 0, `moist_adv_opt` / `scalar_adv_opt` 0 and `bl_mynn_cloudpdf` -1 / -2, each
 CPU and CUDA FP64 at tolerance 0. WRF's MYNN defaults (`bl_mynn_edmf` 1, `bl_mynn_edmf_mom` 1, `bl_mynn_mixlength` 1,
