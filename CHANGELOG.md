@@ -22,12 +22,11 @@ a verified configuration, of a configuration key or of an output file is a new m
   deep and shallow convection with the cloud efficiency CLDEFI (restart field), BMJDRV with its convective clouds
   (CCLDFRA, QCCONV, QICONV, CONVCLD; restart fields), phy_cu_ten (theta and qv), advance_ppt's HTOP / HBOT, and
   the adaptive time step's cudt = 0 (check_a_mundo); gfortran's libmvec lanes of the four vectorised loops.
-  **Tier column_verified**: BMJINIT and BMJDRV bit for bit with WRF's compiled module_cu_bmj.o in the column driver
-  tests/phys/cu_bmj (ctest test_phys_cu_bmj, label diff); not yet compared with a whole WRF run.
+  **Tier verified**: suite cases P9BMJ (3 steps, 1 h, restarted, cudt 5) and P4BMJ against WRF real*8 (CPU FP64
+  and CUDA FP64 at tolerance 0); column driver tests/phys/cu_bmj (ctest test_phys_cu_bmj, label diff).
 - bmj_rad_feedback (per domain, with BMJ): BMJ's clouds in the radiation (module_radiation_driver.F: QCCONV / QICONV
   added to qc / qi, CCLDFRA combined with CLDFRA); needs a microphysics scheme with cloud water and ice when the
-  radiation is on. **Tier unverified** (BMJDRV's part is column-verified, the radiation driver's has no column
-  driver).
+  radiation is on. **Tier verified** (suite case P4BMJF, CPU and CUDA FP64 at tolerance 0).
 
 ### Fixed
 - The restart alarm of a run resumed from a restart file (WRF's or CPPWRF's own) with a restart interval that is not

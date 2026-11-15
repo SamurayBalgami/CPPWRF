@@ -9,7 +9,7 @@ from cases.common import WR  # noqa: F401
 _D = "2026-10-12_00:00:00"
 _T = {"U": 0.0, "W": 0.0, "PH": 0.0, "THM": 0.0, "QV": 0.0, "MU": 0.0, "RAINC": 0.0}
 _1H = ["run.run_time=3600", "output.out_interval=10", "output.diag_interval=10"]
-_P4 = ["cppwrf.allow_unverified=true", "phys.cu_physics=2"]
+_P4 = ["phys.cu_physics=2"]
 
 CASES = [
     # P9BMJ = P9 with BMJ: 3 steps (history every step), 1 h, 1 h restarted at 30 min (wrfrst identical)
@@ -30,15 +30,15 @@ CASES = [
     ("real_p4bmjf_r8_fp64_cpu_1h", "cpu_dp", "configs/real_p4_r8.ini",
      ["real.dir=" + f"{WR}/run_P4BMJF_r8", "phys.bmj_rad_feedback=true"] + _P4 + _1H,
      f"{WR}/run_P4BMJF_r8/wrfout_d01_{_D}", 3600, dict(_T, QCLOUD=0.0, QICE=0.0)),
-    # CUDA FP64 (tolerance 0 expected as the P9 / P4 cases; SKIP without a GPU) and FP32 (tolerances to be measured
-    # on Colab, about 3x the relative L2; the values below are P9's / P4's)
+    # CUDA FP64 (tolerance 0, G4 2026-11-15; SKIP without a GPU) and FP32 (measured on the G4 2026-11-15: U 5.3e-4,
+    # W 3.3e-2, THM 1.1e-5, QV 1.4e-3; tolerances about 3x)
     ("real_p9bmj_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p9bmj_r8.ini", ["real.dir=" + f"{WR}/run_P9BMJ_r8"] + _1H,
      f"{WR}/run_P9BMJ_r8/wrfout_d01_{_D}", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
     ("real_p4bmjf_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p4_r8.ini",
      ["real.dir=" + f"{WR}/run_P4BMJF_r8", "phys.bmj_rad_feedback=true"] + _P4 + _1H,
      f"{WR}/run_P4BMJF_r8/wrfout_d01_{_D}", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
     ("real_p9bmj_fp32_1h", "cuda", "configs/real_p9bmj_r8.ini", ["real.dir=" + f"{WR}/run_P9BMJ_r8"] + _1H,
-     f"{WR}/run_P9BMJ_r8/wrfout_d01_{_D}", 3600, {"U": 6e-4, "W": 1e-2, "THM": 1e-5, "QV": 2e-3}),
+     f"{WR}/run_P9BMJ_r8/wrfout_d01_{_D}", 3600, {"U": 1.6e-3, "W": 0.1, "THM": 3.4e-5, "QV": 4.2e-3}),
 ]
 
 STATUS = [
@@ -46,4 +46,4 @@ STATUS = [
     ('P4BMJ', 'P4 with BMJ instead of Kain-Fritsch, without and with bmj_rad_feedback', '1 h'),
 ]
 
-DATA = {c[0]: 'port_c11_data.tar' for c in CASES}
+DATA = {c[0]: 'suite_data.tar,port_c11_data.tar' for c in CASES}  # the inputs and tables: links into run_P9_r8 / run_P4_r8

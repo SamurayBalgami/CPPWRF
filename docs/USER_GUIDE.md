@@ -408,7 +408,7 @@ non-default value is an error unless it only concerns WPS / real.exe or I/O quil
 | `mp_physics` | 0, 1 (Kessler), 6 (WSM6; `hail_opt` 0, 1), 8 (Thompson), 10 (Morrison two-moment: real data, `morr_rimed_ice` 0 / 1, `progn = 0`, `do_radar_ref = 0`), 28 (aerosol-aware Thompson: one domain, `aer_init_opt` 0, `wif_input_opt` 0 / 1, not with MYNN), 50 / 51 (P3, one ice category; 51 predicts the droplet number: real data, one domain, `do_radar_ref = 0`, `p3_lookupTable_1.dat-v5.4_2momI` in the run directory) |
 | `use_mp_re`, `mp_tend_lim`, `do_radar_ref`, `force_read_thompson` | 0, 1; any; 0, 1; `.false.`, `.true.` |
 | `cu_physics`, `cudt` | 0, 1 (Kain-Fritsch; `kfeta_trigger` 1, 3), 2 (Betts-Miller-Janjic: column_verified, needs `allow_unverified`), 3 (Grell-Freitas-Li; `ishallow` 0, 1, `clos_choice` 0-16), 6 (Tiedtke), 16 (New Tiedtke); per domain |
-| `bmj_rad_feedback` | per domain, with BMJ only (unverified, needs `allow_unverified`); with the radiation a microphysics scheme with cloud water and ice |
+| `bmj_rad_feedback` | per domain, with BMJ only; with the radiation a microphysics scheme with cloud water and ice |
 | `cu_rad_feedback`, `shallowcu_forced_ra`, `convtrans_avglen_m` | per domain (KF and GF clouds in RRTMG) |
 | `bl_pbl_physics`, `bldt` | 0, 1 (YSU; `ysu_topdown_pblmix` 0, 1), 2 (MYJ), 5 (MYNN-EDMF, below), 7 (ACM2, over the surface layer 1 or 7; a microphysics with qc and qi: `mp_physics` 6, 8, 28) |
 | `bl_mynn_*`, `tke_budget`, `icloud_bl` | `tkeadvect`, `cloudpdf` -2..2, `mixlength` 0..2, `closure` 2.5 / 2.6 / 3.0, `edmf` 0 / 1, `edmf_mom`, `edmf_tke`, `cloudmix`, `mixqt`, `ess`, `mixscalars`, `output` 0 / 1, `tke_budget` 0 / 1, `icloud_bl` 0 / 1 |

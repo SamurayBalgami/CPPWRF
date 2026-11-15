@@ -21,5 +21,3 @@
 #
 # Example (WSM5 ported with a column driver, not yet compared with a whole WRF run):
 #   phys.mp_physics   physics.mp_physics   4   column_verified   WSM5 (tests/phys/mp_wsm5)
-phys.cu_physics         physics.cu_physics         2     column_verified  Betts-Miller-Janjic cumulus: BMJINIT tables and BMJDRV bit for bit (tests/phys/cu_bmj)
-phys.bmj_rad_feedback   physics.bmj_rad_feedback   true  unverified       BMJ clouds in the radiation: BMJDRV's CCLDFRA / QCCONV / QICONV are column-verified (tests/phys/cu_bmj); their use in radiation_driver has no column driver

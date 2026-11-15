@@ -1240,16 +1240,14 @@ class TestWrfNamelistSemantics(unittest.TestCase):
         self.assertEqual(sec["d02"]["phys_cu_rad_feedback"], True)
 
     def test_bmj_and_bmj_rad_feedback(self):
-        # cu_physics = 2 (BMJ, column-verified: a tier warning); bmj_rad_feedback per domain, used by BMJ only; with
+        # cu_physics = 2 (BMJ, verified: no tier warning); bmj_rad_feedback per domain, used by BMJ only; with
         # the radiation it needs cloud water and ice (QCCONV / QICONV go into the radiation's QC / QI)
         t, sec = self.translate(self.NEST + "&physics cu_physics = 2, 2, bmj_rad_feedback = .true., .false. /\n")
         self.assertEqual(t.errors, [])
         self.assertEqual(sec["phys"]["cu_physics"], 2)
         self.assertEqual(sec["phys"]["bmj_rad_feedback"], True)
         self.assertEqual(sec["d02"]["phys_bmj_rad_feedback"], False)
-        self.assertTrue(any("cu_physics = 2: verification tier column_verified" in w for w in t.warnings), t.warnings)
-        self.assertTrue(any("bmj_rad_feedback = .true.: verification tier unverified" in w for w in t.warnings),
-                        t.warnings)
+        self.assertFalse(any("verification tier" in w for w in t.warnings), t.warnings)
         t, sec = self.translate(self.NEST + "&physics cu_physics = 1, 1, bmj_rad_feedback = 2*.true. /\n")
         self.assertEqual(t.errors, [])
         self.assertNotIn("bmj_rad_feedback", sec["phys"])
