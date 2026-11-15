@@ -51,6 +51,13 @@ target_compile_definitions(driver_p3_cpu PRIVATE CPPWRF_DOUBLE)
 target_compile_options(driver_p3_cpu PRIVATE -O3 ${CPPWRF_TEST_MARCH} -ffp-contract=off)
 target_link_libraries(driver_p3_cpu PRIVATE OpenMP::OpenMP_CXX mvec m)
 
+# WSM5 and WSM3 (header-only kernels; libmvec: WRF's vectorised log / exp)
+add_executable(driver_wsm_cpu mp_wsm35/driver_wsm.cpp ${CPPWRF_ROOT}/src/core/backend.cpp)
+target_include_directories(driver_wsm_cpu PRIVATE ${CPPWRF_ROOT}/src ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(driver_wsm_cpu PRIVATE CPPWRF_DOUBLE)
+target_compile_options(driver_wsm_cpu PRIVATE -O3 -march=native -ffp-contract=off)
+target_link_libraries(driver_wsm_cpu PRIVATE OpenMP::OpenMP_CXX mvec m)
+
 # Kain-Fritsch, Noah LSM, Thompson (own CMake files: tables and column drivers)
 foreach(scheme cu_kf lsm_noah mp_thompson)
   add_subdirectory(${scheme})
@@ -65,6 +72,7 @@ foreach(t "kessler;mp_kessler;${PHYS_BIN}"
           "sfclayrev;sf_sfclayrev;${PHYS_BIN}"
           "ysu;bl_ysu;${PHYS_BIN}"
           "p3;mp_p3;${PHYS_BIN}"
+          "wsm35;mp_wsm35;${PHYS_BIN}"
           "bl_myj;bl_myj;${PHYS_BIN}/bl_myj_test"
           "cu_bmj;cu_bmj;${PHYS_BIN}/cu_bmj_test"
           "lsm_noah_ice;lsm_noah_ice;${PHYS_BIN}/lsm_noah_ice_test"

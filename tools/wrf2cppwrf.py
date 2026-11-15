@@ -404,6 +404,8 @@ SUPPORTED_OPTIONS = {
     "mp_physics": {
         0: "None / off",
         1: "Kessler warm-rain",
+        3: "WSM3 3-class simple ice (column-verified)",
+        4: "WSM5 5-class single-moment (column-verified)",
         6: "WSM6 6-class single-moment",
         8: "Thompson",
         10: "Morrison two-moment (morr_rimed_ice 0 / 1, constant droplet number: progn = 0)",
@@ -1790,6 +1792,10 @@ class WrfTranslator:
                 sections["moist"]["species"] = "qv,qc,qr,qi,qnc,qni,qnr,qir,qib"
             elif mp_physics == 6:
                 sections["moist"]["species"] = "qv, qc, qr, qi, qs, qg" if not has_physics_suite else "qv,qc,qr,qi,qs,qg"
+            elif mp_physics == 4:  # Registry package wsm5scheme: moist qv, qc, qr, qi, qs
+                sections["moist"]["species"] = "qv,qc,qr,qi,qs"
+            elif mp_physics == 3:  # wsm3scheme: qv, qc (cloud water or ice), qr (rain or snow)
+                sections["moist"]["species"] = "qv,qc,qr"
             elif mp_physics == 1:
                 sections["moist"]["species"] = "qv, qc, qr"
             else:
@@ -1801,6 +1807,9 @@ class WrfTranslator:
                 self.error("WRF mp_physics = 10 (Morrison two-moment) is supported for real-data runs only.")
             if mp_physics in (50, 51):
                 self.error(f"WRF mp_physics = {mp_physics} (P3) is supported for real-data runs only.")
+            if mp_physics in (3, 4):
+                self.error(f"WRF mp_physics = {mp_physics} (WSM{5 if mp_physics == 4 else 3}) is supported for "
+                           f"real-data runs only.")
             sections["moist"] = {}
             if mp_physics == 8:
                 sections["moist"]["species"] = "qv,qc,qr,qi,qs,qg,qni,qnr"
@@ -1827,6 +1836,11 @@ class WrfTranslator:
                 if mp_physics == 40:
                     self.error("WRF mp_physics = 40 (Morrison with aerosols, module_mp_morr_two_moment_aero.F: predicted "
                                "droplet number, KZH and MSKF coupling) is not supported by CPPWRF.")
+                elif mp_physics == 24:
+                    self.error("WRF mp_physics = 24 (WSM7, module_mp_wsm7.F: WSM6 with hail) is not supported by "
+                               "CPPWRF.")
+                elif mp_physics == 106:
+                    self.error("WRF mp_physics = 106 (WSM6R, module_mp_wsm6r.F) is not supported by CPPWRF.")
                 else:
                     self.check_supported("mp_physics", mp_physics)
             # progn = 1: prognostic droplet number QNDROP (prescribe_aerosol_mixactivate; Morrison then predicts the
@@ -1876,6 +1890,11 @@ class WrfTranslator:
                     self.error(f"WRF do_radar_ref = 1 with mp_physics = {mp_physics} (P3) is not supported by CPPWRF.")
                 if self._max_dom > 1:
                     self.error(f"WRF mp_physics = {mp_physics} (P3) with nests is not supported by CPPWRF.")
+            # WSM5's refl10cm_wsm5 computes in DOUBLE PRECISION (REAL*16 in a plain -r8 build): not ported; WSM3 has no
+            # reflectivity (WRF leaves REFL_10CM 0)
+            if mp_physics in (3, 4) and self.get_opt("physics", "do_radar_ref", 0) == 1:
+                self.error(f"WRF do_radar_ref = 1 with mp_physics = {mp_physics} (WSM{5 if mp_physics == 4 else 3}) "
+                           f"is not supported by CPPWRF.")
 
             if has_physics_suite:
                 sections["phys"]["sf_sfclay_physics"] = sf_sfclay

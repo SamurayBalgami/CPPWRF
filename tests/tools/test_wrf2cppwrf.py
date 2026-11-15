@@ -783,6 +783,36 @@ class TestValidationAndWarnings(unittest.TestCase):
         t.translate()
         self.assertIn("mp_physics = 50 (P3) is supported for real-data runs only", " ".join(t.errors))
 
+    def test_wsm3_wsm5(self):
+        # mp_physics = 3 / 4 (module_mp_wsm3.F / module_mp_wsm5.F; tier column_verified: a warning, the option passed
+        # through): moist qv qc qr (WSM3) or qv qc qr qi qs (WSM5, Registry packages wsm3scheme / wsm5scheme);
+        # not ported: do_radar_ref = 1, the ideal cases; WSM7 (24) and WSM6R (106) are named errors
+        def tr(extra="", mp=4, case=real_case):
+            t = WrfTranslator(parse_namelist(case(f"""
+            &time_control /
+            &domains time_step = 60 /
+            &physics mp_physics = {mp}, sf_sfclay_physics = 1, sf_surface_physics = 2, bl_pbl_physics = 1,
+                     cu_physics = 1{extra} /
+            &dynamics /
+            """)))
+            gen = t.translate()
+            return t, gen
+        for mp, sp in ((4, "qv,qc,qr,qi,qs"), (3, "qv,qc,qr")):
+            t, g = tr(mp=mp)
+            self.assertEqual(t.errors, [], mp)
+            self.assertEqual(g["moist"]["species"], sp)
+            self.assertEqual(g["phys"]["mp_physics"], mp)
+            self.assertIn(f"mp_physics = {mp}", " ".join(t.warnings + t.notices), mp)
+        for args, msg in (((", do_radar_ref = 1", 4), "do_radar_ref = 1 with mp_physics = 4 (WSM5)"),
+                          ((", do_radar_ref = 1", 3), "do_radar_ref = 1 with mp_physics = 3 (WSM3)"),
+                          (("", 24), "mp_physics = 24 (WSM7"), (("", 106), "mp_physics = 106 (WSM6R")):
+            t, _ = tr(*args)
+            self.assertIn(msg, " ".join(t.errors), args)
+        t = WrfTranslator(parse_namelist(complete("&time_control /\n&domains time_step = 6 /\n"
+                                                   "&physics mp_physics = 4 /\n")), override_case="quarter_ss")
+        t.translate()
+        self.assertIn("mp_physics = 4 (WSM5) is supported for real-data runs only", " ".join(t.errors))
+
     def test_force_read_thompson(self):
         def phys(mp, extra):
             t = WrfTranslator(parse_namelist(real_case(f"""

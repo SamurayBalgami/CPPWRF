@@ -129,7 +129,7 @@ Each option accepts these values; any other value stops `cppwrf-wrf` (and the tr
 
 | Option | Values CPPWRF runs |
 |---|---|
-| `mp_physics` | 0: None / off; 1: Kessler warm-rain; 6: WSM6 6-class single-moment; 8: Thompson; 10: Morrison two-moment (morr_rimed_ice 0 / 1, constant droplet number: progn = 0); 28: Thompson aerosol-aware (aer_init_opt = 0, wif_input_opt 0 / 1); 50: P3, one ice category, constant droplet number; 51: P3, one ice category, predicted droplet number |
+| `mp_physics` | 0: None / off; 1: Kessler warm-rain; 3: WSM3 3-class simple ice (column-verified); 4: WSM5 5-class single-moment (column-verified); 6: WSM6 6-class single-moment; 8: Thompson; 10: Morrison two-moment (morr_rimed_ice 0 / 1, constant droplet number: progn = 0); 28: Thompson aerosol-aware (aer_init_opt = 0, wif_input_opt 0 / 1); 50: P3, one ice category, constant droplet number; 51: P3, one ice category, predicted droplet number |
 | `sf_sfclay_physics` | 0: None / off; 1: Revised MM5 surface layer (sfclayrev); 2: Eta similarity surface layer (MYJ); 5: MYNN surface layer; 7: Pleim-Xiu surface layer (with the ACM2 PBL and Noah) |
 | `sf_surface_physics` | 0: None / off; 1: 5-layer thermal diffusion land surface (slab); 2: Unified Noah land surface model (4 soil layers); 4: Noah-MP land surface model (v5.1.2, 4 soil layers) |
 | `bl_pbl_physics` | 0: None / off; 1: YSU (Yonsei University) planetary boundary layer; 2: MYJ (Mellor-Yamada-Janjic) planetary boundary layer; 5: MYNN-EDMF planetary boundary layer; 7: ACM2 (Asymmetric Convective Model 2) planetary boundary layer; 8: BouLac (Bougeault-Lacarrere) TKE planetary boundary layer (column-verified, without BEP urban) |

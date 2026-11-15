@@ -26,6 +26,11 @@ a verified configuration, of a configuration key or of an output file is a new m
   them); with the switch each one is logged and the wrfout / wrfrst files get the global attribute
   `CPPWRF_UNVERIFIED_OPTIONS`. The table has no row: every option is verified, and no output byte changes. A new
   option's entry in this changelog names its tier.
+- WSM3 and WSM5 microphysics, `mp_physics = 3` and `4` (phys/module_mp_wsm3.F, module_mp_wsm5.F): wsm3init /
+  wsm5init, the semi-Lagrangian sedimentation, WRF's libmvec lanes of the vectorised saturation and diffusion
+  loops, SNOWNC / SR, the effective radii for RRTMG (has_reqc = has_reqi = has_reqs = 1); real data. Tier:
+  column_verified (tests/phys/mp_wsm35, bit for bit with the -r8 build's wsm3 / wsm5; suite cases W3 / W5 pending
+  their WRF references). Not ported (errors): `do_radar_ref = 1` with them, the ideal cases, WSM7 (24), WSM6R (106).
 - P3 microphysics with one ice category, `mp_physics = 50` (constant droplet number) and `51` (predicted droplet
   number QNCLOUD), phys/module_mp_p3.F: rime mass and volume QIR / QIB, TH_OLD / QV_OLD in the restart files, P3's
   REFL_10CM and effective radii for RRTMG; real data, one domain. Tier: verified (suite cases P3MP and P3NC against

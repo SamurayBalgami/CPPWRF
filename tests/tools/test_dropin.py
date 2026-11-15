@@ -91,11 +91,11 @@ class Checker(unittest.TestCase):
         self.assertIn("CPPWRF runs this namelist", r.stdout)
 
     def test_not_ported(self):
-        d = make_dir("check_bad", mp=3)
+        d = make_dir("check_bad", mp=24)
         r = run(CHECK, d, "namelist.input")
         self.assertEqual(r.returncode, 1)
         self.assertIn("NOT PORTED  &physics.mp_physics", r.stdout)
-        self.assertIn("suggestion: use one of 0, 1, 6, 8, 10, 28", r.stdout)
+        self.assertIn("suggestion: use one of 0, 1, 3, 4, 6, 8, 10, 28", r.stdout)
 
     def test_json_and_missing(self):
         d = make_dir("check_json")
@@ -161,12 +161,12 @@ class DropIn(unittest.TestCase):
         self.assertIn("rst_d01_0001-01-01_00:01:00", files)
 
     def test_not_ported_option(self):
-        d = make_dir("bad_option", mp=3)
+        d = make_dir("bad_option", mp=24)
         r = run(WRF, d, "--exe", BIN)
         self.assertEqual(r.returncode, 1)
         err = text(os.path.join(d, "rsl.error.0000"))
         self.assertIn("FATAL CALLED", err)
-        self.assertIn("mp_physics = 3 is not supported", err)
+        self.assertIn("mp_physics = 24 (WSM7", err)
         self.assertNotIn("SUCCESS", err + r.stdout)
         self.assertFalse([f for f in os.listdir(d) if f.startswith("wrfout")])
 

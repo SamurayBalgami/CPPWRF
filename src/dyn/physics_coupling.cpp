@@ -19,6 +19,8 @@
 #include "phys/mp_morrison/morrison.hpp"
 #include "phys/mp_p3/p3.hpp"
 #include "phys/mp_thompson/thompson.hpp"
+#include "phys/mp_wsm3/wsm3.hpp"
+#include "phys/mp_wsm5/wsm5.hpp"
 #include "phys/mp_wsm6/wsm6.hpp"
 #include "phys/phys_constants.hpp"
 
@@ -137,9 +139,9 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
       th_phy(g, Stagger::M, "th_phy"), rho(g, Stagger::M, "rho"), pii(g, Stagger::M, "pii"), z(g, Stagger::M, "z"),
       dz8w(g, Stagger::M, "dz8w"), qv_diabatic(g, Stagger::M, "qv_diabatic"), qc_diabatic(g, Stagger::M, "qc_diabatic"),
       p_phy(g, Stagger::M, "p_phy") {
-  if (p_.mp_physics != 0 && p_.mp_physics != 1 && p_.mp_physics != 6 && p_.mp_physics != 8 && p_.mp_physics != 10 &&
-      p_.mp_physics != 28 && !p3())
-    throw std::runtime_error("phys.mp_physics must be 0, 1, 6, 8, 10, 28, 50 or 51");
+  if (p_.mp_physics != 0 && p_.mp_physics != 1 && p_.mp_physics != 3 && p_.mp_physics != 4 && p_.mp_physics != 6 &&
+      p_.mp_physics != 8 && p_.mp_physics != 10 && p_.mp_physics != 28 && !p3())
+    throw std::runtime_error("phys.mp_physics must be 0, 1, 3, 4, 6, 8, 10, 28, 50 or 51");
   if (p_.mp_physics == 1) check_limit("Kessler", "nz", g.nz, phys::kessler::kMaxLevels);
   if (p_.do_radar_ref != 0 && p_.do_radar_ref != 1) throw std::runtime_error("phys.do_radar_ref must be 0 or 1");
   if (p_.microp_re || p3()) {  // phy_init: background values RE_QC_BG, RE_QI_BG, RE_QS_BG (has_reqc etc.)
@@ -181,6 +183,18 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
       radar_ = std::make_shared<const phys::radar::RadarDeviceTables<real>>(phys::radar::radar_init<real>(
           wp_.pi * wp_.denr / real(6.), real(3.), real(0.), wp_.pi * wp_.dens / real(6.), real(3.), real(0.),
           wp_.pi * wp_.deng / real(6.), real(3.), real(0.)));
+  }
+  if (p_.mp_physics == 3 || p_.mp_physics == 4) {  // WSM3 / WSM5: phy_init's wsm3init / wsm5init, once
+    check_limit(p_.mp_physics == 3 ? "WSM3" : "WSM5", "nz", g.nz, phys::wsm5::kMaxLevels);
+    if (p_.do_radar_ref != 0)
+      throw std::runtime_error("phys.do_radar_ref = 1 with mp_physics = 3 / 4 is not ported (WSM5's refl10cm_wsm5 "
+                               "computes in DOUBLE PRECISION, REAL*16 in WRF's -r8 build; WSM3 has none)");
+    snownc = Field2(g, Stagger::M, "snownc");
+    snowncv = Field2(g, Stagger::M, "snowncv");
+    graupelnc = Field2(g, Stagger::M, "graupelnc");
+    graupelncv = Field2(g, Stagger::M, "graupelncv");
+    sr = Field2(g, Stagger::M, "sr");
+    w5_ = phys::wsm5::wsm5_params<real>();
   }
   if (p_.mp_physics == 10) {
     check_limit("Morrison", "nz", g.nz, phys::mp_morrison::kMaxLevels);
@@ -248,6 +262,8 @@ PhysicsCoupling::PhysicsCoupling(const Grid& g, const PhysicsParams& p)
 void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
   if (p_.mp_physics == 0) return;
   if (s.P_QV < 0 || s.P_QC < 0 || s.P_QR < 0) throw std::runtime_error("microphysics needs qv, qc, qr");
+  if (p_.mp_physics == 4 && (s.P_QI < 0 || s.P_QS < 0))
+    throw std::runtime_error("mp_physics = 4 (WSM5) needs qv, qc, qr, qi, qs");
   if (p_.mp_physics == 6 && (s.P_QI < 0 || s.P_QS < 0 || s.P_QG < 0))
     throw std::runtime_error("mp_physics = 6 (WSM6) needs qv, qc, qr, qi, qs, qg");
   if (thompson() && (s.P_QI < 0 || s.P_QS < 0 || s.P_QG < 0 || s.P_QNI < 0 || s.P_QNR < 0))
@@ -278,7 +294,50 @@ void PhysicsCoupling::step(State& s, const BaseState& b, real dt) {
   const tile::PatchBox mp_ob = tile::own_box(g);
   const Range2D mp_own{std::max(sx, mp_ob.i0), std::min(g.nx - sx, mp_ob.i1), std::max(sy, mp_ob.j0),
                        std::min(g.ny - sy, mp_ob.j1)};
-  if (p_.mp_physics == 6) {
+  if (p_.mp_physics == 4) {
+    // debug (CPPWRF_VM_DUMP): WSM5 inputs and outputs, for a replay through WRF's wsm5
+    vmdump::dump("vm_mp_in", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS], &rho,
+                                 &pii, &p_phy, &dz8w},
+                 {&rainnc, &rainncv, &snownc, &snowncv, &sr});
+    // the lanes of WRF's vectorised i loops: its..ite = mp_cols.i0 .. mp_cols.i1 - 1 (as Kessler)
+    auto wsm5 = [&](auto nl) {
+      column_for(mp_cols, phys::wsm5::Wsm5Kernel<real, decltype(nl)::value>{
+                              w5_, dt, g.nz, th_phy.view(), qv.view(), s.q_2[s.P_QC].view(), s.q_2[s.P_QR].view(),
+                              s.q_2[s.P_QI].view(), s.q_2[s.P_QS].view(), rho.cview(), pii.cview(), p_phy.cview(),
+                              dz8w.cview(), rainnc.view(), rainncv.view(), snownc.view(), snowncv.view(), sr.view(),
+                              mp_cols.i0, mp_cols.i1 - mp_cols.i0});
+    };
+    if (g.nz <= 48) wsm5(std::integral_constant<int, 48>{});
+    else if (g.nz <= 64) wsm5(std::integral_constant<int, 64>{});
+    else wsm5(std::integral_constant<int, phys::wsm5::kMaxLevels>{});
+    if (p_.microp_re)  // effectRad_wsm5: the statements and constants of WSM6's (module_mp_wsm5.F:1903)
+      parallel_for(Range3D{mp_cols.i0, mp_cols.i1, mp_cols.j0, mp_cols.j1, 0, g.nz},
+                   phys::wsm6::Wsm6EffRadKernel<real>{
+                       w5_.pidnc, w5_.pidn0s, real(w5_.alpha), real(w5_.n0s), real(w5_.n0smax), w5_.t0c, w5_.qmin,
+                       real(2.49E-6), real(4.99E-6), real(9.99E-6), real(50.E-6), real(125.E-6), real(999.E-6),
+                       th_phy.cview(), pii.cview(), s.q_2[s.P_QC].cview(), s.q_2[s.P_QI].cview(),
+                       s.q_2[s.P_QS].cview(), rho.cview(), re_cloud.view(), re_ice.view(), re_snow.view()});
+    vmdump::dump("vm_mp_out", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS]},
+                 {&rainnc, &rainncv, &snownc, &snowncv, &sr});
+  } else if (p_.mp_physics == 3) {
+    // debug (CPPWRF_VM_DUMP): WSM3 inputs and outputs (qc = WRF's qci, qr = qrs), for a replay through WRF's wsm3
+    vmdump::dump("vm_mp_in", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.w_2, &rho, &pii, &p_phy, &dz8w},
+                 {&rainnc, &rainncv, &snownc, &snowncv, &sr});
+    auto wsm3 = [&](auto nl) {
+      column_for(mp_cols, phys::wsm3::Wsm3Kernel<real, decltype(nl)::value>{
+                              w5_, dt, g.nz, th_phy.view(), qv.view(), s.q_2[s.P_QC].view(), s.q_2[s.P_QR].view(),
+                              s.w_2.cview(), rho.cview(), pii.cview(), p_phy.cview(), dz8w.cview(), rainnc.view(),
+                              rainncv.view(), snownc.view(), snowncv.view(), sr.view(),
+                              p_.microp_re ? re_cloud.view() : View3<real>{},
+                              p_.microp_re ? re_ice.view() : View3<real>{},
+                              p_.microp_re ? re_snow.view() : View3<real>{}, mp_cols.i0, mp_cols.i1 - mp_cols.i0});
+    };
+    if (g.nz <= 48) wsm3(std::integral_constant<int, 48>{});
+    else if (g.nz <= 64) wsm3(std::integral_constant<int, 64>{});
+    else wsm3(std::integral_constant<int, phys::wsm3::kMaxLevels>{});
+    vmdump::dump("vm_mp_out", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR]},
+                 {&rainnc, &rainncv, &snownc, &snowncv, &sr});
+  } else if (p_.mp_physics == 6) {
     // debug (CPPWRF_VM_DUMP): WSM6 inputs and outputs, for a replay through WRF's mp_wsm6
     vmdump::dump("vm_mp_in", 1, {&th_phy, &qv, &s.q_2[s.P_QC], &s.q_2[s.P_QR], &s.q_2[s.P_QI], &s.q_2[s.P_QS],
                                  &s.q_2[s.P_QG], &rho, &pii, &p_phy, &dz8w},
