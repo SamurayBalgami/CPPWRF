@@ -12,7 +12,7 @@ add_executable(test_tables_kf
 )
 target_include_directories(test_tables_kf PRIVATE ${CPPWRF_ROOT} ${CPPWRF_ROOT}/src)
 target_compile_definitions(test_tables_kf PRIVATE CPPWRF_DOUBLE)
-target_compile_options(test_tables_kf PRIVATE -O3 -march=native -ffp-contract=off)
+target_compile_options(test_tables_kf PRIVATE -O3 ${CPPWRF_TEST_MARCH} -ffp-contract=off)
 
 # 2. C++ Driver (CPU FP64)
 add_executable(driver_kf_cpu
@@ -27,7 +27,7 @@ target_include_directories(driver_kf_cpu PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_compile_definitions(driver_kf_cpu PRIVATE CPPWRF_DOUBLE)
-target_compile_options(driver_kf_cpu PRIVATE -O3 -march=native -ffp-contract=off)
+target_compile_options(driver_kf_cpu PRIVATE -O3 ${CPPWRF_TEST_MARCH} -ffp-contract=off)
 target_link_libraries(driver_kf_cpu PRIVATE
   OpenMP::OpenMP_CXX
 )

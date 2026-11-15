@@ -30,7 +30,7 @@ target_include_directories(test_tables PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_compile_definitions(test_tables PRIVATE CPPWRF_DOUBLE)
-target_compile_options(test_tables PRIVATE -O3 -march=native -fopenmp -ffp-contract=off -fno-tree-vectorize)
+target_compile_options(test_tables PRIVATE -O3 ${CPPWRF_TEST_MARCH} -fopenmp -ffp-contract=off -fno-tree-vectorize)
 target_link_libraries(test_tables PRIVATE OpenMP::OpenMP_CXX)
 
 # 2. C++ Driver (CPU FP64)
@@ -46,7 +46,7 @@ target_include_directories(driver_thompson_cpu PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_compile_definitions(driver_thompson_cpu PRIVATE CPPWRF_DOUBLE)
-target_compile_options(driver_thompson_cpu PRIVATE -O3 -march=native -fopenmp -ffp-contract=off -fno-tree-vectorize)
+target_compile_options(driver_thompson_cpu PRIVATE -O3 ${CPPWRF_TEST_MARCH} -fopenmp -ffp-contract=off -fno-tree-vectorize)
 target_link_libraries(driver_thompson_cpu PRIVATE
   OpenMP::OpenMP_CXX
 )
@@ -58,7 +58,7 @@ add_executable(aero_funcs
 )
 target_include_directories(aero_funcs PRIVATE ${CPPWRF_ROOT}/src ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(aero_funcs PRIVATE CPPWRF_DOUBLE)
-target_compile_options(aero_funcs PRIVATE -O3 -march=native -fopenmp -ffp-contract=off -fno-tree-vectorize)
+target_compile_options(aero_funcs PRIVATE -O3 ${CPPWRF_TEST_MARCH} -fopenmp -ffp-contract=off -fno-tree-vectorize)
 target_link_libraries(aero_funcs PRIVATE OpenMP::OpenMP_CXX)
 
 # 3. CUDA Drivers (if CUDA enabled)

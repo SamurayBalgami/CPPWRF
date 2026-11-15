@@ -12,6 +12,15 @@ else()
   set(CPPWRF_ROOT "${CMAKE_SOURCE_DIR}")
 endif()
 
+# -march=native only with CPPWRF_NATIVE (default ON); OFF for portable binaries: a shared compiler cache (the CI's
+# ccache) would otherwise hand one runner's AVX-512 objects to a CPU without them (Illegal instruction). The
+# parent's CMAKE_CXX_FLAGS (e.g. -march=skylake) apply then; -ffp-contract=off keeps the arithmetic identical.
+if(NOT DEFINED CPPWRF_NATIVE OR CPPWRF_NATIVE)
+  set(CPPWRF_TEST_MARCH -march=native)
+else()
+  set(CPPWRF_TEST_MARCH "")
+endif()
+
 # Column tests of the physics schemes against WRF v4.8.0's own compiled code. The C++ drivers are built here
 # (CPU FP64); each run_test.sh compiles its Fortran driver and links it to the objects of the WRF build that made
 # the model's references (tests/phys/wrf_fortran.sh: WRF_DIR = -r8, WRF_R8D8_DIR = -r8 -fdefault-double-8). Without
@@ -30,7 +39,7 @@ foreach(t "mp_kessler;driver_kessler_cpu;driver_kessler.cpp;mp_kessler/kessler.c
   add_executable(${exe} ${dir}/${drv} ${CPPWRF_ROOT}/src/phys/${src} ${CPPWRF_ROOT}/src/core/backend.cpp)
   target_include_directories(${exe} PRIVATE ${CPPWRF_ROOT}/src ${CMAKE_CURRENT_SOURCE_DIR})
   target_compile_definitions(${exe} PRIVATE CPPWRF_DOUBLE)
-  target_compile_options(${exe} PRIVATE -O3 -march=native -ffp-contract=off)
+  target_compile_options(${exe} PRIVATE -O3 ${CPPWRF_TEST_MARCH} -ffp-contract=off)
   target_link_libraries(${exe} PRIVATE OpenMP::OpenMP_CXX)
 endforeach()
 
@@ -39,7 +48,7 @@ add_executable(driver_p3_cpu mp_p3/driver_p3.cpp ${CPPWRF_ROOT}/src/phys/mp_p3/p
                ${CPPWRF_ROOT}/src/core/backend.cpp ${CPPWRF_ROOT}/src/core/column_work.cpp)
 target_include_directories(driver_p3_cpu PRIVATE ${CPPWRF_ROOT}/src ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(driver_p3_cpu PRIVATE CPPWRF_DOUBLE)
-target_compile_options(driver_p3_cpu PRIVATE -O3 -march=native -ffp-contract=off)
+target_compile_options(driver_p3_cpu PRIVATE -O3 ${CPPWRF_TEST_MARCH} -ffp-contract=off)
 target_link_libraries(driver_p3_cpu PRIVATE OpenMP::OpenMP_CXX mvec m)
 
 # Kain-Fritsch, Noah LSM, Thompson (own CMake files: tables and column drivers)

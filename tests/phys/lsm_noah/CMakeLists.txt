@@ -18,7 +18,7 @@ target_include_directories(driver_noah_cpu PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_compile_definitions(driver_noah_cpu PRIVATE CPPWRF_DOUBLE)
-target_compile_options(driver_noah_cpu PRIVATE -O3 -march=native -ffp-contract=off)
+target_compile_options(driver_noah_cpu PRIVATE -O3 ${CPPWRF_TEST_MARCH} -ffp-contract=off)
 target_link_libraries(driver_noah_cpu PRIVATE
   OpenMP::OpenMP_CXX
 )
