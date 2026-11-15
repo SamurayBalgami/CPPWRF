@@ -655,6 +655,32 @@ class TestValidationAndWarnings(unittest.TestCase):
             err, _ = phys(extra)
             self.assertIn(msg, " ".join(err), extra)
 
+    def test_boulac(self):
+        # bl_pbl_physics = 8 (module_bl_boulac.F) over sf_sfclay_physics = 1 or 2 (module_physics_init: 'use sfclay or
+        # myjsfc scheme for this pbl option'); column-verified (data/option_tiers.txt): a warning, and the model runs
+        # it with &cppwrf allow_unverified = .true.; Shin-Hong (11) is not ported
+        def phys(sfc, pbl, mp=0, extra=""):
+            t = WrfTranslator(parse_namelist(real_case(f"""
+            &time_control /
+            &domains time_step = 60 /
+            &physics mp_physics = {mp}, sf_sfclay_physics = {sfc}, sf_surface_physics = 2, bl_pbl_physics = {pbl} /
+            &dynamics /
+            {extra}""")))
+            gen = t.translate()
+            return t.errors, t.warnings, gen
+        for sfc, mp in ((1, 0), (2, 6), (1, 8)):
+            err, warn, gen = phys(sfc, 8, mp)
+            self.assertEqual(err, [])
+            self.assertEqual((gen["phys"]["sf_sfclay_physics"], gen["phys"]["bl_pbl_physics"]), (sfc, 8))
+            self.assertIn("column_verified", " ".join(warn))
+        err, _, gen = phys(1, 8, 0, "&cppwrf allow_unverified = .true. /")
+        self.assertEqual((err, gen["cppwrf"]["allow_unverified"]), ([], True))
+        for sfc in (5, 7):
+            err, _, _ = phys(sfc, 8)
+            self.assertIn("needs sf_sfclay_physics = 1 or 2", " ".join(err))
+        err, _, _ = phys(1, 11)
+        self.assertIn("Shin-Hong", " ".join(err))
+
     def test_acm2_pleim_xiu(self):
         # bl_pbl_physics = 7 (module_bl_acm.F) over sf_sfclay_physics = 1 or 7 (module_physics_init: 'use sfclay or
         # pxsfc scheme for this pbl option'), with qc and qi; the Pleim-Xiu surface layer with ACM2 and Noah; the PX

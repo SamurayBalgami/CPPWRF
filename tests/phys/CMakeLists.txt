@@ -61,7 +61,8 @@ foreach(t "kessler;mp_kessler;${PHYS_BIN}"
           "lsm_noah_ice;lsm_noah_ice;${PHYS_BIN}/lsm_noah_ice_test"
           "lsm_noahmp;lsm_noahmp;${PHYS_BIN}/lsm_noahmp_test"
           "bl_mynn;bl_mynn;${PHYS_BIN}/bl_mynn_test"
-          "sf_mynn;sf_mynn;${PHYS_BIN}/sf_mynn_test")
+          "sf_mynn;sf_mynn;${PHYS_BIN}/sf_mynn_test"
+          "bl_boulac;bl_boulac;${PHYS_BIN}/bl_boulac_test")
   list(GET t 0 name)
   list(GET t 1 dir)
   list(GET t 2 work)

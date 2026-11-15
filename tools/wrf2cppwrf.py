@@ -430,6 +430,7 @@ SUPPORTED_OPTIONS = {
         2: "MYJ (Mellor-Yamada-Janjic) planetary boundary layer",
         5: "MYNN-EDMF planetary boundary layer",
         7: "ACM2 (Asymmetric Convective Model 2) planetary boundary layer",
+        8: "BouLac (Bougeault-Lacarrere) TKE planetary boundary layer (column-verified, without BEP urban)",
     },
     "cu_physics": {
         0: "None / off",
@@ -2155,6 +2156,13 @@ class WrfTranslator:
                 if bl_pbl == 7 and mp_physics not in (6, 8, 28):
                     self.error("WRF bl_pbl_physics = 7 (ACM2) needs a microphysics with qc and qi (mp_physics 6, 8 or "
                                "28): WRF stops without qc and reads an absent qi otherwise.")
+                # module_physics_init.F pbl_select: BouLac needs isfc = 1 (sfclay) or 2 (myjsfc)
+                if bl_pbl == 8 and sf_sfclay not in (1, 2):
+                    self.error("WRF bl_pbl_physics = 8 (BouLac) needs sf_sfclay_physics = 1 or 2 "
+                               "(module_physics_init: use sfclay or myjsfc scheme for this pbl option).")
+                if bl_pbl == 11:
+                    self.error("WRF bl_pbl_physics = 11 (Shin-Hong scale-aware PBL, physics_mmm/bl_shinhong.F90) is "
+                               "not supported by CPPWRF.")
                 # the Pleim-Xiu surface layer is ported with ACM2 and Noah (the combination with a WRF reference); its
                 # sea-ice wrapper (PXSFCLAY_SEAICE_WRAPPER) is not ported
                 if sf_sfclay == 7 and (bl_pbl != 7 or sf_surface != 2):

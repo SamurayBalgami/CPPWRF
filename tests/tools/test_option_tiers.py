@@ -64,6 +64,7 @@ class Table(unittest.TestCase):
         with open(os.path.join(REPO, "data", "option_tiers.txt")) as f:
             for row in w2c.parse_option_tiers(f.read(), "data/option_tiers.txt"):
                 self.assertTrue(row["wrf_key"] and row["note"], row)
+                self.assertIn(row["tier"], w2c.TIERS)
 
     def test_parse_and_match(self):
         rows = w2c.parse_option_tiers("phys.mp_physics physics.mp_physics 4,20:23 column_verified WSM5 (x)\n"

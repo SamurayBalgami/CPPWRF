@@ -85,7 +85,7 @@ struct FddaOptions {
 struct SuiteOptions {
   int sf_sfclay_physics = 1;     // 1 = SFCLAYREVSCHEME, 2 = MYJSFCSCHEME, 5 = MYNNSFCSCHEME, 7 = PXSFCSCHEME
   int sf_surface_physics = 2;    // 1 = SLABSCHEME, 2 = LSMSCHEME (Noah), 4 = NOAHMPSCHEME (Noah-MP v5.1.2)
-  int bl_pbl_physics = 1;        // 1 = YSUSCHEME, 2 = MYJPBLSCHEME, 5 = MYNNPBLSCHEME, 7 = ACMPBLSCHEME
+  int bl_pbl_physics = 1;        // 1 = YSUSCHEME, 2 = MYJPBLSCHEME, 5 = MYNNPBLSCHEME, 7 = ACMPBLSCHEME, 8 = BOULACSCHEME
   int icloud_bl = 1;             // MYNN subgrid clouds in the radiation (CLDFRA_BL, QC_BL, QI_BL)
   mynnedmf::Options mynn;        // bl_mynn_* options of the MYNN-EDMF PBL
   int bl_mynn_mixscalars = 0;    // MYNN mixing of WRF's generic scalar (not connected in WRF: no effect)
@@ -233,7 +233,8 @@ class PhysicsSuite : public dyn::ColumnPhysics {
   std::vector<double> dzs;            // soil layer thicknesses (m)
   std::vector<double> zs;             // soil layer centre depths (m; the slab's diffusion)
   Field3 exch_h, exch_m;              // M (WRF kme-sized; levels 0..nz-1 used)
-  Field3 tke_pbl, el_pbl;             // MYJ PBL 3D TKE and master length scale (el_pbl: MYNN too)
+  Field3 tke_pbl, el_pbl;             // MYJ PBL 3D TKE and master length scale (el_pbl: MYNN too; BouLac: TKE, dlk)
+  Field3 wu_tur, wv_tur, wt_tur, wq_tur;  // BouLac (bl_pbl_physics = 8) turbulent fluxes (Registry r)
   // MYNN-EDMF state (bl_pbl_physics = 5): 2*TKE, variances, stability functions, subgrid clouds
   Field3 qke, tsq, qsq, cov, sh3d, sm3d, qc_bl, qi_bl, cldfra_bl;
   Field3 edmf_a, edmf_w, edmf_thl, edmf_qt, edmf_ent, edmf_qc;  // bl_mynn_output = 1

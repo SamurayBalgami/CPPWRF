@@ -21,3 +21,4 @@
 #
 # Example (WSM5 ported with a column driver, not yet compared with a whole WRF run):
 #   phys.mp_physics   physics.mp_physics   4   column_verified   WSM5 (tests/phys/mp_wsm5)
+phys.bl_pbl_physics   physics.bl_pbl_physics   8   column_verified   BouLac PBL (tests/phys/bl_boulac)

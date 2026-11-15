@@ -36,6 +36,8 @@ struct CouplingFlags {
                            // 3 = GFLSCHEME: th, qv, qc, qi; 16 = NTIEDTKESCHEME: u, v, th, qv, qc, qi)
   bool theta_m = false;    // use_theta_m = 1 (phy_prep_part2: dry-theta RTHFTEN)
   int grid_fdda = 0;       // 1: the grid nudging tendencies (calculate_phy_tend, phy_fg_ten, phy_prep_part2)
+  bool pbl_qi = true;      // phy_bl_ten adds RQIBLTEN (every ported PBL scheme but BOULACSCHEME, which has no qi
+                           // tendency; calculate_phy_tend still couples it)
 };
 
 void calculate_phy_tend(PhysicsTendencies& pt, const dyn::State& s, const dyn::BaseState& b, const Grid& g,

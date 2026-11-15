@@ -3,6 +3,7 @@
 #include "phys/driver/suite.hpp"
 
 #include "phys/bl_acm/acm.hpp"
+#include "phys/bl_boulac/boulac.hpp"
 #include "core/column_work.hpp"
 #include "phys/bl_gwdo/gwdo.hpp"
 #include "phys/bl_myj/myjpbl.hpp"
@@ -330,7 +331,7 @@ struct KBlFogdes {
 };
 }  // namespace
 
-// module_pbl_driver.F pbl_driver for YSUSCHEME / MYJPBLSCHEME / MYNNPBLSCHEME / ACMPBLSCHEME
+// module_pbl_driver.F pbl_driver for YSUSCHEME / MYJPBLSCHEME / MYNNPBLSCHEME / ACMPBLSCHEME / BOULACSCHEME
 namespace suite_detail {
 std::size_t gwdo_work_bytes() { return KGwdo::kWorkBytes; }
 }  // namespace suite_detail
@@ -454,6 +455,25 @@ void PhysicsSuite::pbl_driver(dyn::State& s, const dyn::BaseState& b) {
     else
       column_for(cols, acm::AcmRunner<acm::kMaxLevels>{ka});
     fatal_check();
+  } else if (o_.bl_pbl_physics == 8) {
+    // BOULACSCHEME (module_pbl_driver.F:1949-1970): DT=dt (the model step, also with bldt > 0), U_PHY=u_phytmp,
+    // V_PHY=v_phytmp, TH_PHY=th_phy, RHO=rho, QV_CURR / QC_CURR (moist(P_QC): zero without qc), USTAR=ust,
+    // TKE=tke_pbl, DLK=el_pbl, WU..WQ=wu_tur..wq_tur, flag_bep = .false. (no BEP urban), idiff = 0
+    using namespace wrfc;
+    boulac::BoulacKernel kb{};
+    kb.u_phy = u_phytmp.cview(); kb.v_phy = v_phytmp.cview(); kb.th_phy = prep.th_phy.cview();
+    kb.rho = prep.rho.cview(); kb.qv = s.q_2[s.P_QV].cview();
+    kb.qc = flag_qc ? s.q_2[s.P_QC].cview() : zero3_.cview(); kb.dz8w = prep.dz8w.cview();
+    kb.ust = ust.cview(); kb.hfx = hfx.cview(); kb.qfx = qfx.cview(); kb.pblh = pblh.view();
+    kb.tke = tke_pbl.view(); kb.dlk = el_pbl.view(); kb.wu = wu_tur.view(); kb.wv = wv_tur.view();
+    kb.wt = wt_tur.view(); kb.wq = wq_tur.view(); kb.exch_h = exch_h.view(); kb.exch_m = exch_m.view();
+    kb.rublten = pt.rublten.view(); kb.rvblten = pt.rvblten.view(); kb.rthblten = pt.rthblten.view();
+    kb.rqvblten = pt.rqvblten.view(); kb.rqcblten = pt.rqcblten.view();
+    kb.dt = dt; kb.cp = cp; kb.g = g; kb.nz = g_.nz;
+    if (g_.nz <= 48)
+      column_for(cols, boulac::BoulacRunner<48>{kb});
+    else
+      column_for(cols, boulac::BoulacRunner<boulac::kMaxLevels>{kb});
   }
   if (o_.gwd_opt == 1) {
     using namespace wrfc;

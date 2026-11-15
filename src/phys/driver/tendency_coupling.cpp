@@ -193,7 +193,7 @@ void update_phy_ten(dyn::Tendencies& t, PhysicsTendencies& pt, const dyn::State&
     add.add(a2c_v_range(g), KAdd::A2CV, t.rv_tendf, pt.rvblten);
     if (s.P_QV >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QV], pt.rqvblten);
     if (s.P_QC >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QC], pt.rqcblten);
-    if (s.P_QI >= 0) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QI], pt.rqiblten);
+    if (s.P_QI >= 0 && f.pbl_qi) add.add(ar, KAdd::A2A, t.q_tendf[s.P_QI], pt.rqiblten);
   }
   if (f.cu_physics == 1) {  // phy_cu_ten, KFETASCHEME
     add.add(ar, KAdd::A2A, t.t_tendf, pt.rthcuten);

@@ -9,6 +9,7 @@
 #include <stdexcept>
 
 #include "phys/bl_acm/acm.hpp"
+#include "phys/bl_boulac/boulac.hpp"
 #include "phys/bl_gwdo/gwdo.hpp"
 #include "phys/bl_myj/myjpbl.hpp"
 #include "phys/bl_mynn/mynnedmf.hpp"
@@ -288,9 +289,9 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   if ((o.sf_sfclay_physics != 1 && o.sf_sfclay_physics != 2 && o.sf_sfclay_physics != 5 && o.sf_sfclay_physics != 7) ||
       (o.sf_surface_physics != 1 && o.sf_surface_physics != 2 && o.sf_surface_physics != 4) ||
       (o.bl_pbl_physics != 0 && o.bl_pbl_physics != 1 && o.bl_pbl_physics != 2 && o.bl_pbl_physics != 5 &&
-       o.bl_pbl_physics != 7))
+       o.bl_pbl_physics != 7 && o.bl_pbl_physics != 8))
     throw std::runtime_error("PhysicsSuite: only sf_sfclay_physics=1|2|5|7, sf_surface_physics=1|2|4, "
-                             "bl_pbl_physics=0|1|2|5|7 (the PX land surface, sf_surface_physics=7, is not ported)");
+                             "bl_pbl_physics=0|1|2|5|7|8 (the PX land surface, sf_surface_physics=7, is not ported)");
   // module_physics_init: MYNNPBLSCHEME needs mynnsfc, sfclay or myjsfc (isfc 5, 1 or 2: all of the above).
   // The sea-ice wrappers of sfclayrev / MYJSFC are verified with YSU / MYJ only (no MYNN reference with sea ice)
   if (o.bl_pbl_physics == 5 && o.fractional_seaice == 1)
@@ -334,6 +335,9 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
   // ACMPBLSCHEME: 'use sfclay or pxsfc scheme for this pbl option' (isfc 1 or 7)
   if (o.bl_pbl_physics == 7 && o.sf_sfclay_physics != 1 && o.sf_sfclay_physics != 7)
     throw std::runtime_error("PhysicsSuite: bl_pbl_physics=7 (ACM2) needs sf_sfclay_physics=1 or 7, as WRF");
+  // BOULACSCHEME: 'use sfclay or myjsfc scheme for this pbl option' (isfc 1 or 2)
+  if (o.bl_pbl_physics == 8 && o.sf_sfclay_physics != 1 && o.sf_sfclay_physics != 2)
+    throw std::runtime_error("PhysicsSuite: bl_pbl_physics=8 (BouLac) needs sf_sfclay_physics=1 or 2, as WRF");
   // the Pleim-Xiu surface layer is ported with the ACM2 PBL and the Noah LSM (the proven combination; WRF also runs it
   // under MYNN's or no PBL scheme, and its sea-ice wrapper PXSFCLAY_SEAICE_WRAPPER is not ported)
   if (o.sf_sfclay_physics == 7 && (o.bl_pbl_physics != 7 || o.sf_surface_physics != 2 || o.fractional_seaice != 0 ||
@@ -455,6 +459,8 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
     throw std::runtime_error("PhysicsSuite: nz exceeds the MYNN-EDMF column limit");
   if (o.bl_pbl_physics == 7 && g.nz > acm::kMaxLevels)
     throw std::runtime_error("PhysicsSuite: nz exceeds the ACM2 column limit");
+  if (o.bl_pbl_physics == 8 && g.nz > boulac::kMaxLevels)
+    throw std::runtime_error("PhysicsSuite: nz exceeds the BouLac column limit");
   if (o.bl_pbl_physics == 2 && g.nz > myjpbl::kMaxLevels)
     throw std::runtime_error("PhysicsSuite: nz exceeds the MYJ column limit");
   if (o.sf_sfclay_physics == 2 && g.nz > sf_myjsfc::kMaxLevels)
@@ -585,6 +591,10 @@ PhysicsSuite::PhysicsSuite(const Grid& g, const SuiteOptions& o)
     myjpbl::myjpbl_reserve(g.columns());  // CUDA FP64: its column arrays in the work buffer
     lowlyr.upload(std::vector<int>(lowlyr.layout().total, 1));
     tke_pbl.fill_host([](int, int, int) { return 0.2; });       // myjpblinit: TKE_MYJ = EPSQ2 = 0.2
+  }
+  if (o.bl_pbl_physics == 8) {  // boulacinit (not restart): TKE_PBL = 0.0001 (a restart reads it from wrfrst)
+    tke_pbl.fill_host([](int, int, int) { return 0.0001; });
+    mk3(wu_tur, g, "wu_tur"); mk3(wv_tur, g, "wv_tur"); mk3(wt_tur, g, "wt_tur"); mk3(wq_tur, g, "wq_tur");
   }
   // the cumulus scheme's column arrays in the GPU's work buffer
   column_work_reserve(g.columns(), suite_detail::cumulus_work_bytes(o.cu_physics, g.nz));
@@ -848,6 +858,13 @@ std::vector<std::pair<std::string, Field3*>> PhysicsSuite::carried3() {
     v.emplace_back("sfc_tke_pbl", &tke_pbl);
     v.emplace_back("sfc_el_pbl", &el_pbl);
   }
+  if (o_.bl_pbl_physics == 8) {  // BouLac: TKE_PBL (its state), EL_PBL and the fluxes (outputs of every call)
+    if (o_.sf_sfclay_physics != 2) {
+      v.emplace_back("sfc_tke_pbl", &tke_pbl);
+      v.emplace_back("sfc_el_pbl", &el_pbl);
+    }
+    for (Field3* f : {&wu_tur, &wv_tur, &wt_tur, &wq_tur}) v.emplace_back("sfc_" + f->name(), f);
+  }
   if (o_.bl_pbl_physics == 5) {
     for (Field3* f : {&qke, &tsq, &qsq, &cov, &sh3d, &sm3d, &qc_bl, &qi_bl, &cldfra_bl})
       v.emplace_back("sfc_" + f->name(), f);
@@ -974,7 +991,8 @@ void PhysicsSuite::part1(dyn::State& s, const dyn::BaseState& b, dyn::Tendencies
 }
 
 void PhysicsSuite::part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tendencies& t) {
-  const CouplingFlags f{radiation_on(), o_.bl_pbl_physics > 0, o_.cu_physics, o_.use_theta_m == 1, o_.fdda.grid_fdda};
+  const CouplingFlags f{radiation_on(), o_.bl_pbl_physics > 0, o_.cu_physics, o_.use_theta_m == 1, o_.fdda.grid_fdda,
+                        o_.bl_pbl_physics != 8};
   calculate_phy_tend(pt, s, b, g_, f);
   update_phy_ten(t, pt, s, g_, f);
   if (o_.use_theta_m == 1) {
@@ -995,7 +1013,8 @@ void PhysicsSuite::part2(const dyn::State& s, const dyn::BaseState& b, dyn::Tend
 void PhysicsSuite::after_rk(const dyn::State& s, const dyn::BaseState& b) {
   advance_ppt(s);
   phy_prep_part2(pt, s, b, g_,
-                 CouplingFlags{radiation_on(), o_.bl_pbl_physics > 0, o_.cu_physics, o_.use_theta_m == 1, o_.fdda.grid_fdda});
+                 CouplingFlags{radiation_on(), o_.bl_pbl_physics > 0, o_.cu_physics, o_.use_theta_m == 1, o_.fdda.grid_fdda,
+                               o_.bl_pbl_physics != 8});
 }
 
 // module_after_all_rk_steps.F -> diagnostics_driver -> diagnostic_output_calc, then clwrf_output_calc, at the end of
@@ -1108,6 +1127,7 @@ std::vector<const Field3*> PhysicsSuite::fields3() const {
   }
   if (o_.gwd_opt == 1) v.insert(v.end(), {&dtaux3d, &dtauy3d});
   if (o_.tmn_update == 1) v.push_back(&tlag);
+  if (o_.bl_pbl_physics == 8) v.insert(v.end(), {&wu_tur, &wv_tur, &wt_tur, &wq_tur});
   if (o_.bl_pbl_physics == 5) {
     v.insert(v.end(), {&qke, &tsq, &qsq, &cov, &sh3d, &sm3d, &qc_bl, &qi_bl, &cldfra_bl});
     if (o_.bl_mynn_output > 0) v.insert(v.end(), {&edmf_a, &edmf_w, &edmf_thl, &edmf_qt, &edmf_ent, &edmf_qc});
