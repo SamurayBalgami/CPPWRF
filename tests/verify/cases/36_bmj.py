@@ -3,10 +3,6 @@
 MYJ in WRF), P9BMJ5 (cudt 5) and P4BMJ / P4BMJF (P4: WSM6, RRTMG, YSU; F: bmj_rad_feedback), each against its WRF
 v4.8.0 real*8 run (the wrfref workflow of the CI repository, run wrfref-c11-bmj: the inputs of run_P9_r8 / run_P4_r8).
 
-PENDING: rename to 29_bmj.py (and add port_c11_data.tar to tests/verify/vm_data.txt) once the references are staged
-as port_c11_data.tar in the data release; then the cases prove BMJ and bmj_rad_feedback and their rows in
-data/option_tiers.txt (and allow_unverified below) are removed.
-
 CASES: see tests/verify/cases/__init__.py."""
 from cases.common import WR  # noqa: F401
 
