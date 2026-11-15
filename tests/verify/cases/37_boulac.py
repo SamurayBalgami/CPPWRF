@@ -1,12 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""PENDING (not loaded: tests/verify/cases/__init__.py reads only cases/NN_*.py). The BouLac PBL (bl_pbl_physics = 8,
+"""The BouLac PBL (bl_pbl_physics = 8,
 phys/module_bl_boulac.F): BL1 / BL4 / BL9 = P1 / P4 / P9 with BouLac (over the revised MM5 surface layer, P4 with
 WSM6 / KF / RRTMG, and over the Eta surface layer), each against its WRF v4.8.0 real*8 run (wrfref workflow of
 Xassemblianist/cppwrf-data, tag c18-boulac: the inputs of run_P1_r8 / run_P4_r8 / run_P9_r8 with
-physics.bl_pbl_physics = 8; BL1 with wrfrst at 30 min). Move this file to tests/verify/cases/31_boulac.py when
-port_c18_data.tar (the three references and their steps/) is in the data release and tests/verify/vm_data.txt, run
-the cases, and delete BouLac's row of data/option_tiers.txt when they pass (then drop [cppwrf] allow_unverified from
-configs/real_bl*_r8.ini).
+physics.bl_pbl_physics = 8; BL1 with wrfrst at 30 min).
 
 CASES: see tests/verify/cases/__init__.py."""
 from cases.common import WR  # noqa: F401
@@ -42,4 +39,4 @@ STATUS = [
     ('BL9', 'P9 with the BouLac PBL over the Eta surface layer', '1 h'),
 ]
 
-DATA = {c[0]: 'port_c18_data.tar' for c in CASES}
+DATA = {c[0]: 'suite_data.tar,port_c18_data.tar' for c in CASES}  # the inputs and tables: links into run_P1_r8 / P4 / P9

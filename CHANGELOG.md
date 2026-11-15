@@ -12,12 +12,12 @@ a verified configuration, of a configuration key or of an output file is a new m
   two CPUs), perturbed starts and 24 h runs: no FP32 port defect, no output change. tools/bench/colab_fp32.sh
   --extra (GPU FP32 without FMA, CPU FP32) and --data; fp32_run.py's cases P4S / ACM7S / MORRS / SKVS, ACM7L / MORRL
   / SKVL and the perturbed-start E cases (data fp2_data.tar).
-- BouLac PBL (bl_pbl_physics = 8), tier **column_verified**: WRF's module_bl_boulac.F (pbl_height, the length
+- BouLac PBL (bl_pbl_physics = 8), tier **verified**: WRF's module_bl_boulac.F (pbl_height, the length
   scales up / down of Bougeault and Lacarrere, the TKE equation and the implicit diffusion of u, v, theta, qv and qc
   with the Troen-Mahrt counter-gradient term) for one column, over the revised MM5 or the Eta surface layer, without
   the BEP urban terms; TKE_PBL, EL_PBL, EXCH_H / EXCH_M and the restart fluxes WU_TUR .. WQ_TUR as WRF writes them; no
   qi tendency (phy_bl_ten). Bit for bit with WRF's compiled routine in tests/phys/bl_boulac (ctest
-  test_phys_bl_boulac); runs with `[cppwrf] allow_unverified = true` until its whole-model WRF cases pass.
+  test_phys_bl_boulac) and suite cases BL1 / BL4 / BL9 against WRF real*8 (CPU and CUDA FP64 at tolerance 0).
   Shin-Hong (bl_pbl_physics = 11) stays an error.
 - Verification tiers of options: `data/option_tiers.txt` lists option values merged before their whole-model WRF
   comparison as column_verified (bit-identical to WRF's Fortran in a column driver) or unverified (ported only).

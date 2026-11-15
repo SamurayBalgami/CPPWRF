@@ -657,8 +657,7 @@ class TestValidationAndWarnings(unittest.TestCase):
 
     def test_boulac(self):
         # bl_pbl_physics = 8 (module_bl_boulac.F) over sf_sfclay_physics = 1 or 2 (module_physics_init: 'use sfclay or
-        # myjsfc scheme for this pbl option'); column-verified (data/option_tiers.txt): a warning, and the model runs
-        # it with &cppwrf allow_unverified = .true.; Shin-Hong (11) is not ported
+        # myjsfc scheme for this pbl option'); verified: no tier warning; Shin-Hong (11) is not ported
         def phys(sfc, pbl, mp=0, extra=""):
             t = WrfTranslator(parse_namelist(real_case(f"""
             &time_control /
@@ -672,7 +671,7 @@ class TestValidationAndWarnings(unittest.TestCase):
             err, warn, gen = phys(sfc, 8, mp)
             self.assertEqual(err, [])
             self.assertEqual((gen["phys"]["sf_sfclay_physics"], gen["phys"]["bl_pbl_physics"]), (sfc, 8))
-            self.assertIn("column_verified", " ".join(warn))
+            self.assertNotIn("verification tier", " ".join(warn))
         err, _, gen = phys(1, 8, 0, "&cppwrf allow_unverified = .true. /")
         self.assertEqual((err, gen["cppwrf"]["allow_unverified"]), ([], True))
         for sfc in (5, 7):
