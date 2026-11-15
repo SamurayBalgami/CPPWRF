@@ -21,11 +21,12 @@ CASES = [
     ("real_p3mp_r8_fp64_cpu_1h_rst", "cpu_dp", "configs/real_p3mp_r8.ini",
      ["real.dir=" + f"{WR}/run_P3MP_r8"] + _1H + ["suite.restart_at=1800"],
      f"{WR}/run_P3MP_r8/wrfout_d01_{_D}", 3600, _T),
-    # GPU tolerances not measured yet (placeholders: FP64 exact, FP32 as Morrison's)
+    # GPU: FP64 exact (G4 2026-11-15); FP32 measured on G4 2026-11-15: U 4.3e-3, W 1.3e-1, THM 5.6e-5, QV 2.0e-3
+    # (P4's KF columns, docs/FP32_ACCURACY.md); tolerances about 3x
     ("real_p3mp_r8_fp64_cuda_1h", "cuda_dp", "configs/real_p3mp_r8.ini", ["real.dir=" + f"{WR}/run_P3MP_r8"] + _1H,
      f"{WR}/run_P3MP_r8/wrfout_d01_{_D}", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0, "QNICE": 0.0}),
     ("real_p3mp_fp32_1h", "cuda", "configs/real_p3mp_r8.ini", ["real.dir=" + f"{WR}/run_P3MP_r8"] + _1H,
-     f"{WR}/run_P3MP_r8/wrfout_d01_{_D}", 3600, {"U": 8e-4, "W": 3e-2, "THM": 2e-5, "QV": 6e-4}),
+     f"{WR}/run_P3MP_r8/wrfout_d01_{_D}", 3600, {"U": 1.3e-2, "W": 0.4, "THM": 1.7e-4, "QV": 6e-3}),
     # P3NC = P4 with P3 (51): 3 steps, 1 h
     ("real_p3nc_r8_fp64_cpu", "cpu_dp", "configs/real_p3nc_r8.ini", [],
      f"{WR}/run_P3NC_r8/steps/wrfout_d01_{_D}", 180, _TNC),
