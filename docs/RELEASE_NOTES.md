@@ -44,8 +44,10 @@ Google Colab G4 runtime, where the example's GPU FP64 output equalled the CPU FP
 - GPU FP32 is not bit-identical to anything. docs/FP32_ACCURACY.md compares its difference from WRF real*8 with stock
   WRF real*4's (the usual production build), R = FP32's / real*4's, over eleven domains at 1 h (and 24 h / 72 h):
   in the KF / WSM6 / Thompson / MYJ, nest, Arctic and large-domain cases R is 0.4 to 1.1 for the state and surface
-  fields (as close as WRF real*4 or closer); with ACM2 + Pleim-Xiu, Morrison and the skin SST it is up to 2 (2.3 for
-  QVAPOR in ACM7) and higher for sparse hydrometeors: FP32 is then noticeably further from real*8 than WRF real*4.
+  fields (as close as WRF real*4 or closer); with ACM2 + Pleim-Xiu, Morrison and the skin SST single runs reach up to
+  2 at 1 h (2.3 for QVAPOR in ACM7) and higher for sparse hydrometeors. These were traced to Kain-Fritsch decisions
+  that are ties at the last bit, not to a port defect: other builds of the same code give 1.1 to 2.0, and from 6 h on
+  R is 0.8 to 1.1 there too.
 
 ## Performance
 

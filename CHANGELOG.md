@@ -6,6 +6,12 @@ a verified configuration, of a configuration key or of an output file is a new m
 ## Unreleased
 
 ### Added
+- docs/FP32_ACCURACY.md "Root causes of the first-hour outliers": ACM7, MORR and SKV's FP32 excess at 1 h traced
+  step by step to Kain-Fritsch deep / shallow and trigger decisions that are ties at the last bit (e.g. `TU95 >
+  TV0` at 1 ulp in the first step), measured over five builds of the same code (GPU with and without FMA, CPU on
+  two CPUs), perturbed starts and 24 h runs: no FP32 port defect, no output change. tools/bench/colab_fp32.sh
+  --extra (GPU FP32 without FMA, CPU FP32) and --data; fp32_run.py's cases P4S / ACM7S / MORRS / SKVS, ACM7L / MORRL
+  / SKVL and the perturbed-start E cases (data fp2_data.tar).
 - Verification tiers of options: `data/option_tiers.txt` lists option values merged before their whole-model WRF
   comparison as column_verified (bit-identical to WRF's Fortran in a column driver) or unverified (ported only).
   The model and cppwrf_real stop on such a value, naming option, value and tier, unless `[cppwrf] allow_unverified =

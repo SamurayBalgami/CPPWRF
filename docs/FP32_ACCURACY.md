@@ -16,7 +16,9 @@ R <= 1: CPPWRF FP32 is at least as close to the double-precision answer as WRF's
 ## Status
 
 Measured (tools/bench/colab_fp32.sh, 2026-11-09/10): eleven domains at 1 h on a Colab L4, P4 for 72 h and N3 for
-24 h on a Colab G4; see "Results" and "Verdict". An earlier, smaller measurement (docs/PERF.md's benchmark: relative
+24 h on a Colab G4; see "Results" and "Verdict". The first-hour outliers (ACM7, MORR, SKV) were traced to their
+statements and re-measured with other builds, perturbed starts and 24 h runs on 2026-11-15 ("Root causes of the
+first-hour outliers"). An earlier, smaller measurement (docs/PERF.md's benchmark: relative
 L2 of eight fields at 1 h, R 0.35 to 1.08) follows first.
 
 ## Earlier: the 1 h measurement of docs/PERF.md's benchmark
@@ -195,7 +197,7 @@ How to read it:
     at 0.66 to 1.06: a few points of graupel / hail that FP32 creates or removes where WRF real*4 does not.
   - **SKV** (skin SST): median 1.16, the near-surface and 3-D fields 1.1 to 1.5. V1 without the skin SST is at
     1.0 to 1.1 for the same fields, so the skin SST scheme's FP32 path adds a little.
-  - Likely causes (not verified): CUDA FP32 contracts multiply-adds (FMA) and uses CUDA's libm, while gfortran's
+  - Likely causes as guessed then (see "Root causes of the first-hour outliers" for what they are): CUDA FP32 contracts multiply-adds (FMA) and uses CUDA's libm, while gfortran's
     real*4 code has neither; schemes with iterations and thresholds (ACM2's PBL height and mixing, Pleim-Xiu's
     stability iteration, Morrison's graupel / hail thresholds, the warm layer and cool skin) amplify such last-bit
     differences. Candidate check and fixes (result-changing for FP32 only, so for a later release): run the CPU FP32
@@ -260,6 +262,159 @@ Hourly rain >= 1 mm changes category at 0.7 to 1.9 % of the points at 24 h (with
 (Blue: WRF real*4; red: CPPWRF FP32; grey dashed: CPPWRF FP32 against WRF real*4; green dashed: WRF real*8 with
 perturbed last bits.)
 
+## Root causes of the first-hour outliers
+
+FP1 found R of 1.2 to 2.3 at 1 h for ACM7 (ACM2 + Pleim-Xiu), the Morrison hydrometeors (MORR) and, slightly, the skin
+SST (SKV). FP2 followed each back to the statement where CPPWRF FP32 first departs from WRF real*8 by more than WRF
+real*4 does (the dump method of the bit-identity work), separated the GPU from the precision (CPU FP32 build, GPU FP32
+without FMA contraction), and measured the spread of equally valid single-precision runs.
+
+### Step by step, point by point (10 steps on the workstation)
+
+WRF v4.8.0 real*4 and real*8 (one process, gfortran 14.2), CPPWRF CPU FP32 and GPU FP32 (RTX 2060), each ACM7, MORR,
+SKV and P4 run of the study for 10 steps with history every step (CPPWRF CPU FP64 equals the WRF real*8 run in all
+652 variable-frames compared):
+
+- **At t = 0 CPPWRF FP32 is closer to real*8 than WRF real*4.** WRF real*4 recomputes the base state and the
+  pressure in single precision in start_em (PB, PHB, MUB, P, P_HYD: P differs from real*8 by 0.36 Pa RMS, 4 Pa at
+  most); CPPWRF computes them in double precision and stores them rounded (P: 1.6e-5 Pa RMS). All prognostic
+  fields start identical in the two single-precision runs.
+- **Step 1.** The fields with R >> 1 after one step (ACM7: QRAIN 41, QCLOUD 3.2, QVAPOR 2.5; MORR: every hydrometeor
+  and number concentration, R 300 to 140000; P4: QRAIN 1600) all come from **one Kain-Fritsch column** (i = 6,
+  j = 68, the same column in the three configurations: they share P4's inputs and KF). There real*8 and real*4 find
+  deep convection (RAINC 8.8e-3 mm in the first step) and CPPWRF FP32 (CPU and GPU alike) shallow convection. The
+  decision (the dumps of CPPWRF FP32 / FP64 and of a WRF real*4 build with a WRITE in KF_eta_PARA): in the updraft
+  loop at level 10 the 95 % environment mixture is compared with the environment, `TU95 > TV0(NK1)`:
+
+  | | TU95 | TV0 | TU95 - TV0 | branch |
+  |---|---|---|---|---|
+  | WRF real*8 (= CPPWRF FP64) | 275.158026 | 275.158091 | -6.5e-5 | partial detrainment |
+  | WRF real*4 | 275.157898 | 275.157898 | 0 | partial detrainment |
+  | CPPWRF FP32 | 275.158081 | 275.158051 | +3.0e-5 | EQFRC = 1 |
+
+  One unit in the last place of a float at 275 K is 3.05e-5: the comparison is a tie at the precision of the type.
+  WRF real*4's operands are further from real*8 (TV0 by 1.9e-4, through its single-precision start) than CPPWRF's
+  (4e-5); real*4 lands on equality and takes real*8's branch, CPPWRF on the other side. EQFRC = 1 detrains less at
+  level 10, the updraft kinetic energy at level 14 becomes -0.033 instead of +0.014 (`WTW < 1e-3` ends the updraft one
+  level lower), the cloud depth falls below CHMIN and the column turns shallow. Morrison receives KF's rain / snow /
+  ice tendencies with their number concentrations, hence MORR's large hydrometeor R.
+- **Outside that column** (masked with a 13 x 13 square) ACM7's R after one step is 0.07 to 1.00 for every field;
+  MORR's another KF column (j = 11, i = 64: a shallow column whose ABE differs by 7 %, 1 % in RTHCUTEN) gives its
+  QRAIN R 9 at step 1 and is gone at step 2; SKV's excess at 5-10 min (MU 2.1, W 2.8) is a KF column (j = 23,
+  i = 40) that triggers in CPPWRF FP32 at step 4 and not in real*8 (masked: MU 0.95). Over water the skin SST's TSK
+  differs from real*8 exactly as WRF real*4's (1.52e-3 / 1.53e-3 K at step 2, 1.01e-3 / 1.00e-3 at step 10).
+- **KF's discrete decisions are equally fragile in both single-precision builds.** Over the 10 steps, the
+  convective column-frames whose RTHCUTEN differs from real*8 by more than 0.1 % / 1 % / 10 %:
+
+  | Case | column-frames | WRF real*4 | CPPWRF CPU FP32 | CPPWRF GPU FP32 |
+  |---|---|---|---|---|
+  | P4 | 4245 | 851 / 51 / 34 | 778 / 52 / 23 | 805 / 40 / 18 |
+  | ACM7 | 4239 | 948 / 78 / 53 | 821 / 58 / 38 | 872 / 77 / 47 |
+  | MORR | 4275 | 814 / 55 / 27 | 716 / 42 / 17 | 703 / 43 / 15 |
+  | SKV | 2866 | 504 / 103 / 79 | 493 / 81 / 59 | 504 / 84 / 68 |
+
+  CPPWRF flips no more columns than WRF real*4; it flips different ones. ACM2's PBL height jumps by a level in 5 to
+  20 columns per step in both (CPPWRF 5, 9, 9, 20, 14 / real*4 4, 8, 12, 15, 11 at steps 2 to 6).
+
+### The same code, other realizations (Colab G4, 2026-11-15)
+
+tools/bench/colab_fp32.sh --extra on the cases P4S, ACM7S, MORRS, SKVS (1 h) and ACM7L, MORRL, SKVL (24 h) of
+tools/bench/fp32_run.py (inputs: fp2_data.tar, real.exe of WRF real*8 for 24 h from the met_em of P4 and V1; the
+wrfinput files are those of run_P4_r8 / run_V1_r8 byte for byte). Besides GPU FP32 it ran GPU FP32 compiled with
+`--fmad=false` for every kernel and the CPU FP32 build (glibc's libm, no FMA), and WRF real*4 with 1, 2, 4 and 8 MPI
+ranks. R at 1 h against WRF real*4 in one process:
+
+| Case | run | T2 | PSFC | PBLH | T | QVAPOR | U | W | QCLOUD | QRAIN | QSNOW | QGRAUP |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| P4 | GPU FP32 (G4) | 1.05 | 0.95 | 0.35 | 0.97 | 0.94 | 0.96 | 1.00 | 0.92 | 1.16 | 0.81 | 0.98 |
+| P4 | GPU FP32, no FMA | 1.06 | 1.00 | 0.58 | 1.03 | 1.01 | 0.99 | 1.03 | 1.03 | 1.06 | 1.03 | 1.06 |
+| P4 | CPU FP32 (AMD) | 1.08 | 1.00 | 0.99 | 1.07 | 1.04 | 0.99 | 1.03 | 0.90 | 1.04 | 1.00 | 0.87 |
+| P4 | WRF real*4, 8 ranks | 1.04 | 1.02 | 0.36 | 1.05 | 1.03 | 1.03 | 1.03 | 1.45 | 1.03 | 1.00 | 0.99 |
+| ACM7 | GPU FP32 (G4) | 1.02 | 1.33 | 1.52 | 1.68 | 1.73 | 1.41 | 1.11 | 2.26 | 1.20 | 1.64 | 1.33 |
+| ACM7 | GPU FP32, no FMA | 1.02 | 1.21 | 1.70 | 1.40 | 2.03 | 1.17 | 1.05 | 1.27 | 0.95 | 0.92 | 0.85 |
+| ACM7 | CPU FP32 (AMD) | 1.01 | 1.88 | 0.18 | 1.67 | 1.46 | 1.42 | 1.74 | 0.99 | 1.17 | 2.56 | 2.62 |
+| ACM7 | WRF real*4, 8 ranks | 0.99 | 1.04 | 1.42 | 1.09 | 1.08 | 1.15 | 1.05 | 1.01 | 0.83 | 1.06 | 1.18 |
+| MORR | GPU FP32 (G4) | 0.95 | 0.76 | 0.99 | 0.97 | 0.93 | 0.73 | 0.85 | 2.03 | 1.33 | 0.77 | 1.11 |
+| MORR | GPU FP32, no FMA | 0.98 | 0.90 | 0.88 | 0.90 | 0.83 | 0.87 | 0.97 | 1.51 | 2.00 | 1.62 | 0.22 |
+| MORR | CPU FP32 (AMD) | 1.01 | 0.89 | 1.05 | 1.03 | 0.80 | 0.88 | 0.97 | 2.57 | 1.02 | 1.14 | 0.23 |
+| MORR | WRF real*4, 8 ranks | 0.99 | 1.12 | 0.94 | 1.21 | 0.99 | 1.15 | 1.32 | 1.19 | 0.98 | 0.93 | 0.31 |
+| SKV | GPU FP32 (G4) | 1.03 | 1.10 | 1.23 | 1.07 | 0.78 | 1.19 | 1.14 | 1.13 | 0.99 | 1.50 | 2.03 |
+| SKV | GPU FP32, no FMA | 1.08 | 1.25 | 1.37 | 1.14 | 0.93 | 1.27 | 1.29 | 1.18 | 1.12 | 1.64 | 1.80 |
+| SKV | CPU FP32 (AMD) | 1.27 | 1.29 | 1.58 | 1.27 | 0.94 | 1.41 | 1.40 | 1.15 | 0.97 | 1.69 | 2.09 |
+| SKV | WRF real*4, 8 ranks | 0.99 | 1.18 | 0.94 | 1.09 | 0.82 | 1.20 | 1.21 | 1.19 | 1.01 | 1.11 | 1.34 |
+
+- The three CPPWRF builds run **the same statements**; only FMA contraction (GPU) and the libm (CUDA's / glibc's,
+  and on the CPU glibc's FMA or SSE variants: the CPU FP32 run on the workstation's Intel CPU gives ACM7 T 1.10,
+  QVAPOR 1.19, U 1.07 at 1 h, on the G4's AMD CPU 1.67 / 1.46 / 1.42) differ. ACM7's T ranges 1.10 to 2.01 over these
+  five realizations (L4 and RTX 2060 FP32: 2.01, identical to FP1's L4 value 1.99), its QCLOUD 0.98 to 2.26, MORR's
+  QRAIN 1.02 to 2.33, SKV's PBLH 1.23 to 1.58. A code defect would show in all of them; these values are draws.
+- WRF real*4's MPI layouts are **not** independent draws: they agree with one another within 9 % in T at 1 h (14 %
+  at most in the 3-D state) because their largest perturbation is common to all of them, the
+  single-precision start (above). R relative to one WRF real*4 run therefore measures CPPWRF's draw against one fixed
+  WRF draw.
+- Forcing the one KF decision of step 1 to real*8's branch (a temporary build, kf_force.patch in the report)
+  moves the workstation's CPU FP32 ACM7 run at 1 h from T 1.10 / QVAPOR 1.19 / QCLOUD 1.10 to 0.97 / 1.07 / 0.87:
+  the excess of a run follows such decisions.
+
+**Perturbed starts** (the E cases: U and V of wrfinput moved by one float ulp at every point, three seeds; WRF
+real*4 in one process and CPPWRF GPU FP32 each against CPPWRF FP64 = real*8 from the same perturbed start; 1 h).
+Single draws of R: ACM7 T 1.39 / 1.15 / 0.97, QVAPOR 1.68 / 1.11 / 0.73; MORR QRAIN 0.50 / 1.37 / 1.36, T 0.67 / 0.99
+/ 1.64; SKV QRAIN 1.06 / 0.78 / 2.16; P4 T 0.62 / 0.47 / 0.91. The ratio of the three-draw means (sum of the FP32
+RMSEs / sum of the real*4 RMSEs):
+
+| Case | T2 | PSFC | PBLH | T | QVAPOR | U | W | QCLOUD | QRAIN | QSNOW | QGRAUP | median |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| P4 | 0.98 | 0.56 | 1.38 | 0.67 | 0.59 | 0.58 | 0.63 | 0.73 | 0.97 | 1.03 | 1.02 | 0.73 |
+| ACM7 | 1.01 | 1.12 | 2.14 | 1.14 | 1.08 | 1.15 | 1.64 | 1.01 | 0.99 | 1.27 | 1.26 | 1.14 |
+| MORR | 0.97 | 0.91 | 1.06 | 1.07 | 1.30 | 0.78 | 0.93 | 1.04 | 0.92 | 0.60 | 0.84 | 0.93 |
+| SKV | 1.22 | 1.03 | 1.30 | 1.13 | 1.32 | 1.10 | 0.99 | 0.96 | 1.16 | 0.78 | 0.93 | 1.10 |
+
+With independent draws on both sides ACM7, MORR and SKV are at a median R of 0.93 to 1.14 at 1 h (P4 0.73); single
+fields above 1.2 come from one draw each (ACM7 PBLH 6.0 and W 2.5 in seed 3), within the scatter of three draws.
+
+**24 h** (median R over the fields; in brackets the largest):
+
+| Case | run | 1 h | 6 h | 12 h | 24 h |
+|---|---|---|---|---|---|
+| ACM7 | GPU FP32 | 1.13 (QCLOUD 2.25) | 1.09 (RAIN1H 1.30) | 1.04 (QSNOW 1.20) | 1.15 (HFX 1.42) |
+| ACM7 | GPU FP32, no FMA | 1.02 (QVAPOR 1.88) | 1.02 (RAIN1H 1.10) | 0.98 (QSNOW 1.19) | 1.01 (PSFC 1.20) |
+| ACM7 | WRF real*8, 8 ranks | 0.81 (QRAIN 1.32) | 0.93 (QGRAUP 1.27) | 0.94 (QSNOW 1.22) | 0.99 (HFX 1.18) |
+| MORR | GPU FP32 | 0.95 (QGRAUP 3.61) | 0.98 (QRAIN 1.55) | 0.89 (PBLH 1.01) | 0.81 (QGRAUP 1.02) |
+| MORR | GPU FP32, no FMA | 0.84 (QRAIN 2.05) | 0.97 (QRAIN 1.54) | 0.88 (PBLH 1.01) | 0.91 (T 1.00) |
+| MORR | WRF real*8, 8 ranks | 0.27 (QCLOUD 1.33) | 0.62 (QRAIN 1.26) | 0.77 (QGRAUP 1.00) | 0.79 (HFX 0.85) |
+| SKV | GPU FP32 | 0.99 (QGRAUP 1.52) | 1.01 (QGRAUP 1.07) | 1.02 (QSNOW 1.21) | 0.99 (PSFC 1.06) |
+| SKV | GPU FP32, no FMA | 1.06 (QSNOW 1.48) | 1.04 (QGRAUP 1.33) | 1.01 (PSFC 1.10) | 1.00 (U 1.06) |
+| SKV | WRF real*8, 8 ranks | 0.45 (QCLOUD 1.16) | 0.89 (QRAIN 1.12) | 0.95 (QCLOUD 1.01) | 1.02 (RAIN1H 1.05) |
+
+(WRF real*4 here with 8 MPI ranks; R of the 24 h runs at 1 h differs from the 1 h table, whose real*4 run is one
+process.)
+
+By 6 h every configuration is at R 0.8 to 1.1 (median), at 24 h 0.81 to 1.15, as P4 and N3 in FP1; a real*8 run with
+perturbed last bits (r8n) is at 0.79 to 1.02.
+
+### Verdict on the outliers
+
+For each outlier the answer is (b), a legitimate rounding difference of the same algorithm on a sensitive
+configuration; no FP32 port defect was found, so no FP32 byte changes:
+
+- **ACM7** (T 1.99, QVAPOR 2.32 at 1 h in FP1): seeded at step 1 by a Kain-Fritsch deep / shallow decision that is a
+  1-ulp tie (`TU95 > TV0`), then grown by ACM2's non-local mixing (PBL heights jump by a level in as many columns in
+  WRF real*4 as in CPPWRF). Outside that column CPPWRF's error after the first steps is at or below real*4's; ACM2
+  and Pleim-Xiu introduce no excess of their own. Five realizations of the same code give T 1.10 to 2.01.
+- **MORR** (QRAIN 2.33, graupel / hail up to 42): the same KF column at step 1 (Morrison takes KF's rain, snow and ice
+  with their number concentrations) and later KF columns; the hydrometeor RMSEs at 1 h are those of a handful of
+  columns (2e-9 kg/kg for graupel). Realizations: QRAIN 1.02 to 2.33, QGRAUP 0.22 to 1.11 (7.9 on FP1's L4).
+- **SKV** (median 1.16): a KF column triggering at step 4 in CPPWRF FP32 and not in real*8; the skin SST over water
+  is exactly as far from real*8 as in WRF real*4.
+- Two structural differences from WRF real*4 make CPPWRF FP32 **more** accurate, never less: the start (base state
+  and pressure in double precision) and the loops gfortran vectorises with libmvec's float functions (CPPWRF calls
+  glibc's scalar functions there, at least as accurate). FMA contraction on the GPU (KF, the dycore and most schemes;
+  the physics drivers, Thompson, Morrison and RRTMG are compiled without it) is not a cause either: GPU FP32 without
+  FMA is one more draw (ACM7 T 1.40, MORR QRAIN 2.00 at 1 h, 24 h median 1.01).
+- Nothing to fix: making the FP32 start single-precision as in WRF real*4 would correlate CPPWRF's error with WRF
+  real*4's (and lower R) by making CPPWRF less accurate; R > 1 in the first hour of these configurations is the
+  spread of single-precision draws.
+
 ## Verdict
 
 - **FP64 is WRF real*8** at tolerance 0 in all studied configurations (suite cuda_dp cases and 1221 compared
@@ -268,10 +423,11 @@ perturbed last bits.)
   the chaotic spread that any last-bit perturbation reaches, even one in double precision (24 h / 72 h R 0.8 to
   1.1; WRF real*4's own process layout moves the same numbers by up to 10 %).
 - **In the first hours** FP32 is as close to real*8 as WRF real*4 or closer for KF / WSM6 / YSU / Noah / RRTMG, Thompson,
-  MYJ, the nest, the Arctic, the tropics and the large domain. It is further than WRF real*4 (R 1.2 to 2.3 in the
-  3-D state and hydrometeors at 1 h) with ACM2 + Pleim-Xiu (ACM7), in Morrison's graupel / hail, and slightly
-  (R ~1.2) with the skin SST. Whether this persists beyond a few hours in those configurations was not measured
-  (the long runs use the P4 physics). Candidate causes and checks are listed under "Results: 1 h".
+  MYJ, the nest, the Arctic, the tropics and the large domain. With ACM2 + Pleim-Xiu (ACM7), Morrison's hydrometeors
+  and the skin SST single runs reach R 1.2 to 2.3 at 1 h; "Root causes of the first-hour outliers" traces each to
+  single Kain-Fritsch decisions that are ties at the last bit (and grow through ACM2's mixing), finds no FP32 port
+  defect, and shows R ranging 1.1 to 2.0 (ACM7 T) over five builds of the same code. By 6 h these configurations are
+  at R 0.8 to 1.1 like the others (24 h median 0.81 to 1.15).
 
 ## When to use FP32 and when FP64
 
@@ -279,5 +435,6 @@ perturbed last bits.)
   WRF runs, restarts that must continue a WRF run exactly.
 - GPU FP32 for production forecasts and ensembles on GPUs with slow FP64: on a G4 it steps 1.7 to 4.3 times faster
   than GPU FP64 (docs/PERF.md). Beyond the first hours its distance from WRF real*8 is that of WRF real*4, the build
-  most WRF users run. For studies of the first hours with ACM2 / Pleim-Xiu, Morrison or the skin SST, prefer FP64
-  (or compare with it): there FP32 starts up to twice as far from real*8 as WRF real*4.
+  most WRF users run. In the first hour single FP32 runs with ACM2 / Pleim-Xiu, Morrison or the skin SST can be up to
+  twice as far from real*8 as one WRF real*4 run, as a draw of the rounding, not a defect; use FP64 (or an ensemble)
+  where that first hour matters.
