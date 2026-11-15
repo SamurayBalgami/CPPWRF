@@ -124,6 +124,10 @@ struct LwColumnIn {
   SD p8w, t8w, p3d, pi3d, dz8w, t3d, rho3d, qv3d, qc3d, qi3d, qs3d, cldfra3d, o33d;
   SD re_cloud, re_ice, re_snow;  // p == nullptr: has_req* = 0
   bool has_qc, has_qi, has_qs;   // F_QC, F_QI, F_QS (absent species are zero)
+  // RRTMG_LWRAD / RRTMG_SWRAD "for MP option 3": without F_QI and warm_rain, below 273.15 K the cloud water is
+  // ice and the rain snow (QI1D = QC1D, QS1D = QR1D, QC1D = 0)
+  SD qr3d;
+  bool split3;
   SD o3_out;  // o3input != 2, p != nullptr: receives the ozone vmr of the model levels (WRF's O33D = O31D)
 };
 
@@ -221,6 +225,11 @@ CPPWRF_FORCEINLINE void rrtmg_lw_prep(const RrtmgLwCallConfig& c, const LwColumn
 
     // hydrometeors (max(0, q)) and effective radii
     double qc1 = std::max(0.0, qc_of(k)), qi1 = std::max(0.0, qi_of(k)), qs1 = std::max(0.0, qs_of(k));
+    if (in.split3 && t3 < 273.15) {  // module_ra_rrtmg_lw.F "For MP option 3" (WSM3)
+      qi1 = qc1;
+      qs1 = std::max(0.0, in.qr3d[k]);
+      qc1 = 0.;
+    }
     const double cf3 = in.cldfra3d[k];
     double recloud1d = 5.0, reice1d = 10.0, resnow1d = 10.0;
     if (hrc) {

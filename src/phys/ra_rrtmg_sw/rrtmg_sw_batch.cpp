@@ -50,6 +50,8 @@ struct KSwPrep {
     x.qc3d = x.has_qc ? col_view(in.qc, col, nc) : SD{nullptr, 0};
     x.qi3d = x.has_qi ? col_view(in.qi, col, nc) : SD{nullptr, 0};
     x.qs3d = x.has_qs ? col_view(in.qs, col, nc) : SD{nullptr, 0};
+    x.split3 = in.split3;
+    x.qr3d = in.split3 ? col_view(in.qr, col, nc) : SD{nullptr, 0};
     x.re_cloud = in.re_cloud ? col_view(in.re_cloud, col, nc) : SD{nullptr, 0};
     x.re_ice = in.re_ice ? col_view(in.re_ice, col, nc) : SD{nullptr, 0};
     x.re_snow = in.re_snow ? col_view(in.re_snow, col, nc) : SD{nullptr, 0};

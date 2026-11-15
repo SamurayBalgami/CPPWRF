@@ -22,6 +22,8 @@ struct LwBatchInput {
   const double *p3d, *pi3d, *t3d, *qv, *cldfra, *o3;            // [nz*ncol]
   const double *qc, *qi, *qs;                                   // nullptr: species absent (F_Q* false)
   const double *re_cloud, *re_ice, *re_snow;                    // nullptr: has_req* = 0
+  const double* qr = nullptr;  // split3: rain (WSM3's rain / snow), [nz*ncol]
+  bool split3 = false;         // RRTMG's "MP option 3": no F_QI, not warm_rain (LwColumnIn::split3)
 };
 
 struct LwBatchOutput {

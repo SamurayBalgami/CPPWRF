@@ -476,7 +476,9 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
     add3(in.qc, q.qc); add3(in.qi, q.qi); add3(in.qs, q.qs);
     add3(in.re_cloud, q.rec); add3(in.re_ice, q.rei); add3(in.re_snow, q.res);
     add3(in.dz8w, q.dz);
-    if (dudhia || rrtm) add3(in.qr, q.qr);
+    // RRTMG's "MP option 3" (WSM3: qc without qi): below 273.15 K the cloud water is ice and the rain snow
+    const bool split3 = in.qc && !in.qi && !o_.warm_rain;
+    if (dudhia || rrtm || split3) add3(in.qr, q.qr);
     if (dudhia) {
       add3(in.qg, q.qg);
       ks.ht = in.ht->view();
@@ -530,6 +532,8 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
     li.qc = in.qc ? q.qc : nullptr; li.qi = in.qi ? q.qi : nullptr; li.qs = in.qs ? q.qs : nullptr;
     li.re_cloud = in.re_cloud ? q.rec : nullptr; li.re_ice = in.re_ice ? q.rei : nullptr;
     li.re_snow = in.re_snow ? q.res : nullptr;
+    li.split3 = split3; li.qr = in.qr ? q.qr : nullptr;
+    if (!in.qr) li.split3 = false;
     LwBatchOutput lo{q.rlw, q.glw, q.olr, q.lwd, q.rlwc, q.lwcf};
     // O3RAD from RRTMG_LWRAD (o33d is not read); RRTM leaves it to the driver's CAM ozone (o3input = 2)
     const bool o3lw = !rrtm && o_.o3input != 2 && out.o3rad != nullptr;
@@ -578,6 +582,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
       si.ncol = ncol; si.col_begin = li.col_begin; si.col_end = li.col_end; si.coszen = q.cz; si.albedo = q.albedo; si.xland = q.xland; si.xice = q.xice; si.snow = q.snow;
       si.p8w = q.p8w; si.t8w = q.t8w; si.p3d = q.p3d; si.pi3d = q.pi3d; si.t3d = q.t3d; si.qv = q.qv; si.cldfra = q.cf;
       si.o3 = q.o3; si.xlat = q.xlat_d; si.dz8w = q.dz; si.qc = li.qc; si.qi = li.qi; si.qs = li.qs;
+      si.split3 = li.split3; si.qr = li.qr;
       si.re_cloud = li.re_cloud; si.re_ice = li.re_ice; si.re_snow = li.re_snow;
       q.swb->run(rrtmg_sw_call_config(nz, sc), si,
                  SwBatchOutput{q.rsw, q.gsw, q.swd, q.rswc, q.swcf, out.swsfc[0] ? q.sws : nullptr});
@@ -621,7 +626,7 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
   if (in.qi) in.qi->download(qi);
   if (in.qs) in.qs->download(qs);
   const bool dudhia = o_.ra_sw_physics == 1, rrtm = o_.ra_lw_physics == 1;
-  if ((dudhia || rrtm) && in.qr) in.qr->download(qr);
+  if ((dudhia || rrtm || (in.qc && !in.qi && !o_.warm_rain)) && in.qr) in.qr->download(qr);
   if (dudhia) {
     if (in.qg) in.qg->download(qg);
     in.ht->download(ht);
@@ -677,7 +682,21 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
     auto sws = std::make_unique<RrtmgSwWorkspace>();
     std::vector<double> cp8w(nz + 1), ct8w(nz + 1), cp(nz), cpi(nz), cdz(nz), ct(nz), crho(nz), cqv(nz),
         zero(nz, 0.0), ccf(nz, 0.0), co3(nz, 0.0), rlw(nz), rlwc(nz), rsw(nz), rswc(nz), cqc(nz, 0.0),
-        cqi(nz, 0.0), cqs(nz, 0.0), crec(nz), crei(nz), cres(nz), cqr(nz, 0.0), cqg(nz, 0.0);
+        cqi(nz, 0.0), cqs(nz, 0.0), crec(nz), crei(nz), cres(nz), cqr(nz, 0.0), cqg(nz, 0.0),
+        sqc(nz), sqi(nz), sqs(nz);
+    // RRTMG_LWRAD / RRTMG_SWRAD "for MP option 3" (no F_QI, not warm_rain): QI1D = QC1D, QS1D = QR1D, QC1D = 0
+    // below 273.15 K, on copies (cqc stays as cal_cldfra1 and Dudhia see it)
+    const bool split3 = in.qc && !in.qi && !o_.warm_rain;
+    auto split_mp3 = [&] {
+      for (int k = 0; k < nz; ++k) {
+        sqc[k] = cqc[k]; sqi[k] = cqi[k]; sqs[k] = cqs[k];
+        if (split3 && ct[k] < 273.15) {
+          sqi[k] = std::max(0.0, cqc[k]);
+          sqs[k] = std::max(0.0, cqr[k]);
+          sqc[k] = 0.0;
+        }
+      }
+    };
 #pragma omp for schedule(dynamic, 16)
     for (int oc = 0; oc < own_cols; ++oc) {
       const int i = own.i0 + oc % own_nx, j = own.j0 + oc / own_nx, c = i + nx * j;
@@ -764,9 +783,10 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
           std::fprintf(stderr, "%s\n", rmsg.c_str());
         }
       } else {
+        split_mp3();
         rrtmg_lw_column(nz, lc, *p_->lw, tsk[q2], ems[q2], xland[q2], xice[q2], snow[q2], p_->xlat[c], cp8w.data(),
-                        ct8w.data(), cp.data(), cpi.data(), cdz.data(), ct.data(), crho.data(), cqv.data(), cqc.data(),
-                        zero.data(), cqi.data(), cqs.data(), zero.data(), ccf.data(), co3.data(), g_lw, olr, lwcf, a1,
+                        ct8w.data(), cp.data(), cpi.data(), cdz.data(), ct.data(), crho.data(), cqv.data(), sqc.data(),
+                        zero.data(), sqi.data(), sqs.data(), zero.data(), ccf.data(), co3.data(), g_lw, olr, lwcf, a1,
                         a2, a3, a4, a5, a6, a7, a8, rlw.data(), rlwc.data(), *lws, prc, pri, prs,
                         o_.o3input != 2 && diag ? co3.data() : nullptr);
       }
@@ -794,9 +814,10 @@ bool RadiationDriver::run(long itimestep, double xtime, double julian, int yr, c
         std::fill(rswc.begin(), rswc.end(), 0.0);
       } else if (cz > 0.0) {
         SwColumnOut so{};
+        split_mp3();
         rrtmg_sw_column(nz, sc, *p_->sw, cz, alb[q2], xland[q2], xice[q2], snow[q2], p_->xlat[c], cp8w.data(),
-                        ct8w.data(), cp.data(), cpi.data(), cdz.data(), ct.data(), crho.data(), cqv.data(), cqc.data(),
-                        zero.data(), cqi.data(), cqs.data(), zero.data(), ccf.data(), co3.data(), so, rsw.data(),
+                        ct8w.data(), cp.data(), cpi.data(), cdz.data(), ct.data(), crho.data(), cqv.data(), sqc.data(),
+                        zero.data(), sqi.data(), sqs.data(), zero.data(), ccf.data(), co3.data(), so, rsw.data(),
                         rswc.data(), *sws, prc, pri, prs);
         g_sw = so.gsw;
         if (diag) {

@@ -102,6 +102,10 @@ struct SwColumnIn {
   SD p8w, t8w, p3d, pi3d, dz8w, t3d, qv3d, qc3d, qi3d, qs3d, cldfra3d, o33d;
   SD re_cloud, re_ice, re_snow;  // p == nullptr: has_req* = 0
   bool has_qc, has_qi, has_qs;
+  // RRTMG_LWRAD / RRTMG_SWRAD "for MP option 3": without F_QI and warm_rain, below 273.15 K the cloud water is
+  // ice and the rain snow (QI1D = QC1D, QS1D = QR1D, QC1D = 0)
+  SD qr3d;
+  bool split3;
 };
 
 // CAM relcalc (module_ra_rrtmg_sw.F) for one layer
@@ -222,6 +226,11 @@ CPPWRF_HD inline void rrtmg_sw_prep(const RrtmgSwCallConfig& c, const SwColumnIn
     const double pdel = v.pz[k] - v.pz[k + 1];
     const double cldf = in.cldfra3d[k];
     double qc1 = std::max(0., qc_of(k)), qi1 = std::max(0., qi_of(k)), qs1 = std::max(0., qs_of(k));
+    if (in.split3 && in.t3d[k] < 273.15) {  // module_ra_rrtmg_sw.F "For MP option 3" (WSM3)
+      qi1 = qc1;
+      qs1 = std::max(0., in.qr3d[k]);
+      qc1 = 0.;
+    }
     double recloud1d = 5.0, reice1d = 10., resnow1d = 10.0;
     if (hrc) {
       recloud1d = std::max(2.5, in.re_cloud[k] * 1.E6);
