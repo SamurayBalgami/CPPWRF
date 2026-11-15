@@ -75,7 +75,13 @@ for _n, _b, _s in (("P4", "run_FP2_P4_24h_r8", []), ("ACM7", "run_FP2_P4_24h_r8"
     CASES[_n + "S"] = (_b, 1, 10, _s, _R4E)
     if _n != "P4":
         CASES[_n + "L"] = (_b, 24, 60, _s, _R4L)
-ORDER = ["N3L", "P4L", "ACM7L", "MORRL", "SKVL", "L", "N3", "P4", "P6", "P9", "V1", "T1", "SKV", "MORR", "ACM7",
+# "E1".."E3": 1 h from a perturbed start (U and V of wrfinput moved by one float ulp at every point, seeds 1-3; the
+# base dirs run_FP2_*_e<k>_r8 of fp2_data.tar), WRF real*4 in one process, CPPWRF GPU FP32 and FP64: independent
+# single-precision realizations of each configuration (the MPI layouts of WRF real*4 share its single-precision start)
+for _n, _b, _s in (("P4", "P4", []), ("ACM7", "P4", _ACM7), ("MORR", "P4", _MORR), ("SKV", "V1", _SKV)):
+    for _k in (1, 2, 3):
+        CASES[f"{_n}E{_k}"] = (f"run_FP2_{_b}_e{_k}_r8", 1, 10, _s, R4)
+ORDER = [f"{n}E{k}" for n in ("SKV", "ACM7", "MORR", "P4") for k in (1, 2, 3)] + ["N3L", "P4L", "ACM7L", "MORRL", "SKVL", "L", "N3", "P4", "P6", "P9", "V1", "T1", "SKV", "MORR", "ACM7",
          "SKVS", "ACM7S", "MORRS", "P4S"]
 # CPPWRF runs per case: (tag, build); FP2's cases add GPU FP32 without FMA (cuda_nofma) and, for 1 h, CPU FP32 (cpu)
 CPP = {c: [("fp32", "cuda"), ("fp64", "cuda_dp")] for c in CASES}
