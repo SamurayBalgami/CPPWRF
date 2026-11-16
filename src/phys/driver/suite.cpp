@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "phys/ra_rrtmg_common/rrtmg_real.hpp"
 #include "phys/driver/suite.hpp"
 
 #include "core/vm_dump.hpp"
@@ -675,7 +676,8 @@ IntField2* PhysicsSuite::bucket_int(const std::string& name) {
 
 void PhysicsSuite::init_radiation(const std::vector<double>& xlat, const std::vector<double>& xlong) {
   if (!radiation_on()) return;
-  rad_ = std::make_unique<RadiationDriver>(g_, o_.rad, xlat, xlong);
+  rad_ = std::make_unique<RadiationDriver>(g_, o_.rad, std::vector<::cppwrf::phys::rr>(xlat.begin(), xlat.end()),
+                                             std::vector<::cppwrf::phys::rr>(xlong.begin(), xlong.end()));
 }
 
 namespace {

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
+#include "phys/ra_rrtmg_common/rrtmg_real.hpp"
 
 #include "core/backend.hpp"
 #include "phys/ra_rrtmg_common/strided.hpp"
@@ -36,37 +37,37 @@ CPPWRF_FORCEINLINE void taumol_sw(
     SD sfluxzen,         // (112)
     const RrtmgSwTables& CPPWRF_RESTRICT tables
 ) {
-  constexpr double oneminus = 1.0 - 1.0e-6;
+  constexpr rr oneminus = rr(1.0) - rr(1.0e-6);
 
   // WRF zeroes sfluxzen first (module_ra_rrtmg_sw.F taumol_sw): with laytrop = nlayers (model top at more
   // than ~191 hPa) bands 16, 17, 27, 28 and 29 never reach their laysolfr and keep 0
-  for (int ig = 0; ig < 112; ++ig) sfluxzen[ig] = 0.0;
+  for (int ig = 0; ig < 112; ++ig) sfluxzen[ig] = rr(0.0);
 
   // Band 16 (2600-3250 cm-1): ng16 = 6, offset = 0
   {
     const auto& b = tables.b16;
     for (int lay = 0; lay < laytrop; ++lay) {
-      double speccomb = colh2o[lay] + b.strrat1 * colch4[lay];
-      double specparm = colh2o[lay] / speccomb;
+      rr speccomb = colh2o[lay] + b.strrat1 * colch4[lay];
+      rr specparm = colh2o[lay] / speccomb;
       if (specparm >= oneminus) specparm = oneminus;
-      double specmult = 8.0 * specparm;
+      rr specmult = rr(8.0) * specparm;
       int js = 1 + static_cast<int>(specmult);
-      double fs = specmult - static_cast<double>(js - 1);
+      rr fs = specmult - static_cast<rr>(js - 1);
 
-      double fac000 = (1.0 - fs) * fac00[lay];
-      double fac010 = (1.0 - fs) * fac10[lay];
-      double fac100 = fs * fac00[lay];
-      double fac110 = fs * fac10[lay];
-      double fac001 = (1.0 - fs) * fac01[lay];
-      double fac011 = (1.0 - fs) * fac11[lay];
-      double fac101 = fs * fac01[lay];
-      double fac111 = fs * fac11[lay];
+      rr fac000 = (rr(1.0) - fs) * fac00[lay];
+      rr fac010 = (rr(1.0) - fs) * fac10[lay];
+      rr fac100 = fs * fac00[lay];
+      rr fac110 = fs * fac10[lay];
+      rr fac001 = (rr(1.0) - fs) * fac01[lay];
+      rr fac011 = (rr(1.0) - fs) * fac11[lay];
+      rr fac101 = fs * fac01[lay];
+      rr fac111 = fs * fac11[lay];
 
       int ind0 = ((jp[lay] - 1) * 5 + (jt[lay] - 1)) * 9 + js;
       int ind1 = (jp[lay] * 5 + (jt1[lay] - 1)) * 9 + js;
       int inds = indself[lay];
       int indf = indfor[lay];
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 6; ++ig) {
         taug[lay][ig - 1] = speccomb * (
@@ -92,7 +93,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
       if (jp[lay - 1] < b.layreffr && jp[lay] >= b.layreffr) laysolfr = lay;
       int ind0 = ((jp[lay] - 13) * 5 + (jt[lay] - 1)) * 1 + 1;
       int ind1 = ((jp[lay] - 12) * 5 + (jt1[lay] - 1)) * 1 + 1;
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 6; ++ig) {
         taug[lay][ig - 1] = colch4[lay] * (
@@ -111,27 +112,27 @@ CPPWRF_FORCEINLINE void taumol_sw(
     const auto& b = tables.b17;
     int offset = 6;
     for (int lay = 0; lay < laytrop; ++lay) {
-      double speccomb = colh2o[lay] + b.strrat * colco2[lay];
-      double specparm = colh2o[lay] / speccomb;
+      rr speccomb = colh2o[lay] + b.strrat * colco2[lay];
+      rr specparm = colh2o[lay] / speccomb;
       if (specparm >= oneminus) specparm = oneminus;
-      double specmult = 8.0 * specparm;
+      rr specmult = rr(8.0) * specparm;
       int js = 1 + static_cast<int>(specmult);
-      double fs = specmult - static_cast<double>(js - 1);
+      rr fs = specmult - static_cast<rr>(js - 1);
 
-      double fac000 = (1.0 - fs) * fac00[lay];
-      double fac010 = (1.0 - fs) * fac10[lay];
-      double fac100 = fs * fac00[lay];
-      double fac110 = fs * fac10[lay];
-      double fac001 = (1.0 - fs) * fac01[lay];
-      double fac011 = (1.0 - fs) * fac11[lay];
-      double fac101 = fs * fac01[lay];
-      double fac111 = fs * fac11[lay];
+      rr fac000 = (rr(1.0) - fs) * fac00[lay];
+      rr fac010 = (rr(1.0) - fs) * fac10[lay];
+      rr fac100 = fs * fac00[lay];
+      rr fac110 = fs * fac10[lay];
+      rr fac001 = (rr(1.0) - fs) * fac01[lay];
+      rr fac011 = (rr(1.0) - fs) * fac11[lay];
+      rr fac101 = fs * fac01[lay];
+      rr fac111 = fs * fac11[lay];
 
       int ind0 = ((jp[lay] - 1) * 5 + (jt[lay] - 1)) * 9 + js;
       int ind1 = (jp[lay] * 5 + (jt1[lay] - 1)) * 9 + js;
       int inds = indself[lay];
       int indf = indfor[lay];
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 12; ++ig) {
         taug[lay][offset + ig - 1] = speccomb * (
@@ -155,26 +156,26 @@ CPPWRF_FORCEINLINE void taumol_sw(
     int laysolfr = nlayers - 1;
     for (int lay = laytrop; lay < nlayers; ++lay) {
       if (jp[lay - 1] < b.layreffr && jp[lay] >= b.layreffr) laysolfr = lay;
-      double speccomb = colh2o[lay] + b.strrat * colco2[lay];
-      double specparm = colh2o[lay] / speccomb;
+      rr speccomb = colh2o[lay] + b.strrat * colco2[lay];
+      rr specparm = colh2o[lay] / speccomb;
       if (specparm >= oneminus) specparm = oneminus;
-      double specmult = 4.0 * specparm;
+      rr specmult = rr(4.0) * specparm;
       int js = 1 + static_cast<int>(specmult);
-      double fs = specmult - static_cast<double>(js - 1);
+      rr fs = specmult - static_cast<rr>(js - 1);
 
-      double fac000 = (1.0 - fs) * fac00[lay];
-      double fac010 = (1.0 - fs) * fac10[lay];
-      double fac100 = fs * fac00[lay];
-      double fac110 = fs * fac10[lay];
-      double fac001 = (1.0 - fs) * fac01[lay];
-      double fac011 = (1.0 - fs) * fac11[lay];
-      double fac101 = fs * fac01[lay];
-      double fac111 = fs * fac11[lay];
+      rr fac000 = (rr(1.0) - fs) * fac00[lay];
+      rr fac010 = (rr(1.0) - fs) * fac10[lay];
+      rr fac100 = fs * fac00[lay];
+      rr fac110 = fs * fac10[lay];
+      rr fac001 = (rr(1.0) - fs) * fac01[lay];
+      rr fac011 = (rr(1.0) - fs) * fac11[lay];
+      rr fac101 = fs * fac01[lay];
+      rr fac111 = fs * fac11[lay];
 
       int ind0 = ((jp[lay] - 13) * 5 + (jt[lay] - 1)) * 5 + js;
       int ind1 = ((jp[lay] - 12) * 5 + (jt1[lay] - 1)) * 5 + js;
       int indf = indfor[lay];
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 12; ++ig) {
         taug[lay][offset + ig - 1] = speccomb * (
@@ -204,27 +205,27 @@ CPPWRF_FORCEINLINE void taumol_sw(
     int laysolfr = laytrop - 1;
     for (int lay = 0; lay < laytrop; ++lay) {
       if (jp[lay] < b.layreffr && jp[lay + 1] >= b.layreffr) laysolfr = std::min(lay + 1, laytrop - 1);
-      double speccomb = colh2o[lay] + b.strrat * colch4[lay];
-      double specparm = colh2o[lay] / speccomb;
+      rr speccomb = colh2o[lay] + b.strrat * colch4[lay];
+      rr specparm = colh2o[lay] / speccomb;
       if (specparm >= oneminus) specparm = oneminus;
-      double specmult = 8.0 * specparm;
+      rr specmult = rr(8.0) * specparm;
       int js = 1 + static_cast<int>(specmult);
-      double fs = specmult - static_cast<double>(js - 1);
+      rr fs = specmult - static_cast<rr>(js - 1);
 
-      double fac000 = (1.0 - fs) * fac00[lay];
-      double fac010 = (1.0 - fs) * fac10[lay];
-      double fac100 = fs * fac00[lay];
-      double fac110 = fs * fac10[lay];
-      double fac001 = (1.0 - fs) * fac01[lay];
-      double fac011 = (1.0 - fs) * fac11[lay];
-      double fac101 = fs * fac01[lay];
-      double fac111 = fs * fac11[lay];
+      rr fac000 = (rr(1.0) - fs) * fac00[lay];
+      rr fac010 = (rr(1.0) - fs) * fac10[lay];
+      rr fac100 = fs * fac00[lay];
+      rr fac110 = fs * fac10[lay];
+      rr fac001 = (rr(1.0) - fs) * fac01[lay];
+      rr fac011 = (rr(1.0) - fs) * fac11[lay];
+      rr fac101 = fs * fac01[lay];
+      rr fac111 = fs * fac11[lay];
 
       int ind0 = ((jp[lay] - 1) * 5 + (jt[lay] - 1)) * 9 + js;
       int ind1 = (jp[lay] * 5 + (jt1[lay] - 1)) * 9 + js;
       int inds = indself[lay];
       int indf = indfor[lay];
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 8; ++ig) {
         taug[lay][offset + ig - 1] = speccomb * (
@@ -252,7 +253,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
     for (int lay = laytrop; lay < nlayers; ++lay) {
       int ind0 = ((jp[lay] - 13) * 5 + (jt[lay] - 1)) * 1 + 1;
       int ind1 = ((jp[lay] - 12) * 5 + (jt1[lay] - 1)) * 1 + 1;
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 8; ++ig) {
         taug[lay][offset + ig - 1] = colch4[lay] * (
@@ -272,27 +273,27 @@ CPPWRF_FORCEINLINE void taumol_sw(
     int laysolfr = laytrop - 1;
     for (int lay = 0; lay < laytrop; ++lay) {
       if (jp[lay] < b.layreffr && jp[lay + 1] >= b.layreffr) laysolfr = std::min(lay + 1, laytrop - 1);
-      double speccomb = colh2o[lay] + b.strrat * colco2[lay];
-      double specparm = colh2o[lay] / speccomb;
+      rr speccomb = colh2o[lay] + b.strrat * colco2[lay];
+      rr specparm = colh2o[lay] / speccomb;
       if (specparm >= oneminus) specparm = oneminus;
-      double specmult = 8.0 * specparm;
+      rr specmult = rr(8.0) * specparm;
       int js = 1 + static_cast<int>(specmult);
-      double fs = specmult - static_cast<double>(js - 1);
+      rr fs = specmult - static_cast<rr>(js - 1);
 
-      double fac000 = (1.0 - fs) * fac00[lay];
-      double fac010 = (1.0 - fs) * fac10[lay];
-      double fac100 = fs * fac00[lay];
-      double fac110 = fs * fac10[lay];
-      double fac001 = (1.0 - fs) * fac01[lay];
-      double fac011 = (1.0 - fs) * fac11[lay];
-      double fac101 = fs * fac01[lay];
-      double fac111 = fs * fac11[lay];
+      rr fac000 = (rr(1.0) - fs) * fac00[lay];
+      rr fac010 = (rr(1.0) - fs) * fac10[lay];
+      rr fac100 = fs * fac00[lay];
+      rr fac110 = fs * fac10[lay];
+      rr fac001 = (rr(1.0) - fs) * fac01[lay];
+      rr fac011 = (rr(1.0) - fs) * fac11[lay];
+      rr fac101 = fs * fac01[lay];
+      rr fac111 = fs * fac11[lay];
 
       int ind0 = ((jp[lay] - 1) * 5 + (jt[lay] - 1)) * 9 + js;
       int ind1 = (jp[lay] * 5 + (jt1[lay] - 1)) * 9 + js;
       int inds = indself[lay];
       int indf = indfor[lay];
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 8; ++ig) {
         taug[lay][offset + ig - 1] = speccomb * (
@@ -320,7 +321,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
     for (int lay = laytrop; lay < nlayers; ++lay) {
       int ind0 = ((jp[lay] - 13) * 5 + (jt[lay] - 1)) * 1 + 1;
       int ind1 = ((jp[lay] - 12) * 5 + (jt1[lay] - 1)) * 1 + 1;
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 8; ++ig) {
         taug[lay][offset + ig - 1] = colco2[lay] * (
@@ -344,7 +345,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
       int ind1 = (jp[lay] * 5 + (jt1[lay] - 1)) * 1 + 1;
       int inds = indself[lay];
       int indf = indfor[lay];
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 10; ++ig) {
         taug[lay][offset + ig - 1] = colh2o[lay] * (
@@ -366,7 +367,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
       int ind0 = ((jp[lay] - 13) * 5 + (jt[lay] - 1)) * 1 + 1;
       int ind1 = ((jp[lay] - 12) * 5 + (jt1[lay] - 1)) * 1 + 1;
       int indf = indfor[lay];
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 10; ++ig) {
         taug[lay][offset + ig - 1] = colh2o[lay] * (
@@ -389,27 +390,27 @@ CPPWRF_FORCEINLINE void taumol_sw(
     int laysolfr = laytrop - 1;
     for (int lay = 0; lay < laytrop; ++lay) {
       if (jp[lay] < b.layreffr && jp[lay + 1] >= b.layreffr) laysolfr = std::min(lay + 1, laytrop - 1);
-      double speccomb = colh2o[lay] + b.strrat * colco2[lay];
-      double specparm = colh2o[lay] / speccomb;
+      rr speccomb = colh2o[lay] + b.strrat * colco2[lay];
+      rr specparm = colh2o[lay] / speccomb;
       if (specparm >= oneminus) specparm = oneminus;
-      double specmult = 8.0 * specparm;
+      rr specmult = rr(8.0) * specparm;
       int js = 1 + static_cast<int>(specmult);
-      double fs = specmult - static_cast<double>(js - 1);
+      rr fs = specmult - static_cast<rr>(js - 1);
 
-      double fac000 = (1.0 - fs) * fac00[lay];
-      double fac010 = (1.0 - fs) * fac10[lay];
-      double fac100 = fs * fac00[lay];
-      double fac110 = fs * fac10[lay];
-      double fac001 = (1.0 - fs) * fac01[lay];
-      double fac011 = (1.0 - fs) * fac11[lay];
-      double fac101 = fs * fac01[lay];
-      double fac111 = fs * fac11[lay];
+      rr fac000 = (rr(1.0) - fs) * fac00[lay];
+      rr fac010 = (rr(1.0) - fs) * fac10[lay];
+      rr fac100 = fs * fac00[lay];
+      rr fac110 = fs * fac10[lay];
+      rr fac001 = (rr(1.0) - fs) * fac01[lay];
+      rr fac011 = (rr(1.0) - fs) * fac11[lay];
+      rr fac101 = fs * fac01[lay];
+      rr fac111 = fs * fac11[lay];
 
       int ind0 = ((jp[lay] - 1) * 5 + (jt[lay] - 1)) * 9 + js;
       int ind1 = (jp[lay] * 5 + (jt1[lay] - 1)) * 9 + js;
       int inds = indself[lay];
       int indf = indfor[lay];
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 10; ++ig) {
         taug[lay][offset + ig - 1] = speccomb * (
@@ -435,26 +436,26 @@ CPPWRF_FORCEINLINE void taumol_sw(
     }
 
     for (int lay = laytrop; lay < nlayers; ++lay) {
-      double speccomb = colh2o[lay] + b.strrat * colco2[lay];
-      double specparm = colh2o[lay] / speccomb;
+      rr speccomb = colh2o[lay] + b.strrat * colco2[lay];
+      rr specparm = colh2o[lay] / speccomb;
       if (specparm >= oneminus) specparm = oneminus;
-      double specmult = 4.0 * specparm;
+      rr specmult = rr(4.0) * specparm;
       int js = 1 + static_cast<int>(specmult);
-      double fs = specmult - static_cast<double>(js - 1);
+      rr fs = specmult - static_cast<rr>(js - 1);
 
-      double fac000 = (1.0 - fs) * fac00[lay];
-      double fac010 = (1.0 - fs) * fac10[lay];
-      double fac100 = fs * fac00[lay];
-      double fac110 = fs * fac10[lay];
-      double fac001 = (1.0 - fs) * fac01[lay];
-      double fac011 = (1.0 - fs) * fac11[lay];
-      double fac101 = fs * fac01[lay];
-      double fac111 = fs * fac11[lay];
+      rr fac000 = (rr(1.0) - fs) * fac00[lay];
+      rr fac010 = (rr(1.0) - fs) * fac10[lay];
+      rr fac100 = fs * fac00[lay];
+      rr fac110 = fs * fac10[lay];
+      rr fac001 = (rr(1.0) - fs) * fac01[lay];
+      rr fac011 = (rr(1.0) - fs) * fac11[lay];
+      rr fac101 = fs * fac01[lay];
+      rr fac111 = fs * fac11[lay];
 
       int ind0 = ((jp[lay] - 13) * 5 + (jt[lay] - 1)) * 5 + js;
       int ind1 = ((jp[lay] - 12) * 5 + (jt1[lay] - 1)) * 5 + js;
       int indf = indfor[lay];
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 10; ++ig) {
         taug[lay][offset + ig - 1] = speccomb * (
@@ -478,31 +479,31 @@ CPPWRF_FORCEINLINE void taumol_sw(
     const auto& b = tables.b22;
     int offset = 54;
     int laysolfr = laytrop - 1;
-    constexpr double o2adj = 1.6;
+    constexpr rr o2adj = rr(1.6);
     for (int lay = 0; lay < laytrop; ++lay) {
       if (jp[lay] < b.layreffr && jp[lay + 1] >= b.layreffr) laysolfr = std::min(lay + 1, laytrop - 1);
-      double o2cont = 4.35e-4 * colo2[lay] / (350.0 * 2.0);
-      double speccomb = colh2o[lay] + o2adj * b.strrat * colo2[lay];
-      double specparm = colh2o[lay] / speccomb;
+      rr o2cont = rr(4.35e-4) * colo2[lay] / (rr(350.0) * rr(2.0));
+      rr speccomb = colh2o[lay] + o2adj * b.strrat * colo2[lay];
+      rr specparm = colh2o[lay] / speccomb;
       if (specparm >= oneminus) specparm = oneminus;
-      double specmult = 8.0 * specparm;
+      rr specmult = rr(8.0) * specparm;
       int js = 1 + static_cast<int>(specmult);
-      double fs = specmult - static_cast<double>(js - 1);
+      rr fs = specmult - static_cast<rr>(js - 1);
 
-      double fac000 = (1.0 - fs) * fac00[lay];
-      double fac010 = (1.0 - fs) * fac10[lay];
-      double fac100 = fs * fac00[lay];
-      double fac110 = fs * fac10[lay];
-      double fac001 = (1.0 - fs) * fac01[lay];
-      double fac011 = (1.0 - fs) * fac11[lay];
-      double fac101 = fs * fac01[lay];
-      double fac111 = fs * fac11[lay];
+      rr fac000 = (rr(1.0) - fs) * fac00[lay];
+      rr fac010 = (rr(1.0) - fs) * fac10[lay];
+      rr fac100 = fs * fac00[lay];
+      rr fac110 = fs * fac10[lay];
+      rr fac001 = (rr(1.0) - fs) * fac01[lay];
+      rr fac011 = (rr(1.0) - fs) * fac11[lay];
+      rr fac101 = fs * fac01[lay];
+      rr fac111 = fs * fac11[lay];
 
       int ind0 = ((jp[lay] - 1) * 5 + (jt[lay] - 1)) * 9 + js;
       int ind1 = (jp[lay] * 5 + (jt1[lay] - 1)) * 9 + js;
       int inds = indself[lay];
       int indf = indfor[lay];
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 2; ++ig) {
         taug[lay][offset + ig - 1] = speccomb * (
@@ -529,10 +530,10 @@ CPPWRF_FORCEINLINE void taumol_sw(
     }
 
     for (int lay = laytrop; lay < nlayers; ++lay) {
-      double o2cont = 4.35e-4 * colo2[lay] / (350.0 * 2.0);
+      rr o2cont = rr(4.35e-4) * colo2[lay] / (rr(350.0) * rr(2.0));
       int ind0 = ((jp[lay] - 13) * 5 + (jt[lay] - 1)) * 1 + 1;
       int ind1 = ((jp[lay] - 12) * 5 + (jt1[lay] - 1)) * 1 + 1;
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 2; ++ig) {
         taug[lay][offset + ig - 1] = colo2[lay] * o2adj * (
@@ -559,7 +560,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
       int indf = indfor[lay];
 
       for (int ig = 1; ig <= 10; ++ig) {
-        double tauray = colmol[lay] * b.rayl[ig - 1];
+        rr tauray = colmol[lay] * b.rayl[ig - 1];
         taug[lay][offset + ig - 1] = colh2o[lay] * (
             b.givfac * (
             fac00[lay] * b.ka[(ig - 1) * 65 + (ind0 - 1)] +
@@ -577,7 +578,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
 
     for (int lay = laytrop; lay < nlayers; ++lay) {
       for (int ig = 1; ig <= 10; ++ig) {
-        taug[lay][offset + ig - 1] = 0.0;
+        taug[lay][offset + ig - 1] = rr(0.0);
         taur[lay][offset + ig - 1] = colmol[lay] * b.rayl[ig - 1];
       }
     }
@@ -590,21 +591,21 @@ CPPWRF_FORCEINLINE void taumol_sw(
     int laysolfr = laytrop - 1;
     for (int lay = 0; lay < laytrop; ++lay) {
       if (jp[lay] < b.layreffr && jp[lay + 1] >= b.layreffr) laysolfr = std::min(lay + 1, laytrop - 1);
-      double speccomb = colh2o[lay] + b.strrat * colo2[lay];
-      double specparm = colh2o[lay] / speccomb;
+      rr speccomb = colh2o[lay] + b.strrat * colo2[lay];
+      rr specparm = colh2o[lay] / speccomb;
       if (specparm >= oneminus) specparm = oneminus;
-      double specmult = 8.0 * specparm;
+      rr specmult = rr(8.0) * specparm;
       int js = 1 + static_cast<int>(specmult);
-      double fs = specmult - static_cast<double>(js - 1);
+      rr fs = specmult - static_cast<rr>(js - 1);
 
-      double fac000 = (1.0 - fs) * fac00[lay];
-      double fac010 = (1.0 - fs) * fac10[lay];
-      double fac100 = fs * fac00[lay];
-      double fac110 = fs * fac10[lay];
-      double fac001 = (1.0 - fs) * fac01[lay];
-      double fac011 = (1.0 - fs) * fac11[lay];
-      double fac101 = fs * fac01[lay];
-      double fac111 = fs * fac11[lay];
+      rr fac000 = (rr(1.0) - fs) * fac00[lay];
+      rr fac010 = (rr(1.0) - fs) * fac10[lay];
+      rr fac100 = fs * fac00[lay];
+      rr fac110 = fs * fac10[lay];
+      rr fac001 = (rr(1.0) - fs) * fac01[lay];
+      rr fac011 = (rr(1.0) - fs) * fac11[lay];
+      rr fac101 = fs * fac01[lay];
+      rr fac111 = fs * fac11[lay];
 
       int ind0 = ((jp[lay] - 1) * 5 + (jt[lay] - 1)) * 9 + js;
       int ind1 = (jp[lay] * 5 + (jt1[lay] - 1)) * 9 + js;
@@ -612,7 +613,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
       int indf = indfor[lay];
 
       for (int ig = 1; ig <= 8; ++ig) {
-        double tauray = colmol[lay] * (b.rayla[(js - 1) * 8 + (ig - 1)] +
+        rr tauray = colmol[lay] * (b.rayla[(js - 1) * 8 + (ig - 1)] +
             fs * (b.rayla[js * 8 + (ig - 1)] - b.rayla[(js - 1) * 8 + (ig - 1)]));
         taug[lay][offset + ig - 1] = speccomb * (
             fac000 * b.ka[(ig - 1) * 585 + (ind0 - 1)] +
@@ -642,7 +643,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
       int ind1 = ((jp[lay] - 12) * 5 + (jt1[lay] - 1)) * 1 + 1;
 
       for (int ig = 1; ig <= 8; ++ig) {
-        double tauray = colmol[lay] * b.raylb[ig - 1];
+        rr tauray = colmol[lay] * b.raylb[ig - 1];
         taug[lay][offset + ig - 1] = colo2[lay] * (
             fac00[lay] * b.kb[(ig - 1) * 235 + (ind0 - 1)] +
             fac10[lay] * b.kb[(ig - 1) * 235 + (ind0 + 1 - 1)] +
@@ -665,7 +666,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
       int ind1 = (jp[lay] * 5 + (jt1[lay] - 1)) * 1 + 1;
 
       for (int ig = 1; ig <= 6; ++ig) {
-        double tauray = colmol[lay] * b.rayl[ig - 1];
+        rr tauray = colmol[lay] * b.rayl[ig - 1];
         taug[lay][offset + ig - 1] = colh2o[lay] * (
             fac00[lay] * b.ka[(ig - 1) * 65 + (ind0 - 1)] +
             fac10[lay] * b.ka[(ig - 1) * 65 + (ind0 + 1 - 1)] +
@@ -679,7 +680,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
 
     for (int lay = laytrop; lay < nlayers; ++lay) {
       for (int ig = 1; ig <= 6; ++ig) {
-        double tauray = colmol[lay] * b.rayl[ig - 1];
+        rr tauray = colmol[lay] * b.rayl[ig - 1];
         taug[lay][offset + ig - 1] = colo3[lay] * b.abso3b[ig - 1];
         taur[lay][offset + ig - 1] = tauray;
       }
@@ -692,7 +693,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
     int offset = 80;
     for (int lay = 0; lay < nlayers; ++lay) {
       for (int ig = 1; ig <= 6; ++ig) {
-        taug[lay][offset + ig - 1] = 0.0;
+        taug[lay][offset + ig - 1] = rr(0.0);
         taur[lay][offset + ig - 1] = colmol[lay] * b.rayl[ig - 1];
       }
     }
@@ -710,7 +711,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
       int ind1 = (jp[lay] * 5 + (jt1[lay] - 1)) * 1 + 1;
 
       for (int ig = 1; ig <= 8; ++ig) {
-        double tauray = colmol[lay] * b.rayl[ig - 1];
+        rr tauray = colmol[lay] * b.rayl[ig - 1];
         taug[lay][offset + ig - 1] = colo3[lay] * (
             fac00[lay] * b.ka[(ig - 1) * 65 + (ind0 - 1)] +
             fac10[lay] * b.ka[(ig - 1) * 65 + (ind0 + 1 - 1)] +
@@ -727,7 +728,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
       int ind1 = ((jp[lay] - 12) * 5 + (jt1[lay] - 1)) * 1 + 1;
 
       for (int ig = 1; ig <= 8; ++ig) {
-        double tauray = colmol[lay] * b.rayl[ig - 1];
+        rr tauray = colmol[lay] * b.rayl[ig - 1];
         taug[lay][offset + ig - 1] = colo3[lay] * (
             fac00[lay] * b.kb[(ig - 1) * 235 + (ind0 - 1)] +
             fac10[lay] * b.kb[(ig - 1) * 235 + (ind0 + 1 - 1)] +
@@ -744,25 +745,25 @@ CPPWRF_FORCEINLINE void taumol_sw(
     const auto& b = tables.b28;
     int offset = 94;
     for (int lay = 0; lay < laytrop; ++lay) {
-      double speccomb = colo3[lay] + b.strrat * colo2[lay];
-      double specparm = colo3[lay] / speccomb;
+      rr speccomb = colo3[lay] + b.strrat * colo2[lay];
+      rr specparm = colo3[lay] / speccomb;
       if (specparm >= oneminus) specparm = oneminus;
-      double specmult = 8.0 * specparm;
+      rr specmult = rr(8.0) * specparm;
       int js = 1 + static_cast<int>(specmult);
-      double fs = specmult - static_cast<double>(js - 1);
+      rr fs = specmult - static_cast<rr>(js - 1);
 
-      double fac000 = (1.0 - fs) * fac00[lay];
-      double fac010 = (1.0 - fs) * fac10[lay];
-      double fac100 = fs * fac00[lay];
-      double fac110 = fs * fac10[lay];
-      double fac001 = (1.0 - fs) * fac01[lay];
-      double fac011 = (1.0 - fs) * fac11[lay];
-      double fac101 = fs * fac01[lay];
-      double fac111 = fs * fac11[lay];
+      rr fac000 = (rr(1.0) - fs) * fac00[lay];
+      rr fac010 = (rr(1.0) - fs) * fac10[lay];
+      rr fac100 = fs * fac00[lay];
+      rr fac110 = fs * fac10[lay];
+      rr fac001 = (rr(1.0) - fs) * fac01[lay];
+      rr fac011 = (rr(1.0) - fs) * fac11[lay];
+      rr fac101 = fs * fac01[lay];
+      rr fac111 = fs * fac11[lay];
 
       int ind0 = ((jp[lay] - 1) * 5 + (jt[lay] - 1)) * 9 + js;
       int ind1 = (jp[lay] * 5 + (jt1[lay] - 1)) * 9 + js;
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 6; ++ig) {
         taug[lay][offset + ig - 1] = speccomb * (
@@ -781,25 +782,25 @@ CPPWRF_FORCEINLINE void taumol_sw(
     int laysolfr = nlayers - 1;
     for (int lay = laytrop; lay < nlayers; ++lay) {
       if (jp[lay - 1] < b.layreffr && jp[lay] >= b.layreffr) laysolfr = lay;
-      double speccomb = colo3[lay] + b.strrat * colo2[lay];
-      double specparm = colo3[lay] / speccomb;
+      rr speccomb = colo3[lay] + b.strrat * colo2[lay];
+      rr specparm = colo3[lay] / speccomb;
       if (specparm >= oneminus) specparm = oneminus;
-      double specmult = 4.0 * specparm;
+      rr specmult = rr(4.0) * specparm;
       int js = 1 + static_cast<int>(specmult);
-      double fs = specmult - static_cast<double>(js - 1);
+      rr fs = specmult - static_cast<rr>(js - 1);
 
-      double fac000 = (1.0 - fs) * fac00[lay];
-      double fac010 = (1.0 - fs) * fac10[lay];
-      double fac100 = fs * fac00[lay];
-      double fac110 = fs * fac10[lay];
-      double fac001 = (1.0 - fs) * fac01[lay];
-      double fac011 = (1.0 - fs) * fac11[lay];
-      double fac101 = fs * fac01[lay];
-      double fac111 = fs * fac11[lay];
+      rr fac000 = (rr(1.0) - fs) * fac00[lay];
+      rr fac010 = (rr(1.0) - fs) * fac10[lay];
+      rr fac100 = fs * fac00[lay];
+      rr fac110 = fs * fac10[lay];
+      rr fac001 = (rr(1.0) - fs) * fac01[lay];
+      rr fac011 = (rr(1.0) - fs) * fac11[lay];
+      rr fac101 = fs * fac01[lay];
+      rr fac111 = fs * fac11[lay];
 
       int ind0 = ((jp[lay] - 13) * 5 + (jt[lay] - 1)) * 5 + js;
       int ind1 = ((jp[lay] - 12) * 5 + (jt1[lay] - 1)) * 5 + js;
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 6; ++ig) {
         taug[lay][offset + ig - 1] = speccomb * (
@@ -829,7 +830,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
       int ind1 = (jp[lay] * 5 + (jt1[lay] - 1)) * 1 + 1;
       int inds = indself[lay];
       int indf = indfor[lay];
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 12; ++ig) {
         taug[lay][offset + ig - 1] = colh2o[lay] * (
@@ -851,7 +852,7 @@ CPPWRF_FORCEINLINE void taumol_sw(
       if (jp[lay - 1] < b.layreffr && jp[lay] >= b.layreffr) laysolfr = lay;
       int ind0 = ((jp[lay] - 13) * 5 + (jt[lay] - 1)) * 1 + 1;
       int ind1 = ((jp[lay] - 12) * 5 + (jt1[lay] - 1)) * 1 + 1;
-      double tauray = colmol[lay] * b.rayl;
+      rr tauray = colmol[lay] * b.rayl;
 
       for (int ig = 1; ig <= 12; ++ig) {
         taug[lay][offset + ig - 1] = colco2[lay] * (

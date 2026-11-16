@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
+#include "phys/ra_rrtmg_common/rrtmg_real.hpp"
 // WRF phys/module_radiation_driver.F radiation_driver for ra_lw_physics = 4 (RRTMG) or 1 (RRTM, module_ra_rrtm.F)
 // with ra_sw_physics = 4 (RRTMG) or 1 (Dudhia, module_ra_sw.F) with o3input = 2 (CAM ozone), ghg_input = 1
 // (CAMtr_volume_mixing_ratio), aer_opt = 0, swint_opt = 0, icloud = 1, cldovrlp, idcor, cu_rad_feedback,
@@ -23,7 +24,7 @@ namespace cppwrf::phys::driver {
 
 struct RadiationOptions {
   int ra_lw_physics = 4, ra_sw_physics = 4;
-  double radt = 0;          // minutes; stepra = max(nint(radt*60/dt), 1)
+  rr radt = 0;          // minutes; stepra = max(nint(radt*60/dt), 1)
   int ra_call_offset = 0;
   int icloud = 1, cldovrlp = 2, idcor = 0, o3input = 2, ghg_input = 1, aer_opt = 0;
   // cu_rad_feedback (phy_init's icloud_cu): 1 = Grell schemes (QC_CU / QI_CU added to qc / qi), 2 = KF (CLDFRA_DP
@@ -35,11 +36,11 @@ struct RadiationOptions {
   // oznini and the ozone interpolation run on domain 1 only (module_physics_init.F, module_radiation_driver.F,
   // EM_CORE): a nest's radiation uses o3rad, which med_nest_force interpolates from the parent (Registry f=p2c)
   bool oznini = true;
-  double swrad_scat = 1;   // Dudhia: swinit's CSSCA = swrad_scat * 1.e-5
+  rr swrad_scat = 1;   // Dudhia: swinit's CSSCA = swrad_scat * 1.e-5
   bool warm_rain = false;  // mp_init: Kessler (Dudhia keeps its cloud and rain liquid without qi)
   int julyr = 0, julday = 1;  // start (wrfinput JULYR/JULDAY), gmt start hour
-  double gmt = 0;
-  double p_top = 0;
+  rr gmt = 0;
+  rr p_top = 0;
   std::string table_dir = ".";  // RRTMG_*_DATA tables dump, ozone*.formatted, CAMtr_volume_mixing_ratio
 };
 
@@ -80,19 +81,19 @@ struct RadiationOutputs {
 // grid%julian at the start of a step, the clock's time el since the simulation start (julyr, julday, gmt):
 // domain_clock_get's REAL(dayOfYear_r8) - 1 with ESMF_TimeGet's dayOfYear_r8 = (S + Sn/Sd) / 86400 + 1, S the whole
 // seconds since 1 January of the current year (0 again after a year change)
-inline double wrf_julian(int julyr, int julday, double gmt, const wrf_time::Interval& el) {
-  long long s = (long long)(julday - 1) * 86400 + std::llround(gmt * 3600.0) + el.S;
+inline rr wrf_julian(int julyr, int julday, rr gmt, const wrf_time::Interval& el) {
+  long long s = (long long)(julday - 1) * 86400 + std::llround(gmt * rr(3600.0)) + el.S;
   for (int yr = julyr;; ++yr) {
     const long long ylen = (((yr % 4 == 0 && yr % 100 != 0) || yr % 400 == 0) ? 366LL : 365LL) * 86400LL;
     if (s < ylen) break;
     s -= ylen;
   }
-  double rsec = double(s);
-  if (el.Sd != 0) rsec = rsec + double(el.Sn) / double(el.Sd);
-  return (rsec / 86400.0 + 1.0) - 1.0;
+  rr rsec = rr(s);
+  if (el.Sd != 0) rsec = rsec + rr(el.Sn) / rr(el.Sd);
+  return (rsec / rr(86400.0) + rr(1.0)) - rr(1.0);
 }
-inline int wrf_year(int julyr, int julday, double gmt, const wrf_time::Interval& el) {
-  long long s = (long long)(julday - 1) * 86400 + std::llround(gmt * 3600.0) + el.S;
+inline int wrf_year(int julyr, int julday, rr gmt, const wrf_time::Interval& el) {
+  long long s = (long long)(julday - 1) * 86400 + std::llround(gmt * rr(3600.0)) + el.S;
   int yr = julyr;
   for (;; ++yr) {
     const long long ylen = (((yr % 4 == 0 && yr % 100 != 0) || yr % 400 == 0) ? 366LL : 365LL) * 86400LL;
@@ -105,62 +106,62 @@ inline int wrf_year(int julyr, int julday, double gmt, const wrf_time::Interval&
 // calc_coszen (module_radiation_driver.F) for one column; xtime in minutes, angles in degrees
 // li, ln: lane li of WRF's n = ln-trip i loop (its..ite = 0..nx-1), which gfortran vectorises: sin(xxlat),
 // cos(xxlat) and cos(hrang) through libmvec's 2-lane functions (cppwrf::vm); ln = 1: scalar libm
-CPPWRF_HD inline double calc_coszen(double julian, double xtime, double gmt, double declin, double xlon,
-                                    double xlat, int li = 0, int ln = 1, double* hrang_out = nullptr) {
-  constexpr double piconst = 3.1415926535897932384626433;
-  constexpr double degrad = piconst / 180.;
-  const double da = 6.2831853071795862 * (julian - 0.5) / 365.;
-  const double eot = (0.000075 + 0.001868 * libm::cos(da) - 0.032077 * libm::sin(da) - 0.014615 * libm::cos(2 * da) -
-                      0.040849 * libm::sin(2 * da)) * (229.18);
-  const double xt24 = std::fmod(xtime, 1440.) + eot;
-  const double tloctm = gmt + xt24 / 60. + xlon / 15.;
-  const double hrang = 15. * (tloctm - 12.) * degrad;
+CPPWRF_HD inline rr calc_coszen(rr julian, rr xtime, rr gmt, rr declin, rr xlon,
+                                    rr xlat, int li = 0, int ln = 1, rr* hrang_out = nullptr) {
+  constexpr rr piconst = rr(3.1415926535897932384626433);
+  constexpr rr degrad = piconst / rr(180.);
+  const rr da = rr(6.2831853071795862) * (julian - rr(0.5)) / rr(365.);
+  const rr eot = (rr(0.000075) + rr(0.001868) * libm::cos(da) - rr(0.032077) * libm::sin(da) - rr(0.014615) * libm::cos(2 * da) -
+                      rr(0.040849) * libm::sin(2 * da)) * (rr(229.18));
+  const rr xt24 = std::fmod(xtime, rr(1440.)) + eot;
+  const rr tloctm = gmt + xt24 / rr(60.) + xlon / rr(15.);
+  const rr hrang = rr(15.) * (tloctm - rr(12.)) * degrad;
   if (hrang_out) *hrang_out = hrang;
-  const double xxlat = xlat * degrad;
-  double c = vm::sin(xxlat, li, ln) * libm::sin(declin) + vm::cos(xxlat, li, ln) * libm::cos(declin) * vm::cos(hrang, li, ln);
-  return std::min(std::max(c, -1.0), 1.0);
+  const rr xxlat = xlat * degrad;
+  rr c = vm::sin(xxlat, li, ln) * libm::sin(declin) + vm::cos(xxlat, li, ln) * libm::cos(declin) * vm::cos(hrang, li, ln);
+  return std::min(std::max(c, -rr(1.0)), rr(1.0));
 }
 
 // module_radiation_driver.F cal_cldfra1 for one column (bottom to top): qi / qs with p == nullptr
 // when the scheme has no F_QI / F_QS; t (K) and p (Pa) are t_phy and p_hyd. mp_physics !=
 // FER_MP_HIRES; F_QC and not F_QI but F_QS needs F_ICE_PHY (not ported).
 CPPWRF_HD inline void cal_cldfra1(int nz, SD qv, SD qc, SD qi, SD qs, SD t, SD p, SD cldfra) {
-  constexpr double ALPHA0 = 100., GAMMA = 0.49, QCLDMIN = 1.E-12, PEXP = 0.25, RHGRID = 1.0;
-  constexpr double SVP1 = 0.61078, SVP2 = 17.2693882, SVPI2 = 21.8745584, SVP3 = 35.86, SVPI3 = 7.66,
-                   SVPT0 = 273.15, r_d = 287., r_v = 461.6, ep_2 = r_d / r_v;
+  constexpr rr ALPHA0 = rr(100.), GAMMA = rr(0.49), QCLDMIN = rr(1.E-12), PEXP = rr(0.25), RHGRID = rr(1.0);
+  constexpr rr SVP1 = rr(0.61078), SVP2 = rr(17.2693882), SVPI2 = rr(21.8745584), SVP3 = rr(35.86), SVPI3 = rr(7.66),
+                   SVPT0 = rr(273.15), r_d = rr(287.), r_v = rr(461.6), ep_2 = r_d / r_v;
   for (int k = 0; k < nz; ++k) {
-    const double tk = t[k], pk = p[k];
-    const double tc = tk - SVPT0;
-    const double esw = 1000.0 * SVP1 * libm::exp(SVP2 * tc / (tk - SVP3));
-    const double esi = 1000.0 * SVP1 * libm::exp(SVPI2 * tc / (tk - SVPI3));
-    const double QVSW = ep_2 * esw / (pk - esw);
-    const double QVSI = ep_2 * esi / (pk - esi);
-    double QCLD = 0, weight = 0;
+    const rr tk = t[k], pk = p[k];
+    const rr tc = tk - SVPT0;
+    const rr esw = rr(1000.0) * SVP1 * libm::exp(SVP2 * tc / (tk - SVP3));
+    const rr esi = rr(1000.0) * SVP1 * libm::exp(SVPI2 * tc / (tk - SVPI3));
+    const rr QVSW = ep_2 * esw / (pk - esw);
+    const rr QVSI = ep_2 * esi / (pk - esi);
+    rr QCLD = 0, weight = 0;
     if (qi.p && qs.p) {
       QCLD = qi[k] + qc[k] + qs[k];
-      weight = QCLD < QCLDMIN ? 0. : (qi[k] + qs[k]) / QCLD;
+      weight = QCLD < QCLDMIN ? rr(0.) : (qi[k] + qs[k]) / QCLD;
     } else if (qi.p) {
       QCLD = qi[k] + qc[k];
-      weight = QCLD < QCLDMIN ? 0. : qi[k] / QCLD;
+      weight = QCLD < QCLDMIN ? rr(0.) : qi[k] / QCLD;
     } else {  // F_QC only
       QCLD = qc[k];
-      if (QCLD < QCLDMIN) weight = 0.;
-      else weight = tk > 273.15 ? 0. : 1.;
+      if (QCLD < QCLDMIN) weight = rr(0.);
+      else weight = tk > rr(273.15) ? rr(0.) : rr(1.);
     }
-    const double QVS_WEIGHT = (1 - weight) * QVSW + weight * QVSI;
-    double RHUM = qv[k] / QVS_WEIGHT;
-    double cf;
+    const rr QVS_WEIGHT = (1 - weight) * QVSW + weight * QVSI;
+    rr RHUM = qv[k] / QVS_WEIGHT;
+    rr cf;
     if (QCLD < QCLDMIN) {
-      cf = 0.;
+      cf = rr(0.);
     } else if (RHUM >= RHGRID) {
-      cf = 1.;
+      cf = rr(1.);
     } else {
-      const double SUBSAT = std::max(1.E-10, RHGRID * QVS_WEIGHT - qv[k]);
-      const double DENOM = libm::pow(SUBSAT, GAMMA);
-      const double ARG = std::max(-6.9, -ALPHA0 * QCLD / DENOM);
-      RHUM = std::max(1.E-10, RHUM);
-      cf = libm::pow(RHUM / RHGRID, PEXP) * (1. - libm::exp(ARG));
-      if (cf < .01) cf = 0.;
+      const rr SUBSAT = std::max(rr(1.E-10), RHGRID * QVS_WEIGHT - qv[k]);
+      const rr DENOM = libm::pow(SUBSAT, GAMMA);
+      const rr ARG = std::max(-rr(6.9), -ALPHA0 * QCLD / DENOM);
+      RHUM = std::max(rr(1.E-10), RHUM);
+      cf = libm::pow(RHUM / RHGRID, PEXP) * (rr(1.) - libm::exp(ARG));
+      if (cf < rr(.01)) cf = rr(0.);
     }
     cldfra[k] = cf;
   }
@@ -168,19 +169,19 @@ CPPWRF_HD inline void cal_cldfra1(int nz, SD qv, SD qc, SD qi, SD qs, SD t, SD p
 
 class RadiationDriver {
  public:
-  RadiationDriver(const Grid& g, const RadiationOptions& o, const std::vector<double>& xlat,
-                  const std::vector<double>& xlong);
+  RadiationDriver(const Grid& g, const RadiationOptions& o, const std::vector<rr>& xlat,
+                  const std::vector<rr>& xlong);
   ~RadiationDriver();
   int stepra() const { return stepra_; }
   // radiation_driver for time step itimestep (1-based) at xtime minutes after the start,
   // julian (day of year - 1 + fraction) and yr (the year of that time, RRTMG's YR); returns false
   // when the radiation is not called. adapt_step_flag: the adaptive time step's decision by
   // curr_secs >= radtacttime (radtacttime is updated as WRF does)
-  bool run(long itimestep, double xtime, double julian, int yr, const RadiationInputs& in,
+  bool run(long itimestep, rr xtime, rr julian, int yr, const RadiationInputs& in,
            const RadiationOutputs& out, bool adapt_step_flag = false, real curr_secs = 0,
            real* radtacttime = nullptr);
-  double declin() const { return declin_; }  // radconst of the last call (DECLINX, SOLCONX)
-  double solcon() const { return solcon_; }
+  rr declin() const { return declin_; }  // radconst of the last call (DECLINX, SOLCONX)
+  rr solcon() const { return solcon_; }
 
  private:
   struct Impl;
@@ -188,7 +189,7 @@ class RadiationDriver {
   Grid g_;
   RadiationOptions o_;
   int stepra_ = 1;
-  double declin_ = 0, solcon_ = 0;
+  rr declin_ = 0, solcon_ = 0;
 };
 
 }  // namespace cppwrf::phys::driver

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "phys/ra_rrtmg_common/rrtmg_real.hpp"
 #include "phys/ra_rrtmg_sw/rrtmg_sw_batch.hpp"
 
 #include <algorithm>
@@ -24,7 +25,7 @@ inline Range3D sw_range(int n, int nx) { return Range3D{0, 1, 0, nx, 0, n}; }
 
 struct SwChunk {
   SwLayout lay;
-  double* d;
+  rr* d;
   int* ip;
   int n;
   int col0;
@@ -89,11 +90,11 @@ struct KSwFinish {
     out.gsw[col] = o.gsw;
     if (out.cf) out.cf[col] = o.swcf;
     if (out.diag) {
-      const double d[8] = {o.swupt, o.swuptc, o.swdnt, o.swdntc, o.swupb, o.swupbc, o.swdnb, o.swdnbc};
+      const rr d[8] = {o.swupt, o.swuptc, o.swdnt, o.swdntc, o.swupb, o.swupbc, o.swdnb, o.swdnbc};
       for (int q = 0; q < 8; ++q) out.diag[std::size_t(q) * nc + col] = d[q];
     }
     if (out.sfc) {
-      const double d[7] = {o.swvisdir, o.swvisdif, o.swnirdir, o.swnirdif, o.swddir, o.swddif, o.swddirc};
+      const rr d[7] = {o.swvisdir, o.swvisdif, o.swnirdir, o.swnirdif, o.swddir, o.swddif, o.swddirc};
       for (int q = 0; q < 7; ++q) out.sfc[std::size_t(q) * nc + col] = d[q];
     }
   }
@@ -102,7 +103,7 @@ struct KSwFinish {
 }  // namespace
 
 RrtmgSwBatch::RrtmgSwBatch(const RrtmgSwTables& tables, int nlayers, int ncol)
-    : lay_(nlayers), chunk_(rrtmg_chunk_columns(ncol, lay_.nd * sizeof(double) + lay_.ni * sizeof(int))) {
+    : lay_(nlayers), chunk_(rrtmg_chunk_columns(ncol, lay_.nd * sizeof(rr) + lay_.ni * sizeof(int))) {
   if (nlayers > RRTMG_SW_COL_MAX) throw std::runtime_error("RRTMG SW: too many layers");
   d_tables_ = static_cast<RrtmgSwTables*>(rrtmg_shared_dev_copy(&tables, sizeof(RrtmgSwTables)));
   d_consts_ = static_cast<RrtmgLwConsts*>(rrtmg_shared_dev_copy(&rrtmg_lw_consts(), sizeof(RrtmgLwConsts)));
@@ -116,7 +117,7 @@ RrtmgSwBatch::~RrtmgSwBatch() {
 
 void RrtmgSwBatch::run(const RrtmgSwCallConfig& c, const SwBatchInput& in, const SwBatchOutput& out) {
   if (c.nlayers != lay_.nl) throw std::runtime_error("RrtmgSwBatch: nlayers differs from the constructor's");
-  double* const d = work_->d();
+  rr* const d = work_->d();
   int* const ip = work_->i();
   const tile::Whole whole;  // (chunk column, x) index space
   const int col_end = in.col_end < 0 ? in.ncol : in.col_end;

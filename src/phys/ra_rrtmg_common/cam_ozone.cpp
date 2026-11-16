@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "phys/ra_rrtmg_common/rrtmg_real.hpp"
 #include "phys/ra_rrtmg_common/cam_ozone.hpp"
 
 #include <fstream>
@@ -11,10 +12,10 @@ namespace cppwrf::phys {
 namespace {
 // oznini's READ (unit,*) x per value: the first value of the next non-blank record, the rest of the record
 // skipped; a value the read rejects and the end of the file are Fortran read errors in WRF
-std::vector<double> read_list(const std::string& path, std::size_t n) {
+std::vector<rr> read_list(const std::string& path, std::size_t n) {
   std::ifstream f(path);
   if (!f) throw std::runtime_error("CAM ozone: cannot open " + path);
-  std::vector<double> v(n);
+  std::vector<rr> v(n);
   std::string line;
   for (std::size_t i = 0; i < n; ++i) {
     int st = 0;
@@ -29,7 +30,7 @@ std::vector<double> read_list(const std::string& path, std::size_t n) {
 
 void CamOzone::load(const std::string& dir) {
   pin = read_list(dir + "/ozone_plev.formatted", levsiz);
-  for (double& p : pin) p = p * 100.;
+  for (rr& p : pin) p = p * rr(100.);
   // ozn_p_int brackets each model pressure between increasing ozone levels (non-monotonic levels: WRF's
   // row search may differ or end with "Bad ozone data: non-monotonicity suspected")
   for (int k = 1; k < levsiz; ++k)
@@ -39,7 +40,7 @@ void CamOzone::load(const std::string& dir) {
   ozmixin = read_list(dir + "/ozone.formatted", std::size_t(nmon) * latsiz * levsiz);
 }
 
-void CamOzone::column(double xlat, double* ozmixm) const {
+void CamOzone::column(rr xlat, rr* ozmixm) const {
   // lin_interpol2(lat_ozone, ozmixin(1,k,:,m), xlat)
   const int n = latsiz;
   int k;
@@ -52,17 +53,17 @@ void CamOzone::column(double xlat, double* ozmixm) const {
   for (int m = 0; m < nmon; ++m)
     for (int lv = 0; lv < levsiz; ++lv) {
       auto f = [&](int jj) { return ozmixin[(std::size_t(m) * latsiz + (jj - 1)) * levsiz + lv]; };
-      const double a = (f(k + 1) - f(k)) / (lat[k] - lat[k - 1]);
+      const rr a = (f(k + 1) - f(k)) / (lat[k] - lat[k - 1]);
       ozmixm[m * levsiz + lv] = f(k) + a * (xlat - lat[k - 1]);
     }
 }
 
-void ozone_time_weights(double julian, int& nm, int& np, double& fact1, double& fact2) {
+void ozone_time_weights(rr julian, int& nm, int& np, rr& fact1, rr& fact2) {
   static const int date_oz[12] = {16, 45, 75, 105, 136, 166, 197, 228, 258, 289, 319, 350};
-  constexpr double daysperyear = 365.;
-  double intJULIAN = julian + 1.0;
+  constexpr rr daysperyear = rr(365.);
+  rr intJULIAN = julian + rr(1.0);
   int IJUL = int(intJULIAN);
-  intJULIAN = intJULIAN - double(IJUL);
+  intJULIAN = intJULIAN - rr(IJUL);
   IJUL = IJUL % 365;
   if (IJUL == 0) IJUL = 365;
   intJULIAN = intJULIAN + IJUL;
@@ -70,12 +71,12 @@ void ozone_time_weights(double julian, int& nm, int& np, double& fact1, double& 
   bool finddate = false;
   for (int m = 1; m <= 12; ++m)
     if (date_oz[m - 1] > intJULIAN && !finddate) { np1 = m; finddate = true; }
-  const double cdayozp = date_oz[np1 - 1];
-  double cdayozm;
+  const rr cdayozp = date_oz[np1 - 1];
+  rr cdayozm;
   if (np1 > 1) { cdayozm = date_oz[np1 - 2]; np = np1; nm = np - 1; }
   else { cdayozm = date_oz[11]; np = np1; nm = 12; }
   if (np1 == 1) {  // Dec-Jan interpolation (ozncyc)
-    const double deltat = cdayozp + daysperyear - cdayozm;
+    const rr deltat = cdayozp + daysperyear - cdayozm;
     if (intJULIAN > cdayozp) {
       fact1 = (cdayozp + daysperyear - intJULIAN) / deltat;
       fact2 = (intJULIAN - cdayozm) / deltat;
@@ -84,7 +85,7 @@ void ozone_time_weights(double julian, int& nm, int& np, double& fact1, double& 
       fact2 = (intJULIAN + daysperyear - cdayozm) / deltat;
     }
   } else {
-    const double deltat = cdayozp - cdayozm;
+    const rr deltat = cdayozp - cdayozm;
     fact1 = (cdayozp - intJULIAN) / deltat;
     fact2 = (intJULIAN - cdayozm) / deltat;
   }

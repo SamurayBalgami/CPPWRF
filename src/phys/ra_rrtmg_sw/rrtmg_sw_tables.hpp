@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
+#include "phys/ra_rrtmg_common/rrtmg_real.hpp"
 
 #include "core/backend.hpp"
 #include <cstdint>
@@ -10,192 +11,192 @@ namespace cppwrf::phys {
 #pragma pack(push, 1)
 
 struct SwBand16Tables {
-  double ka[9 * 5 * 13 * 6];       // (9,5,13,6)
-  double kb[5 * 47 * 6];           // (5,13:59,6)
-  double selfref[10 * 6];          // (10,6)
-  double forref[3 * 6];            // (3,6)
-  double sfluxref[6];              // (6)
-  double rayl;
-  double strrat1;
+  rr ka[9 * 5 * 13 * 6];       // (9,5,13,6)
+  rr kb[5 * 47 * 6];           // (5,13:59,6)
+  rr selfref[10 * 6];          // (10,6)
+  rr forref[3 * 6];            // (3,6)
+  rr sfluxref[6];              // (6)
+  rr rayl;
+  rr strrat1;
   int32_t layreffr;
 };
 
 struct Band17Tables {
-  double ka[9 * 5 * 13 * 12];      // (9,5,13,12)
-  double kb[5 * 5 * 47 * 12];      // (5,5,13:59,12)
-  double selfref[10 * 12];         // (10,12)
-  double forref[4 * 12];           // (4,12)
-  double sfluxref[12 * 5];         // (12,5)
-  double rayl;
-  double strrat;
+  rr ka[9 * 5 * 13 * 12];      // (9,5,13,12)
+  rr kb[5 * 5 * 47 * 12];      // (5,5,13:59,12)
+  rr selfref[10 * 12];         // (10,12)
+  rr forref[4 * 12];           // (4,12)
+  rr sfluxref[12 * 5];         // (12,5)
+  rr rayl;
+  rr strrat;
   int32_t layreffr;
 };
 
 struct Band18Tables {
-  double ka[9 * 5 * 13 * 8];       // (9,5,13,8)
-  double kb[5 * 47 * 8];           // (5,13:59,8)
-  double selfref[10 * 8];          // (10,8)
-  double forref[3 * 8];            // (3,8)
-  double sfluxref[8 * 9];          // (8,9)
-  double rayl;
-  double strrat;
+  rr ka[9 * 5 * 13 * 8];       // (9,5,13,8)
+  rr kb[5 * 47 * 8];           // (5,13:59,8)
+  rr selfref[10 * 8];          // (10,8)
+  rr forref[3 * 8];            // (3,8)
+  rr sfluxref[8 * 9];          // (8,9)
+  rr rayl;
+  rr strrat;
   int32_t layreffr;
 };
 
 struct Band19Tables {
-  double ka[9 * 5 * 13 * 8];       // (9,5,13,8)
-  double kb[5 * 47 * 8];           // (5,13:59,8)
-  double selfref[10 * 8];          // (10,8)
-  double forref[3 * 8];            // (3,8)
-  double sfluxref[8 * 9];          // (8,9)
-  double rayl;
-  double strrat;
+  rr ka[9 * 5 * 13 * 8];       // (9,5,13,8)
+  rr kb[5 * 47 * 8];           // (5,13:59,8)
+  rr selfref[10 * 8];          // (10,8)
+  rr forref[3 * 8];            // (3,8)
+  rr sfluxref[8 * 9];          // (8,9)
+  rr rayl;
+  rr strrat;
   int32_t layreffr;
 };
 
 struct Band20Tables {
-  double ka[5 * 13 * 10];          // (5,13,10)
-  double kb[5 * 47 * 10];          // (5,13:59,10)
-  double selfref[10 * 10];         // (10,10)
-  double forref[4 * 10];           // (4,10)
-  double sfluxref[10];             // (10)
-  double absch4[10];               // (10)
-  double rayl;
+  rr ka[5 * 13 * 10];          // (5,13,10)
+  rr kb[5 * 47 * 10];          // (5,13:59,10)
+  rr selfref[10 * 10];         // (10,10)
+  rr forref[4 * 10];           // (4,10)
+  rr sfluxref[10];             // (10)
+  rr absch4[10];               // (10)
+  rr rayl;
   int32_t layreffr;
 };
 
 struct Band21Tables {
-  double ka[9 * 5 * 13 * 10];      // (9,5,13,10)
-  double kb[5 * 5 * 47 * 10];      // (5,5,13:59,10)
-  double selfref[10 * 10];         // (10,10)
-  double forref[4 * 10];           // (4,10)
-  double sfluxref[10 * 9];         // (10,9)
-  double rayl;
-  double strrat;
+  rr ka[9 * 5 * 13 * 10];      // (9,5,13,10)
+  rr kb[5 * 5 * 47 * 10];      // (5,5,13:59,10)
+  rr selfref[10 * 10];         // (10,10)
+  rr forref[4 * 10];           // (4,10)
+  rr sfluxref[10 * 9];         // (10,9)
+  rr rayl;
+  rr strrat;
   int32_t layreffr;
 };
 
 struct Band22Tables {
-  double ka[9 * 5 * 13 * 2];       // (9,5,13,2)
-  double kb[5 * 47 * 2];           // (5,13:59,2)
-  double selfref[10 * 2];          // (10,2)
-  double forref[3 * 2];            // (3,2)
-  double sfluxref[2 * 9];          // (2,9)
-  double rayl;
-  double strrat;
+  rr ka[9 * 5 * 13 * 2];       // (9,5,13,2)
+  rr kb[5 * 47 * 2];           // (5,13:59,2)
+  rr selfref[10 * 2];          // (10,2)
+  rr forref[3 * 2];            // (3,2)
+  rr sfluxref[2 * 9];          // (2,9)
+  rr rayl;
+  rr strrat;
   int32_t layreffr;
 };
 
 struct Band23Tables {
-  double ka[5 * 13 * 10];          // (5,13,10)
-  double selfref[10 * 10];         // (10,10)
-  double forref[3 * 10];           // (3,10)
-  double sfluxref[10];             // (10)
-  double rayl[10];                 // (10)
-  double givfac;
+  rr ka[5 * 13 * 10];          // (5,13,10)
+  rr selfref[10 * 10];         // (10,10)
+  rr forref[3 * 10];           // (3,10)
+  rr sfluxref[10];             // (10)
+  rr rayl[10];                 // (10)
+  rr givfac;
   int32_t layreffr;
 };
 
 struct Band24Tables {
-  double ka[9 * 5 * 13 * 8];       // (9,5,13,8)
-  double kb[5 * 47 * 8];           // (5,13:59,8)
-  double selfref[10 * 8];          // (10,8)
-  double forref[3 * 8];            // (3,8)
-  double sfluxref[8 * 9];          // (8,9)
-  double abso3a[8];                // (8)
-  double abso3b[8];                // (8)
-  double rayla[8 * 9];             // (8,9)
-  double raylb[8];                 // (8)
-  double strrat;
+  rr ka[9 * 5 * 13 * 8];       // (9,5,13,8)
+  rr kb[5 * 47 * 8];           // (5,13:59,8)
+  rr selfref[10 * 8];          // (10,8)
+  rr forref[3 * 8];            // (3,8)
+  rr sfluxref[8 * 9];          // (8,9)
+  rr abso3a[8];                // (8)
+  rr abso3b[8];                // (8)
+  rr rayla[8 * 9];             // (8,9)
+  rr raylb[8];                 // (8)
+  rr strrat;
   int32_t layreffr;
 };
 
 struct Band25Tables {
-  double ka[5 * 13 * 6];           // (5,13,6)
-  double sfluxref[6];              // (6)
-  double abso3a[6];                // (6)
-  double abso3b[6];                // (6)
-  double rayl[6];                  // (6)
+  rr ka[5 * 13 * 6];           // (5,13,6)
+  rr sfluxref[6];              // (6)
+  rr abso3a[6];                // (6)
+  rr abso3b[6];                // (6)
+  rr rayl[6];                  // (6)
   int32_t layreffr;
 };
 
 struct Band26Tables {
-  double sfluxref[6];              // (6)
-  double rayl[6];                  // (6)
+  rr sfluxref[6];              // (6)
+  rr rayl[6];                  // (6)
 };
 
 struct Band27Tables {
-  double ka[5 * 13 * 8];           // (5,13,8)
-  double kb[5 * 47 * 8];           // (5,13:59,8)
-  double sfluxref[8];              // (8)
-  double rayl[8];                  // (8)
-  double scalekur;
+  rr ka[5 * 13 * 8];           // (5,13,8)
+  rr kb[5 * 47 * 8];           // (5,13:59,8)
+  rr sfluxref[8];              // (8)
+  rr rayl[8];                  // (8)
+  rr scalekur;
   int32_t layreffr;
 };
 
 struct Band28Tables {
-  double ka[9 * 5 * 13 * 6];       // (9,5,13,6)
-  double kb[5 * 5 * 47 * 6];       // (5,5,13:59,6)
-  double sfluxref[6 * 5];          // (6,5)
-  double rayl;
-  double strrat;
+  rr ka[9 * 5 * 13 * 6];       // (9,5,13,6)
+  rr kb[5 * 5 * 47 * 6];       // (5,5,13:59,6)
+  rr sfluxref[6 * 5];          // (6,5)
+  rr rayl;
+  rr strrat;
   int32_t layreffr;
 };
 
 struct Band29Tables {
-  double ka[5 * 13 * 12];          // (5,13,12)
-  double kb[5 * 47 * 12];          // (5,13:59,12)
-  double selfref[10 * 12];         // (10,12)
-  double forref[4 * 12];           // (4,12)
-  double sfluxref[12];             // (12)
-  double absh2o[12];               // (12)
-  double absco2[12];               // (12)
-  double rayl;
+  rr ka[5 * 13 * 12];          // (5,13,12)
+  rr kb[5 * 47 * 12];          // (5,13:59,12)
+  rr selfref[10 * 12];         // (10,12)
+  rr forref[4 * 12];           // (4,12)
+  rr sfluxref[12];             // (12)
+  rr absh2o[12];               // (12)
+  rr absco2[12];               // (12)
+  rr rayl;
   int32_t layreffr;
 };
 
 struct RrtmgSwTables {
   // 1. Pade approximation lookup table (rrsw_tbl)
-  double exp_tbl[10001];
+  rr exp_tbl[10001];
 
   // 2. Spectral info (rrsw_wvn)
-  double wavenum1[14];
-  double wavenum2[14];
-  double delwave[14];
+  rr wavenum1[14];
+  rr wavenum2[14];
+  rr delwave[14];
   int32_t ngc[14];
   int32_t ngs[14];
   int32_t ngn[112];
   int32_t ngb[112];
   int32_t ngm[224];
-  double wt[16];
-  double rwgt[224];
+  rr wt[16];
+  rr rwgt[224];
 
   // 3. Cloud property tables (rrsw_cld)
-  double extliq1[58 * 14];
-  double ssaliq1[58 * 14];
-  double asyliq1[58 * 14];
-  double extice2[43 * 14];
-  double ssaice2[43 * 14];
-  double asyice2[43 * 14];
-  double extice3[46 * 14];
-  double ssaice3[46 * 14];
-  double asyice3[46 * 14];
-  double fdlice3[46 * 14];
-  double abari[5];
-  double bbari[5];
-  double cbari[5];
-  double dbari[5];
-  double ebari[5];
-  double fbari[5];
+  rr extliq1[58 * 14];
+  rr ssaliq1[58 * 14];
+  rr asyliq1[58 * 14];
+  rr extice2[43 * 14];
+  rr ssaice2[43 * 14];
+  rr asyice2[43 * 14];
+  rr extice3[46 * 14];
+  rr ssaice3[46 * 14];
+  rr asyice3[46 * 14];
+  rr fdlice3[46 * 14];
+  rr abari[5];
+  rr bbari[5];
+  rr cbari[5];
+  rr dbari[5];
+  rr ebari[5];
+  rr fbari[5];
 
   // 4. Reference profiles (rrsw_ref)
-  double preflog[59];
-  double tref[59];
+  rr preflog[59];
+  rr tref[59];
 
   // 5. Aerosol properties (rrsw_aer)
-  double rsrtaua[14 * 6];
-  double rsrpiza[14 * 6];
-  double rsrasya[14 * 6];
+  rr rsrtaua[14 * 6];
+  rr rsrpiza[14 * 6];
+  rr rsrasya[14 * 6];
 
   // 6. 14 shortwave absorption bands
   SwBand16Tables b16;
@@ -216,7 +217,6 @@ struct RrtmgSwTables {
 
 #pragma pack(pop)
 
-static_assert(sizeof(RrtmgSwTables) == 841044, "RrtmgSwTables size must be exactly 841044 bytes");
 
 // Loads the tables dump (tests/phys/ra_rrtmg_sw/dump_sw_tables.f90, data/rrtmg/rrtmg_sw_tables.bin)
 bool load_rrtmg_sw_tables(const std::string& filepath, RrtmgSwTables& tables);

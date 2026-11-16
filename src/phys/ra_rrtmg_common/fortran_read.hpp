@@ -97,4 +97,14 @@ inline int fortran_list_real(const std::string& rec, double& v) {
   return fortran_real(t, 0, v) ? 1 : -1;
 }
 
+
+#ifndef CPPWRF_DOUBLE
+// float targets (CUDA FP32 builds, RRTMG's tables): read as double, rounded once
+inline bool fortran_real(const std::string& s, int implied_d, float& v) {
+  double t = 0; bool ok = fortran_real(s, implied_d, t); v = float(t); return ok; }
+inline bool fortran_f_field(const std::string& rec, std::size_t a, std::size_t w, int d, float& v) {
+  double t = 0; bool ok = fortran_f_field(rec, a, w, d, t); v = float(t); return ok; }
+inline int fortran_list_real(const std::string& rec, float& v) {
+  double t = 0; int st = fortran_list_real(rec, t); v = float(t); return st; }
+#endif
 }  // namespace cppwrf::phys

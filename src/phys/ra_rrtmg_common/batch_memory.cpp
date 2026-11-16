@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "phys/ra_rrtmg_common/rrtmg_real.hpp"
 #include "phys/ra_rrtmg_common/batch_memory.hpp"
 
 #include <algorithm>
@@ -66,7 +67,7 @@ int rrtmg_chunk_columns(int ncol, std::size_t bytes_per_col) {
 
 RrtmgScratch::RrtmgScratch(std::size_t doubles, std::size_t ints) {
   std::lock_guard<std::mutex> lk(mtx);
-  dbuf.grow(std::max<std::size_t>(doubles, 1) * sizeof(double));
+  dbuf.grow(std::max<std::size_t>(doubles, 1) * sizeof(rr));
   ibuf.grow(std::max<std::size_t>(ints, 1) * sizeof(int));
   ++users;
 }
@@ -79,9 +80,9 @@ RrtmgScratch::~RrtmgScratch() {
   }
 }
 
-double* RrtmgScratch::d() const {
+rr* RrtmgScratch::d() const {
   std::lock_guard<std::mutex> lk(mtx);
-  return static_cast<double*>(dbuf.p);
+  return static_cast<rr*>(dbuf.p);
 }
 
 int* RrtmgScratch::i() const {

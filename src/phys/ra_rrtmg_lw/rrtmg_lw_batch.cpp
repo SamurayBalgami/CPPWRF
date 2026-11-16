@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "phys/ra_rrtmg_common/rrtmg_real.hpp"
 #include "phys/ra_rrtmg_lw/rrtmg_lw_batch.hpp"
 
 #include <algorithm>
@@ -26,7 +27,7 @@ inline Range3D lw_range(int n, int nx) { return Range3D{0, 1, 0, nx, 0, n}; }
 // common part of the kernels: the views of chunk column ci (global column col0 + ci)
 struct LwChunk {
   LwLayout lay;
-  double* d;
+  rr* d;
   int* ip;
   int n;     // columns in this chunk
   int col0;  // first global column
@@ -39,7 +40,7 @@ struct KLwPrep {
   LwBatchInput in;
   const RrtmgLwTables* t;
   const RrtmgLwConsts* k;
-  double* o3_out;  // LwBatchOutput::o3
+  rr* o3_out;  // LwBatchOutput::o3
   CPPWRF_HD void operator()(int a, int b, int cc) const {
     const int ci = LW_CI(a, b, cc);
     const int col = ch.col0 + ci, nc = in.ncol;
@@ -67,7 +68,7 @@ struct KLwPrep {
 // setcoef per (column, layer): the serial per-column prep is latency-bound, its layer loop runs here in parallel
 struct KLwSetcoef {
   LwChunk ch;
-  const double* tsk;
+  const rr* tsk;
   const RrtmgLwTables* t;
   CPPWRF_HD void operator()(int a, int b, int cc) const {
     const int ci = LW_CI(a, b, cc);
@@ -123,7 +124,7 @@ struct KLwFinish {
     if (out.cf) out.cf[col] = o.lwcf;
     if (out.olr) out.olr[col] = o.olr;
     if (out.diag) {
-      const double d[8] = {o.lwupt, o.lwuptc, o.lwdnt, o.lwdntc, o.lwupb, o.lwupbc, o.lwdnb, o.lwdnbc};
+      const rr d[8] = {o.lwupt, o.lwuptc, o.lwdnt, o.lwdntc, o.lwupb, o.lwupbc, o.lwdnb, o.lwdnbc};
       for (int q = 0; q < 8; ++q) out.diag[std::size_t(q) * nc + col] = d[q];
     }
   }
@@ -132,7 +133,7 @@ struct KLwFinish {
 }  // namespace
 
 RrtmgLwBatch::RrtmgLwBatch(const RrtmgLwTables& tables, int nlayers, int ncol)
-    : lay_(nlayers), chunk_(rrtmg_chunk_columns(ncol, lay_.nd * sizeof(double) + lay_.ni * sizeof(int))) {
+    : lay_(nlayers), chunk_(rrtmg_chunk_columns(ncol, lay_.nd * sizeof(rr) + lay_.ni * sizeof(int))) {
   if (nlayers > RRTMG_LW_SWEEP_MAX) throw std::runtime_error("RRTMG LW: too many layers");
   d_tables_ = static_cast<RrtmgLwTables*>(rrtmg_shared_dev_copy(&tables, sizeof(RrtmgLwTables)));
   d_consts_ = static_cast<RrtmgLwConsts*>(rrtmg_shared_dev_copy(&rrtmg_lw_consts(), sizeof(RrtmgLwConsts)));
@@ -146,7 +147,7 @@ RrtmgLwBatch::~RrtmgLwBatch() {
 
 void RrtmgLwBatch::run(const RrtmgLwCallConfig& c, const LwBatchInput& in, const LwBatchOutput& out) {
   if (c.nlayers != lay_.nl) throw std::runtime_error("RrtmgLwBatch: nlayers differs from the constructor's");
-  double* const d = work_->d();
+  rr* const d = work_->d();
   int* const ip = work_->i();
   const tile::Whole whole;  // (chunk column, x) index space
   const int col_end = in.col_end < 0 ? in.ncol : in.col_end;

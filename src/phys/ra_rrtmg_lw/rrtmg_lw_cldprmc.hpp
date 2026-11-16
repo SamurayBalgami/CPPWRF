@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
+#include "phys/ra_rrtmg_common/rrtmg_real.hpp"
 
 #include "core/backend.hpp"
 #include "phys/ra_rrtmg_common/strided.hpp"
@@ -25,49 +26,49 @@ CPPWRF_FORCEINLINE void rrtmg_lw_cldprmc(
     const RrtmgLwTables& CPPWRF_RESTRICT tables,
     int lay0, int lay1  // layers [lay0, lay1)
 ) {
-  constexpr double cldmin = 1.0e-20;
+  constexpr rr cldmin = rr(1.0e-20);
   const int icb[16] = {0, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4};
 
   for (int lay = lay0; lay < (nlayers < lay1 ? nlayers : lay1); ++lay) {
-    const double ciwp_l = ciwpth[lay], clwp_l = clwpth[lay], cswp_l = cswpth[lay];
-    const double radice = reicmc[lay], radliq = relqmc[lay], radsno = resnmc[lay];
+    const rr ciwp_l = ciwpth[lay], clwp_l = clwpth[lay], cswp_l = cswpth[lay];
+    const rr radice = reicmc[lay], radliq = relqmc[lay], radsno = resnmc[lay];
 #pragma unroll 1
     for (int ig = 0; ig < 140; ++ig) {
-      const double cf = cldfmc[ig][lay];
-      const bool cl = cf == 1.0;
-      const double ciwp = cl ? ciwp_l : 0.0, clwp = cl ? clwp_l : 0.0, cswp = cl ? cswp_l : 0.0;
-      double cwp = ciwp + clwp + cswp;
+      const rr cf = cldfmc[ig][lay];
+      const bool cl = cf == rr(1.0);
+      const rr ciwp = cl ? ciwp_l : rr(0.0), clwp = cl ? clwp_l : rr(0.0), cswp = cl ? cswp_l : rr(0.0);
+      rr cwp = ciwp + clwp + cswp;
       if (cf >= cldmin && (cwp >= cldmin || (inflag == 0 && taucmc[ig][lay] >= cldmin))) {
         if (inflag == 0) {
           // Cloud optical depth already defined in taucmc
           return;
         } else if (inflag >= 2) {
-          double abscoice = 0.0;
-          double abscosno = 0.0;
+          rr abscoice = rr(0.0);
+          rr abscosno = rr(0.0);
 
-          if ((ciwp + cswp) > 0.0) {
+          if ((ciwp + cswp) > rr(0.0)) {
             if (iceflag == 0) {
               abscoice = tables.absice0[0] + tables.absice0[1] / radice;
             } else if (iceflag == 1) {
               int ib = icb[tables.ngb[ig] - 1];
               abscoice = tables.absice1[ib * 2 + 0] + tables.absice1[ib * 2 + 1] / radice;
             } else if (iceflag == 2) {
-              double factor = (radice - 2.0) / 3.0;
+              rr factor = (radice - rr(2.0)) / rr(3.0);
               int index = static_cast<int>(factor);
               if (index >= 43) index = 42;
               if (index < 1) index = 1;
-              double fint = factor - static_cast<double>(index);
+              rr fint = factor - static_cast<rr>(index);
               int ib = tables.ngb[ig] - 1;
               int idx0 = index - 1;
               abscoice = tables.absice2[ib * 43 + idx0] +
                          fint * (tables.absice2[ib * 43 + idx0 + 1] - tables.absice2[ib * 43 + idx0]);
             } else if (iceflag >= 3) {
               // Fu (1996) generalized effective size
-              double factor = (radice - 2.0) / 3.0;
+              rr factor = (radice - rr(2.0)) / rr(3.0);
               int index = static_cast<int>(factor);
               if (index >= 46) index = 45;
               if (index < 1) index = 1;
-              double fint = factor - static_cast<double>(index);
+              rr fint = factor - static_cast<rr>(index);
               int ib = tables.ngb[ig] - 1;
               int idx0 = index - 1;
               abscoice = tables.absice3[ib * 46 + idx0] +
@@ -76,12 +77,12 @@ CPPWRF_FORCEINLINE void rrtmg_lw_cldprmc(
           }
 
           // Incorporate snow if iceflag == 5
-          if (cswp > 0.0 && iceflag == 5) {
-            double factor = (radsno - 2.0) / 3.0;
+          if (cswp > rr(0.0) && iceflag == 5) {
+            rr factor = (radsno - rr(2.0)) / rr(3.0);
             int index = static_cast<int>(factor);
             if (index >= 46) index = 45;
             if (index < 1) index = 1;
-            double fint = factor - static_cast<double>(index);
+            rr fint = factor - static_cast<rr>(index);
             int ib = tables.ngb[ig] - 1;
             int idx0 = index - 1;
             abscosno = tables.absice3[ib * 46 + idx0] +
@@ -89,16 +90,16 @@ CPPWRF_FORCEINLINE void rrtmg_lw_cldprmc(
           }
 
           // Liquid water droplets
-          double abscoliq = 0.0;
-          if (clwp > 0.0) {
+          rr abscoliq = rr(0.0);
+          if (clwp > rr(0.0)) {
             if (liqflag == 0) {
               abscoliq = tables.absliq0;
             } else if (liqflag == 1) {
               // Hu and Stamnes (1993)
-              int index = static_cast<int>(radliq - 1.5);
+              int index = static_cast<int>(radliq - rr(1.5));
               if (index < 1) index = 1;
               if (index >= 58) index = 57;
-              double fint = radliq - 1.5 - static_cast<double>(index);
+              rr fint = radliq - rr(1.5) - static_cast<rr>(index);
               int ib = tables.ngb[ig] - 1;
               int idx0 = index - 1;
               abscoliq = tables.absliq1[ib * 58 + idx0] +
@@ -111,7 +112,7 @@ CPPWRF_FORCEINLINE void rrtmg_lw_cldprmc(
                             cswp * abscosno;
         }
       } else {
-        taucmc[ig][lay] = 0.0;
+        taucmc[ig][lay] = rr(0.0);
       }
     }
   }

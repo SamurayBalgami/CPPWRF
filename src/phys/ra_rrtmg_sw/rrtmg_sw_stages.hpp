@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
+#include "phys/ra_rrtmg_common/rrtmg_real.hpp"
 // RRTMG_SWRAD (WRF module_ra_rrtmg_sw.F) for one column as independent stages on strided views
 // (src/phys/ra_rrtmg_common/strided.hpp), as rrtmg_lw_stages.hpp for the longwave:
 //   rrtmg_sw_prep     per column : RRTMG_SWRAD profiles, cloud properties, McICA subcolumns
@@ -31,10 +32,10 @@ constexpr int RRTMG_SW_COL_MAX = 128;  // layers of one column (stack arrays of 
 struct RrtmgSwCallConfig {
   int num_levels, nlayers;  // nlayers = num_levels + 1
   int o3input;
-  double co2, n2o, ch4;
-  double g;                 // gravmks of the water paths
-  double heatfac;           // rrsw_con heatfac
-  double adjflux;           // adjes*scon/rrsw_scon (dyofyr = 0, adjes = 1)
+  rr co2, n2o, ch4;
+  rr g;                 // gravmks of the water paths
+  rr heatfac;           // rrsw_con heatfac
+  rr adjflux;           // adjes*scon/rrsw_scon (dyofyr = 0, adjes = 1)
   int icld, idcor, juldat;  // McICA overlap (cldovrlp), decorrelation length type, day of year
 };
 
@@ -59,13 +60,13 @@ struct SwLayout {
   int nl;
   std::size_t nd = 0, ni = 0;
   CPPWRF_HD explicit SwLayout(int nl_) : nl(nl_) { views(nullptr, nullptr, 0, 1, &nd, &ni); }
-  CPPWRF_FORCEINLINE SwViews views(double* d, int* ip, int col, int ncol, std::size_t* nd_out = nullptr,
+  CPPWRF_FORCEINLINE SwViews views(rr* d, int* ip, int col, int ncol, std::size_t* nd_out = nullptr,
                                    std::size_t* ni_out = nullptr) const {
     SwViews v{};
     const int L = nl, L1 = nl + 1, s = ncol;
     std::size_t od = 0, oi = 0;
     auto take = [&](std::size_t n) {
-      double* q = d ? d + od * std::size_t(s) + col : nullptr;
+      rr* q = d ? d + od * std::size_t(s) + col : nullptr;
       od += n;
       return q;
     };
@@ -98,7 +99,7 @@ struct SwLayout {
 };
 
 struct SwColumnIn {
-  double coszen, albedo, xland, xice, snow, xlat;
+  rr coszen, albedo, xland, xice, snow, xlat;
   SD p8w, t8w, p3d, pi3d, dz8w, t3d, qv3d, qc3d, qi3d, qs3d, cldfra3d, o33d;
   SD re_cloud, re_ice, re_snow;  // p == nullptr: has_req* = 0
   bool has_qc, has_qi, has_qs;
@@ -109,34 +110,34 @@ struct SwColumnIn {
 };
 
 // CAM relcalc (module_ra_rrtmg_sw.F) for one layer
-CPPWRF_HD inline double rrtmg_sw_relcalc(double t_lay, double xland, double snow, double xice) {
-  constexpr double tmelt = 273.16, rliqocean = 14.0, rliqice = 14.0, rliqland = 8.0;
-  double landfrac = 2.0 - xland;
-  double landm = landfrac;
-  double snowh = 0.001 * snow;
-  double icefrac = xice;
-  double r = rliqland + (rliqocean - rliqland) * std::min(1.0, std::max(0.0, (tmelt - t_lay) * 0.05));
-  r += (rliqocean - r) * std::min(1.0, std::max(0.0, snowh * 10.0));
-  r += (rliqocean - r) * std::min(1.0, std::max(0.0, 1.0 - landm));
-  r += (rliqice - r) * std::min(1.0, std::max(0.0, icefrac));
+CPPWRF_HD inline rr rrtmg_sw_relcalc(rr t_lay, rr xland, rr snow, rr xice) {
+  constexpr rr tmelt = rr(273.16), rliqocean = rr(14.0), rliqice = rr(14.0), rliqland = rr(8.0);
+  rr landfrac = rr(2.0) - xland;
+  rr landm = landfrac;
+  rr snowh = rr(0.001) * snow;
+  rr icefrac = xice;
+  rr r = rliqland + (rliqocean - rliqland) * std::min(rr(1.0), std::max(rr(0.0), (tmelt - t_lay) * rr(0.05)));
+  r += (rliqocean - r) * std::min(rr(1.0), std::max(rr(0.0), snowh * rr(10.0)));
+  r += (rliqocean - r) * std::min(rr(1.0), std::max(rr(0.0), rr(1.0) - landm));
+  r += (rliqice - r) * std::min(rr(1.0), std::max(rr(0.0), icefrac));
   return r;
 }
 
 // rrtmg_sw core preparation: inatm_sw (wkl: vmr -> column amounts), setcoef_sw, taumol_sw, the
 // cosine of the zenith angle and the band albedos (RRTMG_SWRAD: all four are the albedo).
-CPPWRF_HD inline void rrtmg_sw_core_prep(int nlayers, const SwViews& v, const RrtmgSwTables& tables, double coszen,
-                                         double asdir, double asdif, double aldir, double aldif) {
+CPPWRF_HD inline void rrtmg_sw_core_prep(int nlayers, const SwViews& v, const RrtmgSwTables& tables, rr coszen,
+                                         rr asdir, rr asdif, rr aldir, rr aldif) {
   v.iscal[0] = 1;
   // 6. inatm_sw
   {
-    constexpr double amd = 28.9660;
-    constexpr double amw = 18.0160;
-    constexpr double avogad = 6.02214199e23;
-    constexpr double grav = 9.8066;
+    constexpr rr amd = rr(28.9660);
+    constexpr rr amw = rr(18.0160);
+    constexpr rr avogad = rr(6.02214199e23);
+    constexpr rr grav = rr(9.8066);
     for (int l = 0; l < nlayers; ++l) {
       v.pdp[l] = v.pz[l] - v.pz[l + 1];
-      double amm = (1.0 - v.wkl[0][l]) * amd + v.wkl[0][l] * amw;
-      v.coldry[l] = (v.pz[l] - v.pz[l + 1]) * 1.0e3 * avogad / (1.0e2 * grav * amm * (1.0 + v.wkl[0][l]));
+      rr amm = (rr(1.0) - v.wkl[0][l]) * amd + v.wkl[0][l] * amw;
+      v.coldry[l] = (v.pz[l] - v.pz[l + 1]) * rr(1.0e3) * avogad / (rr(1.0e2) * grav * amm * (rr(1.0) + v.wkl[0][l]));
       for (int imol = 0; imol < 7; ++imol) v.wkl[imol][l] *= v.coldry[l];
     }
   }
@@ -149,8 +150,8 @@ CPPWRF_HD inline void rrtmg_sw_core_prep(int nlayers, const SwViews& v, const Rr
   taumol_sw(nlayers, laytrop, v.jp, v.jt, v.jt1, v.colh2o, v.colco2, v.colch4, v.colo2, v.colo3, v.colmol, v.fac00,
             v.fac01, v.fac10, v.fac11, v.selffac, v.selffrac, v.indself, v.forfac, v.forfrac, v.indfor, v.taug,
             v.taur, v.sfluxzen, tables);
-  double prmu0 = coszen;
-  if (prmu0 <= 1.e-10) prmu0 = 1.e-10;  // zepzen
+  rr prmu0 = coszen;
+  if (prmu0 <= rr(1.e-10)) prmu0 = rr(1.e-10);  // zepzen
   v.dscal[0] = prmu0;
   v.dscal[1] = asdir;
   v.dscal[2] = asdif;
@@ -162,58 +163,58 @@ CPPWRF_HD inline void rrtmg_sw_core_prep(int nlayers, const SwViews& v, const Rr
 // ---- stage 1: per column ------------------------------------------------------------------------
 CPPWRF_HD inline void rrtmg_sw_prep(const RrtmgSwCallConfig& c, const SwColumnIn& in, const SwViews& v,
                                     const RrtmgSwTables& tables, const RrtmgLwConsts& kc) {
-  v.iscal[0] = in.coszen > 0.0 ? 1 : 0;
-  if (in.coszen <= 0.0) return;  // the sun below the horizon
+  v.iscal[0] = in.coszen > rr(0.0) ? 1 : 0;
+  if (in.coszen <= rr(0.0)) return;  // the sun below the horizon
   const int num_levels = c.num_levels, nlayers = c.nlayers;
-  const double xland = in.xland;
-  auto qc_of = [&](int k) { return in.has_qc ? in.qc3d[k] : 0.0; };
-  auto qi_of = [&](int k) { return in.has_qi ? in.qi3d[k] : 0.0; };
-  auto qs_of = [&](int k) { return in.has_qs ? in.qs3d[k] : 0.0; };
-  constexpr double amdw = 1.607793;
-  constexpr double amdo = 0.603461;
+  const rr xland = in.xland;
+  auto qc_of = [&](int k) { return in.has_qc ? in.qc3d[k] : rr(0.0); };
+  auto qi_of = [&](int k) { return in.has_qi ? in.qi3d[k] : rr(0.0); };
+  auto qs_of = [&](int k) { return in.has_qs ? in.qs3d[k] : rr(0.0); };
+  constexpr rr amdw = rr(1.607793);
+  constexpr rr amdo = rr(0.603461);
 
   // 1. atmosphere (wkl = vmr until inatm_sw)
-  v.pz[0] = in.p8w[0] / 100.0;  // Pa -> mb
+  v.pz[0] = in.p8w[0] / rr(100.0);  // Pa -> mb
   v.tz[0] = in.t8w[0];
   for (int k = 0; k < num_levels; ++k) {
-    v.pavel[k] = in.p3d[k] / 100.0;
-    v.pz[k + 1] = in.p8w[k + 1] / 100.0;
+    v.pavel[k] = in.p3d[k] / rr(100.0);
+    v.pz[k + 1] = in.p8w[k + 1] / rr(100.0);
     v.tavel[k] = in.t3d[k];
     v.tz[k + 1] = in.t8w[k + 1];
-    v.wkl[0][k] = std::max(in.qv3d[k], 1.0e-12) * amdw;
+    v.wkl[0][k] = std::max(in.qv3d[k], rr(1.0e-12)) * amdw;
     v.wkl[1][k] = c.co2;
     v.wkl[3][k] = c.n2o;
-    v.wkl[4][k] = 0.0;
+    v.wkl[4][k] = rr(0.0);
     v.wkl[5][k] = c.ch4;
-    v.wkl[6][k] = 0.209488;
+    v.wkl[6][k] = rr(0.209488);
   }
   // 2. extra layer from the model top to the TOA (1e-5 mb)
-  v.pavel[num_levels] = 0.5 * v.pz[num_levels];
+  v.pavel[num_levels] = rr(0.5) * v.pz[num_levels];
   v.tavel[num_levels] = v.tz[num_levels];
-  v.pz[num_levels + 1] = 1.0e-5;
+  v.pz[num_levels + 1] = rr(1.0e-5);
   v.tz[num_levels + 1] = v.tz[num_levels];
   for (int m = 0; m < 7; ++m) v.wkl[m][num_levels] = v.wkl[m][num_levels - 1];
   // 3. ozone (inirad, CAM ozone on the model levels for o3input = 2)
   for (int k = 0; k < nlayers; ++k) {
-    double o3 = 0.0;
-    const double pr_k = v.pz[k], pr_k1 = v.pz[k + 1];
+    rr o3 = rr(0.0);
+    const rr pr_k = v.pz[k], pr_k1 = v.pz[k + 1];
     for (int jj = 0; jj < 31; ++jj) {
-      double pb1 = (pr_k > kc.ppwrkh[jj]) ? (pr_k - kc.ppwrkh[jj]) : 0.0;
-      double pb2 = (pr_k > kc.ppwrkh[jj + 1]) ? (pr_k - kc.ppwrkh[jj + 1]) : 0.0;
-      double pt1 = (pr_k1 > kc.ppwrkh[jj]) ? (pr_k1 - kc.ppwrkh[jj]) : 0.0;
-      double pt2 = (pr_k1 > kc.ppwrkh[jj + 1]) ? (pr_k1 - kc.ppwrkh[jj + 1]) : 0.0;
+      rr pb1 = (pr_k > kc.ppwrkh[jj]) ? (pr_k - kc.ppwrkh[jj]) : rr(0.0);
+      rr pb2 = (pr_k > kc.ppwrkh[jj + 1]) ? (pr_k - kc.ppwrkh[jj + 1]) : rr(0.0);
+      rr pt1 = (pr_k1 > kc.ppwrkh[jj]) ? (pr_k1 - kc.ppwrkh[jj]) : rr(0.0);
+      rr pt2 = (pr_k1 > kc.ppwrkh[jj + 1]) ? (pr_k1 - kc.ppwrkh[jj + 1]) : rr(0.0);
       o3 += (pb2 - pb1 - pt2 + pt1) * kc.o3ann[jj];
     }
     v.coldry[k] = o3 / (pr_k - pr_k1);  // o3mmr (coldry is set by inatm_sw below)
   }
   for (int k = 0; k < nlayers; ++k) {
-    double o3vmr = v.coldry[k] * amdo;
+    rr o3vmr = v.coldry[k] * amdo;
     if (c.o3input == 2) {
       if (k < num_levels) {
         o3vmr = in.o33d[k];
       } else {
         o3vmr = in.o33d[num_levels - 1] - v.coldry[num_levels - 1] * amdo + v.coldry[k] * amdo;
-        if (o3vmr <= 0.) o3vmr = v.coldry[k] * amdo;
+        if (o3vmr <= rr(0.)) o3vmr = v.coldry[k] * amdo;
       }
     }
     v.wkl[2][k] = o3vmr;
@@ -223,88 +224,88 @@ CPPWRF_HD inline void rrtmg_sw_prep(const RrtmgSwCallConfig& c, const SwColumnIn
   const int liqflgsw = 1;
   const bool hrc = in.re_cloud.p != nullptr, hri = in.re_ice.p != nullptr, hrs = in.re_snow.p != nullptr;
   for (int k = 0; k < num_levels; ++k) {
-    const double pdel = v.pz[k] - v.pz[k + 1];
-    const double cldf = in.cldfra3d[k];
-    double qc1 = std::max(0., qc_of(k)), qi1 = std::max(0., qi_of(k)), qs1 = std::max(0., qs_of(k));
-    if (in.split3 && in.t3d[k] < 273.15) {  // module_ra_rrtmg_sw.F "For MP option 3" (WSM3)
+    const rr pdel = v.pz[k] - v.pz[k + 1];
+    const rr cldf = in.cldfra3d[k];
+    rr qc1 = std::max(rr(0.), qc_of(k)), qi1 = std::max(rr(0.), qi_of(k)), qs1 = std::max(rr(0.), qs_of(k));
+    if (in.split3 && in.t3d[k] < rr(273.15)) {  // module_ra_rrtmg_sw.F "For MP option 3" (WSM3)
       qi1 = qc1;
-      qs1 = std::max(0., in.qr3d[k]);
-      qc1 = 0.;
+      qs1 = std::max(rr(0.), in.qr3d[k]);
+      qc1 = rr(0.);
     }
-    double recloud1d = 5.0, reice1d = 10., resnow1d = 10.0;
+    rr recloud1d = rr(5.0), reice1d = rr(10.), resnow1d = rr(10.0);
     if (hrc) {
-      recloud1d = std::max(2.5, in.re_cloud[k] * 1.E6);
-      if (recloud1d <= 2.5 && cldf > 0. && (xland - 1.5) > 0.) recloud1d = 10.5;       // ocean
-      else if (recloud1d <= 2.5 && cldf > 0. && (xland - 1.5) < 0.) recloud1d = 7.5;   // land
+      recloud1d = std::max(rr(2.5), in.re_cloud[k] * rr(1.E6));
+      if (recloud1d <= rr(2.5) && cldf > rr(0.) && (xland - rr(1.5)) > rr(0.)) recloud1d = rr(10.5);       // ocean
+      else if (recloud1d <= rr(2.5) && cldf > rr(0.) && (xland - rr(1.5)) < rr(0.)) recloud1d = rr(7.5);   // land
       inflgsw = 3;
     }
     if (hri) {
       inflgsw = 4; iceflgsw = 4;
-      reice1d = std::max(5., in.re_ice[k] * 1.E6);
-      if (reice1d <= 5. && cldf > 0.) {
-        int idx_rei = int(in.t3d[k] - 179.);
+      reice1d = std::max(rr(5.), in.re_ice[k] * rr(1.E6));
+      if (reice1d <= rr(5.) && cldf > rr(0.)) {
+        int idx_rei = int(in.t3d[k] - rr(179.));
         idx_rei = std::min(std::max(idx_rei, 1), 75);
-        const double corr = in.t3d[k] - int(in.t3d[k]);
-        reice1d = kc.retab[idx_rei - 1] * (1. - corr) + kc.retab[idx_rei] * corr;
-        reice1d = std::max(reice1d, 5.0);
+        const rr corr = in.t3d[k] - int(in.t3d[k]);
+        reice1d = kc.retab[idx_rei - 1] * (rr(1.) - corr) + kc.retab[idx_rei] * corr;
+        reice1d = std::max(reice1d, rr(5.0));
       }
     }
     if (hrs) {
       inflgsw = 5; iceflgsw = 5;
-      resnow1d = std::max(10., in.re_snow[k] * 1.E6);
+      resnow1d = std::max(rr(10.), in.re_snow[k] * rr(1.E6));
     }
     if (!hrs && hri && hrc) {  // P3: ice into the snow category for the optics
       inflgsw = 5; iceflgsw = 5;
-      resnow1d = std::max(10., in.re_ice[k] * 1.E6);
+      resnow1d = std::max(rr(10.), in.re_ice[k] * rr(1.E6));
       qs1 = qi_of(k);
-      qi1 = 0.;
-      reice1d = 10.;
+      qi1 = rr(0.);
+      reice1d = rr(10.);
     }
     v.cldfrac[k] = cldf;
-    double gicewp = (qi1 + qs1) * pdel * 100.0 / c.g * 1000.0;  // g/m2
-    const double gliqwp = qc1 * pdel * 100.0 / c.g * 1000.0;    // g/m2
-    v.ciwpth[k] = gicewp / std::max(0.01, cldf);
-    v.clwpth[k] = gliqwp / std::max(0.01, cldf);
+    rr gicewp = (qi1 + qs1) * pdel * rr(100.0) / c.g * rr(1000.0);  // g/m2
+    const rr gliqwp = qc1 * pdel * rr(100.0) / c.g * rr(1000.0);    // g/m2
+    v.ciwpth[k] = gicewp / std::max(rr(0.01), cldf);
+    v.clwpth[k] = gliqwp / std::max(rr(0.01), cldf);
     if (iceflgsw >= 4) {  // ice path without the snow
-      gicewp = qi1 * pdel * 100.0 / c.g * 1000.0;
-      v.ciwpth[k] = gicewp / std::max(0.01, cldf);
+      gicewp = qi1 * pdel * rr(100.0) / c.g * rr(1000.0);
+      v.ciwpth[k] = gicewp / std::max(rr(0.01), cldf);
     }
-    double csnowp = 0.0;
+    rr csnowp = rr(0.0);
     if (iceflgsw == 5) {
-      double snow_mass_factor = 0.99;
-      if (resnow1d > 130.) {
-        snow_mass_factor = std::min(snow_mass_factor, (130.0 / resnow1d) * (130.0 / resnow1d));
-        resnow1d = 130.0;
+      rr snow_mass_factor = rr(0.99);
+      if (resnow1d > rr(130.)) {
+        snow_mass_factor = std::min(snow_mass_factor, (rr(130.0) / resnow1d) * (rr(130.0) / resnow1d));
+        resnow1d = rr(130.0);
       }
-      const double gsnowp = qs1 * snow_mass_factor * pdel * 100.0 / c.g * 1000.0;
-      csnowp = gsnowp / std::max(0.01, cldf);
+      const rr gsnowp = qs1 * snow_mass_factor * pdel * rr(100.0) / c.g * rr(1000.0);
+      csnowp = gsnowp / std::max(rr(0.01), cldf);
     }
     v.relqmc[k] = inflgsw >= 3 ? recloud1d : rrtmg_sw_relcalc(v.tavel[k], xland, in.snow, in.xice);
     if (iceflgsw >= 4) {
       v.reicmc[k] = reice1d;
     } else {  // reicalc, Fu ice size conversion
-      const double t_lay = v.tavel[k];
-      int idx = static_cast<int>(t_lay - 179.0);
+      const rr t_lay = v.tavel[k];
+      int idx = static_cast<int>(t_lay - rr(179.0));
       idx = std::min(std::max(idx, 1), 94);
-      double corr = t_lay - static_cast<int>(t_lay);
-      const double ri = kc.retab[idx - 1] * (1.0 - corr) + kc.retab[idx] * corr;
-      v.reicmc[k] = std::min(140.0, ri * 1.0315);
+      rr corr = t_lay - static_cast<int>(t_lay);
+      const rr ri = kc.retab[idx - 1] * (rr(1.0) - corr) + kc.retab[idx] * corr;
+      v.reicmc[k] = std::min(rr(140.0), ri * rr(1.0315));
     }
     if (inflgsw == 5) {
       v.cswpth[k] = csnowp;
       v.resnmc[k] = resnow1d;
     } else {
-      v.cswpth[k] = 0.0;
-      v.resnmc[k] = 10.0;
+      v.cswpth[k] = rr(0.0);
+      v.resnmc[k] = rr(10.0);
     }
   }
-  v.cldfrac[num_levels] = 0.0;
-  v.clwpth[num_levels] = 0.0;
-  v.ciwpth[num_levels] = 0.0;
-  v.cswpth[num_levels] = 0.0;
-  v.relqmc[num_levels] = 10.0;
-  v.reicmc[num_levels] = 10.0;
-  v.resnmc[num_levels] = 10.0;
+  v.cldfrac[num_levels] = rr(0.0);
+  v.clwpth[num_levels] = rr(0.0);
+  v.ciwpth[num_levels] = rr(0.0);
+  v.cswpth[num_levels] = rr(0.0);
+  v.relqmc[num_levels] = rr(10.0);
+  v.reicmc[num_levels] = rr(10.0);
+  v.resnmc[num_levels] = rr(10.0);
   v.iscal[2] = inflgsw;
   v.iscal[3] = iceflgsw;
   v.iscal[4] = liqflgsw;
@@ -313,7 +314,7 @@ CPPWRF_HD inline void rrtmg_sw_prep(const RrtmgSwCallConfig& c, const SwColumnIn
   // returns at once and spcvmc_sw gets zcldfmc = 0, zomgcmc = 1 (rrtmg_sw), a clear column
   bool any_cloud = false;
   for (int ilev = 0; ilev < nlayers; ++ilev) {
-    if (c.icld != 0 && CSD(v.cldfrac)[ilev] >= 1.0e-20) any_cloud = true;
+    if (c.icld != 0 && CSD(v.cldfrac)[ilev] >= rr(1.0e-20)) any_cloud = true;
   }
 #if defined(__CUDA_ARCH__)
   const bool run_mcica = __any_sync(__activemask(), any_cloud);
@@ -323,28 +324,28 @@ CPPWRF_HD inline void rrtmg_sw_prep(const RrtmgSwCallConfig& c, const SwColumnIn
   int any_cld_subcol = 0;
   if (run_mcica && any_cloud) {
     KissRng rng;
-    rng.init_from_pressure(CSD(v.pavel)[0] * 100.0, CSD(v.pavel)[1] * 100.0, CSD(v.pavel)[2] * 100.0,
-                           CSD(v.pavel)[3] * 100.0);
+    rng.init_from_pressure(CSD(v.pavel)[0] * rr(100.0), CSD(v.pavel)[1] * rr(100.0), CSD(v.pavel)[2] * rr(100.0),
+                           CSD(v.pavel)[3] * rr(100.0));
     rng.permute(1);
     // layer mid-point heights from dz8w (exponential overlaps): the buffer layer above the top gets the top dz
-    double hgt[kMcicaMaxLayers];
-    double zo_inv = 0.0;
+    rr hgt[kMcicaMaxLayers];
+    rr zo_inv = rr(0.0);
     if (c.icld == 4 || c.icld == 5) {
-      double dzsum = 0.0, dz = 0.0;
+      rr dzsum = rr(0.0), dz = rr(0.0);
       for (int k = 0; k < nlayers; ++k) {
         if (k < c.num_levels) dz = in.dz8w[k];
-        hgt[k] = dzsum + 0.5 * dz;
+        hgt[k] = dzsum + rr(0.5) * dz;
         dzsum = dzsum + dz;
       }
-      zo_inv = 1.0 / mcica_decorr_len(c.idcor, c.juldat, in.xlat);
+      zo_inv = rr(1.0) / mcica_decorr_len(c.idcor, c.juldat, in.xlat);
     }
-    auto cldf_of = [&](int l) { const double cf = CSD(v.cldfrac)[l]; return cf < 1.0e-20 ? 0.0 : cf; };
+    auto cldf_of = [&](int l) { const rr cf = CSD(v.cldfrac)[l]; return cf < rr(1.0e-20) ? rr(0.0) : cf; };
     auto alpha_of = [&](int l) {
-      if (c.icld == 5 && cldf_of(l) == 0.0 && cldf_of(l - 1) > 0.0) return 0.0;
+      if (c.icld == 5 && cldf_of(l) == rr(0.0) && cldf_of(l - 1) > rr(0.0)) return rr(0.0);
       return libm::exp(-(hgt[l] - hgt[l - 1]) * zo_inv);
     };
     mcica_subcolumns(c.icld, rng, 112, nlayers, cldf_of, alpha_of, [&](int isubcol, int ilev, bool cld) {
-      v.cldfmc[ilev][isubcol] = cld ? 1.0 : 0.0;
+      v.cldfmc[ilev][isubcol] = cld ? rr(1.0) : rr(0.0);
       if (cld) any_cld_subcol = 1;
     });
   }
@@ -358,75 +359,75 @@ template <int ML>
 CPPWRF_FORCEINLINE void rrtmg_sw_gpoint_impl(const RrtmgSwCallConfig& c, int iw, const SwViews& v,
                                              const RrtmgSwTables& CPPWRF_RESTRICT tables) {
   if (CSI(v.iscal)[0] == 0) return;
-  constexpr double tblint = 10000.0;
-  constexpr double od_lo = 0.06;
-  constexpr double pade = 0.278;
-  constexpr double bpade = 1.0 / pade;
-  constexpr double ptaua = 0.0, pasya = 0.0, pomga = 1.0;  // aer_opt = 0
+  constexpr rr tblint = rr(10000.0);
+  constexpr rr od_lo = rr(0.06);
+  constexpr rr pade = rr(0.278);
+  constexpr rr bpade = rr(1.0) / pade;
+  constexpr rr ptaua = rr(0.0), pasya = rr(0.0), pomga = rr(1.0);  // aer_opt = 0
   const int klev = c.nlayers;
-  const double prmu0 = CSD(v.dscal)[0];
+  const rr prmu0 = CSD(v.dscal)[0];
   const int inflag = CSI(v.iscal)[2], iceflag = CSI(v.iscal)[3], liqflag = CSI(v.iscal)[4];
   const bool has_col_cld = CSI(v.iscal)[5] != 0;
   int ibm = 0, cum = tables.ngc[0];
   while (iw >= cum) cum += tables.ngc[++ibm];
   // band albedos: WRF bands 1-9 and 14 near-IR (al*), 10-13 UV/visible (as*)
   const bool uv = ibm >= 9 && ibm <= 12;
-  const double palbp = uv ? CSD(v.dscal)[1] : CSD(v.dscal)[3], palbd = uv ? CSD(v.dscal)[2] : CSD(v.dscal)[4];
+  const rr palbp = uv ? CSD(v.dscal)[1] : CSD(v.dscal)[3], palbd = uv ? CSD(v.dscal)[2] : CSD(v.dscal)[4];
 
-  double zref[ML + 1], zrefd[ML + 1], ztra[ML + 1], ztrad[ML + 1];
-  double zdbt[ML + 1], ztdbt[ML + 1];
+  rr zref[ML + 1], zrefd[ML + 1], ztra[ML + 1], ztrad[ML + 1];
+  rr zdbt[ML + 1], ztdbt[ML + 1];
 
-  const double zincflx = c.adjflux * CSD(v.sfluxzen)[iw] * prmu0;
+  const rr zincflx = c.adjflux * CSD(v.sfluxzen)[iw] * prmu0;
 
   // Clear-sky TOA direct beam and surface values
-  ztdbt[0] = 1.0;
-  zdbt[klev] = 0.0;
-  ztra[klev] = 0.0;
-  ztrad[klev] = 0.0;
+  ztdbt[0] = rr(1.0);
+  zdbt[klev] = rr(0.0);
+  ztra[klev] = rr(0.0);
+  ztrad[klev] = rr(0.0);
   zref[klev] = palbp;
   zrefd[klev] = palbd;
 
-  double ztdbtc_nodel = 1.0;
+  rr ztdbtc_nodel = rr(1.0);
   v.ccdd[klev][iw] = zincflx;
   bool any_cld = false;
 
   for (int jk = 0; jk < klev; ++jk) {
     int ikl = klev - 1 - jk;  // top to bottom
-    if (has_col_cld && CSD2(v.cldfmc)[ikl][iw] == 1.0) any_cld = true;
-    const double taur_val = CSD2(v.taur)[ikl][iw];
-    const double taug_val = CSD2(v.taug)[ikl][iw];
-    double ztauc = taur_val + taug_val + ptaua;
-    double zomcc = taur_val * 1.0 + ptaua * pomga;
-    double zgcc = (zomcc != 0.0) ? pasya * pomga * ptaua / zomcc : 0.0;
-    zomcc = (ztauc != 0.0) ? zomcc / ztauc : 0.0;
+    if (has_col_cld && CSD2(v.cldfmc)[ikl][iw] == rr(1.0)) any_cld = true;
+    const rr taur_val = CSD2(v.taur)[ikl][iw];
+    const rr taug_val = CSD2(v.taug)[ikl][iw];
+    rr ztauc = taur_val + taug_val + ptaua;
+    rr zomcc = taur_val * rr(1.0) + ptaua * pomga;
+    rr zgcc = (zomcc != rr(0.0)) ? pasya * pomga * ptaua / zomcc : rr(0.0);
+    zomcc = (ztauc != rr(0.0)) ? zomcc / ztauc : rr(0.0);
 
-    double ze1 = ztauc / prmu0;
-    double zdbtmc;
+    rr ze1 = ztauc / prmu0;
+    rr zdbtmc;
     if (ze1 <= od_lo) {
-      zdbtmc = 1.0 - ze1 + 0.5 * ze1 * ze1;
+      zdbtmc = rr(1.0) - ze1 + rr(0.5) * ze1 * ze1;
     } else {
-      double tblind = ze1 / (bpade + ze1);
-      int itind = static_cast<int>(tblint * tblind + 0.5);
+      rr tblind = ze1 / (bpade + ze1);
+      int itind = static_cast<int>(tblint * tblind + rr(0.5));
       zdbtmc = tables.exp_tbl[itind];
     }
     ztdbtc_nodel = zdbtmc * ztdbtc_nodel;
     v.ccdd[ikl][iw] = zincflx * ztdbtc_nodel;
 
     // delta scaling, clear sky
-    double zf = zgcc * zgcc;
-    double zwf = zomcc * zf;
-    ztauc = (1.0 - zwf) * ztauc;
-    zomcc = (zomcc - zwf) / (1.0 - zwf);
-    zgcc = (zgcc - zf) / (1.0 - zf);
+    rr zf = zgcc * zgcc;
+    rr zwf = zomcc * zf;
+    ztauc = (rr(1.0) - zwf) * ztauc;
+    zomcc = (zomcc - zwf) / (rr(1.0) - zwf);
+    zgcc = (zgcc - zf) / (rr(1.0) - zf);
 
     reftra_sw_elem(true, zgcc, prmu0, ztauc, zomcc, zref[jk], zrefd[jk], ztra[jk], ztrad[jk], tables);
 
     ze1 = ztauc / prmu0;
     if (ze1 <= od_lo) {
-      zdbtmc = 1.0 - ze1 + 0.5 * ze1 * ze1;
+      zdbtmc = rr(1.0) - ze1 + rr(0.5) * ze1 * ze1;
     } else {
-      double tblind = ze1 / (bpade + ze1);
-      int itind = static_cast<int>(tblint * tblind + 0.5);
+      rr tblind = ze1 / (bpade + ze1);
+      int itind = static_cast<int>(tblint * tblind + rr(0.5));
       zdbtmc = tables.exp_tbl[itind];
     }
     zdbt[jk] = zdbtmc;
@@ -445,68 +446,68 @@ CPPWRF_FORCEINLINE void rrtmg_sw_gpoint_impl(const RrtmgSwCallConfig& c, int iw,
   }
 
   // Cloudy subcolumn: update only cloudy layers in zref/zrefd/ztra/ztrad/zdbt and run total-sky vrtqdr_sw
-  double ztdbt_nodel = 1.0;
+  rr ztdbt_nodel = rr(1.0);
   v.cfdd[klev][iw] = zincflx;
-  ztdbt[0] = 1.0;
+  ztdbt[0] = rr(1.0);
 
   for (int jk = 0; jk < klev; ++jk) {
     int ikl = klev - 1 - jk;
-    const double cf = CSD2(v.cldfmc)[ikl][iw];
-    const double taur_val = CSD2(v.taur)[ikl][iw];
-    const double taug_val = CSD2(v.taug)[ikl][iw];
-    double ztauc = taur_val + taug_val + ptaua;
+    const rr cf = CSD2(v.cldfmc)[ikl][iw];
+    const rr taur_val = CSD2(v.taur)[ikl][iw];
+    const rr taug_val = CSD2(v.taug)[ikl][iw];
+    rr ztauc = taur_val + taug_val + ptaua;
 
-    if (cf == 1.0) {
-      double taorm = 0.0, taucm = 0.0, ssacm = 1.0, asmcm = 0.0;
+    if (cf == rr(1.0)) {
+      rr taorm = rr(0.0), taucm = rr(0.0), ssacm = rr(1.0), asmcm = rr(0.0);
       cldprmc_sw_elem(inflag, iceflag, liqflag, iw, cf, CSD(v.ciwpth)[ikl], CSD(v.clwpth)[ikl],
-                      CSD(v.cswpth)[ikl], CSD(v.reicmc)[ikl], CSD(v.relqmc)[ikl], CSD(v.resnmc)[ikl], 0.0,
+                      CSD(v.cswpth)[ikl], CSD(v.reicmc)[ikl], CSD(v.relqmc)[ikl], CSD(v.resnmc)[ikl], rr(0.0),
                       taorm, taucm, ssacm, asmcm, tables);
-      double tauorig = ztauc + taorm;
-      double ze1 = tauorig / prmu0;
-      double zdbtmo;
+      rr tauorig = ztauc + taorm;
+      rr ze1 = tauorig / prmu0;
+      rr zdbtmo;
       if (ze1 <= od_lo) {
-        zdbtmo = 1.0 - ze1 + 0.5 * ze1 * ze1;
+        zdbtmo = rr(1.0) - ze1 + rr(0.5) * ze1 * ze1;
       } else {
-        double tblind = ze1 / (bpade + ze1);
-        int itind = static_cast<int>(tblint * tblind + 0.5);
+        rr tblind = ze1 / (bpade + ze1);
+        int itind = static_cast<int>(tblint * tblind + rr(0.5));
         zdbtmo = tables.exp_tbl[itind];
       }
       ztdbt_nodel = zdbtmo * ztdbt_nodel;
       v.cfdd[ikl][iw] = zincflx * ztdbt_nodel;
 
-      double zomcc = taur_val * 1.0 + ptaua * pomga;
-      double zgcc = (zomcc != 0.0) ? pasya * pomga * ptaua / zomcc : 0.0;
-      zomcc = (ztauc != 0.0) ? zomcc / ztauc : 0.0;
-      double zf = zgcc * zgcc;
-      double zwf = zomcc * zf;
-      ztauc = (1.0 - zwf) * ztauc;
-      zomcc = (zomcc - zwf) / (1.0 - zwf);
-      zgcc = (zgcc - zf) / (1.0 - zf);
+      rr zomcc = taur_val * rr(1.0) + ptaua * pomga;
+      rr zgcc = (zomcc != rr(0.0)) ? pasya * pomga * ptaua / zomcc : rr(0.0);
+      zomcc = (ztauc != rr(0.0)) ? zomcc / ztauc : rr(0.0);
+      rr zf = zgcc * zgcc;
+      rr zwf = zomcc * zf;
+      ztauc = (rr(1.0) - zwf) * ztauc;
+      zomcc = (zomcc - zwf) / (rr(1.0) - zwf);
+      zgcc = (zgcc - zf) / (rr(1.0) - zf);
 
-      double ztauo = ztauc + taucm;
-      double zomco = ztauc * zomcc + taucm * ssacm;
-      double zgco = (taucm * ssacm * asmcm + ztauc * zomcc * zgcc) / zomco;
+      rr ztauo = ztauc + taucm;
+      rr zomco = ztauc * zomcc + taucm * ssacm;
+      rr zgco = (taucm * ssacm * asmcm + ztauc * zomcc * zgcc) / zomco;
       zomco = zomco / ztauo;
 
       reftra_sw_elem(true, zgco, prmu0, ztauo, zomco, zref[jk], zrefd[jk], ztra[jk], ztrad[jk], tables);
 
       ze1 = ztauo / prmu0;
       if (ze1 <= od_lo) {
-        zdbtmo = 1.0 - ze1 + 0.5 * ze1 * ze1;
+        zdbtmo = rr(1.0) - ze1 + rr(0.5) * ze1 * ze1;
       } else {
-        double tblind = ze1 / (bpade + ze1);
-        int itind = static_cast<int>(tblint * tblind + 0.5);
+        rr tblind = ze1 / (bpade + ze1);
+        int itind = static_cast<int>(tblint * tblind + rr(0.5));
         zdbtmo = tables.exp_tbl[itind];
       }
       zdbt[jk] = zdbtmo;
     } else {
-      double ze1 = ztauc / prmu0;
-      double zdbtmc;
+      rr ze1 = ztauc / prmu0;
+      rr zdbtmc;
       if (ze1 <= od_lo) {
-        zdbtmc = 1.0 - ze1 + 0.5 * ze1 * ze1;
+        zdbtmc = rr(1.0) - ze1 + rr(0.5) * ze1 * ze1;
       } else {
-        double tblind = ze1 / (bpade + ze1);
-        int itind = static_cast<int>(tblint * tblind + 0.5);
+        rr tblind = ze1 / (bpade + ze1);
+        int itind = static_cast<int>(tblint * tblind + rr(0.5));
         zdbtmc = tables.exp_tbl[itind];
       }
       ztdbt_nodel = zdbtmc * ztdbt_nodel;
@@ -527,15 +528,15 @@ CPPWRF_FORCEINLINE void rrtmg_sw_gpoint(const RrtmgSwCallConfig& c, int iw, cons
 // ---- stage 3: per level: spcvmc_sw's sums, g-points in order ------------------------------------
 CPPWRF_FORCEINLINE void rrtmg_sw_level(int lev, const SwViews& v, const RrtmgSwTables& CPPWRF_RESTRICT tables) {
   if (CSI(v.iscal)[0] == 0) return;
-  double fu = 0.0, fd = 0.0, cu = 0.0, cd = 0.0, fddir = 0.0, cddir = 0.0, uvfd = 0.0, uvfddir = 0.0, nifd = 0.0,
-         nifddir = 0.0;
+  rr fu = rr(0.0), fd = rr(0.0), cu = rr(0.0), cd = rr(0.0), fddir = rr(0.0), cddir = rr(0.0), uvfd = rr(0.0), uvfddir = rr(0.0), nifd = rr(0.0),
+         nifddir = rr(0.0);
   int iw = 0;
   for (int ibm = 0; ibm < 14; ++ibm) {
     const int igt = tables.ngc[ibm];
     for (int jg = 0; jg < igt; ++jg, ++iw) {
-      const double cfu = CSD2(v.cfu)[lev][iw], cfd = CSD2(v.cfd)[lev][iw];
-      const double ccu = CSD2(v.ccu)[lev][iw], ccd = CSD2(v.ccd)[lev][iw];
-      const double cfdd = CSD2(v.cfdd)[lev][iw];
+      const rr cfu = CSD2(v.cfu)[lev][iw], cfd = CSD2(v.cfd)[lev][iw];
+      const rr ccu = CSD2(v.ccu)[lev][iw], ccd = CSD2(v.ccd)[lev][iw];
+      const rr cfdd = CSD2(v.cfdd)[lev][iw];
       fu += cfu;
       fd += cfd;
       cu += ccu;
@@ -558,7 +559,7 @@ CPPWRF_FORCEINLINE void rrtmg_sw_level(int lev, const SwViews& v, const RrtmgSwT
 // ---- stage 4: per column ------------------------------------------------------------------------
 // surface direct / diffuse fluxes: rrtmg_sw's swdkdir, swdkdif, swdkdirc at level 1 (SWDDIR, SWDDIF, SWDDIRC)
 struct SwColumnOut {
-  double gsw, swcf, swupt, swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc, swvisdir, swvisdif, swnirdir,
+  rr gsw, swcf, swupt, swuptc, swdnt, swdntc, swupb, swupbc, swdnb, swdnbc, swvisdir, swvisdif, swnirdir,
       swnirdif, swddir, swddif, swddirc;
 };
 CPPWRF_FORCEINLINE SwColumnOut rrtmg_sw_finish(const RrtmgSwCallConfig& c, const SwViews& v, CSD pi3d,
@@ -566,19 +567,19 @@ CPPWRF_FORCEINLINE SwColumnOut rrtmg_sw_finish(const RrtmgSwCallConfig& c, const
   SwColumnOut o{};
   if (v.iscal[0] == 0) {
     for (int k = 0; k < c.num_levels; ++k) {
-      rthratensw[k] = 0.0;
-      if (rthratenswc.p) rthratenswc[k] = 0.0;
+      rthratensw[k] = rr(0.0);
+      if (rthratenswc.p) rthratenswc[k] = rr(0.0);
     }
     return o;
   }
   const int nlayers = c.nlayers;
   for (int i = 0; i < nlayers; ++i) {
-    const double zdpgcp = c.heatfac / v.pdp[i];
+    const rr zdpgcp = c.heatfac / v.pdp[i];
     v.swhrc[i] = ((v.cd[i + 1] - v.cu[i + 1]) - (v.cd[i] - v.cu[i])) * zdpgcp;
     v.swhr[i] = ((v.fd[i + 1] - v.fu[i + 1]) - (v.fd[i] - v.fu[i])) * zdpgcp;
   }
-  v.swhrc[nlayers - 1] = 0.;
-  v.swhr[nlayers - 1] = 0.;
+  v.swhrc[nlayers - 1] = rr(0.);
+  v.swhr[nlayers - 1] = rr(0.);
   o.gsw = v.fd[0] - v.fu[0];
   o.swcf = (v.fd[nlayers] - v.fu[nlayers]) - (v.cd[nlayers] - v.cu[nlayers]);
   o.swupt = v.fu[nlayers];
@@ -597,8 +598,8 @@ CPPWRF_FORCEINLINE SwColumnOut rrtmg_sw_finish(const RrtmgSwCallConfig& c, const
   o.swddif = v.fd[0] - v.fddir[0];
   o.swddirc = v.cddir[0];
   for (int k = 0; k < c.num_levels; ++k) {
-    rthratensw[k] = (v.swhr[k] / 86400.) / pi3d[k];
-    if (rthratenswc.p) rthratenswc[k] = (v.swhrc[k] / 86400.) / pi3d[k];
+    rthratensw[k] = (v.swhr[k] / rr(86400.)) / pi3d[k];
+    if (rthratenswc.p) rthratenswc[k] = (v.swhrc[k] / rr(86400.)) / pi3d[k];
   }
   return o;
 }
