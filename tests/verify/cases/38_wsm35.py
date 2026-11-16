@@ -24,12 +24,12 @@ for _n, _t in (("5", _T5), ("3", _T3)):
          3600, _t),
         (f"real_p4w{_n}_r8_fp64_cpu_1h_rst", "cpu_dp", _cfg, ["real.dir=" + _run] + _1H + ["suite.restart_at=1800"],
          f"{_run}/wrfout_d01_{_D}", 3600, _t),
-        # CUDA FP64 (tolerance 0) and FP32 (P4's tolerances as placeholders: the merge train measures them on Colab,
-        # about 3x the measured rel L2)
+        # CUDA FP64 (exact on the G4, 2026-11-16) and FP32 (measured on the G4: W5 U 6.3e-4, W 1.7e-2, THM 8.4e-6,
+        # QV 5.4e-4; W3 about the same; tolerances about 3x)
         (f"real_p4w{_n}_r8_fp64_cuda_1h", "cuda_dp", _cfg, ["real.dir=" + _run] + _1H, f"{_run}/wrfout_d01_{_D}",
          3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
         (f"real_p4w{_n}_fp32_1h", "cuda", _cfg, ["real.dir=" + _run] + _1H, f"{_run}/wrfout_d01_{_D}", 3600,
-         {"U": 3e-3, "W": 7e-2, "THM": 3e-5, "QV": 2e-3}),
+         {"U": 1.9e-3, "W": 5.1e-2, "THM": 2.6e-5, "QV": 1.6e-3}),
     ]
 
 STATUS = [
