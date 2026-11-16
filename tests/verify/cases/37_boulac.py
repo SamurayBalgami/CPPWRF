@@ -26,11 +26,12 @@ CASES += [
     # BL1 restarted at 30 min (its wrfrst identical to WRF's)
     ("real_bl1_r8_fp64_cpu_1h_rst", "cpu_dp", "configs/real_bl1_r8.ini",
      ["real.dir=" + f"{WR}/run_BL1_r8"] + _1H + ["suite.restart_at=1800"], f"{WR}/run_BL1_r8/wrfout_d01_{_D}", 3600, _T),
-    # CUDA FP64 and FP32 (tolerances to be measured on Colab by the merge train: about 3x the measured rel L2)
+    # CUDA FP64 (exact on the G4, 2026-11-16) and FP32 (measured on the G4: U 6.9e-4, W 2.2e-2, THM 9.4e-6, QV 5.6e-4;
+    # tolerances about 3x)
     ("real_bl4_r8_fp64_cuda_1h", "cuda_dp", "configs/real_bl4_r8.ini", ["real.dir=" + f"{WR}/run_BL4_r8"] + _1H,
      f"{WR}/run_BL4_r8/wrfout_d01_{_D}", 3600, {"U": 0.0, "W": 0.0, "THM": 0.0, "QV": 0.0}),
     ("real_bl4_fp32_1h", "cuda", "configs/real_bl4_r8.ini", ["real.dir=" + f"{WR}/run_BL4_r8"] + _1H,
-     f"{WR}/run_BL4_r8/wrfout_d01_{_D}", 3600, {"U": 1e-2, "W": 2e-1, "THM": 1e-4, "QV": 1e-2}),
+     f"{WR}/run_BL4_r8/wrfout_d01_{_D}", 3600, {"U": 2.1e-3, "W": 6.6e-2, "THM": 2.8e-5, "QV": 1.7e-3}),
 ]
 
 STATUS = [
