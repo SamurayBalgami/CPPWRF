@@ -1,12 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""PENDING (not loaded: tests/verify/cases/__init__.py reads only cases/NN_*.py). WSM5 and WSM3 microphysics
+"""WSM5 and WSM3 microphysics
 (mp_physics = 4 / 3, phys/module_mp_wsm5.F / module_mp_wsm3.F): W5 / W3 = P4 (Kain-Fritsch, RRTMG with the schemes'
 effective radii, YSU, Noah) with WSM5 / WSM3 instead of WSM6, each against its WRF v4.8.0 real*8 run (wrfref workflow
 of Xassemblianist/cppwrf-data, tag c02-wsm35: the inputs of run_P4_r8 with physics.mp_physics = 4 / 3; wrfrst at
-30 min). Move this file to tests/verify/cases/32_wsm35.py when port_c02_data.tar (run_W5_r8, run_W3_r8 with steps/
-and the restart references) is in the data release and tests/verify/vm_data.txt, run the cases, and delete the
-mp_physics 3,4 row of data/option_tiers.txt when they pass (then drop [cppwrf] allow_unverified from
-configs/real_p4w5_r8.ini / real_p4w3_r8.ini).
+30 min).
 
 CASES: see tests/verify/cases/__init__.py."""
 from cases.common import WR  # noqa: F401

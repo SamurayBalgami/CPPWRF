@@ -55,6 +55,8 @@ port_c11_data.tar
 # the BouLac references (BL1, BL4, BL9: bl_pbl_physics 8 on P1 / P4 / P9, tests/verify/cases/37_boulac.py); links into
 # run_P1_r8 / run_P4_r8 / run_P9_r8
 port_c18_data.tar
+# the WSM5 / WSM3 references (W5, W3: mp_physics 4 / 3 on P4, tests/verify/cases/38_wsm35.py); links into run_P4_r8
+port_c02_data.tar
 # whole references (every frame and variable) of the tolerance-0 cases and the ideal namelists
 # (tools/colab/stage_data.py --whole --refs-only --no-steps): after the tars above, whose files they replace
 v05_suite_refs.tar

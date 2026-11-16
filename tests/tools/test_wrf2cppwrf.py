@@ -784,8 +784,7 @@ class TestValidationAndWarnings(unittest.TestCase):
         self.assertIn("mp_physics = 50 (P3) is supported for real-data runs only", " ".join(t.errors))
 
     def test_wsm3_wsm5(self):
-        # mp_physics = 3 / 4 (module_mp_wsm3.F / module_mp_wsm5.F; tier column_verified: a warning, the option passed
-        # through): moist qv qc qr (WSM3) or qv qc qr qi qs (WSM5, Registry packages wsm3scheme / wsm5scheme);
+        # mp_physics = 3 / 4 (module_mp_wsm3.F / module_mp_wsm5.F; verified: no tier warning): moist qv qc qr (WSM3) or qv qc qr qi qs (WSM5, Registry packages wsm3scheme / wsm5scheme);
         # not ported: do_radar_ref = 1, the ideal cases; WSM7 (24) and WSM6R (106) are named errors
         def tr(extra="", mp=4, case=real_case):
             t = WrfTranslator(parse_namelist(case(f"""
@@ -802,7 +801,7 @@ class TestValidationAndWarnings(unittest.TestCase):
             self.assertEqual(t.errors, [], mp)
             self.assertEqual(g["moist"]["species"], sp)
             self.assertEqual(g["phys"]["mp_physics"], mp)
-            self.assertIn(f"mp_physics = {mp}", " ".join(t.warnings + t.notices), mp)
+            self.assertFalse(any("verification tier" in w for w in t.warnings), mp)
         for args, msg in (((", do_radar_ref = 1", 4), "do_radar_ref = 1 with mp_physics = 4 (WSM5)"),
                           ((", do_radar_ref = 1", 3), "do_radar_ref = 1 with mp_physics = 3 (WSM3)"),
                           (("", 24), "mp_physics = 24 (WSM7"), (("", 106), "mp_physics = 106 (WSM6R")):
