@@ -7,6 +7,7 @@ builds CPPWRF, WPS and the part of WRF that WPS needs on a Colab GPU, then runs 
 |---|---|
 | `forecast.sh` | GFS (NOAA open data, latest run) -> WPS -> `cppwrf_real` -> `cppwrf` -> maps, on one Lambert domain (default: Turkey, 220 x 130 points at 12 km, 24 h, WRF's CONUS physics suite) |
 | `maps.py` | every output hour: 2 m temperature with sea-level pressure, 3 h precipitation, 10 m wind, total precipitation; `forecast.gif`; `cities.png` / `cities.txt` (temperature, hourly precipitation, wind and pressure at the grid point nearest to each city) |
+| `animate.py` | `anim_wind.mp4`, `anim_temp.mp4`, `anim_rain.mp4`: a full-frame dark map, the field in smooth colours, particles that move with the 10 m wind, city names with their values, 6 frames per output hour (scipy, cartopy, ffmpeg) |
 | `cppwrf_forecast_colab.ipynb` | the whole thing on Colab |
 
 ```bash
@@ -19,6 +20,6 @@ WPS needs only WRF's I/O libraries, not a WRF build: in the WRF source tree, `./
 at `-O` writes `met_em` files without fields; build metgrid at `-O0` (the notebook does).
 
 Measured on an RTX 4060 Laptop GPU (GPU FP32): WPS for 3 GFS times 65 s, `cppwrf_real` 4 s, the 6 h forecast 149 s,
-the maps 13 s.
+the maps 13 s, the three animations 47 s.
 
 For learning and experiments, not an official forecast.

@@ -16,9 +16,10 @@
 # HOURS         forecast length in hours, a multiple of 3 (default 24)
 # CYCLE         GFS run YYYYMMDDHH (default: the latest one on NOAA's open data whose last needed hour is there)
 # CITIES        city forecasts, "Name:lat:lon,..." (default: a list of Turkish cities, those inside the domain)
+# PYTHON        the Python of the maps (default python3; needs matplotlib, and scipy and cartopy for the animations)
 #
 # WORK gets gfs/ (the GFS files), wps/ (geo_em, met_em), run/ (wrfinput, wrfbdy, wrfout_d01_*, rsl.*) and maps/
-# (the maps of every hour, forecast.gif, cities.png, cities.txt).
+# (the maps of every hour, forecast.gif, cities.png, cities.txt, anim_wind / anim_temp / anim_rain .mp4 and .png).
 set -euo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 WORK=${1:?usage: forecast.sh WORK}
@@ -213,6 +214,9 @@ python3 "$REPO/tools/cppwrf-wrf" --mode "$MODE" > wrf.log 2>&1 || { tail -20 wrf
 grep -q "SUCCESS COMPLETE WRF" rsl.out.0000
 step "cppwrf: $HOURS h forecast in $((SECONDS - t1)) s, $(ls wrfout_d01_* | wc -l) output files"
 
-# 6. maps and city forecasts
-python3 "$REPO/examples/forecast/maps.py" "$WORK/run" "$WORK/maps" ${CITIES:+--cities "$CITIES"}
+# 6. maps and city forecasts, then the animations (wind particles over wind, temperature and precipitation)
+PY=${PYTHON:-python3}
+"$PY" "$REPO/examples/forecast/maps.py" "$WORK/run" "$WORK/maps" ${CITIES:+--cities "$CITIES"}
+"$PY" "$REPO/examples/forecast/animate.py" "$WORK/run" "$WORK/maps" ${CITIES:+--cities "$CITIES"} 2>&1 |
+  grep -v Warning || echo "(no animations: animate.py needs scipy, cartopy and ffmpeg)"
 step "done in $((SECONDS - t0)) s: $WORK/maps"
